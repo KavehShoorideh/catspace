@@ -34925,3 +34925,61 @@ verdict lists / word lists / provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10; 
 entries 112, patterns 29; uncatalogued 0; problems 0. OBS ontology validate: problems 0.
 OBS gate engine --only: test_rules_shelf 3/0/0/0 3.5 s (new; its Lean test marked slow, run); test_plan73 9/0/0/0 13.9 s; test_lean_index 2/0/0/0 199.7 s.
 scripts/gate.py ENGINE_NAMES gains test_rules_shelf.
+
+
+## 2026-10-28 18:15 -- plan 76.2 (b) THE GAME LAYER READS THROUGH THE CERTIFIED KERNEL: one surface (game.py) with its spec; the GDL oracle against every rule method; the judge's kinds, the exchange's lines and the mate in one each computed once (branch worktree-agent-ad149634c92619751)
+THE SURFACE: game.py's `Game` protocol is where the machinery reads the rules -- legality (`moves`, `legal` new, `moves_to`), the next state (`apply`), the terminals
+(`terminal`, `repetition` now in the protocol) and the goal (`goal` new: the outcome's score per side, the spec's 100 / 50 / 0) -- with `reply_kind` (new: what a move IS
+for the judge: check, capture, quiet, from the kernel's `gives_check` / `is_capture`). Its implementation is the fast kernel (python-chess, the Rust core beside it); its
+SPEC is rules/chess.gdl: `game.SPEC` binds each of the 21 rule methods to the ontology shelf relation it implements (moves -> legal, apply -> next, terminal -> terminal,
+goal -> goal, turn -> tempo, in_check / gives_check -> check, is_capture -> capture, clock_events -> clock_event, units -> cell, attackers -> attack, adjacent ->
+king_step, ...), `game.NOT_RULES` lists the 18 that read no rule (the notation, keys, coordinates, the valuation, the pass) with why; a test holds every protocol
+method to one of the two.
+THE ORACLE (gdl_chess.game_oracle): the GDL interpreter read against every method of game.SPEC at one state with its game record -- the legal moves, legality of every
+pseudo-legal move, the moves between two squares, the next state after every legal move, the side to move, the terminal, both goals, the repetition, check, the clock and
+each move's clock events, every unit, every attack (both ways), the king's step, the capture and what each move is. OBS 76.2 (b) oracle: positions 8979 (corners and
+surprises 47, puzzle positions 1497, play-outs 20 seed 762 with their records: 7435 positions, a third occurrence at 1); wall 188 s on 11 processes; disagreements 0 (none)
+-- after the TWO SURPRISES IT FOUND on its first run (corners + one play-out, 460 positions: moves_to 11, clock_events 4), each read against the rules and filed:
+* s010 (spec, clock_event): exd6 e.p. -- the spec's clock events [pawn], the surface's [capture, pawn]. FIDE 9.3 / 3.7.d: an e.p. capture is a capture; the kernel's
+  `Chess.moveIsCapture` counts it. THE SPEC WAS WRONG (incomplete): rules/chess.gdl gains `(<= (clock_event capture) (passant_taken ?f ?r))`; the clock was reset all the
+  same (by the pawn's event), which is why no next state differed and the 76.0 / 76.1 cross-play (next states only) never saw it. Chess.lean regenerated (clockEvent
+  gains a constructor), NextEquiv's `clockReset_iff` reads it (its statement unchanged); the shelf's clock_event / clock_reset reads gain ep_square, file, rank, rank_succ.
+* s011 (game, moves_to): Game.moves_to(e1, g1) found no castling where the spec's legal has e1g1 -- python-chess's to-mask reads a castling by its ROOK's square (h1).
+  THE SURFACE WAS WRONG: moves_to filters the generator's moves by the move's own squares. No engine read asks moves_to for a castling (the pushes ask pawns).
+Both PATCHED, `expect: agree`; OBS surprises replayed: 11, as expected 11. THE CROSS-PLAY of the patched spec (76.0's run 1, seed 76, 40 games): OBS crossplay: positions
+15771 ... OBS crossplay agreement: 15771 of 15771 positions agree on every reading (100.000%); with python-chess 15771 of 15771.
+THE SECOND COPIES THE AUDIT FOUND (docs/AGENDA_AUDIT.md section 5, "rules re-implemented in Python"), each routed to one implementation, the replaced code kept in
+tests/test_rules_shelf.py as its oracle:
+* castling's rook squares: already the kernel's (75.2 (d): read off `Game.apply`) -- nothing to do.
+* check / capture read off the SAN for the judge's rates (`_parry_kind` -> names.san_kind, the marks '+' '#' 'x'): READ FROM GAME. regress.route_cost's priced parries
+  carry their kind (`Game.reply_kind` on the board after the route); the judge's node prices the reply that made it by `Game.reply_kind` on the route's handle
+  (`_reply_kind`, read only when the judge asks); `_priced` / `_kind_tally` / the route judge read the kinds; names.py's san_kind and marks are gone.
+* the exchange's principal lines (`_principal_captures`, the Python swap list beside the Rust `see`): THE RUST CORE'S -- `Pos.principal_lines(worths)` (pos.rs, beside
+  `see`: the squares by its static exchange, the LEGAL captures on the square cheapest first by the valuation's worths passed in from the store, then the uci, the swap
+  list's stop, the credits); Python only pushes the boards and names the captures. (The line is legal-move based, the `see` value pseudo-legal with x-rays: unchanged
+  from before -- the squares were always the `see`'s, the line the legal captures'.)
+* the mate in one computed twice (python-chess `G.mates` in the mate threat's frame and in the escape note, the Rust `Pos.mate_in_one` in the chase): ONCE -- the Rust
+  word, `Pos.mates()` (new: the mating moves in python-chess's order) / `Pos.mate_in_one`, read by `_mating_moves`.
+OBS 76.2 (b) twins: positions 47073 (every puzzle position, the corners, and every position one legal move after them; unparsable by shakmaty 0); principal lines 35360
+(positions where the Rust lines differ from the Python swap list: 0); mating moves 2090 (positions where Pos.mates differs from graph.mates: 0); moves 1559466
+(Game.reply_kind against the SAN marks, differing: 0); wall 5 s on 11 processes. (The guard does not see the judge at the count budget: this check carries the kinds.)
+A Rust build (`maturin develop --release`, 64 s): THE SHARED EDITABLE INSTALL NOW POINTS AT THIS BRANCH'S CRATE.
+THE GUARD (the branch against the plan 76 parent snapshot, --jobs 11): OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces / read sets / leaf verdict lists / word lists /
+provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). No judge rate line
+moved (none is printed at the count budget). NEGATIVE CONTROLS (not committed): the first mating move of `Pos.mates` dropped -- OBS guard ten t0: 3 of 10 traces, 2 read
+sets, 2 leaf lists, 2 word lists, 3 provenance lists differ; ten t2 5 / 6 / 3 / 2 / 7 of 10; wide t0 22 / 14 / 7 / 10 / 18 of 99; the principal lines' credits + 1 --
+ten t0 1 / 1 / 1 / 1 / 1 of 10, wide t0 0 of 99 (the exchange path is read by one of the ten); the oracle's own control is a test (a surface reading the SAN's '+'
+only and losing the e.p. capture event: the oracle names reply_kind and clock_events).
+OBS audit recount: rows total 1609: LOGIC 1255, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34 -- CHESS FACT rows 210 -> 205 (fact D23, the exchange's principal lines,
+9 -> 4: the swap list left agenda.py for the Rust core beside `see` -- moved, not removed: the store's proposed D23 VALUATION entry is not written here), RULE rows
+99 -> 94 (the mate-in-one loops and the SAN reads). Neither rose.
+OBS ontology validate: problems 0. OBS lemma store validate: entries 112; uncatalogued 0; problems 0. LEAN_INDEX rebuilt: OBS indexed 955 theorems/lemmas (179 open)
+and 744 documented defs in 81 files; 414 cited by code. `lake build`: Build completed successfully (6130 jobs).
+Tests changed for the API (no claim, no decision): test_plan72_9 (the kinds carried with the price: route_cost's triples, `_kind_tally` by kind, the node's reply as a
+board and a move), test_cost61 (route_cost's triples), test_plan75 (`_parry_kind` -> `_reply_kind` in the judge's function list).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_rules_shelf 8/0/0/0 65.9 s (the oracle test on 462 positions, the twins
+test, the controls; its Lean test slow, run); test_plan76 20/0/0/0 61.8 s; test_rules_gdl 12/0/0/0 3.7 s; test_game 3/0/0/0 0.3 s; test_plan72_9 7/0/0/0 3.5 s;
+test_cost61 13/0/0/0 2.9 s; test_plan75 11/0/0/0 0.5 s; test_rules_draws 17/0/0/0 3.6 s; test_lean_index 2/0/0/0 203.0 s; test_plan73 9/0/0/0 14.4 s.
+NOT ROUTED, and why: regress.check_threat's mate in one after a CHECK and a pass (its board has the side not to move in check: a position the Rust kernel refuses to
+hold, so `G.mates` stays there -- the one python-chess mate word left); `_mate_line_pieces` replays a claim's line by parsing its SAN (the kernel's notation reader,
+`parse_san`; not a rule read off the marks).

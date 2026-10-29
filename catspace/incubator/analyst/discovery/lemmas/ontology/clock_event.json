@@ -7,7 +7,11 @@
  ],
  "reads": [
   "cell",
-  "does"
+  "does",
+  "ep_square",
+  "file",
+  "rank",
+  "rank_succ"
  ],
  "gdl": {
   "relation": "clock_event"
@@ -25,7 +29,8 @@
   "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },
  "plan": [
-  "76.1"
+  "76.1",
+  "76.2"
  ],
  "journal": "2026-10-28"
 }

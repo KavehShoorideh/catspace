@@ -32,6 +32,7 @@ import analyst_core as _A
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import lemma_store as LS
+from catspace.incubator.analyst.discovery.game import CHESS as _GAME              # plan 76.2 (b): the rules read through the Game surface (the judge's parry kinds)
 
 STAKE_MATE = LS.goal_kinds().terminal.stake    # plan 75.2 (a): the stake of the goal that ends the game, read from its GOAL entry (lemmas/mate.json: ONE definition)
 PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers that were a claim bound after a pass (the OBS counter)
@@ -992,7 +993,8 @@ def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, wh
 
 def _route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None, limit: int | None = None) -> tuple:
     """plan 61 C1 (Lean `Ideas.Forcing.routeCost`): cost(route) = 1 + the sum, over the parries of the route's threat, of the cost of the unread child (`node_cost` on the board after the parry).
-    -> (cost, [(parry SAN, child cost)]). A route with no threat object counts every legal reply as a parry. `limit`: stop pricing once the cost is above it (the result is then a lower bound)."""
+    -> (cost, [(parry SAN, child cost, what the parry is)]). A route with no threat object counts every legal reply as a parry. `limit`: stop pricing once the cost is above it (the result is then a lower bound).
+    plan 76.2 (b): what each parry IS (a check, a capture, a quiet move: the judge prices it at its kind's rate, 72.9 (a)) is read by the Game surface (`Game.reply_kind`), not off its SAN."""
     me = G.colour_of(us)
     if why is None:
         why = forcing_why(board, m, stake, me, mate_threats=stake >= STAKE_MATE)
@@ -1005,7 +1007,7 @@ def _route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, w
         d = after.copy(stack=False)
         san = after.san(r)
         d.push(r)
-        kids.append((san, node_cost(d, stake, me)[0]))
+        kids.append((san, node_cost(d, stake, me)[0], _GAME.reply_kind(after, r)))
         total += kids[-1][1]
         if limit is not None and total > limit:                          # 64.3 (speed only): the cost is already above what the judge would read (a LOWER BOUND, the route is cut anyway): the rest of the parries are not priced
             return total, kids

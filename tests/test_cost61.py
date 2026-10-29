@@ -32,9 +32,10 @@ def test_cost_of_a_mating_route_is_one():
 def test_cost_is_one_plus_the_children_by_hand():
     b = chess.Board(BARE_KING)
     cost, kids = R.route_cost(b, b.parse_san("Ra8+"), 1, "w")
-    assert sorted(k for k, _ in kids) == ["Kg7", "Kh7"]                  # the parries are the legal replies of a check
-    assert cost == 1 + sum(c for _, c in kids)
-    for san, c in kids:                                                  # each child's cost is node_cost on its own board
+    assert sorted(k for k, _c, _kind in kids) == ["Kg7", "Kh7"]          # the parries are the legal replies of a check
+    assert [kind for _k, _c, kind in kids] == ["quiet", "quiet"]         # (plan 76.2 (b): what each parry is, read by the Game surface)
+    assert cost == 1 + sum(c for _, c, _kind in kids)
+    for san, c, _kind in kids:                                           # each child's cost is node_cost on its own board
         d = b.copy(); d.push_san("Ra8+"); d.push_san(san)
         assert c == R.node_cost(d, 1, "w")[0]
 

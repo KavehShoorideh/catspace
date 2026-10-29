@@ -25,17 +25,20 @@ def _rated(fen: str, spn: float = 0.01, seconds: float = 100) -> Agenda:
 
 
 def test_72_9_a_a_parry_is_priced_by_what_it_is():
-    assert [Agenda._parry_kind(s) for s in ("Kxg7", "Qxd5+", "Qh7#", "Rf7", "e8=Q", "exd8=Q+")] == ["capture", "check", "check", "quiet", "quiet", "check"]
+    # plan 76.2 (b): what a parry IS comes with its price, read by the Game surface (`Game.reply_kind`), not off its SAN
+    _cost, kids = R.route_cost(chess.Board(BARE_KING), chess.Move.from_uci("a1a8"), 1, "w")
+    assert [k for _s, _c, k in kids] == ["quiet", "quiet"]
     ag = _rated(BARE_KING)
-    assert abs(ag._priced(4, [("Kxg7", 1), ("Kh8", 2)], 0.01)[0] - 4 * 0.01) < 1e-12          # no kind timed yet: cost x the run's rate (plan 61 C2 as it was)
-    assert ag._priced(4, [("Kxg7", 1), ("Kh8", 2)], 0.01)[1].startswith("at the run's rate 0.010 s/unit")
+    kids = [("Kxg7", 1, "capture"), ("Kh8", 2, "quiet")]
+    assert abs(ag._priced(4, kids, 0.01)[0] - 4 * 0.01) < 1e-12          # no kind timed yet: cost x the run's rate (plan 61 C2 as it was)
+    assert ag._priced(4, kids, 0.01)[1].startswith("at the run's rate 0.010 s/unit")
     ag.ctx.kind_rate = {"capture": (8.0, 8), "quiet": (0.5, 5)}                                # captures timed on 8 units (1 s each); quiet replies on 5 only
-    need, words = ag._priced(4, [("Kxg7", 1), ("Kh8", 2)], 0.01)
+    need, words = ag._priced(4, kids, 0.01)
     print("OBS 72.9 (a) priced:", round(need, 3), "|", words)
     assert abs(need - (1 * 1.0 + 2 * 0.01 + 1 * 0.01)) < 1e-9                                  # the capture at its own rate, the quiet parry and the route's own node at the run's
     assert "1 capture at its own 1.000 s/unit (8 units timed)" in words and "2 quiet at the run's 0.010 s/unit (only 5 of its units timed)" in words and "the route's own node" in words
     assert ag._low_rate(0.01) == 0.01 and ag._low_rate(2.0) == 1.0                             # the cheapest rate a unit can be priced at bounds where pricing may stop
-    ag._kind_tally("Rf7", 3, 0.25)
+    ag._kind_tally("quiet", 3, 0.25)
     assert ag.ctx.kind_rate["quiet"] == (0.75, 8)                                               # a parry read to its end adds its seconds and its child's cost to its kind
 
 
@@ -45,9 +48,11 @@ def test_72_9_a_the_node_judge_prices_by_the_reply_that_made_the_node(monkeypatc
     ag.ctx.kind_rate = {"capture": (8.0, 8)}
     ag.ctx.deadline = time.monotonic() + 5.0
     ag._route_move = chess.Move.from_uci("a1a8")
-    ag._reply_san = "Kg7"                                                                       # quiet, not timed: 10 x 0.01 s fits in 5 s
+    after = chess.Board("7k/6N1/8/8/8/8/8/R5K1 w - - 0 1")                                     # (the route Ra8+ with a knight on g7: the reply Kxg7 takes it)
+    after.push(chess.Move.from_uci("a1a8"))
+    ag._reply_san, ag._reply_at = "Kh7", (after, "h8h7")                                         # quiet, not timed: 10 x 0.01 s fits in 5 s
     assert ag._judge_node(BARE_KING) is False
-    ag._reply_san = "Kxg7"                                                                      # a capture, timed at 1 s a unit: 10 s does not fit
+    ag._reply_san, ag._reply_at = "Kxg7", (after, "h8g7")                                        # a capture, timed at 1 s a unit: 10 s does not fit
     assert ag._judge_node(BARE_KING) is True
     print("OBS 72.9 (a) node judge:", ag.ctx.c_lines[-1].strip())
     assert "10.0 s needed (capture at its own 1.000 s/unit (8 units timed))" in ag.ctx.c_lines[-1] and "-> GAP" in ag.ctx.c_lines[-1]
@@ -58,7 +63,7 @@ def test_72_9_a_the_route_judge_says_which_rate_it_used():
     ag._chase_q = None
     ag.ctx.root_end, ag.ctx.deadline = time.monotonic() + 10.0, time.monotonic() + 1.0          # 10 s left of the root's share, a 1 s slice
     ag.ctx.kind_rate = {"quiet": (80.0, 8)}                                                     # quiet replies timed at 10 s a unit
-    ag.ctx.route_costs[(AGM._pos_key(BARE_KING), "a1a8", 1)] = (5, [("Kg7", 2), ("Kh7", 2)], False)      # the price of Ra8+: two quiet parries with children of cost 2
+    ag.ctx.route_costs[(AGM._pos_key(BARE_KING), "a1a8", 1)] = (5, [("Kg7", 2, "quiet"), ("Kh7", 2, "quiet")], False)      # the price of Ra8+: two quiet parries with children of cost 2
     res, _tok = ag._judge_begin(chess.Move.from_uci("a1a8"), False, False, None)
     line = next(x for x in ag.lines if "judge: Ra8+" in x)
     print("OBS 72.9 (a) route judge:", line.strip())

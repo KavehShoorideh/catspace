@@ -1,0 +1,13 @@
+{
+ "fen": "4k3/8/8/8/8/8/8/4K2R w K - 0 1",
+ "found_at": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+ "kernel": "game",
+ "class": "moves_to",
+ "signature": "castling: Game.moves_to(e1, g1) [], spec legal [e1g1]",
+ "spec_vs_kernel": "e1g1: Game.moves_to(e1, g1) [], spec legal ['e1g1']",
+ "status": "read",
+ "wrong": "game",
+ "fide": "FIDE Laws of Chess (1 January 2023) Art. 3.8.2: castling is a move of the king two squares towards the rook (from e1 to g1); the surface's moves between two squares must include it",
+ "change": "PATCHED by plan 76.2 (b) (2026-10-28): game.py ChessGame.moves_to filters the generator's moves by the move's own squares (python-chess's to-mask reads a castling by its ROOK's square, h1, so the mask g1 found none); no engine read asks a castling of moves_to (the pushes ask pawns), so no decision moved",
+ "expect": "agree"
+}

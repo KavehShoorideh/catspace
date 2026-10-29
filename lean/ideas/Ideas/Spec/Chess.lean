@@ -450,6 +450,11 @@ inductive check (p : Chess.Position) : Chess.Color → Prop where
   /-- `(<= (check ?c) (true (control ?c)) (true (cell ?f ?r ?c king)) (opponent ?c ?o) (attacked ?o ?f ?r))` -/
   | c1 {c : Chess.Color} {f : Fin 8} {r : Fin 8} {o : Chess.Color} : p.turn = c → p.board (f, r) = some ⟨c, Chess.PieceKind.king⟩ → opponent c o → attacked p o f r → check p c
 
+/-- GDL `passant_taken`. -/
+inductive passantTaken (p : Chess.Position) (mv : Ideas.Spec.Binding.MoveTerm) : Fin 8 → Fin 8 → Prop where
+  /-- `(<= (passant_taken ?f3 ?r3) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c pawn)) (true (ep_square ?f2 ?r2)) (empty ?f2 ?r2) (distinct ?f1 ?f2) (ep_victim ?c ?f2 ?r2 ?f3 ?r3))` -/
+  | c1 {f3 : Fin 8} {r3 : Fin 8} {c : Chess.Color} {f1 : Fin 8} {r1 : Fin 8} {f2 : Fin 8} {r2 : Fin 8} : Ideas.Spec.Binding.Does p mv c (Ideas.Spec.Binding.MoveTerm.move (f1, r1) (f2, r2)) → p.board (f1, r1) = some ⟨c, Chess.PieceKind.pawn⟩ → p.enPassant = some (f2, r2) → empty p f2 r2 → f1 ≠ f2 → epVictim c f2 r2 f3 r3 → passantTaken p mv f3 r3
+
 /-- GDL `clock_event`. -/
 inductive clockEvent (p : Chess.Position) (mv : Ideas.Spec.Binding.MoveTerm) : Event → Prop where
   /-- `(<= (clock_event pawn) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c pawn)))` -/
@@ -460,6 +465,8 @@ inductive clockEvent (p : Chess.Position) (mv : Ideas.Spec.Binding.MoveTerm) : E
   | c3 {c : Chess.Color} {f1 : Fin 8} {r1 : Fin 8} {f2 : Fin 8} {r2 : Fin 8} : Ideas.Spec.Binding.Does p mv c (Ideas.Spec.Binding.MoveTerm.move (f1, r1) (f2, r2)) → occupied p f2 r2 → clockEvent p mv Event.capture
   /-- `(<= (clock_event capture) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)) (occupied ?f2 ?r2))` -/
   | c4 {c : Chess.Color} {f1 : Fin 8} {r1 : Fin 8} {f2 : Fin 8} {r2 : Fin 8} {k : Chess.PieceKind} : Ideas.Spec.Binding.Does p mv c (Ideas.Spec.Binding.MoveTerm.promote (f1, r1) (f2, r2) k) → occupied p f2 r2 → clockEvent p mv Event.capture
+  /-- `(<= (clock_event capture) (passant_taken ?f ?r))` -/
+  | c5 {f : Fin 8} {r : Fin 8} : passantTaken p mv f r → clockEvent p mv Event.capture
 
 /-- GDL `clock_limit`. -/
 inductive clockLimit : Nat → Prop where
@@ -968,11 +975,6 @@ inductive landed (p : Chess.Position) (mv : Ideas.Spec.Binding.MoveTerm) : Fin 8
   | c2 {f2 : Fin 8} {r2 : Fin 8} {c : Chess.Color} {f1 : Fin 8} {r1 : Fin 8} {k : Chess.PieceKind} : Ideas.Spec.Binding.Does p mv c (Ideas.Spec.Binding.MoveTerm.promote (f1, r1) (f2, r2) k) → landed p mv f2 r2
   /-- `(<= (landed ?rt ?r) (castled ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf))` -/
   | c3 {rt : Fin 8} {r : Fin 8} {c : Chess.Color} {side : Ideas.Spec.Binding.Wing} {kt : Fin 8} {rf : Fin 8} : castled p mv c side → homeRank c r → castlingPath side kt rt rf → landed p mv rt r
-
-/-- GDL `passant_taken`. -/
-inductive passantTaken (p : Chess.Position) (mv : Ideas.Spec.Binding.MoveTerm) : Fin 8 → Fin 8 → Prop where
-  /-- `(<= (passant_taken ?f3 ?r3) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c pawn)) (true (ep_square ?f2 ?r2)) (empty ?f2 ?r2) (distinct ?f1 ?f2) (ep_victim ?c ?f2 ?r2 ?f3 ?r3))` -/
-  | c1 {f3 : Fin 8} {r3 : Fin 8} {c : Chess.Color} {f1 : Fin 8} {r1 : Fin 8} {f2 : Fin 8} {r2 : Fin 8} : Ideas.Spec.Binding.Does p mv c (Ideas.Spec.Binding.MoveTerm.move (f1, r1) (f2, r2)) → p.board (f1, r1) = some ⟨c, Chess.PieceKind.pawn⟩ → p.enPassant = some (f2, r2) → empty p f2 r2 → f1 ≠ f2 → epVictim c f2 r2 f3 r3 → passantTaken p mv f3 r3
 
 /-- GDL `lifted`. -/
 inductive lifted (p : Chess.Position) (mv : Ideas.Spec.Binding.MoveTerm) : Fin 8 → Fin 8 → Prop where

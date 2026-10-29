@@ -244,7 +244,7 @@ AGENDA_CORE = {                                                                 
     "selection": ("_push", "_wl_push", "open_questions", "_wl_status", "_wl_price", "_wl_said", "_graph_order", "_ask_loop"),
     "the status": ("status", "keeps", "status_line", "_keep_goal", "_target"),
     "chase expansion": ("_chase_routes", "_local_next", "_inner"),
-    "the judge": ("_judge_on", "_spn", "_judge_stake", "_whole_share", "_decides", "_price", "_route_need", "_parry_kind", "_kind_spn", "_low_rate", "_priced", "_judge_price",
+    "the judge": ("_judge_on", "_spn", "_judge_stake", "_whole_share", "_decides", "_price", "_route_need", "_reply_kind", "_kind_spn", "_low_rate", "_priced", "_judge_price",
                   "_kind_tally", "_competitor", "_judge_begin", "_judge_resume", "_judge_end", "_judge_node"),
 }
 KNOWLEDGE_NAMES = ("STAKE_MATE", "STAKE_PROMOTE", "MATE_VALUE", "PIECE_WORTH", "PROMOTE_MAX_PUSHES", "FORCED_WORDS", "RULE2_FROM", "CHESS_WORDS")
@@ -285,7 +285,7 @@ def _game_words() -> set:
 # the core functions the generic test covers after 75.2 (c): no game name in their code and no CHESS FACT row in the recount (docs/AGENDA_AUDIT.md's 75.2 recount lists the rest
 # with their rows: _push, _ask_loop, status, _keep_goal, _target, _chase_routes, _inner, _competitor, _judge_resume)
 COVERED = {"_wl_push", "open_questions", "_wl_status", "_wl_price", "_wl_said", "_graph_order", "keeps", "status_line", "_local_next", "_judge_on", "_spn", "_judge_stake",
-           "_whole_share", "_decides", "_price", "_route_need", "_parry_kind", "_kind_spn", "_low_rate", "_priced", "_judge_price", "_kind_tally", "_judge_begin", "_judge_end",
+           "_whole_share", "_decides", "_price", "_route_need", "_reply_kind", "_kind_spn", "_low_rate", "_priced", "_judge_price", "_kind_tally", "_judge_begin", "_judge_end",
            "_judge_node"}
 
 

@@ -1877,71 +1877,71 @@ Do not edit by hand.
 - **inductive `Ideas.Spec.Chess.castled`** (line 444): GDL `castled`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/castled.json
 - **inductive `Ideas.Spec.Chess.check`** (line 449): GDL `check`.
-- **inductive `Ideas.Spec.Chess.clockEvent`** (line 454): GDL `clock_event`.
-- **inductive `Ideas.Spec.Chess.clockLimit`** (line 465): GDL `clock_limit`.
-- **inductive `Ideas.Spec.Chess.clockReset`** (line 470): GDL `clock_reset`.
-- **inductive `Ideas.Spec.Chess.countSucc`** (line 475): GDL `count_succ`.
+- **inductive `Ideas.Spec.Chess.passantTaken`** (line 454): GDL `passant_taken`.
+- **inductive `Ideas.Spec.Chess.clockEvent`** (line 459): GDL `clock_event`.
+- **inductive `Ideas.Spec.Chess.clockLimit`** (line 472): GDL `clock_limit`.
+- **inductive `Ideas.Spec.Chess.clockReset`** (line 477): GDL `clock_reset`.
+- **inductive `Ideas.Spec.Chess.countSucc`** (line 482): GDL `count_succ`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/count_succ.json
-- **inductive `Ideas.Spec.Chess.fileParity`** (line 678): GDL `file_parity`.
-- **inductive `Ideas.Spec.Chess.rankParity`** (line 697): GDL `rank_parity`.
-- **inductive `Ideas.Spec.Chess.dark`** (line 716): GDL `dark`.
+- **inductive `Ideas.Spec.Chess.fileParity`** (line 685): GDL `file_parity`.
+- **inductive `Ideas.Spec.Chess.rankParity`** (line 704): GDL `rank_parity`.
+- **inductive `Ideas.Spec.Chess.dark`** (line 723): GDL `dark`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/dark.json
-- **inductive `Ideas.Spec.Chess.matingMaterial`** (line 721): GDL `mating_material`.
+- **inductive `Ideas.Spec.Chess.matingMaterial`** (line 728): GDL `mating_material`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/mating_material.json
-- **inductive `Ideas.Spec.Chess.hasKind`** (line 730): GDL `has_kind`.
+- **inductive `Ideas.Spec.Chess.hasKind`** (line 737): GDL `has_kind`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/has_kind.json
-- **inductive `Ideas.Spec.Chess.twoUnits`** (line 735): GDL `two_units`.
+- **inductive `Ideas.Spec.Chess.twoUnits`** (line 742): GDL `two_units`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/two_units.json
-- **inductive `Ideas.Spec.Chess.selfmateMaterial`** (line 742): GDL `selfmate_material`.
+- **inductive `Ideas.Spec.Chess.selfmateMaterial`** (line 749): GDL `selfmate_material`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/selfmate_material.json
-- **inductive `Ideas.Spec.Chess.light`** (line 747): GDL `light`.
+- **inductive `Ideas.Spec.Chess.light`** (line 754): GDL `light`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/light.json
-- **inductive `Ideas.Spec.Chess.mixedBishops`** (line 752): GDL `mixed_bishops`.
+- **inductive `Ideas.Spec.Chess.mixedBishops`** (line 759): GDL `mixed_bishops`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/mixed_bishops.json
-- **inductive `Ideas.Spec.Chess.insufficient`** (line 757): GDL `insufficient`.
+- **inductive `Ideas.Spec.Chess.insufficient`** (line 764): GDL `insufficient`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/insufficient.json
-- **inductive `Ideas.Spec.Chess.draw`** (line 766): GDL `draw`.
-- **inductive `Ideas.Spec.Chess.lastRank`** (line 771): GDL `last_rank`.
-- **inductive `Ideas.Spec.Chess.promotes`** (line 778): GDL `promotes`.
-- **inductive `Ideas.Spec.Chess.kingAfter`** (line 783): GDL `king_after`.
+- **inductive `Ideas.Spec.Chess.draw`** (line 773): GDL `draw`.
+- **inductive `Ideas.Spec.Chess.lastRank`** (line 778): GDL `last_rank`.
+- **inductive `Ideas.Spec.Chess.promotes`** (line 785): GDL `promotes`.
+- **inductive `Ideas.Spec.Chess.kingAfter`** (line 790): GDL `king_after`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/king_after.json
-- **inductive `Ideas.Spec.Chess.kingRay`** (line 788): GDL `king_ray`.
+- **inductive `Ideas.Spec.Chess.kingRay`** (line 795): GDL `king_ray`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/king_ray.json
-- **inductive `Ideas.Spec.Chess.exposed`** (line 795): GDL `exposed`.
+- **inductive `Ideas.Spec.Chess.exposed`** (line 802): GDL `exposed`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/exposed.json
-- **inductive `Ideas.Spec.Chess.promotable`** (line 806): GDL `promotable`.
-- **inductive `Ideas.Spec.Chess.legal`** (line 817): GDL `legal`.
-- **inductive `Ideas.Spec.Chess.hasMove`** (line 826): GDL `has_move`.
+- **inductive `Ideas.Spec.Chess.promotable`** (line 813): GDL `promotable`.
+- **inductive `Ideas.Spec.Chess.legal`** (line 824): GDL `legal`.
+- **inductive `Ideas.Spec.Chess.hasMove`** (line 833): GDL `has_move`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/has_move.json
-- **inductive `Ideas.Spec.Chess.drawByFiftyMoves`** (line 831): GDL `draw_by_fifty_moves`.
-- **inductive `Ideas.Spec.Chess.repetitionLimit`** (line 836): GDL `repetition_limit`.
-- **inductive `Ideas.Spec.Chess.drawByRepetition`** (line 841): GDL `draw_by_repetition`.
-- **inductive `Ideas.Spec.Chess.stalemate`** (line 846): GDL `stalemate`.
-- **inductive `Ideas.Spec.Chess.drawn`** (line 851): GDL `drawn`.
+- **inductive `Ideas.Spec.Chess.drawByFiftyMoves`** (line 838): GDL `draw_by_fifty_moves`.
+- **inductive `Ideas.Spec.Chess.repetitionLimit`** (line 843): GDL `repetition_limit`.
+- **inductive `Ideas.Spec.Chess.drawByRepetition`** (line 848): GDL `draw_by_repetition`.
+- **inductive `Ideas.Spec.Chess.stalemate`** (line 853): GDL `stalemate`.
+- **inductive `Ideas.Spec.Chess.drawn`** (line 858): GDL `drawn`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/drawn.json
-- **inductive `Ideas.Spec.Chess.mate`** (line 862): GDL `mate`.
-- **inductive `Ideas.Spec.Chess.goal`** (line 867): GDL `goal`.
+- **inductive `Ideas.Spec.Chess.mate`** (line 869): GDL `mate`.
+- **inductive `Ideas.Spec.Chess.goal`** (line 874): GDL `goal`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/goal.json
-- **inductive `Ideas.Spec.Chess.initCastlingRight`** (line 876): GDL `init.castling_right`.
-- **inductive `Ideas.Spec.Chess.initCell`** (line 887): GDL `init.cell`.
-- **inductive `Ideas.Spec.Chess.initControl`** (line 954): GDL `init.control`.
-- **inductive `Ideas.Spec.Chess.initHalfmove`** (line 959): GDL `init.halfmove`.
-- **inductive `Ideas.Spec.Chess.landed`** (line 964): GDL `landed`.
+- **inductive `Ideas.Spec.Chess.initCastlingRight`** (line 883): GDL `init.castling_right`.
+- **inductive `Ideas.Spec.Chess.initCell`** (line 894): GDL `init.cell`.
+- **inductive `Ideas.Spec.Chess.initControl`** (line 961): GDL `init.control`.
+- **inductive `Ideas.Spec.Chess.initHalfmove`** (line 966): GDL `init.halfmove`.
+- **inductive `Ideas.Spec.Chess.landed`** (line 971): GDL `landed`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/landed.json
-- **inductive `Ideas.Spec.Chess.passantTaken`** (line 973): GDL `passant_taken`.
-- **inductive `Ideas.Spec.Chess.lifted`** (line 978): GDL `lifted`.
+- **inductive `Ideas.Spec.Chess.lifted`** (line 980): GDL `lifted`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/lifted.json
-- **inductive `Ideas.Spec.Chess.rightSquare`** (line 989): GDL `right_square`.
-- **inductive `Ideas.Spec.Chess.touched`** (line 1008): GDL `touched`.
-- **inductive `Ideas.Spec.Chess.rightLost`** (line 1015): GDL `right_lost`.
-- **inductive `Ideas.Spec.Chess.nextCastlingRight`** (line 1020): GDL `next.castling_right`.
-- **inductive `Ideas.Spec.Chess.nextCell`** (line 1025): GDL `next.cell`.
-- **inductive `Ideas.Spec.Chess.nextControl`** (line 1036): GDL `next.control`.
-- **inductive `Ideas.Spec.Chess.nextEpSquare`** (line 1041): GDL `next.ep_square`.
-- **inductive `Ideas.Spec.Chess.nextHalfmove`** (line 1046): GDL `next.halfmove`.
-- **inductive `Ideas.Spec.Chess.terminal`** (line 1055): GDL `terminal`.
+- **inductive `Ideas.Spec.Chess.rightSquare`** (line 991): GDL `right_square`.
+- **inductive `Ideas.Spec.Chess.touched`** (line 1010): GDL `touched`.
+- **inductive `Ideas.Spec.Chess.rightLost`** (line 1017): GDL `right_lost`.
+- **inductive `Ideas.Spec.Chess.nextCastlingRight`** (line 1022): GDL `next.castling_right`.
+- **inductive `Ideas.Spec.Chess.nextCell`** (line 1027): GDL `next.cell`.
+- **inductive `Ideas.Spec.Chess.nextControl`** (line 1038): GDL `next.control`.
+- **inductive `Ideas.Spec.Chess.nextEpSquare`** (line 1043): GDL `next.ep_square`.
+- **inductive `Ideas.Spec.Chess.nextHalfmove`** (line 1048): GDL `next.halfmove`.
+- **inductive `Ideas.Spec.Chess.terminal`** (line 1057): GDL `terminal`.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/terminal.json
-- **def `Ideas.Spec.Chess.applyMoveSpec`** (line 1070): THE SPEC'S NEXT STATE (76.1 (b) (4), generated from the fluent table): `q` is a position the `next` facts after the joint move `mv` describe -- every fluent's next relation holds of exactly what the fluent's binding read
+- **def `Ideas.Spec.Chess.applyMoveSpec`** (line 1072): THE SPEC'S NEXT STATE (76.1 (b) (4), generated from the fluent table): `q` is a position the `next` facts after the joint move `mv` describe -- every fluent's next relation holds of exactly what the fluent's binding read
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/next.json
 
 ## lean/ideas/Ideas/Spec/DeadPosition.lean
@@ -2092,6 +2092,7 @@ Do not edit by hand.
 - **theorem `Ideas.LegalEquiv.not_isCastle_ep`** (line 1599)
 - **theorem `Ideas.LegalEquiv.legal_of_castle`** (line 1601)
 - **theorem `Ideas.LegalEquiv.legal_iff`** (line 1619): THE SPEC'S `legal` IS THE KERNEL'S `legalMove`, on every position with one king of the side to move and the e.p
+  - used by: catspace/incubator/analyst/discovery/game.py
 - **theorem `Ideas.LegalEquiv.legal_iff_reachable`** (line 1698): THE EQUIVALENCE ON EVERY REACHABLE POSITION (no hypothesis left: one king each side, `Chess.reachable_positionInvariant`; the e.p
 - **theorem `Ideas.LegalEquiv.legal_moveOf`** (line 1708): The move binding reads every legal term back to the kernel's move it came from (`moveOf`).
 - **theorem `Ideas.LegalEquiv.hasMove_iff`** (line 1717): The side to move HAS A MOVE in the spec exactly when the kernel lists a legal move.
@@ -2101,7 +2102,9 @@ Do not edit by hand.
 - **theorem `Ideas.LegalEquiv.stalemate_iff_stalemated`** (line 1768)
 - **theorem `Ideas.LegalEquiv.drawByFiftyMoves_iff`** (line 1776): THE SPEC'S FIFTY-MOVE DRAW IS THE KERNEL'S CLAIMABLE ONE (`Chess.fiftyMoveClaimable`: a hundred half-moves) with a legal move to make (a mate or a stalemate on the move comes first, as in `Chess.gameStatus`).
 - **theorem `Ideas.LegalEquiv.goal_win_iff`** (line 1790): THE SPEC'S WIN AND LOSS ARE THE KERNEL'S (`Chess.gameStatus` of the game's history -- the record's positions, then this one -- reads a checkmate first): a side scores 100 exactly when the kernel says it won, 0 exactly wh
+  - used by: catspace/incubator/analyst/discovery/game.py
 - **theorem `Ideas.LegalEquiv.goal_loss_iff`** (line 1818)
+  - used by: catspace/incubator/analyst/discovery/game.py
 - **theorem `Ideas.LegalEquiv.gameStatus_ongoing_iff`** (line 1839): `Chess.gameStatus` of a history ending at `p` is ongoing exactly when none of its terminal tests fires.
 - **theorem `Ideas.LegalEquiv.terminal_sound`** (line 1850): THE SPEC'S TERMINAL IS A KERNEL TERMINAL, with one clause left open: on a sound game record, with one king each side standing apart (every reachable position), a position the spec ends is one `Chess.gameStatus` ends -- e
 - **theorem `Ideas.LegalEquiv.terminal_complete`** (line 1874): A KERNEL TERMINAL IS A SPEC TERMINAL OR A DEAD POSITION: on a sound record (one king of the side to move, the e.p
@@ -2139,79 +2142,79 @@ Do not edit by hand.
 - **theorem `Ideas.NextEquiv.rightLost_iff`** (line 294)
 - **theorem `Ideas.NextEquiv.nextEpSquare_iff`** (line 302)
 - **theorem `Ideas.NextEquiv.clockReset_iff`** (line 326)
-- **theorem `Ideas.NextEquiv.clock_le`** (line 341)
-- **theorem `Ideas.NextEquiv.nextHalfmove_iff`** (line 345)
-- **theorem `Ideas.NextEquiv.kingTo_ne_rookTo`** (line 373): The side's home rank, as the binding names it
-- **theorem `Ideas.NextEquiv.move_ne_promote`** (line 377)
-- **theorem `Ideas.NextEquiv.nextCell_functional`** (line 382): AT MOST ONE UNIT PER SQUARE after the move.
-- **theorem `Ideas.NextEquiv.nextControl_functional`** (line 429): ONE SIDE TO MOVE after the move.
-- **theorem `Ideas.NextEquiv.nextEpSquare_functional`** (line 434): AT MOST ONE E.P
-- **theorem `Ideas.NextEquiv.nextHalfmove_functional`** (line 445): ONE CLOCK after the move.
-- **theorem `Ideas.NextEquiv.applyMoveSpec_unique`** (line 455): THE NEXT STATE IS ONE POSITION: two positions the spec's next facts describe agree on everything the spec states (the board, the side to move, the castling rights, the e.p
-- **theorem `Ideas.NextEquiv.boardMove_apply`** (line 488): THE NEXT STATE IS ONE POSITION: two positions the spec's next facts describe agree on everything the spec states (the board, the side to move, the castling rights, the e.p
-- **theorem `Ideas.NextEquiv.boardUpdate_apply`** (line 491)
-- **def `Ideas.NextEquiv.kTouched`** (line 495): The kernel's squares a move touches (the source, the destination, a castling rook's two squares) and its capture square: what ends a right.
-- **theorem `Ideas.NextEquiv.mem_rightsRemoved`** (line 498)
-- **theorem `Ideas.NextEquiv.rights_equiv`** (line 522): THE RIGHTS AFTER THE MOVE: a right is kept exactly when the spec's `right_lost` does not fire, given the touched squares agree.
-- **theorem `Ideas.NextEquiv.clock_equiv`** (line 530): THE CLOCK AFTER THE MOVE, given the clock's events agree.
-- **theorem `Ideas.NextEquiv.control_equiv`** (line 552)
-- **theorem `Ideas.NextEquiv.normal_pl`** (line 559): A pseudo-legal normal move: a unit of the side to move on `s`, its geometry to `t`.
-- **theorem `Ideas.NextEquiv.normal_king_step`** (line 570): A normal pseudo-legal king move is one step: never the castling's two-file move.
-- **theorem `Ideas.NextEquiv.normal_pawn_file`** (line 576): A normal pseudo-legal pawn move onto an empty square stays on its file (its diagonal move is a capture).
-- **theorem `Ideas.NextEquiv.absDiff_four_kingTo`** (line 586)
-- **theorem `Ideas.NextEquiv.not_castled_normal`** (line 589)
-- **theorem `Ideas.NextEquiv.not_passant_normal`** (line 601)
-- **theorem `Ideas.NextEquiv.lifted_normal`** (line 611)
-- **theorem `Ideas.NextEquiv.landed_normal`** (line 623)
-- **theorem `Ideas.NextEquiv.board_normal`** (line 634)
-- **theorem `Ideas.NextEquiv.touched_normal`** (line 663)
-- **theorem `Ideas.NextEquiv.reset_normal`** (line 679)
-- **theorem `Ideas.NextEquiv.ep_normal`** (line 712)
-- **theorem `Ideas.NextEquiv.promotion_pl`** (line 758): A normal pseudo-legal pawn move onto an empty square stays on its file (its diagonal move is a capture)
-- **theorem `Ideas.NextEquiv.not_castled_promote`** (line 771)
-- **theorem `Ideas.NextEquiv.not_passant_promote`** (line 776)
-- **theorem `Ideas.NextEquiv.lifted_promote`** (line 781)
-- **theorem `Ideas.NextEquiv.landed_promote`** (line 793)
-- **theorem `Ideas.NextEquiv.board_promotion`** (line 804)
-- **theorem `Ideas.NextEquiv.touched_promotion`** (line 830)
-- **theorem `Ideas.NextEquiv.reset_promotion`** (line 846)
-- **theorem `Ideas.NextEquiv.ep_promotion`** (line 853)
-- **theorem `Ideas.NextEquiv.ep_pl`** (line 863): A normal pseudo-legal pawn move onto an empty square stays on its file (its diagonal move is a capture)
-- **theorem `Ideas.NextEquiv.pawnAttack_file_ne`** (line 885)
-- **theorem `Ideas.NextEquiv.epVictim_cs`** (line 892): The kernel's captured square IS the spec's `ep_victim`, on the ranks where it exists.
-- **theorem `Ideas.NextEquiv.cs_ne`** (line 907)
-- **theorem `Ideas.NextEquiv.not_castled_ep`** (line 923)
-- **theorem `Ideas.NextEquiv.passant_ep`** (line 931)
-- **theorem `Ideas.NextEquiv.lifted_ep`** (line 943)
-- **theorem `Ideas.NextEquiv.landed_ep`** (line 957)
-- **theorem `Ideas.NextEquiv.board_ep`** (line 968)
-- **theorem `Ideas.NextEquiv.touched_ep`** (line 1002)
-- **theorem `Ideas.NextEquiv.reset_ep`** (line 1019)
-- **theorem `Ideas.NextEquiv.ep_ep`** (line 1026)
-- **theorem `Ideas.NextEquiv.castle_source`** (line 1038): The kernel's captured square IS the spec's `ep_victim`, on the ranks where it exists
-- **theorem `Ideas.NextEquiv.castle_destination`** (line 1039)
-- **theorem `Ideas.NextEquiv.castle_rookSource`** (line 1040)
-- **theorem `Ideas.NextEquiv.castle_rookDestination`** (line 1041)
-- **theorem `Ideas.NextEquiv.termOf_castle`** (line 1043)
-- **theorem `Ideas.NextEquiv.applyBoard_castle`** (line 1045)
-- **theorem `Ideas.NextEquiv.castle_pl`** (line 1050): A pseudo-legal castling: the side to move's, its right kept, king and rook home, the king's and the rook's landing squares empty.
-- **theorem `Ideas.NextEquiv.castle_squares`** (line 1058)
-- **theorem `Ideas.NextEquiv.kingTo_inj`** (line 1064)
-- **theorem `Ideas.NextEquiv.castled_castle`** (line 1067)
-- **theorem `Ideas.NextEquiv.not_passant_castle`** (line 1080)
-- **theorem `Ideas.NextEquiv.lifted_castle`** (line 1090)
-- **theorem `Ideas.NextEquiv.landed_castle`** (line 1106)
-- **theorem `Ideas.NextEquiv.board_castle`** (line 1121)
-- **theorem `Ideas.NextEquiv.touched_castle`** (line 1163)
-- **theorem `Ideas.NextEquiv.reset_castle`** (line 1171)
-- **theorem `Ideas.NextEquiv.ep_castle`** (line 1190)
-- **theorem `Ideas.NextEquiv.castle_case`** (line 1203): A pseudo-legal castling: the side to move's, its right kept, king and rook home, the king's and the rook's landing squares empty
-- **theorem `Ideas.NextEquiv.applyMoveSpec_applyMove`** (line 1209): THE KERNEL'S NEXT STATE IS THE SPEC'S: on every position, for every pseudo-legal move `m` of the kernel, `Chess.applyMove p m` is the position the spec's `next` facts after the move's term describe -- its board, its side
-- **theorem `Ideas.NextEquiv.applyMoveSpec_eq_applyMove`** (line 1222): THE NEXT STATE IS A FUNCTION AND IT IS `applyMove`: every position the spec's next facts describe after a pseudo-legal move's term agrees with the kernel's `applyMove` on everything the spec states.
-- **theorem `Ideas.NextEquiv.moveOf_castle`** (line 1227)
-- **theorem `Ideas.NextEquiv.moveOf_termOf`** (line 1236): THE MOVE BINDING READS EVERY PSEUDO-LEGAL MOVE BACK: the kernel's move a term means at the position (`moveOf`, reading the position) is the move the term was written from -- e1g1 is the castling exactly where it is pseud
-- **theorem `Ideas.NextEquiv.drawByRepetition_iff`** (line 1275): The spec's draw by repetition is the record's third occurrence (`Ideas.Game.Record.threefold`).
-- **theorem `Ideas.NextEquiv.drawByRepetition_kernel`** (line 1285): With a sound record, it is the kernel's `Chess.threefoldClaimable` of the history: the positions before, then this one (`Ideas.Game.chess_threefold_iff`).
+- **theorem `Ideas.NextEquiv.clock_le`** (line 344)
+- **theorem `Ideas.NextEquiv.nextHalfmove_iff`** (line 348)
+- **theorem `Ideas.NextEquiv.kingTo_ne_rookTo`** (line 376): The side's home rank, as the binding names it
+- **theorem `Ideas.NextEquiv.move_ne_promote`** (line 380)
+- **theorem `Ideas.NextEquiv.nextCell_functional`** (line 385): AT MOST ONE UNIT PER SQUARE after the move.
+- **theorem `Ideas.NextEquiv.nextControl_functional`** (line 432): ONE SIDE TO MOVE after the move.
+- **theorem `Ideas.NextEquiv.nextEpSquare_functional`** (line 437): AT MOST ONE E.P
+- **theorem `Ideas.NextEquiv.nextHalfmove_functional`** (line 448): ONE CLOCK after the move.
+- **theorem `Ideas.NextEquiv.applyMoveSpec_unique`** (line 458): THE NEXT STATE IS ONE POSITION: two positions the spec's next facts describe agree on everything the spec states (the board, the side to move, the castling rights, the e.p
+- **theorem `Ideas.NextEquiv.boardMove_apply`** (line 491): THE NEXT STATE IS ONE POSITION: two positions the spec's next facts describe agree on everything the spec states (the board, the side to move, the castling rights, the e.p
+- **theorem `Ideas.NextEquiv.boardUpdate_apply`** (line 494)
+- **def `Ideas.NextEquiv.kTouched`** (line 498): The kernel's squares a move touches (the source, the destination, a castling rook's two squares) and its capture square: what ends a right.
+- **theorem `Ideas.NextEquiv.mem_rightsRemoved`** (line 501)
+- **theorem `Ideas.NextEquiv.rights_equiv`** (line 525): THE RIGHTS AFTER THE MOVE: a right is kept exactly when the spec's `right_lost` does not fire, given the touched squares agree.
+- **theorem `Ideas.NextEquiv.clock_equiv`** (line 533): THE CLOCK AFTER THE MOVE, given the clock's events agree.
+- **theorem `Ideas.NextEquiv.control_equiv`** (line 555)
+- **theorem `Ideas.NextEquiv.normal_pl`** (line 562): A pseudo-legal normal move: a unit of the side to move on `s`, its geometry to `t`.
+- **theorem `Ideas.NextEquiv.normal_king_step`** (line 573): A normal pseudo-legal king move is one step: never the castling's two-file move.
+- **theorem `Ideas.NextEquiv.normal_pawn_file`** (line 579): A normal pseudo-legal pawn move onto an empty square stays on its file (its diagonal move is a capture).
+- **theorem `Ideas.NextEquiv.absDiff_four_kingTo`** (line 589)
+- **theorem `Ideas.NextEquiv.not_castled_normal`** (line 592)
+- **theorem `Ideas.NextEquiv.not_passant_normal`** (line 604)
+- **theorem `Ideas.NextEquiv.lifted_normal`** (line 614)
+- **theorem `Ideas.NextEquiv.landed_normal`** (line 626)
+- **theorem `Ideas.NextEquiv.board_normal`** (line 637)
+- **theorem `Ideas.NextEquiv.touched_normal`** (line 666)
+- **theorem `Ideas.NextEquiv.reset_normal`** (line 682)
+- **theorem `Ideas.NextEquiv.ep_normal`** (line 715)
+- **theorem `Ideas.NextEquiv.promotion_pl`** (line 761): A normal pseudo-legal pawn move onto an empty square stays on its file (its diagonal move is a capture)
+- **theorem `Ideas.NextEquiv.not_castled_promote`** (line 774)
+- **theorem `Ideas.NextEquiv.not_passant_promote`** (line 779)
+- **theorem `Ideas.NextEquiv.lifted_promote`** (line 784)
+- **theorem `Ideas.NextEquiv.landed_promote`** (line 796)
+- **theorem `Ideas.NextEquiv.board_promotion`** (line 807)
+- **theorem `Ideas.NextEquiv.touched_promotion`** (line 833)
+- **theorem `Ideas.NextEquiv.reset_promotion`** (line 849)
+- **theorem `Ideas.NextEquiv.ep_promotion`** (line 856)
+- **theorem `Ideas.NextEquiv.ep_pl`** (line 866): A normal pseudo-legal pawn move onto an empty square stays on its file (its diagonal move is a capture)
+- **theorem `Ideas.NextEquiv.pawnAttack_file_ne`** (line 888)
+- **theorem `Ideas.NextEquiv.epVictim_cs`** (line 895): The kernel's captured square IS the spec's `ep_victim`, on the ranks where it exists.
+- **theorem `Ideas.NextEquiv.cs_ne`** (line 910)
+- **theorem `Ideas.NextEquiv.not_castled_ep`** (line 926)
+- **theorem `Ideas.NextEquiv.passant_ep`** (line 934)
+- **theorem `Ideas.NextEquiv.lifted_ep`** (line 946)
+- **theorem `Ideas.NextEquiv.landed_ep`** (line 960)
+- **theorem `Ideas.NextEquiv.board_ep`** (line 971)
+- **theorem `Ideas.NextEquiv.touched_ep`** (line 1005)
+- **theorem `Ideas.NextEquiv.reset_ep`** (line 1022)
+- **theorem `Ideas.NextEquiv.ep_ep`** (line 1029)
+- **theorem `Ideas.NextEquiv.castle_source`** (line 1041): The kernel's captured square IS the spec's `ep_victim`, on the ranks where it exists
+- **theorem `Ideas.NextEquiv.castle_destination`** (line 1042)
+- **theorem `Ideas.NextEquiv.castle_rookSource`** (line 1043)
+- **theorem `Ideas.NextEquiv.castle_rookDestination`** (line 1044)
+- **theorem `Ideas.NextEquiv.termOf_castle`** (line 1046)
+- **theorem `Ideas.NextEquiv.applyBoard_castle`** (line 1048)
+- **theorem `Ideas.NextEquiv.castle_pl`** (line 1053): A pseudo-legal castling: the side to move's, its right kept, king and rook home, the king's and the rook's landing squares empty.
+- **theorem `Ideas.NextEquiv.castle_squares`** (line 1061)
+- **theorem `Ideas.NextEquiv.kingTo_inj`** (line 1067)
+- **theorem `Ideas.NextEquiv.castled_castle`** (line 1070)
+- **theorem `Ideas.NextEquiv.not_passant_castle`** (line 1083)
+- **theorem `Ideas.NextEquiv.lifted_castle`** (line 1093)
+- **theorem `Ideas.NextEquiv.landed_castle`** (line 1109)
+- **theorem `Ideas.NextEquiv.board_castle`** (line 1124)
+- **theorem `Ideas.NextEquiv.touched_castle`** (line 1166)
+- **theorem `Ideas.NextEquiv.reset_castle`** (line 1174)
+- **theorem `Ideas.NextEquiv.ep_castle`** (line 1193)
+- **theorem `Ideas.NextEquiv.castle_case`** (line 1206): A pseudo-legal castling: the side to move's, its right kept, king and rook home, the king's and the rook's landing squares empty
+- **theorem `Ideas.NextEquiv.applyMoveSpec_applyMove`** (line 1212): THE KERNEL'S NEXT STATE IS THE SPEC'S: on every position, for every pseudo-legal move `m` of the kernel, `Chess.applyMove p m` is the position the spec's `next` facts after the move's term describe -- its board, its side
+- **theorem `Ideas.NextEquiv.applyMoveSpec_eq_applyMove`** (line 1225): THE NEXT STATE IS A FUNCTION AND IT IS `applyMove`: every position the spec's next facts describe after a pseudo-legal move's term agrees with the kernel's `applyMove` on everything the spec states.
+- **theorem `Ideas.NextEquiv.moveOf_castle`** (line 1230)
+- **theorem `Ideas.NextEquiv.moveOf_termOf`** (line 1239): THE MOVE BINDING READS EVERY PSEUDO-LEGAL MOVE BACK: the kernel's move a term means at the position (`moveOf`, reading the position) is the move the term was written from -- e1g1 is the castling exactly where it is pseud
+- **theorem `Ideas.NextEquiv.drawByRepetition_iff`** (line 1278): The spec's draw by repetition is the record's third occurrence (`Ideas.Game.Record.threefold`).
+- **theorem `Ideas.NextEquiv.drawByRepetition_kernel`** (line 1288): With a sound record, it is the kernel's `Chess.threefoldClaimable` of the history: the positions before, then this one (`Ideas.Game.chess_threefold_iff`).
 
 ## lean/ideas/Ideas/Spec/Rook.lean
 

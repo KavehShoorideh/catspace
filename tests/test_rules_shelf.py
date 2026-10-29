@@ -1,19 +1,54 @@
 """plan 76.2 THE RULE SHELF: the generated spec (rules/chess.gdl -> lean/ideas/Ideas/Spec/Chess.lean) is a certified model of the rule kernel for moves, states,
 terminals and goals -- `legal` proved equal to the kernel's `legalMove` (Ideas/Spec/LegalEquiv.lean, with NextEquiv's next state); what is not proved stands as a
-CONJECTURE entry of the store with its obstacle."""
+CONJECTURE entry of the store with its obstacle. (b) THE GAME LAYER READS THROUGH THE CERTIFIED KERNEL: every Game method that reads a rule (game.SPEC) is run
+against the GDL interpreter as the ORACLE (gdl_chess.game_oracle) on the corners, every filed surprise and a seeded random play-out; the second copies the audit found
+(the judge's check / capture read off the SAN, the exchange's principal lines in Python, the mate in one by python-chess) are routed to one implementation and the
+replaced code is kept HERE as the test oracle."""
 from __future__ import annotations
 
+import importlib.util
+import random
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
+import chess
 import pytest
 
+import analyst_core as AC
+from catspace.incubator.analyst.discovery import gdl_chess as GC
+from catspace.incubator.analyst.discovery import game as GM
 from catspace.incubator.analyst.discovery import lemma_store as LS
 
 ROOT = Path(__file__).resolve().parents[1]
 LEAN = ROOT / "lean" / "ideas"
+SEED, GAMES = 762, 1          # THE RANDOM SAMPLE (named): every position of GAMES uniformly random games from the initial position, seeded, each played to the
+                              # kernel's terminal with its game record (no ply cap: the rules end every game) -- beside the corners and the filed surprises
+
+
+def _script(name: str):
+    spec = importlib.util.spec_from_file_location(f"plan762_{name}", ROOT / "scripts" / f"{name}.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def _sample() -> list:
+    """(fen, the game record before it or None): the corners, the filed surprises, the seeded play-outs."""
+    cp = _script("crossplay")
+    out = [(f, None) for f in cp.corner_fens()] + [(c["fen"], None) for c in GC.load_surprises()]
+    rng = random.Random(SEED)
+    for _g in range(GAMES):
+        b, line = chess.Board(), []
+        while True:
+            before = GM.Record.of_line(GM.CHESS, [chess.Board(f) for f in line])
+            out.append((b.fen(), before))
+            if GM.CHESS.terminal(b, before) is not None:
+                break
+            line.append(b.fen())
+            b.push(rng.choice(list(b.legal_moves)))
+    return [(f, r) for f, r in out if chess.Board(f).is_valid()]
 
 # the theorems of 76.2 (a): the moves, the end of the game
 EQUIVALENCES = ("Ideas.LegalEquiv.legal_iff", "Ideas.LegalEquiv.legal_iff_reachable", "Ideas.LegalEquiv.legal_moveOf", "Ideas.LegalEquiv.attackBy_iff",
@@ -64,3 +99,141 @@ def test_legal_equiv_builds_by_reasoning():
     assert len(lines) == len(EQUIVALENCES), r.stdout
     for ln in lines:
         assert "sorryAx" not in ln and "ofReduceBool" not in ln, ln
+
+
+# ---------------------------------------------------------------------------------------------------------------- (b) the game layer through the certified kernel
+
+def test_every_method_is_a_rule_or_says_why_not():
+    """Every method of the Game protocol is either bound to the spec's relation it implements (game.SPEC, an ontology shelf name) or listed as reading no rule, with why."""
+    protocol = {n for n in vars(GM.Game) if callable(getattr(GM.Game, n)) and (not n.startswith("_") or n == "pass_")}
+    assert protocol == set(GM.SPEC) | set(GM.NOT_RULES), sorted(protocol ^ (set(GM.SPEC) | set(GM.NOT_RULES)))
+    assert not set(GM.SPEC) & set(GM.NOT_RULES)
+    from catspace.incubator.analyst.discovery import ontology as ON
+    shelf = ON.load()
+    assert all(rel in shelf for rel in GM.SPEC.values()), [r for r in GM.SPEC.values() if r not in shelf]
+
+
+def test_the_surface_is_the_spec_on_the_sample():
+    """THE ORACLE: on the corners, every filed surprise and the seeded play-out (each position with its game record), every Game method of game.SPEC answers as
+    rules/chess.gdl does -- the legal moves, legality, the moves between two squares, the next state after every legal move, the side to move, the terminal, the
+    goals, the repetition, check, the clock and its events, the units, the attacks, the king's step, the capture, what a move is."""
+    sample = _sample()
+    bad = []
+    for fen, before in sample:
+        bad += [(fen, m, d) for m, d in GC.game_oracle(GM.CHESS, chess.Board(fen), before)]
+    print(f"OBS 76.2 (b) oracle test: positions {len(sample)} (the corners, the surprises, the play-out seed {SEED}, {GAMES} game(s)); disagreements {len(bad)}")
+    assert not bad, bad[:5]
+
+
+class _WrongSurface(GM.ChessGame):
+    """THE NEGATIVE CONTROL: a surface that reads what a move is off the notation's marks (the mate's '#' forgotten) and loses the en-passant capture's event."""
+
+    def reply_kind(self, s, m):
+        san = s.san(m)
+        return "check" if san.endswith("+") else "capture" if "x" in san else GM.QUIET
+
+    def clock_events(self, s, m):
+        return frozenset(e for e in super().clock_events(s, m) if not (e == "capture" and s.is_en_passant(m)))
+
+
+def test_the_oracle_fires_on_a_wrong_surface():
+    mate = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    assert "reply_kind" in {m for m, _d in GC.game_oracle(_WrongSurface(), mate)}                # Ra8# read as a quiet move
+    ep = chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2")
+    assert "clock_events" in {m for m, _d in GC.game_oracle(_WrongSurface(), ep)}               # exd6 e.p.: its capture event lost
+    assert not GC.game_oracle(GM.CHESS, mate) and not GC.game_oracle(GM.CHESS, ep)
+
+
+def test_every_filed_surprise_agrees_with_the_surface():
+    """Every case of rules/surprises/ is read by the oracle of every Game method: none disagrees (a case is filed when found and kept forever)."""
+    for case in GC.load_surprises():
+        assert not GC.game_oracle(GM.CHESS, chess.Board(case["fen"])), case["file"]
+
+
+# the second copies, routed to one: the replaced code is the oracle
+
+def _py_principal_lines(P2) -> list:
+    """THE PYTHON TWIN of the exchange's principal lines (agenda.py `_principal_captures` before plan 76.2 (b)): -> [(square, [(SAN, FEN after, last, credit)])]."""
+    from catspace.incubator.analyst.discovery import names as NM
+    from catspace.incubator.analyst.discovery import rboard as RB
+    from catspace.incubator.analyst.discovery.words import CHESS_WORDS as W
+    b_rb = RB.RBoard(P2)
+    me = b_rb.turn
+    best, sqs = 0, []
+    for x in chess.SQUARES:
+        p = b_rb.piece_at(x)
+        if p is None or p.color == me or NM.royal(p) or not b_rb.is_attacked_by(me, x):
+            continue
+        v = W.base.see(P2, x)
+        if v > best:
+            best, sqs = v, [x]
+        elif v == best and v > 0:
+            sqs.append(x)
+    lines = []
+    for sq in sqs:
+        c_rb, gains, sans, boards = b_rb, [], [], []
+        while len(sans) < 12:
+            caps = [m for m in c_rb.legal_moves if m.to_square == sq]
+            if not caps or c_rb.piece_at(sq) is None:
+                break
+            m = min(caps, key=lambda m: (W.base.worth(c_rb.piece_at(m.from_square)), m.uci()))
+            gains.append(W.base.worth(c_rb.piece_at(sq)))
+            sans.append(c_rb.san(m))
+            c_rb = c_rb.push(m)
+            boards.append(c_rb)
+        n = len(sans)
+        f = [0] * (n + 1)
+        for i in range(n - 1, -1, -1):
+            f[i] = max(0, gains[i] - f[i + 1])
+        taken = 0
+        while taken < n and gains[taken] - f[taken + 1] > 0:
+            taken += 1
+        if taken:
+            lines.append((sq, [(sans[i], boards[i].fen(), i == taken - 1, f[i + 1]) for i in range(taken) if i % 2 == 0]))
+    return lines
+
+
+def _twin_positions() -> list:
+    """The guard's case positions, the corners, and every position one legal move after them."""
+    ti = _script("trace_identity")
+    roots = [fen for _pid, fen, _us in ti._cases()] + list(ti.CORNERS)
+    out = []
+    for f in roots:
+        b = chess.Board(f)
+        if not b.is_valid():
+            continue
+        out.append(b.fen())
+        for m in b.legal_moves:
+            c = b.copy(stack=False)
+            c.push(m)
+            if c.is_valid():
+                out.append(c.fen())
+    return list(dict.fromkeys(out))
+
+
+def test_the_routed_second_copies_equal_their_oracles():
+    """The exchange's principal lines are the Rust core's (`Pos.principal_lines`), the mate in one is the Rust word (`Pos.mates`), what a move is is the Game surface's
+    (`Game.reply_kind`) -- each equal, on the guard's positions and one move after them, to the code it replaced: the Python swap list, python-chess's
+    `graph.mates`, the SAN's marks."""
+    from catspace.incubator.analyst.discovery import base_vocabulary as BV
+    from catspace.incubator.analyst.discovery import graph as G
+    from catspace.incubator.analyst.discovery.agenda import Agenda
+    BV.install_terms()
+    n = lines = mates = moves = 0
+    for fen in _twin_positions():
+        b = chess.Board(fen)
+        P = AC.Pos(b.fen())
+        n += 1
+        rs = [(sq, [(san, rb.fen(), last, cr) for san, rb, last, cr in caps]) for sq, caps in Agenda._principal_captures(None, P)]
+        py = _py_principal_lines(P)
+        assert rs == py, fen
+        lines += len(py)
+        rm = sorted(m.uci() for m in Agenda._mating_moves(b))
+        assert rm == sorted(m.uci() for m in b.legal_moves if b.gives_check(m) and G.mates(b, m)), fen
+        mates += len(rm)
+        for m in b.legal_moves:
+            san = b.san(m)
+            assert GM.CHESS.reply_kind(b, m) == ("check" if san.endswith(("+", "#")) else "capture" if "x" in san else GM.QUIET), (fen, san)
+            moves += 1
+    print(f"OBS 76.2 (b) twins test: positions {n}, principal lines {lines}, mating moves {mates}, moves {moves}: every one equal to its oracle")
+    assert lines and mates and moves

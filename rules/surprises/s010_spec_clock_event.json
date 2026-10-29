@@ -1,0 +1,13 @@
+{
+ "fen": "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2",
+ "found_at": "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2",
+ "kernel": "spec",
+ "class": "clock_event",
+ "signature": "e.p.: spec clock_event [pawn], surface Game.clock_events [capture, pawn]",
+ "spec_vs_kernel": "e5d6 (en passant): spec clock_event ['pawn'], Game.clock_events ['capture', 'pawn'] (python-chess Board.is_capture; Lean Chess.moveIsCapture)",
+ "status": "read",
+ "wrong": "spec",
+ "fide": "FIDE Laws of Chess (1 January 2023) Art. 9.3: the last 50 moves by each player have been completed without the movement of any pawn and without any capture; Art. 3.7.d: the en-passant capture is a capture. The kernel's Chess.moveIsCapture counts it (its captured square, Chess.epCapturedSquare).",
+ "change": "PATCHED by plan 76.2 (b) (2026-10-28): rules/chess.gdl gains `(<= (clock_event capture) (passant_taken ?f ?r))` (the clause was missing; the clock was reset all the same, by the pawn's event, so no next state differed and the 76.0 / 76.1 cross-play compared next states only); Ideas/Spec/Chess.lean regenerated, NextEquiv's clockReset_iff reads the new clause; found by the oracle of every Game method (gdl_chess.game_oracle)",
+ "expect": "agree"
+}
