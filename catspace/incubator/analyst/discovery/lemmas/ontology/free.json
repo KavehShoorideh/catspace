@@ -1,0 +1,48 @@
+{
+ "name": "free",
+ "kind": "OBJECT",
+ "origin": "MINED",
+ "sort": [
+  "file",
+  "rank"
+ ],
+ "reads": [
+  "attack"
+ ],
+ "gdl": null,
+ "rust": null,
+ "lean": null,
+ "python": "catspace.incubator.analyst.discovery.terms.evaluate",
+ "bind": null,
+ "node": {
+  "kind": "free",
+  "order": 10,
+  "since": 3
+ },
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a mined object: the relation (not (attack us _ ?)) of the one term language over the spec's relations, accepted by its uses (obligation mined technique KRvK: free)",
+ "why": {
+  "gdl": "a mined object is a term over the spec's relations, not a relation the spec states",
+  "rust": "the term is read by the term language (terms.py) through the binding's reader, no relation of the Rust core of its own",
+  "lean": "no Lean definition generated for a mined term yet (the translation of a term is the prover plan's)"
+ },
+ "plan": [
+  "76.4"
+ ],
+ "journal": "2026-10-29",
+ "term": "(not (attack us _ ?))",
+ "evidence": {
+  "uses": {
+   "obligation mined technique KRvK: free": {
+    "count": 446,
+    "date": "2026-10-29"
+   }
+  },
+  "confirmed": [
+   "plan 76.4c (b) 2026-10-29: accepted at level 1, size 2, cited by obligation mined technique KRvK: free"
+  ],
+  "refuted": []
+ }
+}

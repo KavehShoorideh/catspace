@@ -265,11 +265,13 @@ def test_c_every_atom_reads_shelf_relations():
 
 def test_d_the_graph_network_s_node_kinds_are_the_shelf_s():
     """graph_policy.py's node types are the shelf's OBJECT kinds that declare a node (the square, the unit as `piece`, the question, the root, the route), its board
-    edges the shelf's relations that declare an edge; THE FEATURE-VERSION CHECK: every kind enters at version 0 and the version-0 graph keeps its widths."""
+    edges the shelf's relations that declare an edge; THE FEATURE-VERSION CHECK: the five kinds enter at version 0 and the version-0 graph keeps its widths (plan
+    76.4c: the mined kinds enter at version 3 -- a later feature set; the version-0 graph has none of them)."""
     torch = pytest.importorskip("torch")
     pytest.importorskip("torch_geometric")
     from catspace.incubator.analyst.discovery import graph_policy as GP
-    assert list(GP.NODE_KINDS) == ON.node_kinds() == ON.node_kinds(0) == ["square", "piece", "question", "root", "route"]
+    assert list(GP.NODE_KINDS) == ON.node_kinds(0) == ["square", "piece", "question", "root", "route"]
+    assert all(e["origin"] == "MINED" and e["node"]["since"] == 3 for e in ON.objects() if e["node"] and e["node"]["kind"] not in GP.NODE_KINDS)
     assert (GP.SQUARE, GP.PIECE, GP.QUESTION, GP.ROOT, GP.ROUTE) == ("square", "piece", "question", "root", "route")
     assert (GP.ON_EDGE, GP.ATTACKS_EDGE, GP.ADJ_EDGE) == ("on", "attacks", "adj") == (ON.edge_of("cell"), ON.edge_of("attack"), ON.edge_of("king_step"))
     b = chess.Board("8/1Rb3kp/p2q2p1/2p1pp2/pQ6/1bP4P/1P3PPK/8 w - - 0 35")

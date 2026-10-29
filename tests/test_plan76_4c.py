@@ -1,6 +1,7 @@
 """plan 76.4c MINING OBJECTS AND MATERIAL (docs/ANALYST_PLAN.md 76.4; 76's borrowings (4) and (5)): (a) one term language with typed combinators over the ontology
 shelf's relations (terms.py) -- its typing, its pricing, its implication, the atoms re-expressed in it equal to the old readings, the language naming no game
-object."""
+object; (b) mining objects (object_miner.py) -- the derivations' readings and flips, the explanation tests and the pruning by implication, the three
+rediscoveries (LINE, BLOCKED, REGION) on fixed positions, the mined kinds as shelf entries and node kinds of feature-set version 3."""
 from __future__ import annotations
 
 import ast
@@ -16,6 +17,7 @@ from catspace.incubator.analyst.discovery import technique_measures as TM
 from catspace.incubator.analyst.discovery import terms as TL
 
 ROOT = Path(__file__).resolve().parents[1]
+GENERIC = ("terms.py", "object_miner.py")      # the modules that must name no game object
 
 # fixed positions: a middlegame (pos2 of the guard), the discovery position, two K+R v K positions (one the refuted measure's play-out start), a pawn ending
 FENS = ("r1bqnr1k/1p1n2p1/p2p2P1/2pPp3/4Pp1b/2N1BP1N/PPP4Q/2KR1B2 w - - 0 1", "r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1",
@@ -61,13 +63,14 @@ def _code_strings_and_names(path: Path) -> set:
 def test_a_the_language_names_no_game_object(dom):
     """THE GENERIC TEST: terms.py's code holds no relation of the spec, no constant of any of its sorts, no word of the names table, no shelf kind's name -- its
     sorts are found in the spec by role (the product object, the roles, the placement fluent), every relation comes from the shelf by name."""
-    seen = _code_strings_and_names(ROOT / "catspace" / "incubator" / "analyst" / "discovery" / "terms.py")
     prog = GC.program()
     rels = {r.split(".", 1)[1] if "." in r else r for r in prog.nodes}
     consts = {m for ms in dom.members.values() for m in ms if len(m) > 1}
     words = (set(NM.WORDS) | {e["name"] for e in ON.load().values()}) - set(TL.SORTS)     # (the language's own sorts, the plan's: location, side, unit, ...)
-    hits = sorted(seen & (rels | consts | words))
-    assert hits == [], f"terms.py names game objects: {hits}"
+    for mod in GENERIC:                                    # 76.4c (b), (c): the object miner and the valuation miner too
+        seen = _code_strings_and_names(ROOT / "catspace" / "incubator" / "analyst" / "discovery" / mod)
+        hits = sorted(seen & (rels | consts | words))
+        assert hits == [], f"{mod} names game objects: {hits}"
     assert dom.location_kind in words and dom.comps and dom.placement.startswith(TL.STATE)
 
 
@@ -164,3 +167,100 @@ def test_a_the_readers_agree(lang):
         b = chess.Board(f)
         c1, c2 = TL.Ctx(dom, reader, b, "white", defs), TL.Ctx(dom, oracle, GC.state_of(b), "white", defs)
         assert {k: c1.ev(t) for k, t in atoms.items()} == {k: c2.ev(t) for k, t in atoms.items()}
+
+
+# ---------------------------------------------------------------------------------------------------------------- (b) mining objects
+
+def _ref_line() -> frozenset:
+    return frozenset((a, b, c) for a in chess.SQUARES for b in chess.SQUARES if a != b and chess.BB_RAYS[a][b] for c in chess.scan_forward(chess.between(a, b)))
+
+
+def _ref_blocked(board: chess.Board) -> frozenset:
+    return frozenset((a, b) for a in chess.SQUARES for b in chess.SQUARES if a != b and chess.BB_RAYS[a][b] and chess.between(a, b) & board.occupied)
+
+
+INTERPOSE = "8/8/8/8/1n6/2k3R1/8/K7 b - - 0 1"         # their king in check along the third rank; their knight can step between (b4 -> d3)
+
+
+def test_b_the_fuse_is_the_specs_largest_body():
+    from catspace.incubator.analyst.discovery import object_miner as OM
+    assert OM.body_fuse(GC.program()) == 8
+
+
+@pytest.fixture(scope="module")
+def harvested(dom):
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    from catspace.incubator.analyst.discovery import object_miner as OM
+    from catspace.incubator.analyst.discovery import regression as RG
+    prog = GC.program()
+    B = GC.Binding()
+    R = RG.PyRegressor(RG.Spec(prog, certified=GC.CERTIFIED), B)
+    b = chess.Board(INTERPOSE)
+    goals = [RG.goal_of("mate", LS.gdl_goals()["mate"], B, "black")]
+    return OM.harvest(R, dom, [(b, "black", goals)], log=lambda *_a: None)
+
+
+def test_b_the_derivations_read_the_squares_between_and_the_interposition_flips(harvested):
+    """The mate goal's derivation reads the rook's check along the rank: a slide reading (g3, c3) whose leaves stand on d3, e3, f3 (the empty squares between);
+    the knight's interposition (a witness of their legal move) flips one of those leaves: a flip of the slide reading by the `occupied` leaf."""
+    sl = [r for r in harvested.true if r[1] == "slide" and (r[2], r[3]) == (chess.G3, chess.C3)]
+    assert sl and sl[0][4] == frozenset({chess.D3, chess.E3, chess.F3})
+    assert any(f[2] == "slide" and (f[3], f[4]) == (chess.G3, chess.C3) and f[5] == "occupied" for f in harvested.flips)
+
+
+def test_b_line_explains_the_readings_an_impostor_does_not_and_a_failure_prunes_what_it_implies(dom, harvested):
+    """LINE (the empty board's squares between) explains the slide readings; (via (slide ? ? ?) (slide ? ? ?)) reads slide -- never an explanation of slide's own
+    readings; a candidate that misses a leaf (one step each way) fails 'small', and a candidate implying it is PRUNED (borrowing (4)), not evaluated."""
+    from catspace.incubator.analyst.discovery import object_miner as OM
+    reader = GC.TermReader()
+    defs = TL.Defs()
+    tests = {t.name: t for t in OM.tests_of(dom, harvested, {})}
+    sc = OM.Scorer(dom, reader, harvested, defs)
+
+    def cand(s):
+        t = TL.parse(s, dom, defs)
+        return OM.Cand(t, (), t.size, t.rels(dom, defs))
+    assert sc.cites(cand("(via (closure (step ? ? ?)) (closure (step ? ? ?)))"), tests["readings slide"])
+    assert not sc.cites(cand("(via (slide ? ? ?) (slide ? ? ?))"), tests["readings slide"])
+    short = "(via (step ? ? ?) (step ? ? ?))"
+    assert not sc.cites(cand(short), tests["readings slide"])
+    before = sc.pruned
+    assert not sc.cites(cand(f"(restrict {short} (occupied ?))"), tests["readings slide"]) and sc.pruned == before + 1
+
+
+def _mined():
+    store = ON.load(force=True)
+    dom, defs, ts = ON.mined_terms(store, GC.program())
+    return dom, defs, ts, {n: e for n, e in store.items() if e["origin"] == "MINED"}
+
+
+def test_b_the_three_rediscoveries_on_fixed_positions():
+    """THE THREE TEST CASES, by the shelf's mined entries: LINE equals python-chess's squares between two squares on one line; BLOCKED a line with an occupied
+    square between; REGION the 73.5 atom's region -- on the fixed positions, each side read for (the region but where their king is in check along a line with
+    a free square behind it: the mined region reads our attack with their king standing, the 73.5 atom with it lifted -- (a)'s fixture pins the two apart)."""
+    dom, defs, ts, ents = _mined()
+    assert {"line", "blocked", "region"} <= set(ts)
+    reader = GC.TermReader()
+    line = _ref_line()
+    for f in FENS + (INTERPOSE,):
+        b = chess.Board(f)
+        for side in (chess.WHITE, chess.BLACK):
+            ctx = TL.Ctx(dom, reader, b, GC.COLOUR[side], defs)
+            assert frozenset((r[-3], r[-2], r[-1]) for r in ctx.ev(ts["line"])) == line
+            assert frozenset((r[-2], r[-1]) for r in ctx.ev(ts["blocked"])) == _ref_blocked(b), f
+            them_checked = b.turn != side and b.is_check()
+            if b.king(not side) is not None and not them_checked:
+                assert frozenset(r[0] for r in ctx.ev(ts["region"])) == frozenset(chess.scan_forward(TM.region(b, side))), (f, side)
+
+
+def test_b_the_mined_kinds_are_shelf_entries_and_node_kinds_of_a_later_feature_set():
+    """An accepted relation is an ontology entry (OBJECT, origin MINED, its term, its reads the term's, its evidence) and a NODE KIND at the feature-set version
+    it enters at (3): the graph network's version-0 kinds are unchanged (no model sees a node it was not trained with; nothing retrained)."""
+    from catspace.incubator.analyst.discovery import graph_policy as GP
+    dom, defs, ts, ents = _mined()
+    assert ents and ON.mined_problems(ON.load(), GC.program()) == []
+    for n, e in ents.items():
+        assert e["kind"] == "OBJECT" and e["node"]["since"] == 3 and e["evidence"]["uses"] and ts[n] is not None
+        assert e["reads"] == TL.base_reads(ts[n], dom, ON.load(), defs)
+    assert ON.node_kinds(0) == list(GP.NODE_KINDS) == ["square", "piece", "question", "root", "route"]
+    assert set(ON.node_kinds(3)) - set(ON.node_kinds(0)) == {e["node"]["kind"] for e in ents.values()}

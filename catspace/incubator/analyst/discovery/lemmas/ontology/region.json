@@ -1,0 +1,55 @@
+{
+ "name": "region",
+ "kind": "OBJECT",
+ "origin": "MINED",
+ "sort": [
+  "file",
+  "rank"
+ ],
+ "reads": [
+  "attack",
+  "cell",
+  "file",
+  "file_succ",
+  "opponent",
+  "rank",
+  "rank_succ"
+ ],
+ "gdl": null,
+ "rust": null,
+ "lean": null,
+ "python": "catspace.incubator.analyst.discovery.terms.evaluate",
+ "bind": null,
+ "node": {
+  "kind": "region",
+  "order": 12,
+  "since": 3
+ },
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a mined object: the relation (reach (restrict (king_step ? ?) free) (cell ? them king)) of the one term language over the spec's relations, accepted by its uses (obligation mined technique KRvK: (reach L free))",
+ "why": {
+  "gdl": "a mined object is a term over the spec's relations, not a relation the spec states",
+  "rust": "the term is read by the term language (terms.py) through the binding's reader, no relation of the Rust core of its own",
+  "lean": "no Lean definition generated for a mined term yet (the translation of a term is the prover plan's)"
+ },
+ "plan": [
+  "76.4"
+ ],
+ "journal": "2026-10-29",
+ "term": "(reach (restrict (king_step ? ?) free) (cell ? them king))",
+ "evidence": {
+  "uses": {
+   "obligation mined technique KRvK: (reach L free)": {
+    "count": 446,
+    "date": "2026-10-29"
+   }
+  },
+  "confirmed": [
+   "plan 76.4c (b) 2026-10-29: accepted at level 3, size 5, cited by obligation mined technique KRvK: (reach L free)",
+   "the rediscovery: equal to the test case REGION on 246 of 246 guard readings (ten, wide, the surprise shelf, each side)"
+  ],
+  "refuted": []
+ }
+}

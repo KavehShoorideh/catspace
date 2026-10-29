@@ -4,7 +4,8 @@ locations, reach, counts, per-axis distances, min over units, who moves; the gen
 (ontology.py: one name, its bindings) and read on a state through a READER (the game's binding: `GDLReader` here reads any GDL description by its interpreter, the
 oracle; a game's fast reader is its binding's, certified equal to it on the guard positions). The language's own sorts are found in the spec by ROLE, never by name:
 
-  location   the shelf's OBJECT kind whose sort is a PRODUCT of the spec's sorts (its components, each ordered by the spec's table of successors over it)
+  location   the shelf's OBJECT kind whose sort is a PRODUCT of the spec's sorts, a mined kind aside (its components, each ordered by the spec's table of
+             successors over it)
   side       the spec's roles (the GDL keyword `role`)
   unit       the sort of the PLACEMENT fluent's last slot (the fluent of the state that puts a (side, unit) on a location)
   locations  a set of locations: a relation of one location slot          units   a relation of (location, unit): units placed
@@ -14,7 +15,8 @@ oracle; a game's fast reader is its binding's, certified equal to it on the guar
 A relation's SORT is the tuple of its slot sorts: the spec's signature with each run of the location's components read as one location slot.
 
 THE CONSTRUCTORS (the s-expression each prints as; `?` a free slot):
-  (R a1 .. an)            a LITERAL of the spec's relation R: each slot free (`?`), a constant of its sort, or a side term (`us`, `them`, `mover`); its sort the free slots
+  (R a1 .. an)            a LITERAL of the spec's relation R: each slot free (`?`), anonymous (`_`: some value, projected away), a constant of its sort, or a side
+                          term (`us`, `them`, `mover`); its sort the free slots
   us / them / mover       the side the term is read for, its opponent (the spec's table of opponents), the side to move (the spec's fluent of whose turn it is)
   (not A) (and A B) (or A B) (minus A B)    set operations (`not` within the product of A's slot domains)
   (exists j A)            slot j projected away (there is some value there)
@@ -22,6 +24,7 @@ THE CONSTRUCTORS (the s-expression each prints as; `?` a free slot):
   (reach R X) (reach R X k)    the locations reached from the set X by at most k steps of R (location, location), X included (no k: any number)
   (restrict A S)          the rows of A whose last location is in the set S
   (compose A B)           the rows (P.., a, b) with some c: A (P.., a, c) and B (P.., c, b)
+  (via A B)               the rows (P.., a, b, c) with A (P.., a, c) and B (P.., c, b): the composition with its middle location kept (the last slot)
   (without X A)           A read on the state with the units on the locations X lifted (the placement fluent's rows there removed)
   (count A) (wcount j V A)     how many rows; the sum over A's rows of the weight V gives the row's slot j (V a VALUATION's worths, by the slot sort's members)
   (dist R A B)            the fewest steps of R (location, location) from a location of A to one of B (0 when they share one; 0 when either is empty)
@@ -49,6 +52,7 @@ from dataclasses import dataclass, field
 from catspace.incubator.analyst.discovery import gdl as GDL
 
 LOC, SIDE, UNIT, COUNT, BOOL = "location", "side", "unit", "count", "bool"
+ANON = "_"                             # an anonymous slot of a literal: some value there (projected away), as a GDL variable used once
 LOCS = (LOC,)
 INF_STEPS = None                       # (reach R X) with no bound: any number of steps
 
@@ -66,9 +70,9 @@ class Domain:
 
     def __init__(self, prog: GDL.Program, shelf: dict):
         self.prog = prog
-        prods = [e for e in shelf.values() if e["kind"] == "OBJECT" and isinstance(e["sort"], list)]
+        prods = [e for e in shelf.values() if e["kind"] == "OBJECT" and isinstance(e["sort"], list) and e["origin"] != "MINED"]
         if len(prods) != 1:
-            raise TermError(f"the shelf must hold exactly one OBJECT kind whose sort is a product (the location): it holds {len(prods)}")
+            raise TermError(f"the shelf must hold exactly one OBJECT kind (not a mined one) whose sort is a product (the location): it holds {len(prods)}")
         self.location_kind = prods[0]["name"]
         self.comps = tuple(prods[0]["sort"])
         self.members = {s: [m for m in ms if isinstance(m, str)] for s, ms in prog.sorts.items()}
@@ -210,7 +214,7 @@ class T:
     def sexpr(self) -> str:
         o, a = self.op, self.args
         if o == "lit":
-            return "(" + " ".join([_shown(a[0])] + [x.sexpr() if isinstance(x, T) else ("?" if x is None else str(x)) for x in a[1]]) + ")"
+            return "(" + " ".join([_shown(a[0])] + [x.sexpr() if isinstance(x, T) else ("?" if x is None else str(x)) for x in a[1]]) + ")"      # (ANON prints as itself)
         if o in ("us", "them", "mover", "all"):
             return o
         if o == "const":
@@ -285,6 +289,8 @@ def _rel_sort(dom: Domain, rel: str, pattern) -> tuple:
     for (s, _i), p in zip(sl, pattern):
         if p is None:
             out.append(s)
+        elif p == ANON:
+            continue
         elif isinstance(p, T):
             if p.sort != s:
                 raise TermError(f"{rel}: a {p.sort} term in a {s} slot")
@@ -295,7 +301,7 @@ def _rel_sort(dom: Domain, rel: str, pattern) -> tuple:
 
 def lit(dom: Domain, rel: str, *pattern) -> T:
     """A literal: each slot None (free), a constant of its sort or a side term."""
-    pat = tuple(const(dom, s, p) if (p is not None and not isinstance(p, T)) else p for (s, _i), p in zip(dom.slots(rel), pattern))
+    pat = tuple(const(dom, s, p) if (p is not None and p != ANON and not isinstance(p, T)) else p for (s, _i), p in zip(dom.slots(rel), pattern))
     return T("lit", (rel, pat), _rel_sort(dom, rel, pat))
 
 
@@ -354,6 +360,11 @@ def mk(op: str, *args) -> T:
         if _bin_loc(a, op) != _bin_loc(b, op):
             raise TermError(f"compose: {a.sexpr()} and {b.sexpr()} are of two sorts")
         return T(op, args, a.sort)
+    if op == "via":
+        a, b = args
+        if _bin_loc(a, op) != _bin_loc(b, op):
+            raise TermError(f"via: {a.sexpr()} and {b.sexpr()} are of two sorts")
+        return T(op, args, a.sort + (LOC,))
     if op == "without":
         x, a = args
         if _rel(x, op) != LOCS:
@@ -427,7 +438,7 @@ def mk(op: str, *args) -> T:
     raise TermError(f"no constructor {op}")
 
 
-CONSTRUCTORS = ("lit", "us", "them", "mover", "not", "and", "or", "minus", "exists", "closure", "reach", "restrict", "compose", "without", "count", "wcount",
+CONSTRUCTORS = ("lit", "us", "them", "mover", "not", "and", "or", "minus", "exists", "closure", "reach", "restrict", "compose", "via", "without", "count", "wcount",
                 "dist", "axisdist", "axisends", "extreme", "all", "area", "first", "sum", "product", "sub", "ind", "eq", "nonempty", "notb", "value", "lex", "ref")
 SORTS = (LOC, SIDE, UNIT, "locations", "units", COUNT, BOOL)
 
@@ -490,6 +501,8 @@ def _build_term(x, dom: Domain, defs, vals) -> T:
         for (s, _i), y in zip(dom.slots(head), x[1:]):
             if y == "?":
                 pat.append(None)
+            elif y == ANON:
+                pat.append(ANON)
             elif y in ("us", "them", "mover"):
                 pat.append(b(y))
             else:
@@ -564,9 +577,9 @@ def _domain_product(ctx: Ctx, sort: tuple):
 def _lit(ctx: Ctx, t: T):
     rel, pat = t.args
     rows = ctx.rows(rel)
-    want = [(j, ctx.side(p) if isinstance(p, T) else p) for j, p in enumerate(pat) if p is not None]
-    free = [j for j, p in enumerate(pat) if p is None]
-    got = frozenset(tuple(r[j] for j in free) for r in rows if all(r[j] == v for j, v in want))
+    want = [(j, ctx.side(p) if isinstance(p, T) else p) for j, p in enumerate(pat) if p is not None and p != ANON]
+    open_slots = [j for j, p in enumerate(pat) if p is None]
+    got = frozenset(tuple(r[j] for j in open_slots) for r in rows if all(r[j] == v for j, v in want))
     return bool(got) if t.sort == BOOL else got
 
 
@@ -601,9 +614,17 @@ def _closure(ctx: Ctx, t: T):
     return frozenset(out)
 
 
+def _adj_of(ctx: Ctx, r: T) -> dict:
+    """The adjacency of a relation term on the context (cached: a step relation serves many reaches)."""
+    got = ctx._kids.get(("adj", r))
+    if got is None:
+        got = ctx._kids[("adj", r)] = _adj(ctx.ev(r), len(ctx.dom.locs))
+    return got
+
+
 def _reach(ctx: Ctx, t: T):
     r, x, k = t.args
-    m = _adj(ctx.ev(r), len(ctx.dom.locs)).get((), None)
+    m = _adj_of(ctx, r).get((), None)
     reached = {v[0] for v in ctx.ev(x)}
     ring = set(reached)
     steps = 0
@@ -645,6 +666,18 @@ def _compose(ctx: Ctx, t: T):
     return frozenset(out)
 
 
+def _via(ctx: Ctx, t: T):
+    a, b = (ctx.ev(x) for x in t.args)
+    by: dict = {}
+    for r in b:
+        by.setdefault(r[:-2] + (r[-2],), []).append(r[-1])
+    out = set()
+    for r in a:
+        for y in by.get(r[:-2] + (r[-1],), ()):
+            out.add(r[:-2] + (r[-2], y, r[-1]))
+    return frozenset(out)
+
+
 def _without(ctx: Ctx, t: T):
     x, a = t.args
     locs = frozenset(v[0] for v in ctx.ev(x))
@@ -656,7 +689,7 @@ def _dist(ctx: Ctx, t: T):
     A, B = {v[0] for v in ctx.ev(a)}, {v[0] for v in ctx.ev(b)}
     if not A or not B:
         return 0
-    m = _adj(ctx.ev(r), len(ctx.dom.locs)).get((), [set() for _ in ctx.dom.locs])
+    m = _adj_of(ctx, r).get((), [set() for _ in ctx.dom.locs])
     reached, ring, d = set(A), set(A), 0
     while not ring & B:
         nxt = set()
@@ -690,9 +723,11 @@ def _extreme(ctx: Ctx, t: T):
     S = [v[0] for v in ctx.ev(s)]
     if not S:
         return frozenset()
-    deg: dict = {}
-    for row in ctx.ev(r):
-        deg[row[0]] = deg.get(row[0], 0) + 1
+    deg = ctx._kids.get(("deg", r))
+    if deg is None:
+        deg = ctx._kids[("deg", r)] = {}
+        for row in ctx.ev(r):
+            deg[row[0]] = deg.get(row[0], 0) + 1
     vals = {x: deg.get(x, 0) for x in S}
     top = min(vals.values()) if w == "min" else max(vals.values())
     return frozenset((x,) for x, v in vals.items() if v == top)
@@ -745,6 +780,7 @@ _EVAL = {
     "reach": _reach,
     "restrict": _restrict,
     "compose": _compose,
+    "via": _via,
     "without": _without,
     "count": lambda c, t: len(c.ev(t.args[0])),
     "wcount": _wcount,
@@ -777,7 +813,8 @@ def evaluate(t: T, dom: Domain, reader, x, us: str, defs: "Defs | None" = None):
 def implies(a: T, b: T) -> bool:
     """THE IMPLICATION the language computes on its syntax: True when every row of `a` is a row of `b` on every state (a sound, incomplete order): a term implies
     itself; (and A B) and (minus A B) and (restrict A S) imply A; A implies (or A B); A implies (closure A); (reach R X k) implies (reach R X k') for k <= k' (no k:
-    the largest); and the order is closed under (and X _), (or X _), (closure X), (restrict X S), (compose X Y) on the left and (minus _ X) on the right."""
+    the largest); and the order is closed under (and X _), (or X _), (closure X), (restrict X S), (compose X Y), (via X Y), (exists j X) on the left and (minus _ X)
+    on the right."""
     if a == b:
         return True
     if not (isinstance(a.sort, tuple) and a.sort == b.sort):
@@ -793,11 +830,13 @@ def implies(a: T, b: T) -> bool:
     if a.op == b.op == "reach" and a.args[0] == b.args[0] and a.args[1] == b.args[1]:
         ka, kb = a.args[2], b.args[2]
         return kb is INF_STEPS or (ka is not INF_STEPS and ka <= kb)
-    if a.op == b.op and a.op in ("and", "or", "compose") and implies(a.args[0], b.args[0]) and implies(a.args[1], b.args[1]):
+    if a.op == b.op and a.op in ("and", "or", "compose", "via") and implies(a.args[0], b.args[0]) and implies(a.args[1], b.args[1]):
         return True
     if a.op == b.op == "restrict" and implies(a.args[0], b.args[0]) and implies(a.args[1], b.args[1]):
         return True
     if a.op == b.op == "closure" and implies(a.args[0], b.args[0]):
+        return True
+    if a.op == b.op == "exists" and a.args[0] == b.args[0] and implies(a.args[1], b.args[1]):
         return True
     if a.op == b.op == "minus" and implies(a.args[0], b.args[0]) and implies(b.args[1], a.args[1]):
         return True

@@ -44,7 +44,12 @@ SPEC = ROOT / "rules" / "chess.gdl"
 
 FIELDS = ("name", "kind", "origin", "sort", "reads", "gdl", "rust", "lean", "python", "bind", "node", "edge", "vocabulary", "names", "means", "why", "plan", "journal")
 KINDS = ("OBJECT", "RELATION")
-ORIGINS = ("SUPPLIED", "DERIVED")
+ORIGINS = ("SUPPLIED", "DERIVED", "MINED")
+# PLAN 76.4c (b): a MINED kind (the object miner's: object_miner.py) is a DERIVED OBJECT -- a relation defined by a TERM of the one term language (terms.py) over
+# the spec's relations, accepted by its uses -- and carries two fields more: `term` (its definition, the s-expression; the name of another mined entry may occur
+# in it) and `evidence` ({uses: the tests that cite it and how many readings, confirmed: [...], refuted: [...]}, as the lemma store's); its `reads` are its term's
+# base reads (terms.base_reads), its `sort` the spec sorts of its slots, its `node` the graph network's node type at the feature-set version it enters at.
+MINED_FIELDS = FIELDS + ("term", "evidence")
 BINDINGS = ("gdl", "rust", "lean", "python")
 GDL_KEYS = {"relation", "fluent", "keyword", "slot", "constant", "args"}
 KEYWORDS = ("true", "init", "next")          # the GDL keywords an entry may bind (`true`: the state, the board; `init.*` / `next.*`: the initial and the next state)
@@ -66,8 +71,12 @@ def slug(name: str) -> str:
 def check_entry(e: dict, where: str = "") -> list:
     """The schema of one entry -> what is wrong (empty: a good entry). The bindings are resolved by `validate`."""
     at = where or e.get("name", "?")
-    if set(e) != set(FIELDS):
-        return [f"{at}: fields {sorted(set(e) ^ set(FIELDS))} (the schema is exactly {', '.join(FIELDS)})"]
+    want = MINED_FIELDS if e.get("origin") == "MINED" else FIELDS
+    if set(e) != set(want):
+        return [f"{at}: fields {sorted(set(e) ^ set(want))} (the schema is exactly {', '.join(want)})"]
+    if e["origin"] == "MINED" and (e["kind"] != "OBJECT" or not isinstance(e["term"], str) or not isinstance(e["evidence"], dict)
+                                   or set(e["evidence"]) != {"uses", "confirmed", "refuted"}):
+        return [f"{at}: a MINED kind is an OBJECT with its term (a string) and its evidence {{uses, confirmed, refuted}}"]
     bad = []
     if not isinstance(e["name"], str) or not e["name"]:
         bad.append(f"{at}: name must be a non-empty string")
@@ -300,8 +309,12 @@ def spec_reads(prog, store: dict) -> dict:
         for r in covers(e, prog.nodes):
             owner[r] = e["name"]
     out = {}
+    mined = mined_reads(store, prog)
     for e in store.values():
         g = e["gdl"]
+        if e["origin"] == "MINED":
+            out[e["name"]] = mined[e["name"]]
+            continue
         if e["kind"] != "RELATION" or g is None:
             out[e["name"]] = []
             continue
@@ -312,6 +325,59 @@ def spec_reads(prog, store: dict) -> dict:
         names = {owner[r] for r in seen if r in owner and base_kind(prog, r) and store[owner[r]]["origin"] == "SUPPLIED"} - {e["name"]}
         out[e["name"]] = sorted(names)
     return out
+
+
+def mined_terms(store: dict, prog) -> tuple:
+    """PLAN 76.4c (b): the MINED kinds' terms read in the one term language -> (the domain, the defined names (each mined entry's name its term), {name: term or None})."""
+    from catspace.incubator.analyst.discovery import terms as TL
+    dom = TL.Domain(prog, store)
+    defs = TL.Defs()
+    out = {}
+    todo = sorted((e for e in store.values() if e["origin"] == "MINED"), key=lambda e: e["name"])
+    while todo:
+        left = []
+        for e in todo:
+            try:
+                t = TL.parse(e["term"], dom, defs)
+            except TL.TermError:
+                left.append(e)
+                continue
+            out[e["name"]] = t
+            defs.define(e["name"], t)
+        if len(left) == len(todo):
+            break
+        todo = left
+    for e in todo:
+        out.setdefault(e["name"], None)
+    return dom, defs, out
+
+
+def mined_reads(store: dict, prog) -> dict:
+    """A MINED kind's reads: its term's base reads through the shelf (terms.base_reads); [] when its term does not parse (a problem `validate` names)."""
+    from catspace.incubator.analyst.discovery import terms as TL
+    if not any(e["origin"] == "MINED" for e in store.values()):
+        return {}
+    dom, defs, ts = mined_terms(store, prog)
+    return {n: (TL.base_reads(t, dom, store, defs) if t is not None else []) for n, t in ts.items()}
+
+
+def mined_problems(store: dict, prog) -> list:
+    """PLAN 76.4c (b): every MINED kind's term parses in the one term language (the names in it other mined kinds) and its sort is its slots' spec sorts."""
+    from catspace.incubator.analyst.discovery import terms as TL
+    if not any(e["origin"] == "MINED" for e in store.values()):
+        return []
+    dom, defs, ts = mined_terms(store, prog)
+    bad = []
+    for n, t in sorted(ts.items()):
+        if t is None:
+            bad.append(f"{n}: its term {store[n]['term']!r} does not parse in the term language")
+            continue
+        want = []
+        for s in t.sort:
+            want += list(dom.comps) if s == TL.LOC else [dom.spec_sort(s)]
+        if store[n]["sort"] != want:
+            bad.append(f"{n}: sort {store[n]['sort']} but its term's slots are {want}")
+    return bad
 
 
 def _slot_constants(prog, rel: str, slot: int) -> set:
@@ -844,6 +910,7 @@ def validate(lean: bool = False, log=print, file: bool = True) -> int:
             owners.setdefault(r, []).append(e["name"])
     bad += [f"two entries bind {r}: {ns}" for r, ns in sorted(owners.items()) if len(ns) > 1]
     bad += sort_problems(store, prog)
+    bad += mined_problems(store, prog)
     bad += vocabulary_problems()
     covered, unnamed = coverage(store, prog)
     reads = spec_reads(prog, store)
@@ -870,7 +937,7 @@ def validate(lean: bool = False, log=print, file: bool = True) -> int:
     objs = [e for e in store.values() if e["kind"] == "OBJECT"]
     rels = [e for e in store.values() if e["kind"] == "RELATION"]
     log(f"OBS ontology shelf: entries {len(store)} -- object kinds {len(objs)} (supplied {sum(e['origin'] == 'SUPPLIED' for e in objs)}, derived "
-        f"{sum(e['origin'] == 'DERIVED' for e in objs)}), relation kinds {len(rels)} (supplied {sum(e['origin'] == 'SUPPLIED' for e in rels)}, derived "
+        f"{sum(e['origin'] == 'DERIVED' for e in objs)}, mined {sum(e['origin'] == 'MINED' for e in objs)}), relation kinds {len(rels)} (supplied {sum(e['origin'] == 'SUPPLIED' for e in rels)}, derived "
         f"{sum(e['origin'] == 'DERIVED' for e in rels)}); words of the names table {sum(e['names'] for e in store.values())}; node kinds {node_kinds()}")
     log(f"OBS ontology bindings: gdl {sum(e['gdl'] is not None for e in store.values())}, rust {sum(e['rust'] is not None for e in store.values())}, lean "
         f"{sum(e['lean'] is not None for e in store.values())}, python {sum(e['python'] is not None for e in store.values())} of {len(store)}")

@@ -35490,3 +35490,62 @@ wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 8 s, 28 
 OBS audit rows total 1609: LOGIC 1264, RULE 93, NAME 21, CHESS FACT 198, HEURISTIC 33 (CHESS FACT 198 -> 198). OBS lemma store validate: entries 128, problems 0.
 OBS ontology validate: problems 0. OBS gate engine --only: test_plan76_4c 7 / 0 / 0 0.5 s; test_plan73_5 7 / 0 / 0 2.0 s; test_plan73_5b 12 / 0 / 0 7.9 s;
 test_rules_gdl 12 / 0 / 0 4.4 s. scripts/gate.py: test_plan76_4c in ENGINE_NAMES.
+
+
+
+## 2026-10-29 02:57 -- plan 76.4c (b) MINING OBJECTS: LINE, BLOCKED and REGION rediscovered from the spec's relations, scored by use only; the accepted relations are shelf entries and node kinds of feature-set version 3 (branch worktree-agent-a07aeaec17cb5fe3c)
+WHAT THE BASE OFFERED (the brief's question): rules/chess.gdl states no `line`, `ray`, `blocked` or `region` relation. It states `step` (one step along a
+direction, from the files' and ranks' successor tables), `king_step` (a step in some direction), `slide` (SUPPLIED, a names-table word: a ray of EMPTY squares --
+it reads `empty`), `occupied` / `empty`, `cell`, `attack` / `attacked`; the vocabulary's `line`, `between`, `segment` primitives are bound to `slide`. So the test
+is: find terms over these EQUIVALENT to the empty board's squares between two squares, to a line with an occupied square between, to their king's region.
+THE GENERATOR (discovery/object_miner.py, new, GENERIC -- the generic test covers it): candidates are `define`d relations of the one term language, priced by
+size, scored by USE ONLY (borrowing (5)): (ii) THE REGRESSION'S DERIVATIONS -- the store's GOAL regressions (mate; win on every unit) on the guard positions
+(ten, wide, the surprise shelf, each with the turn passed), read by the regression's Python prover: every TRUE literal of two location arguments in their
+derivations is a READING with the locations its LEAVES stand on (a slide reading g3 -> c3 rests on `not occupied` at d3, e3, f3); every witness of a defect whose
+action flips a leaf of a true reading is a FLIP (the interposition), one test per (relation, flipped leaf's relation); a three-location relation explains a
+relation's readings when its middle locations ARE the leaves at every reading; a two-location relation explains flips when it holds after every flip and at no
+true reading; and THE STATED OBLIGATIONS -- the sets the KRvK technique's obligation cites ((reach L free), free, corner), read by the 73.5 library on 200 class
+positions and every guard reading. A candidate never reads the relation it explains. (i) THE ZERO-FAILURE MEASURE -- the KRvK whole-class miner re-run with the
+accepted relations as its atoms (below). THE PRIOR: a test's alphabet is what its source rests on (the derivations' leaves and static tables; the obligation's
+shelf relations). THE SEARCH: bottom-up by size, typed productions (literals with relative sides / unit constants / anonymous slots -- `_`, new in the language
+--, not, and, or, minus, closure, restrict, compose, `via` -- new: a composition keeping its middle location --, exists, reach, extreme, without), observational
+equivalence on 22 sample states, auxiliary sorts grown two sizes behind; THE FUSE 8 = the largest clause body of rules/chess.gdl; LEVELS simplest first (a level
+ends at the first size that explains something; ties: the most general, then print order; accepted names are atoms of size one; uses accrue to an accepted name
+that explains a later test).
+OBS objects harvest: states 259 (246 positions, 13 after a flipping witness), regressions 2102, true readings of two locations 3051 (attack 8, attack_by 637,
+capture 629, move_by 629, slide 1148), flips 35 (attack 13, attack_by 13, slide 9)
+OBS objects level 1: accepted 1 at size 2; mined_1 := (not (attack us _ ?)) (cited by obligation mined technique KRvK: free)
+OBS objects level 2: accepted 1 at size 3; mined_2 := (extreme min (king_step ? _) (king_step ? ?)) (cited by obligation mined technique KRvK: corner)
+OBS objects level 3: accepted 2 at size 5; mined_3 := (reach (restrict (king_step ? ?) mined_1) (cell ? them king)) (cited by obligation mined technique KRvK:
+(reach L free)); mined_4 := (via (closure (step ? ? ?)) (closure (step ? ? ?))) (cited by readings attack, readings attack_by, readings capture, readings
+move_by, readings slide)
+OBS objects level 4: accepted 1 at size 4; mined_5 := (exists 3 (restrict mined_4 (occupied ?))) (cited by flips attack by occupied, flips attack_by by
+occupied, flips slide by occupied)
+OBS objects search: candidates tried 160344, citation tests read 23328, pruned by (4) 19223, dropped {'observationally equal to a cheaper one': 98920, 'empty on
+every sample position': 18343}, accepted 5; tests explained 11 of 13 (open: flips attack by true.cell, flips attack_by by true.cell); 131.3 s
+OBS objects test case REGION against mined_3: equal on 246 of 246 readings; LINE against mined_4: 246 of 246; BLOCKED against mined_5: 246 of 246 (the guard
+positions, each side read for; the references are python-chess's chess.between / BB_RAYS and technique_measures.region, read only after the search)
+OBS objects the three test cases: LINE FOUND as mined_4; BLOCKED FOUND as mined_5; REGION FOUND as mined_3
+(i) OBS objects the KRvK miner re-run with the derived atoms (the region's count, off-edge count and area from mined_3; the corner distance from mined_2): the
+first zero-failure level d=3 ranks=3 n=2 on 175168 positions; tied 4: (lex (area (reach L free)) (dist L corner) (dist W L)), (lex (area (reach L free)) (dist W
+L) (dist L corner)), (lex (count (reach L free)) (dist L corner) (dist W L)), (lex (count (reach L free)) (dist W L) (dist L corner)); citing a derived atom 4 of
+4; atoms read through the term language 175168; 406.4 s -- 73.5b's record exactly (the labels are the library's; the values the mined terms').
+THE ENTRIES: an accepted relation is an ONTOLOGY entry -- kind OBJECT, origin MINED (new: ontology.ORIGINS; MINED_FIELDS add `term` and `evidence`; its reads are
+its term's base reads, its sort its slots' spec sorts, both checked by `validate` through `mined_terms` / `mined_problems`): free, corner, region, line, blocked
+(lemmas/ontology/, named by the test case or the obligation word each was cited for), evidence.uses = the readings of each citing test (line: readings attack 8,
+attack_by 637, capture 629, move_by 629, slide 1148; blocked: flips 5, 5, 9; region / free / corner: 446 each). Each declares its NODE at feature-set version 3
+(graph_policy.py: the bump documented; `NODE_KINDS` -- version 0 -- unchanged; nothing retrained). terms.Domain now takes the location from the SUPPLIED product
+object (a mined object may have a product sort). tests/test_plan76.py's node-kind test reads version 0 (the mined kinds enter at 3).
+FINDINGS: (1) the mined FREE is (not (attack us _ ?)) -- our attack with their king standing; the 73.5 `free` lifts it. They are equal on every position any
+test read (no reading had their king in check along a line with a free square behind it; 76.4c (a)'s fixture pins them apart, region 47 vs 49) -- the corpus
+cannot see the difference, so the simpler term won; a technique reads the region with the winning side to move, where it never matters. (2) Without the guard
+positions in the obligation's sets the region's seed was (attack them ? _) -- equal to their king's square on every K+R v K position; the term's meaning off the
+class decided it. (3) The flips of attack / attack_by by a lifted `cell` leaf (the attacker taken) have no explanation to the fuse within four levels -- open (a
+GAP: a fifth level's search to the fuse ran past 15 minutes at size 6). (4) The search's cost is the binary set operations of the larger alphabets (4500
+candidates of the attack alphabet at size 5).
+NEGATIVE CONTROL (not committed: `restrict` reads the first location instead of the last): OBS objects the three test cases: LINE FOUND as mined_4; BLOCKED NOT
+FOUND; REGION NOT FOUND (accepted 4; tests explained 8 of 13).
+THE GUARD (against the parent): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99
+(walls 8 s, 28 s, 19 s, 70 s). OBS ontology validate: problems 0 (object kinds 28: supplied 23, mined 5). OBS lemma store validate: entries 128, problems 0.
+OBS audit rows total 1609: CHESS FACT 198 (198 -> 198). OBS gate engine --only: test_plan76_4c 12 / 0 / 0 0.7 s; test_plan76 20 / 0 / 0 73.8 s;
+test_graph_policy 6 / 0 / 0 3.2 s; test_plan73_5 7 / 0 / 0 2.1 s; test_plan73_5b 12 / 0 / 0 8.1 s; test_rules_shelf 12 / 0 / 0 71.9 s.

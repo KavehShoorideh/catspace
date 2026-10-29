@@ -228,6 +228,15 @@ ATOM_TERMS = {
 }
 
 
+# PLAN 76.4c (b): the SET sub-terms of the library's measures that a stated obligation may cite, each with its reading here (a mask of squares for (board, side))
+SET_READINGS = {
+    "(reach L free)": region,
+    "free": lambda board, side: ~attacked_by(board, side) & chess.BB_ALL,
+    "corner": lambda board, side: CORNER,
+    "edge": lambda board, side: EDGE,
+}
+
+
 def term_language():
     """(the domain of rules/chess.gdl and the shelf, the chess reader, the atoms' defined names, the atoms' terms by key) -- plan 76.4c (a)."""
     from catspace.incubator.analyst.discovery import gdl_chess as GC

@@ -38,6 +38,11 @@ MODEL = "graph_policy.pt"
 # feature-set version its `since` says (all five at 0); a kind declared later -- a derived object the miner proposes (76.4) -- becomes a node type by its
 # declaration, and that is a NEW feature-set version (the layer widths and the message passing change): `build` gives it a node only at that version, so a model
 # of an earlier version sees exactly its old graph (`NODE_KINDS` is the version-0 set, the saved blob's meta).
+# PLAN 76.4c (b) THE FEATURE-VERSION BUMP: the object miner's accepted relations (object_miner.py) are shelf entries of origin MINED -- line, blocked, region,
+# free, corner (lemmas/ontology/: each its term of the one term language, terms.py) -- and declare their node at feature-set version 3 (`since` 3; versions 0, 1,
+# 2 are this file's board / survey / arrangement sets): `ON.node_kinds(3)` holds them, `NODE_KINDS` (version 0) does not. A version-3 graph gives each instance of
+# a mined kind a node joined to the locations it relates (read by terms.evaluate on the board); no model of version 3 is trained (76.4c: not retrained), so
+# `build` -- which builds the version of the loaded model -- builds none.
 SQUARE, PIECE, QUESTION, ROOT, ROUTE = (ON.node_of(k) for k in ("square", "unit", "question", "root", "route"))
 ON_EDGE, ATTACKS_EDGE, ADJ_EDGE = ON.edge_of("cell"), ON.edge_of("attack"), ON.edge_of("king_step")
 NODE_KINDS = tuple(ON.node_kinds(0))

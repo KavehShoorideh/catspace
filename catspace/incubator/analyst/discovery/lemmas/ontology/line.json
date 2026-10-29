@@ -1,0 +1,73 @@
+{
+ "name": "line",
+ "kind": "OBJECT",
+ "origin": "MINED",
+ "sort": [
+  "direction",
+  "file",
+  "rank",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
+ "reads": [
+  "file",
+  "file_succ",
+  "rank",
+  "rank_succ"
+ ],
+ "gdl": null,
+ "rust": null,
+ "lean": null,
+ "python": "catspace.incubator.analyst.discovery.terms.evaluate",
+ "bind": null,
+ "node": {
+  "kind": "line",
+  "order": 13,
+  "since": 3
+ },
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a mined object: the relation (via (closure (step ? ? ?)) (closure (step ? ? ?))) of the one term language over the spec's relations, accepted by its uses (readings attack, readings attack_by, readings capture, readings move_by, readings slide)",
+ "why": {
+  "gdl": "a mined object is a term over the spec's relations, not a relation the spec states",
+  "rust": "the term is read by the term language (terms.py) through the binding's reader, no relation of the Rust core of its own",
+  "lean": "no Lean definition generated for a mined term yet (the translation of a term is the prover plan's)"
+ },
+ "plan": [
+  "76.4"
+ ],
+ "journal": "2026-10-29",
+ "term": "(via (closure (step ? ? ?)) (closure (step ? ? ?)))",
+ "evidence": {
+  "uses": {
+   "readings attack": {
+    "count": 8,
+    "date": "2026-10-29"
+   },
+   "readings attack_by": {
+    "count": 637,
+    "date": "2026-10-29"
+   },
+   "readings capture": {
+    "count": 629,
+    "date": "2026-10-29"
+   },
+   "readings move_by": {
+    "count": 629,
+    "date": "2026-10-29"
+   },
+   "readings slide": {
+    "count": 1148,
+    "date": "2026-10-29"
+   }
+  },
+  "confirmed": [
+   "plan 76.4c (b) 2026-10-29: accepted at level 3, size 5, cited by readings attack, readings attack_by, readings capture, readings move_by, readings slide",
+   "the rediscovery: equal to the test case LINE on 246 of 246 guard readings (ten, wide, the surprise shelf, each side)"
+  ],
+  "refuted": []
+ }
+}
