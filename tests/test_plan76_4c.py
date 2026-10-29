@@ -1,7 +1,8 @@
 """plan 76.4c MINING OBJECTS AND MATERIAL (docs/ANALYST_PLAN.md 76.4; 76's borrowings (4) and (5)): (a) one term language with typed combinators over the ontology
 shelf's relations (terms.py) -- its typing, its pricing, its implication, the atoms re-expressed in it equal to the old readings, the language naming no game
 object; (b) mining objects (object_miner.py) -- the derivations' readings and flips, the explanation tests and the pruning by implication, the three
-rediscoveries (LINE, BLOCKED, REGION) on fixed positions, the mined kinds as shelf entries and node kinds of feature-set version 3."""
+rediscoveries (LINE, BLOCKED, REGION) on fixed positions, the mined kinds as shelf entries and node kinds of feature-set version 3; (c) material as a mined
+valuation (valuation_miner.py) -- the count term, the material fit on a fixture, the mined VALUATION beside the hand one."""
 from __future__ import annotations
 
 import ast
@@ -17,7 +18,7 @@ from catspace.incubator.analyst.discovery import technique_measures as TM
 from catspace.incubator.analyst.discovery import terms as TL
 
 ROOT = Path(__file__).resolve().parents[1]
-GENERIC = ("terms.py", "object_miner.py")      # the modules that must name no game object
+GENERIC = ("terms.py", "object_miner.py", "valuation_miner.py")      # the modules that must name no game object
 
 # fixed positions: a middlegame (pos2 of the guard), the discovery position, two K+R v K positions (one the refuted measure's play-out start), a pawn ending
 FENS = ("r1bqnr1k/1p1n2p1/p2p2P1/2pPp3/4Pp1b/2N1BP1N/PPP4Q/2KR1B2 w - - 0 1", "r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1",
@@ -264,3 +265,53 @@ def test_b_the_mined_kinds_are_shelf_entries_and_node_kinds_of_a_later_feature_s
         assert e["reads"] == TL.base_reads(ts[n], dom, ON.load(), defs)
     assert ON.node_kinds(0) == list(GP.NODE_KINDS) == ["square", "piece", "question", "root", "route"]
     assert set(ON.node_kinds(3)) - set(ON.node_kinds(0)) == {e["node"]["kind"] for e in ents.values()}
+
+
+# ---------------------------------------------------------------------------------------------------------------- (c) material as a mined valuation
+
+def test_c_the_material_term_is_the_hand_reading_with_the_hand_worths(dom):
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    from catspace.incubator.analyst.discovery import valuation_miner as VM
+    hand = GC.valuation_weights(LS.goal_kinds().valuation)
+    t = VM.material_term(dom, "material", hand)
+    reader = GC.TermReader()
+    for f in FENS:
+        b = chess.Board(f)
+        for side in (chess.WHITE, chess.BLACK):
+            assert TL.evaluate(t, dom, reader, b, GC.COLOUR[side]) == TM.material(b, side) - TM.material(b, not side)
+
+
+def test_c_the_priced_search_recovers_the_worths_outcomes_were_drawn_from():
+    """A FIXTURE: outcomes drawn from the ordinal model with worths (2, 1) on two kinds (and a third kind constant, as the royal unit is): the continuous fit
+    and the priced search (integers first, the paired one-standard-error rule) find (2, 1); the constant kind takes no weight."""
+    import numpy as np
+    from catspace.incubator.analyst.discovery import valuation_miner as VM
+    rng = np.random.default_rng(764)
+    rows = []
+    for g in range(3000):
+        for _k in range(6):
+            dx, dy = int(rng.integers(-2, 3)), int(rng.integers(-3, 4))
+            pl, pd, pw = VM._probs(np.array([2.0 * dx + dy]), 0.6, 0.4)
+            u = rng.random()
+            o = 0.0 if u < pl[0] else 0.5 if u < pl[0] + pd[0] else 1.0
+            rows.append((g, (0, dx, dy), o))
+    C = VM.Corpus(["k", "x", "y"], rows)
+    assert C.constant == ["k"] and C.kinds == ["x", "y"]
+    got = VM.search(C, log=lambda *_a: None)
+    assert got["choice"]["worth"] == {"x": 2, "y": 1}
+    assert abs(got["beta"]["x"] / got["beta"]["y"] - 2) < 0.2
+
+
+def test_c_the_mined_valuation_stands_beside_the_hand_one():
+    """The store holds the MINED valuation (its worths fit to outcomes, its term, the exchange law over it as a stated obligation) beside the HAND one; the GOAL
+    entries count in the hand one -- the agenda reads it, no decision moved."""
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    e = LS.load(force=True)["material (mined)"]
+    assert e["kind"] == "VALUATION" and e["origin"] == "MINED" and LS.check_entry(e) == []
+    assert set(e["params"]) == {"worth", "unit", "royal", "term", "obligation"} and "OBLIGATION" in e["params"]["obligation"] and "NOT proved" in e["params"]["obligation"]
+    assert LS.goal_kinds().valuation.name == "material" and LS.load()["material"]["origin"] == "HAND"
+    dom = TL.Domain(GC.program(), ON.load())                 # its term reads, in the term language, its own worths' material difference
+    t = TL.parse(e["params"]["term"], dom, valuations={LS.slug(e["name"]): GC.valuation_weights(LS.Valuation(e))})
+    b = chess.Board(FENS[0])
+    worth = lambda side: sum(e["params"]["worth"][x.symbol().lower()] for x in b.piece_map().values() if x.color == side)
+    assert TL.evaluate(t, dom, GC.TermReader(), b, "white") == worth(chess.WHITE) - worth(chess.BLACK)

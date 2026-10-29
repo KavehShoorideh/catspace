@@ -1,0 +1,43 @@
+{
+ "name": "material (mined)",
+ "kind": "VALUATION",
+ "reads": [
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "MINED",
+ "plan": [
+  "76.4"
+ ],
+ "journal": "2026-10-29",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [
+   "plan 76.4c (c) 2026-10-29: fit only to outcomes -- the game records data/records/lichess_2019-01/records_00000.parquet (games 0..3999): 236305 positions of 4000 games (from ply 10); the priced search's first price within one paired error of the best weights: 33 (313 vectors read), log loss 0.84104 nats per position, Brier 0.51173; the continuous fit's worths relative to the smallest queen 7.337, rook 3.894, bishop 2.460, knight 2.227, pawn 1.000; the hand worths on the same corpus: log loss 0.84130, Brier 0.51170 (the continuous fit's + 0.00056, paired error 0.00040)",
+   "plan 76.4c (c) 2026-10-29, the second corpus (not the entry's): the Syzygy tables' 145 signatures (assets/tablebases/syzygy) x 200 random positions (seed 764), 28600 table-judged positions: the continuous fit's worths relative to the smallest queen 4.715, rook 2.634, bishop 1.360, knight 1.000, pawn 1.284; no integer vector within one paired error by the fuse; the hand worths' log loss 0.51304"
+  ],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/valuation_miner.py:search",
+  "scripts/plan76_4c.py:write_valuation"
+ ],
+ "note": "The material valuation MINED from outcomes alone (plan 76.4c (c)): unit worths q 14, r 8, b 5, n 4, p 2, k 0 fit to the game records' results by the priced search; the agenda still reads the HAND entry `material` (its GOAL entries count in it) -- this entry stands beside it.",
+ "params": {
+  "worth": {
+   "q": 14,
+   "r": 8,
+   "b": 5,
+   "n": 4,
+   "p": 2,
+   "k": 0
+  },
+  "unit": 2,
+  "royal": "k",
+  "term": "(sub (wcount 1 material-mined (cell ? us ?)) (wcount 1 material-mined (cell ? them ?)))",
+  "obligation": "THE EXCHANGE LAW OVER THE MINED TERM: Ideas.ExchangeLaw's static exchange (seeB, seeXB, settledWithinAt) restated with the unit values of the mined valuation in place of valueAt's hand values (q 14, r 8, b 5, n 4, p 2, k 0; the king's capturing value as valueAt has it) -- OBLIGATION: for every position p and square s, the static exchange read with these worths is a lower bound of what the side capturing first on s keeps of the term (sub (wcount 1 material-mined (cell ? us ?)) (wcount 1 material-mined (cell ? them ?))) when the exchange on s is played out with each side free to stop; stated, NOT proved (no theorem of docs/LEAN_INDEX.md states it; the prover plan's)."
+ }
+}

@@ -121,6 +121,9 @@ GOAL_PARAMS = ("question", "basis", "rule", "valuation", "stake", "ends_game", "
 # {law, args, need, reads}: the valuation the head's truth must also reach, and the atom pattern it reads). Its defects' NAMES are DEFECT_FIX entries' `gdl`.
 GOAL_GDL = ("gdl",)
 VALUATION_PARAMS = ("worth", "unit", "royal")
+# plan 76.4c (c): a MINED VALUATION (the valuation miner's, valuation_miner.py: weights fit only to outcomes) also says `term` (the count term of the one term
+# language it is, terms.py) and `obligation` (the Lean statement its use rests on -- the exchange law restated over the term; stated, not proved)
+VALUATION_MINED = ("term", "obligation")
 # plan 76.2 (c) THE RULE SHELF: a RULE entry is a rule of the game the engine reads -- GIVEN, never derived; in Lean a DEFINITION (generated from rules/chess.gdl), never
 # an axiom. Its params say where it lives: `spec` (the generated Lean definition, Ideas.Spec.Chess.*), `gdl` (the spec's relation), `surface` (the Game methods that
 # implement it, game.SPEC); its `lean` (when PROVED) the theorems that prove the spec's definition equal to the rule kernel's (Ideas.Spec.LegalEquiv, NextEquiv);
@@ -159,9 +162,12 @@ def _params_problems(e: dict, at: str) -> list:
             bad.append(f"{at}: params near must be null or a whole number >= 1")
         return bad
     if k == "VALUATION":
-        if not isinstance(p, dict) or set(p) != set(VALUATION_PARAMS):
-            return [f"{at}: a VALUATION has params exactly {', '.join(VALUATION_PARAMS)}"]
+        want = set(VALUATION_PARAMS) | (set(VALUATION_MINED) if e["origin"] == "MINED" else set())
+        if not isinstance(p, dict) or set(p) != want:
+            return [f"{at}: a VALUATION has params exactly {', '.join(sorted(want))} (a MINED one also its term and its obligation)"]
         bad = []
+        if e["origin"] == "MINED" and not (isinstance(p["term"], str) and p["term"] and isinstance(p["obligation"], str) and p["obligation"]):
+            bad.append(f"{at}: a MINED VALUATION's term and obligation are statements (strings)")
         if not isinstance(p["worth"], dict) or not p["worth"] or any(not isinstance(v, int) or isinstance(v, bool) for v in p["worth"].values()):
             bad.append(f"{at}: params worth must map each unit kind to a whole number")
         if not isinstance(p["unit"], int) or p["unit"] < 1:

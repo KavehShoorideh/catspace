@@ -356,7 +356,7 @@ def lichess_jobs(n_games: int, chunk: int = 200) -> tuple:
     f = Path(paths.data_dir()) / LICHESS / "records_00000.parquet"
     t = pq.read_table(f, columns=["game_id", "result", "moves"]).slice(0, n_games).to_pylist()
     games = [(int(r["game_id"]), r["moves"], int(r["result"])) for r in t]
-    return [("game", games[i:i + chunk]) for i in range(0, len(games), chunk)], f"{f} (games 0..{n_games - 1})"
+    return [("game", games[i:i + chunk]) for i in range(0, len(games), chunk)], f"the game records data/{LICHESS}/records_00000.parquet (games 0..{n_games - 1})"
 
 
 def table_jobs(per_sig: int, seed: int = 764, chunk: int = 500) -> tuple:
@@ -389,7 +389,7 @@ def table_jobs(per_sig: int, seed: int = 764, chunk: int = 500) -> tuple:
                 wdl = tb.probe_wdl(b)
                 items.append((len(items), b.fen(), 1.0 if wdl == 2 else 0.0 if wdl == -2 else 0.5))
                 got += 1
-    return [("fen", items[i:i + chunk]) for i in range(0, len(items), chunk)], f"{len(sigs)} signatures of {paths.syzygy_dir()} x {per_sig} positions (seed {seed})"
+    return [("fen", items[i:i + chunk]) for i in range(0, len(items), chunk)], f"the Syzygy tables' {len(sigs)} signatures (assets/tablebases/syzygy) x {per_sig} random positions (seed {seed})"
 
 
 def material(n_games: int = 4000, per_sig: int = 200, jobs: int = 10) -> dict:
@@ -521,7 +521,7 @@ def write_valuation(saved: str, journal: str) -> str:
         worth[letter[k]] = 0                                          # the constant kind (the royal unit: one each): no outcome, no weight
     unit = min(v for v in worth.values() if v > 0)
     dom = TL.Domain(GC.program(), ON.load())
-    term = VM.material_term(dom, MINED_VALUATION, {k: int(v) for k, v in ch["worth"].items()}).sexpr()
+    term = VM.material_term(dom, LS.slug(MINED_VALUATION), {k: int(v) for k, v in ch["worth"].items()}).sexpr()
     w = ", ".join(f"{k} {worth[k]}" for k in "qrbnpk")
     obligation = (f"THE EXCHANGE LAW OVER THE MINED TERM: Ideas.ExchangeLaw's static exchange (seeB, seeXB, settledWithinAt) restated with the unit values of the mined "
                   f"valuation in place of valueAt's hand values ({w}; the king's capturing value as valueAt has it) -- OBLIGATION: for every position p and square s, "

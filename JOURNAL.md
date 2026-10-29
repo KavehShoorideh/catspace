@@ -35549,3 +35549,74 @@ THE GUARD (against the parent): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0
 (walls 8 s, 28 s, 19 s, 70 s). OBS ontology validate: problems 0 (object kinds 28: supplied 23, mined 5). OBS lemma store validate: entries 128, problems 0.
 OBS audit rows total 1609: CHESS FACT 198 (198 -> 198). OBS gate engine --only: test_plan76_4c 12 / 0 / 0 0.7 s; test_plan76 20 / 0 / 0 73.8 s;
 test_graph_policy 6 / 0 / 0 3.2 s; test_plan73_5 7 / 0 / 0 2.1 s; test_plan73_5b 12 / 0 / 0 8.1 s; test_rules_shelf 12 / 0 / 0 71.9 s.
+
+
+
+## 2026-10-29 03:28 -- plan 76.4c (c) MATERIAL AS THE FIRST MINED VALUATION: worths fit only to outcomes by the priced search, beside the hand entry; the one experiment where the agenda reads them (branch worktree-agent-a07aeaec17cb5fe3c)
+THE GENERATOR (discovery/valuation_miner.py, new, GENERIC -- the generic test covers it): material is a count term of the one term language, (sub (wcount 1 V (cell
+? us ?)) (wcount 1 V (cell ? them ?))), its atoms per unit kind (sub (count (cell ? us k)) (count (cell ? them k))) read through the reader; a kind constant on the
+corpus (the royal unit: one each) takes no weight. THE MODEL: a symmetric ordinal logistic of the outcome (loss < draw < win) on the term's value, its scale and
+draw band fit by maximum likelihood (Newton, closed-form derivatives; checked against Nelder-Mead). THE SCORE: mean log loss (proper), Brier printed. THE PRICED
+SEARCH, INTEGERS FIRST: the continuous MLE first; then the integer worths by price (their sum), at each price the vectors nearest the best weights (each weight the
+floor or the ceiling of its share; every vector of the price read too up to price 12 and the bests compared); the answer is the first price at which an integer
+vector is within ONE PAIRED STANDARD ERROR (games as clusters) of the continuous fit -- the corpus cannot tell them apart. (Two readings tried and dropped before
+this run, said so: the classic one-SE rule on the best fit's own error (0.01155) stopped at price 7 with the pawn at 0 -- too loose; every vector of every price
+(no rounding) cost too much past price 25.)
+THE CORPORA (named): the game records data/records/lichess_2019-01/records_00000.parquet, the first 4000 games, every position from ply 10 (the records' own
+skip), the result from the side to move's view -- THE ENTRY'S; and a second, the Syzygy tables' 145 signatures (assets/tablebases/syzygy, 3 to 5 units) x 200 random
+legal placements, the table's verdict (a cursed win or a blessed loss a draw). Not used: the loop puzzle sets (a puzzle's result is "the side to move wins" by
+construction: no draw, no loss), the technique corpora (one class each, every game won: no outcome varies with material) -- subsumed by the table corpus.
+OBS valuation corpus games: positions 236305 (from ply 10 on), games 4000, outcomes for the side to move win 110575 draw 16904 loss 108826
+OBS valuation continuous fit: kinds ['queen', 'rook', 'bishop', 'knight', 'pawn'] (constant, no weight: ['king']); as worths relative to the smallest positive:
+queen 7.337, rook 3.894, bishop 2.460, knight 2.227, pawn 1.000; c 0.1597; log loss 0.84075 nats per position; Brier 0.51135; distinct atom vectors 1862; one
+standard error of its mean log loss 0.01155
+OBS valuation the rounding checked against every vector of the price at prices 1..12: the same best at 11 of 12
+OBS valuation corpus games MINED worths {'queen': 14, 'rook': 8, 'bishop': 5, 'knight': 4, 'pawn': 2} (price 33, 313 integer vectors read): log loss 0.84104,
+Brier 0.51173 (s 0.1249, c 0.1596; the continuous fit's + 0.00029, the paired error 0.00029); HAND worths {'queen': 9, 'rook': 5, 'bishop': 3, 'knight': 3,
+'pawn': 1}: log loss 0.84130, Brier 0.51170 (s 0.2045, c 0.1595; the continuous fit's + 0.00056, paired 0.00040)
+OBS valuation corpus table: positions 28600, outcomes for the side to move win 10382 draw 7075 loss 11143; continuous fit as worths relative to the smallest:
+queen 4.715, rook 2.634, bishop 1.360, knight 1.000, pawn 1.284; log loss 0.46715; no integer vector within one paired error by the fuse (price 64); the hand
+worths' log loss there 0.51304, Brier 0.29615 (printed by the run before, the same corpus).
+READ (directional, one corpus each): from the games' outcomes the integers within the corpus's error are q 14 r 8 b 5 n 4 p 2 -- relative to the pawn 7, 4,
+2.5, 2: the order of the hand worths (and the bishop above the knight), every piece cheaper in pawns than 9 / 5 / 3 / 3; the hand worths are one paired error
+outside the best weights on this corpus (+0.00056 against 0.00040), the mined ones on its edge. From the endings the pawn is worth more than the knight (1.28 to
+1.0) and the minor pieces little -- the table's outcomes are not the games'; no integer vector meets the paired rule there (28600 independent positions: the
+paired error 0.0002 to 0.0005).
+THE ENTRY: lemmas/material-mined.json, "material (mined)" -- VALUATION, origin MINED, status HEURISTIC, worth q 14 r 8 b 5 n 4 p 2 k 0, unit 2 (its least worth),
+royal k; params `term` (the count term) and `obligation` (THE EXCHANGE LAW OVER THE MINED TERM: Ideas.ExchangeLaw's static exchange restated with these worths
+in valueAt's place, a lower bound of what the side capturing first keeps of the term -- stated, NOT proved); the evidence both corpora's fits. lemma_store.py:
+a MINED VALUATION also carries `term` and `obligation` (VALUATION_MINED). The GOAL entries count in the HAND `material`: no decision moves.
+THE GUARD (the default path, against the parent): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2
+0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 28 s, 19 s, 70 s). OBS lemma store validate: entries 129, problems 0.
+THE ONE EXPERIMENT (labelled, NOT merged: `scripts/plan76_4c.py swap mined` -- the five GOAL entries count in the mined valuation -- run, then `swap hand`; the
+files restored byte for byte). IT DID NOT RUN AS IS, and that is the first result: (1) ruler.py refused to import (its own VAL table, asserted equal to the store's
+at import); (2) with ruler's VAL read from the store, the ten crashed in agenda._ask_save_piece (IndexError: a save question raised by the agenda's hanging test --
+the Rust exchange, hand worths -- whose regression found no defect: the store's need is the mined unit 2, the Rust see a pawn 1). THE VALUATION IS NOT ONE
+DEFINITION: the Rust core keeps its own worths (lib.rs `value` with the king 100, `kernel_value`; rules.rs `val`, read by regress.rs and vocab.rs; words.rs
+`worth_of`; plan.rs `val` and a `>= 3` threshold) and Python modules keep copies (ruler.py VAL, table.py _VALUE, selfmine.py VALUE beside PIECE_WORTH, ledger.py
+PVAL, ledger_puzzles.py VAL, surprise_loop.py, watch.py) -- the store's readers (selfmine.PIECE_WORTH, graph.WORTH, the stakes, the need, the native regression's
+'exchange from' law) take the mined worths, the rest the hand ones. With two experiment-only patches more (ruler's VAL from the store; _ask_save_piece returns
+when the regression reads no defect) the experiment ran with the units MIXED, and is read as such:
+OBS (the guard positions at the count budget against the parent) ten t0 10 of 10 traces, 10 read sets, 8 leaf verdict lists, 10 word lists, 10 provenance lists
+differ; ten t2 10 / 10 / 9 / 10 / 10 of 10; wide t0 88 / 75 / 55 / 75 / 99 of 99; wide t2 88 / 76 / 66 / 76 / 99 of 99. DECISION lines differ in 3 of 10, 6 of 10,
+29 of 99, 30 of 99; the MOVE differs in 25 of those (the rest the value in the mined units, or the proof's word). Each move read by Stockfish depth 14 in a
+separate process (`verdict`, RIGHT within its tolerance):
+  hand RIGHT -> mined WRONG or none: discovery t0 Nf6 -> Nf2 (loss 184); eSJqH t2 Qa5 -> Qh4 (618); 09QQs t2 d6 -> h4 (839); 9aWvf t0, t2 d3+ -> exf3+ (954);
+  91NWl t0 Qa4 -> none; Ddm9j t0, t2 Bxd5 -> none; XyHdc t0 Rxf2+ -> none, t2 -> Qf6 (677)
+  hand WRONG or none -> mined RIGHT: 4E4iU t0, t2 Kg8 -> exf5; L2luA t0, t2 Ra5 -> Re5; r3oph t2 Rxd1+ -> Nxe5; frLxu t0 none -> c3
+  WRONG -> WRONG or none: discovery t2 Nd6 -> Nf2; 09QQs t0 Rc7 -> h4; 9QsbL t0, t2 Nc4 -> Nxf3+; HOFfo t0 Kc2 -> Rf7+; ZLUIf t0, t2 Nb6 -> Nxc3; Clhax t0, t2
+  a3 -> none
+OBS the loop-2 batch (rand14_10 .. rand17_10 at 15 s in the pool, the question log to a fresh file, graded by Stockfish depth 14 in a separate process; one batch
+each, the same sitting): HAND RIGHT 32, UNKNOWN 1, WRONG 7; proved RIGHT 32, proved WRONG 3, unproved WRONG 4, none 1 (wall 79 s) -- MINED RIGHT 34, UNKNOWN 3,
+WRONG 3; proved RIGHT 30, unproved RIGHT 4, unproved WRONG 3, none 3 (wall 80 s). The 10 that differ: 4E4iU Kg8 -> exf5 (WRONG -> RIGHT, proved), L2luA Ra5
+-> Re5 (WRONG -> RIGHT, unproved), r3oph Rxd1+ -> Nxe5 (WRONG -> RIGHT, proved) -- three open misses of the surprise shelf; Ddm9j Bxd5 -> no decision (RIGHT ->
+UNKNOWN); frLxu Qh4 -> no decision; 9QsbL Nc4 -> Nxf3+ and KSMKJ gxh5 -> Rb8 (WRONG both, no longer proved); Bn8pS, 0QxXi, iAVbH the same RIGHT move, no
+longer proved.
+READING: with the units mixed no difference can be credited to the worths alone. Ddm9j's trace (wide t0) ends 'no proved claim: the best unfinished line
+c4 ... loses more than their threat ... no decision', its gains printed in the mined units (a pawn 2); the count-budget guard loses more RIGHT moves (10 lines)
+than it gains (6), the clocked batch the reverse (+2 RIGHT) -- directional, one run each, both under mixed units. The experiment says the valuation must first
+become ONE definition (the Rust tables reading the store's worths) before a mined valuation can be judged by the agenda. Not done here (a Rust change beyond
+76.4c's scope; for the owner).
+NEGATIVE CONTROL: the experiment's build (the GOAL entries counting in the mined valuation) is the wrong build for the default path -- the guard fires on it
+(above). OBS gate engine --only: test_plan76_4c 15 / 0 / 0 1.2 s; test_plan73 10 / 0 / 0 16.3 s; test_plan75 11 / 0 / 0 0.6 s.
+OBS audit rows total 1609: CHESS FACT 198 (198 -> 198; agenda.py untouched).
