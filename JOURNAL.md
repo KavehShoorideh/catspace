@@ -35364,3 +35364,44 @@ OBS gate engine --only: test_plan76_4b 12 passed / 0 failed / 0 xfailed 1.5 s; t
 31 / 0 / 0 0.7 s; test_plan72_7_step3 13 / 0 / 0 38.7 s; test_discovery_vocabulary 23 / 0 / 0 27.3 s; test_agenda 26 / 0 / 0 91.6 s; test_plan73 10 / 0 / 0 16.2 s;
 test_plan76 20 / 0 / 0 61.3 s (the clocked files in (c)). OBS lemma store validate: entries 128, problems 0 (uncatalogued 0). OBS ontology validate: problems 0.
 OBS audit recount: rows total 1608 ... CHESS FACT 202 (202 -> 202; agenda.py untouched).
+
+
+## 2026-10-29 00:47 -- plan 76.4b (c) EQUALITY AND COST: the native core against the Python reading on every guard question; the clocked tests without a budget change; W0VFO and the loop-2 batch (branch worktree-agent-a128c491905ea4974)
+THE HARVEST (scripts/plan76_4a.py harvest, the engine reading the native core, recorders on every defect question, the keep questions and the fix filter's candidate
+lists; the boards recorded with their RAW e.p. square): OBS ten t0 86296 distinct questions (8.1 s), ten t2 295072 (31.1 s), wide t0 283900 (20.8 s), wide t2 1314071
+(79.9 s). THE EQUALITY (scripts/plan76_4a.py compare4b --jobs 11: per question the native core's names and its whole regression against PyRegressor's -- 76.4a's
+reading, with its cache and validation):
+OBS 76.4b (c) equality mate: questions 506215; names equal 506215, whole regressions equal 506215, read sets equal 506215, the engine's recorded answer equal 506215;
+ms per question: the Python reading (76.4a) 0.6920, the native core 0.0543
+OBS 76.4b (c) equality win: questions 326764; names equal 326764, whole regressions equal 326764, read sets equal 326764, the engine's recorded answer equal 326764;
+ms per question: the Python reading (76.4a) 0.0635, the native core 0.0159
+OBS 76.4b (c) equality keep: questions 45737; names equal 45737, whole regressions equal 45737, read sets equal 45737, the engine's recorded answer equal 45737;
+ms per question: the Python reading (76.4a) 0.3840, the native core 0.0408
+OBS 76.4b (c) equality fix filter (mate): lists 166316, candidates 3387218; verdicts equal 3387218, (mended, new) equal 3387218, the engine's recorded verdict equal
+3387218; ms per candidate: the Python reading 0.1712, the native core 0.0133
+OBS 76.4b (c) equality fix filter (win): lists 293470, candidates 8664197; verdicts equal 8664197, (mended, new) equal 8664197, the engine's recorded verdict equal
+8664197; ms per candidate: the Python reading 0.0428, the native core 0.0051
+OBS 76.4b (c) disagreement samples: 0; compare: 218 case files, wall 185.4 s. ("whole regression": the head's truth, the derivation read, the defects with their
+witnesses, actions and flipped leaves, the read set, the rows, the value, the leaves -- field by field.) NEGATIVE CONTROL (not committed; the naming build of (b)):
+OBS ten t0 mate names equal 13577 of 22449, fix filter (mate) verdicts equal 157339 of 158677.
+THE COST IN THE ENGINE (scripts/plan76_4a.py cost --sets ten --tier 0 --jobs 11; the engine's calls' own clocks): BEFORE (this run, on main 77160f84: the Python
+regression) OBS the runs' wall summed 85.3 s; mate 0.5013 ms per call, win 0.1231, fix filter 0.0621 per candidate, keep 0.2790 (76.4a's hand tables: mate 0.0195,
+win 0.0062, fix filter 0.0018; the plan 76 parent's serial ten t0 25.59 s). AFTER OBS the runs' wall summed 29.8 s; mate 0.0398 ms per call, win 0.0190, fix filter
+0.0054 per candidate, keep 0.0395 (regressions read 569459, served from the cache 108046). The guard's snapshot walls after (b): 7 s, 28 s, 19 s, 70 s against the
+parent's 17 s, 70 s, 50 s, 194 s. Directional, one run each.
+THE CLOCKED TESTS, re-run through the gate, no budget touched, no marker removed: OBS test_tiers 13 passed, 1 xpassed (34.5 s): test_59_4 XPASSES (1.92 s);
+test_offbuilt64 14 passed, 1 xfailed, 1 xpassed (94.4 s): test_64_discovery_decides_within_15_s XPASSES (the strict xfail of loop target 1,
+test_69_pool_discovery_decides_within_15_s, stays xfailed); test_regress 87 passed, 1 xfailed (491.6 s): 52.18 STILL XFAILS -- and not by the clock: its run
+ends at 16.5 s of its 30 ("POOL pass 1: nothing changed ... the passes end"; OBS decision Nf2, not proved; 36 questions asked in the first pass, 9 moved up by the
+policy); on main's Python regression the same run ends at 22.3 s of 30 with the same unproved Nf2. So what 52.18 lost at 76.4a is not time but 76.4a's change of
+the fix classes (the line through their king, the target's own capture): a decision the parent reads (the guard cannot: it is clock-bound). cProfile of the run
+(profiled 28.6 s; the top own-time entries): analyst_core.verify_route 1.709 s, python-chess piece_at 1.543, push 1.450, generate_pseudo_legal_moves 1.356,
+attackers_mask 1.350; cumulative: the chase's _verify 21.9 s, _inner 14.6, node_cost 12.7, _ask_promote 12.4, _price / route_cost 8.9, forcing_why 8.1, parries
+6.6 -- the regression is not among them.
+CLOCKED EVIDENCE (one run each, directional): OBS W0VFO 10 s (the pool, alone): POOL: ended at 8.0 s of 10.0 after 0 extra pass(es); 38 questions asked in the first,
+6 moved up by the policy; status kept; the decision is Qb7 (+3) (by chase: step_after+step_least, answer Qb7 MATCH); inner agendas 824, inner questions 11068
+(76.4a: 267 / 3743; 76.3 (f): 1015 / 15347). OBS loop-2 batch (rand14_10 .. rand17_10 at 15 s in the pool, the question log to a fresh file, graded by Stockfish depth
+14 in a separate process; wall 76 s): OBS prior grade: 40 decisions graded by Stockfish (depth 14) over 40 agendas: RIGHT 32, UNKNOWN 2, WRONG 6; OBS prior grade by
+proof: proved RIGHT 32, proved WRONG 3, unproved WRONG 3, none 2 (76.4a: proved RIGHT 31, proved WRONG 2, unproved RIGHT 1, unproved WRONG 4) -- the same six WRONG
+(2CEDb Qxg7, 4E4iU Kg8, 9QsbL Nc4, KSMKJ gxh5, L2luA Ra5, r3oph Rxd1+); both proofs 76.4a did not reach in 15 s are reached: 0QxXi's Qf7 (RIGHT) and KSMKJ's gxh5
+(WRONG) are chase claims again, as at 76.3 (f).
