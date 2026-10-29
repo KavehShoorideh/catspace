@@ -34885,3 +34885,43 @@ FINDINGS: `legal` not yet proved equal to the kernel's legalMove (76.2 (a)); the
 material at the count budget (direct identity checks used); the prefilter's fork-target order is nondeterministic between runs (5 of 40; sets agree). Kaveh: "keep going as planned" ->
 76.2 (legal / terminal / goal proved against the kernel; Game through the certified kernel with the spec as the test oracle; the RULE shelf in the store; the Rust second copies routed) and
 76.3 (the surprise loop in the engine: counterexamples permanent and shrunk, evidence.uses from the tally, the oldest-item pick) launched as one agent under docs/AGENT_BRIEF.md.
+
+
+## 2026-10-28 17:32 -- plan 76.2 (a) `legal` PROVED: the generated spec's legal moves ARE the kernel's `legalMove`; mate, stalemate, the fifty-move draw and the goals the kernel's; the terminal sound but for one conjecture (branch worktree-agent-ad149634c92619751)
+lean/ideas/Ideas/Spec/LegalEquiv.lean (hand-written, BY REASONING; 1905 lines, 125 theorems): `legal_iff` -- on every position where the side to move has one king
+(`Chess.exactlyOneKing`) and the e.p. square stands where the rule puts it (`EpPlaced`: rank 6 with White to move, rank 3 with Black), the spec's `legal p c mv` holds
+exactly when c is the side to move and mv is the term (`termOf`) of a move `Chess.legalMove` accepts, or c is the other side and mv is noop; `legal_iff_reachable` --
+on every reachable position, no hypothesis left (`Chess.reachable_positionInvariant`, `reachable_epPlaced` proved here); `legal_moveOf` (the move binding reads every
+legal term back to its kernel move). With NextEquiv (76.1: the next state = `applyMove` on pseudo-legal moves) the generated spec is a certified model of the kernel
+for moves and states. WHY THE TWO HYPOTHESES (both hold on reachable positions): a side with no king is in check for the kernel (`inCheckB`: none -> true) and never
+exposed for the spec; a misplaced e.p. square lets the spec take en passant (its `ep_victim` reads no rank) where the kernel has no captured square.
+HOW (the closed forms, each by reasoning): a step is a unit vector and a slide a ray (`step_iff`, `slide_iff`); the kernel's rook / bishop / queen lines are the same
+rays (`rook_line_iff`, `bishop_line_iff`, `ray_clear`: `betweenB` read as arithmetic, `split_ifs` on `absDiff`), the knight's jump and the king's step the kernel's
+geometry (`knightJump_iff`, `kingStep_iff`, `pawnStep_iff`); so THE ATTACK IS THE KERNEL'S FOR EVERY KIND (`attackBy_iff`; 76.0 proved the rook's alone),
+`attacked_iff` (= `Chess.isAttacked`), `check_iff`; the moves the kernel's pseudo-legal moves (`moveBy_iff`, `enPassant_of_kernel` / `kernel_of_enPassant`,
+`castle_iff` = `pseudoLegal` + `castleSafeSquares`, `candidate_iff`); legality's counterfactual board `after` IS the spec's own next board (`after_iff_nextCell`),
+hence the kernel's (76.1's `applyMoveSpec_applyMove`); the spec's `exposed` IS the kernel's check after the move (`exposed_iff_inCheck_move`,
+`exposed_iff_inCheck_promotion`: the promotion's board differs from the spec's at one square, the mover's own unit, no king; `isAttacked_iff_exposedR`). The rule
+tables read by their rows as in NextEquiv; no position or square pair enumerated; no `decide`, no `native_decide`, no `interval_cases`, no `sorry`.
+THE END OF THE GAME: `hasMove_iff` (= `legalMoves p ≠ []`), `mate_iff` (= `Chess.checkmate`), `stalemate_iff` (= `Chess.stalemate`), `mate_iff_mated` /
+`stalemate_iff_stalemated` (= the machinery's `Ideas.Game.chess`), `drawByFiftyMoves_iff` (= `Chess.fiftyMoveClaimable` and a legal move), the repetition through the
+record (76.1's `drawByRepetition_kernel`); `goal_win_iff` / `goal_loss_iff` (a side scores 100 / 0 exactly when `Chess.gameStatus` of the record's history says it
+won / lost). THE TERMINAL, the status of each direction: `terminal_sound` PROVED -- on a sound record, one king each side standing apart, a position the spec ends is
+one `Chess.gameStatus` ends, EXCEPT POSSIBLY a `draw` by the criterion's knight clause (K+N against kings and queens): a CONJECTURE, the store's new entry `dead
+position (the knight clause)` (CLOSING, CONJECTURE; obstacle: an invariant over every continuation in which the queens move and may be taken -- the bishops' colour
+argument does not carry to a knight; Lean has it in the position only, Ideas.InsufficientMaterial). `terminal_complete` PROVED -- a position `Chess.gameStatus` ends
+is one the spec ends or a FIDE dead position: the converse of `terminal_sound` FAILS beyond the material criterion (a locked pawn chain is dead, not the spec's
+draw) -- the spec is the engine's (python-chess's) rule there, not FIDE 5.2.2: the two terminals are not equal, and that is the exact obstacle (a finding, not a
+conjecture). `#print axioms` of legal_iff, legal_iff_reachable, mate_iff, stalemate_iff, drawByFiftyMoves_iff, goal_win_iff, goal_loss_iff, terminal_sound,
+terminal_complete, attackBy_iff, check_iff, hasMove_iff: [propext, Classical.choice, Quot.sound] -- no sorryAx, no Lean.ofReduceBool. Ideas.lean imports it;
+`lake build`: Build completed successfully (6130 jobs).
+LEAN_INDEX rebuilt: OBS indexed 955 theorems/lemmas (179 open) and 744 documented defs in 81 files; 411 cited by code -> docs/LEAN_INDEX.md.
+NEGATIVE CONTROL (not committed): the spec's kingside castling without the king's own square among `castling_safe` (castling out of check allowed), regenerated
+into Chess.lean -> `lake build Ideas.Spec.LegalEquiv` fails (castlingSafe_iff: no applicable constructor); the true spec regenerated byte-identical, the library
+builds again.
+THE GUARD (no engine path touched), the branch against the plan 76 parent snapshot, --jobs 11: OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces / read sets / leaf
+verdict lists / word lists / provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s,
+16 s, 59 s). OBS audit recount: rows total 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35 (CHESS FACT rows 210 -> 210). OBS lemma store validate:
+entries 112, patterns 29; uncatalogued 0; problems 0. OBS ontology validate: problems 0.
+OBS gate engine --only: test_rules_shelf 3/0/0/0 3.5 s (new; its Lean test marked slow, run); test_plan73 9/0/0/0 13.9 s; test_lean_index 2/0/0/0 199.7 s.
+scripts/gate.py ENGINE_NAMES gains test_rules_shelf.

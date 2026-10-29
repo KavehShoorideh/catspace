@@ -48,3 +48,4 @@ import Ideas.Spec.Binding
 import Ideas.Spec.Chess
 import Ideas.Spec.NextEquiv
 import Ideas.Spec.DeadPosition
+import Ideas.Spec.LegalEquiv
