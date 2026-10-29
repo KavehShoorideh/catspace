@@ -819,7 +819,7 @@ struct Cand { uci: String, mv: Move, why: Vec<&'static str>, rule: (i64, i64), i
 
 /// A finding asked under a what-if (its key carries the square taken off the board: SAFE, JOB, RECAP "with X gone").
 fn whatif(f: &Finding) -> bool { matches!(f.kind, "SAFE" | "JOB" | "RECAP") && f.key.rsplit('|').next().map_or(false, |g| !g.is_empty()) }
-fn gain_of(m: &Move) -> i64 { m.capture().map_or(0, val) + m.promotion().map_or(0, |r| val(r) - 1) }
+fn gain_of(m: &Move) -> i64 { m.capture().map_or(0, val) + m.promotion().map_or(0, |r| val(r) - crate::valuation::pawn()) }
 fn touched_of(m: &Move) -> Bitboard {
     let mut t = Bitboard::from(m.to());
     if let Some(f) = m.from() { t |= Bitboard::from(f); }

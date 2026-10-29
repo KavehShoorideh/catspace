@@ -4088,12 +4088,13 @@ class Agenda:
         board after it, does the line END with it, the exchange's CREDIT to them there)])]. A line is the legal captures on the square, the cheapest piece first, each side going on while going on
         gains (the swap-list's optimal stop). The credit is f[i+1], what the swap-list already gives them from that board on (0 after the capture that ends the line).
         plan 72.7 step 2a: read on the handle (RBoard); the boards of the lines are RBoards (their agenda is built from their FEN and turn).
-        plan 76.2 (b): THE LINE IS THE RUST CORE'S (`Pos.principal_lines`, beside its `see`: the squares, the captures, the stop and the credits), the valuation's worths passed
-        in; the Python swap list it replaced is the test oracle (tests/test_rules_shelf.py). Here only the boards are pushed and the captures named."""
+        plan 76.2 (b): THE LINE IS THE RUST CORE'S (`Pos.principal_lines`, beside its `see`: the squares, the captures, the stop and the credits), by the valuation's
+        worths (plan 76.5: the core's one table, the store's entry); the Python swap list it replaced is the test oracle (tests/test_rules_shelf.py). Here only the
+        boards are pushed and the captures named."""
         b_rb = RB.RBoard(P2)
         BV.install_terms()
         lines = []
-        for sq, ucis, credits in P2.principal_lines([W.base.worth(chess.Piece(k, chess.WHITE)) for k in chess.PIECE_TYPES]):
+        for sq, ucis, credits in P2.principal_lines():
             c_rb, caps = b_rb, []
             for i, u in enumerate(ucis):
                 m = chess.Move.from_uci(u)

@@ -30,15 +30,16 @@ mod gdl;
 mod regression;
 mod pyboard;
 mod gdl_chess;
+pub(crate) mod valuation;          // plan 76.5: the store's valuation, the one table every worth below reads
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
 static NODES: AtomicU64 = AtomicU64::new(0);
 use shakmaty::{fen::Fen, CastlingMode, Chess, Color, FromSetup, Move, Position, Role, Square, Piece};
 
-fn value(role: Role) -> f64 {
-    match role { Role::Pawn => 1.0, Role::Knight => 3.0, Role::Bishop => 3.0, Role::Rook => 5.0, Role::Queen => 9.0, Role::King => 100.0 }
-}
+/// A unit's worth as the frame episode counts it: the store's valuation (plan 76.5, valuation.rs). The royal's worth there is 0 (the old table's king
+/// counted 100): a frame's kings are never captured, so every value the episode compares moves by the same constant and its differences are unchanged.
+fn value(role: Role) -> f64 { valuation::worth(role) as f64 }
 
 fn parse(fen: &str) -> Option<Chess> {
     let f: Fen = fen.parse().ok()?;
@@ -119,7 +120,7 @@ fn episode(pos: &Chess, ids: &[i32], side: Color, depth: u32, mut alpha: f64, mu
     best.unwrap_or(stand)
 }
 
-fn cap_value(m: &Move) -> f64 { m.capture().map(value).unwrap_or(0.0) + if m.is_promotion() { 8.0 } else { 0.0 } }
+fn cap_value(m: &Move) -> f64 { m.capture().map(value).unwrap_or(0.0) + if m.is_promotion() { valuation::promotion_stake() as f64 } else { 0.0 } }
 
 fn gives_check(pos: &Chess, m: &Move) -> bool { let mut p = pos.clone(); p.play_unchecked(m); p.is_check() }
 
@@ -159,13 +160,13 @@ fn relation(pos: &Chess, name: &str, a: &[i32], m: Option<&Move>) -> bool {
         "defends" => match (sq(a[0]), sq(a[1]), piece(a[0]), piece(a[1])) { (Some(f), Some(t), Some(x), Some(y)) => x.color == y.color && b.attacks_from(f).contains(t), _ => false },
         "aligned" => match (sq(a[0]), sq(a[1])) { (Some(f), Some(t)) => f != t && (f.file() == t.file() || f.rank() == t.rank() || (f.file() as i32 - t.file() as i32).abs() == (f.rank() as i32 - t.rank() as i32).abs()), _ => false },
         "between" => match (sq(a[0]), sq(a[1]), sq(a[2])) { (Some(x), Some(f), Some(t)) => shakmaty::attacks::between(f, t).contains(x) && (shakmaty::attacks::between(f, t) & b.occupied()).count() == 1, _ => false },
-        "worth_ge" => match (piece(a[0]), piece(a[1])) { (Some(x), Some(y)) => value(x.role) >= value(y.role), _ => false },
+        "worth_ge" => match (piece(a[0]), piece(a[1])) { (Some(x), Some(y)) => valuation::order_key(x.role) >= valuation::order_key(y.role), _ => false },      // (by worth, the royal above every unit)
         "attacked" => match (sq(a[0]), piece(a[0])) { (Some(s), Some(p)) => b.attacks_to(s, !p.color, b.occupied()).any(), _ => false },
         "defended" => match (sq(a[0]), piece(a[0])) { (Some(s), Some(p)) => b.attacks_to(s, p.color, b.occupied()).any(), _ => false },
         "slides" => piece(a[0]).map(|p| matches!(p.role, Role::Bishop | Role::Rook | Role::Queen)).unwrap_or(false),
         "gives_check" => m.map(|mv| gives_check(pos, mv)).unwrap_or(false),
         "captures" => m.map(|mv| mv.is_capture()).unwrap_or(false),
-        "captures_worth_ge" => match (m, piece(a[0])) { (Some(mv), Some(p)) => mv.capture().map(|r| value(r) >= value(p.role)).unwrap_or(false), _ => false },
+        "captures_worth_ge" => match (m, piece(a[0])) { (Some(mv), Some(p)) => mv.capture().map(|r| valuation::order_key(r) >= valuation::order_key(p.role)).unwrap_or(false), _ => false },
         "lands_attacked" => m.map(|mv| { let mut p2 = pos.clone(); p2.play_unchecked(mv); p2.board().attacks_to(mv.to(), p2.turn(), p2.board().occupied()).any() }).unwrap_or(false),
         "stays_aligned" => match (m, sq(a[0])) { (Some(mv), Some(t)) => { let f = mv.to(); f != t && (f.file() == t.file() || f.rank() == t.rank() || (f.file() as i32 - t.file() as i32).abs() == (f.rank() as i32 - t.rank() as i32).abs()) && (shakmaty::attacks::between(f, t) & { let mut p2 = pos.clone(); p2.play_unchecked(mv); p2.board().occupied() }).is_empty() }, _ => false },
         _ => false,
@@ -208,9 +209,9 @@ fn nodes() -> u64 { NODES.swap(0, Ordering::Relaxed) }
 // sample (Kaveh 2026-10-08: "some things need to be sent out to the Rust layer"). Piece values as the kernel's
 // `pieceValue` (king 0).
 
-fn kernel_value(role: Role) -> i64 {
-    match role { Role::Pawn => 1, Role::Knight => 3, Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 }
-}
+/// plan 76.5: the worth of a unit kind is the store's valuation (valuation.rs) -- the kernel's `pieceValue` is the HAND entry's table (Lean holds it as a
+/// valuation, the obligation in lemmas/material.json), not a second definition here.
+fn kernel_value(role: Role) -> i64 { valuation::worth(role) }
 
 pub(crate) fn kernel_material(pos: &Chess, side: Color) -> i64 {
     let b = pos.board();
@@ -280,7 +281,7 @@ pub(crate) fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: 
         if depth == 0 || depth + 4 < SETTLE_DEPTH { return if us { -1000 } else { 1000 }; }   // conservative
         let mut best = -10000;
         for m in ms {
-            let g = m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 };
+            let g = m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { valuation::promotion_stake() } else { 0 };
             let q = after(pos, &m);
             let v = g - settle_d(&q, g - beta, g - alpha.max(best), !us, depth - 1);
             if v > best { best = v; if best >= beta { return best; } }
@@ -297,9 +298,10 @@ pub(crate) fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: 
     if depth == 0 { return alpha; }
     let mut caps: Vec<Move> = all.into_iter()
         .filter(|m| m.is_capture() || m.promotion() == Some(Role::Queen)).collect();   // promotions count
-    caps.sort_by_key(|m| -(m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 }));
+    let promo = valuation::promotion_stake();
+    caps.sort_by_key(|m| -(m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { promo } else { 0 }));
     for m in caps {
-        let g = m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 };
+        let g = m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { promo } else { 0 };
         let q = after(pos, &m);
         // THE MAGNITUDE BOUND AT THE LEAF (Kaveh 2026-10-11: "the most I can win is a knight"; Lean
         // Ideas.ExchangeLocal.seeXB_le_value for the exchange): a capture that gives no check wins at most its victim --
@@ -481,7 +483,7 @@ pub(crate) fn escape_set(q: &Chess, us: Color, t: Square) -> (shakmaty::Bitboard
     let Some(tp) = b.piece_at(t) else { return (shakmaty::Bitboard::EMPTY, shakmaty::Bitboard::EMPTY) };
     let them = tp.color;
     let occ_wo = b.occupied().without(t);
-    let tv = kernel_value(tp.role).max(1);
+    let tv = kernel_value(tp.role).max(valuation::unit());
     let reach = shakmaty::attacks::attacks(t, tp, b.occupied()) & !b.by_color(them);
     let mut safe = shakmaty::Bitboard::EMPTY;
     for e in reach {
@@ -496,7 +498,7 @@ pub(crate) fn escape_set(q: &Chess, us: Color, t: Square) -> (shakmaty::Bitboard
 
 fn safe_escapes(q: &Chess, us: Color, t: Square) -> i64 { escape_set(q, us, t).0.count() as i64 }
 
-/// Does some piece of theirs (worth 3 or more) have no safe escape and stand where we attack it or attack all its
+/// Does some piece of theirs (worth more than a pawn) have no safe escape and stand where we attack it or attack all its
 /// escapes -- the cornering question answered with bitboards (2026-10-08: running the Ascent rules for every candidate
 /// at every node made the chains too slow).
 fn corners_any(q: &Chess, us: Color, z: Option<shakmaty::Bitboard>) -> bool {
@@ -504,7 +506,7 @@ fn corners_any(q: &Chess, us: Color, z: Option<shakmaty::Bitboard>) -> bool {
     let them = !us;
     for sq in b.by_color(them) & z.unwrap_or(shakmaty::Bitboard::FULL) {
         let Some(p) = b.piece_at(sq) else { continue };
-        if p.role == Role::King || kernel_value(p.role) < 3 { continue; }
+        if p.role == Role::King || !valuation::more_than_pawn(kernel_value(p.role)) { continue; }
         let (safe, reach) = escape_set(q, us, sq);
         if !safe.is_empty() || reach.is_empty() { continue; }
         if b.attacks_to(sq, us, b.occupied()).any() { return true; }
@@ -889,7 +891,7 @@ fn leaf_value(q: &Chess, side: Color, alpha: i64, beta: i64, ix: Option<&Idx>) -
         if ms.is_empty() { return mat - 1000; }
         let mut best = -10000;
         for e in ms {
-            let g = e.capture().map(kernel_value).unwrap_or(0) + if e.is_promotion() { 8 } else { 0 };
+            let g = e.capture().map(kernel_value).unwrap_or(0) + if e.is_promotion() { valuation::promotion_stake() } else { 0 };
             let q2 = after(q, &e);
             let ix2 = idx_after(ix, &q2, &e, side);
             let theirs = Idx { us: ix2.them, them: ix2.us };
@@ -1539,7 +1541,7 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
         let winning_capture = m.is_capture() && rules::threats_of(&pos, us).get(&(m.to() as u8)).map_or(false, |g| *g > 0);
         if q.is_check() || (m.is_capture() && !winning_capture) {
             let mut big: Vec<(Square, i64)> = q.board().by_color(!us).into_iter()
-                .filter_map(|sq| q.board().piece_at(sq).map(|p| (sq, kernel_value(p.role)))).filter(|(_, v)| *v >= 5).collect();
+                .filter_map(|sq| q.board().piece_at(sq).map(|p| (sq, kernel_value(p.role)))).filter(|(_, v)| *v >= valuation::worth(Role::Rook)).collect();
             big.sort_by(|a, b| b.1.cmp(&a.1));
             if let Some(&(t, v)) = big.first() {
                 let focus = [t];
@@ -1606,7 +1608,7 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
             }
         }
         if m.role() == Role::Pawn && m.to().rank() == (if us == Color::White { shakmaty::Rank::Seventh } else { shakmaty::Rank::Second }) {
-            claim("promotion", 8, vec![m.to().to_string()]);
+            claim("promotion", valuation::promotion_stake(), vec![m.to().to_string()]);
         }
     }
     Ok(out)
@@ -1859,6 +1861,9 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_see_threats, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_harass, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
+    m.add_function(wrap_pyfunction!(valuation::set_valuation, m)?)?;
+    m.add_function(wrap_pyfunction!(valuation::valuation, m)?)?;
+    m.add_function(wrap_pyfunction!(valuation::valuation_state, m)?)?;
     m.add_function(wrap_pyfunction!(gdl_chess::spec_load, m)?)?;
     m.add_function(wrap_pyfunction!(gdl_chess::spec_loaded, m)?)?;
     m.add_function(wrap_pyfunction!(gdl_chess::spec_names, m)?)?;

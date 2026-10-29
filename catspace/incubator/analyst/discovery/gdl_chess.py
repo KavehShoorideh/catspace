@@ -531,13 +531,11 @@ def native_bindings(prog: "GDL.Program | None" = None) -> list:
 
 
 def native():
-    """The native core with rules/chess.gdl loaded (its TEXT read here, the file the source; the shelf's binding table; the certified relations; the store's material
-    worth for the 'exchange from' law), once per process."""
+    """The native core with rules/chess.gdl loaded (its TEXT read here, the file the source; the shelf's binding table; the certified relations), once per process.
+    The 'exchange from' law's worths are the core's valuation (plan 76.5: the store's entry, set once in the core -- lemma_store.install_valuation)."""
     if _NATIVE[0] is None:
         import analyst_core as A
-        from catspace.incubator.analyst.discovery import lemma_store as LS
-        worth = LS.goal_kinds().valuation.worth
-        A.spec_load(SPEC.read_text(), native_bindings(), list(CERTIFIED), LOCATION_SORTS, CLOCK_LIMIT, [worth.get(k, 0) for k in "pnbrqk"])
+        A.spec_load(SPEC.read_text(), native_bindings(), list(CERTIFIED), LOCATION_SORTS, CLOCK_LIMIT)
         _NATIVE[0] = A
     return _NATIVE[0]
 

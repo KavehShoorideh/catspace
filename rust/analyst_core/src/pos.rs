@@ -118,12 +118,11 @@ impl Pos {
     }
     /// plan 76.2 (b) THE EXCHANGE'S PRINCIPAL LINES (agenda.py `_principal_captures`, plan 64.0; its Python twin is the test oracle): the squares of the other side's
     /// units (no king) the side to move attacks whose static exchange (`see`, the mirror of Lean Ideas.ExchangeLaw.seeXB) is the best and positive, a1 first (a tie is
-    /// a choice of ours); on each THE LINE -- the LEGAL captures on the square (what is pushed must be a move), the cheapest capturer first (`worth`: the valuation's
-    /// worth of each unit kind, pawn .. king, passed in; then the uci), at most 12 captures -- cut where the swap list stops (each side goes on while going on gains).
+    /// a choice of ours); on each THE LINE -- the LEGAL captures on the square (what is pushed must be a move), the cheapest capturer first (by the valuation's
+    /// worth, valuation.rs: plan 76.5's one table; then the uci), at most 12 captures -- cut where the swap list stops (each side goes on while going on gains).
     /// -> [(square, the line's ucis up to its stop, the exchange's credit to them after each capture: f[i+1])].
-    fn principal_lines(&self, worth: Vec<i64>) -> PyResult<Vec<(u8, Vec<String>, Vec<i64>)>> {
-        if worth.len() != 6 { return Err(PyValueError::new_err("worth: one value per unit kind, pawn .. king")); }
-        let w = |r: Role| -> i64 { worth[r as usize - 1] };
+    fn principal_lines(&self) -> PyResult<Vec<(u8, Vec<String>, Vec<i64>)>> {
+        let w = |r: Role| -> i64 { crate::valuation::worth(r) };
         let me = self.pos.turn();
         let b = self.pos.board();
         let (mut best, mut sqs): (u32, Vec<Square>) = (0, vec![]);

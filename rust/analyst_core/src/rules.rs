@@ -26,9 +26,8 @@ ascent! {
     best(t, g) <-- gain(t, _), agg g = max(x) in gain(t, x);
 }
 
-pub(crate) fn val(role: Role) -> i64 {
-    match role { Role::Pawn => 1, Role::Knight => 3, Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 }
-}
+/// The worth of a unit kind: the store's valuation (plan 76.5, valuation.rs -- one table for the exchange, the threats, regress.rs and vocab.rs).
+pub(crate) fn val(role: Role) -> i64 { crate::valuation::worth(role) }
 
 /// The static exchange is the Rust MIRROR of the verified exchange law -- Lean: Ideas.ExchangeLaw.seeXB (the x-ray tier,
 /// the capture game Ideas.Exchange.cheapestXF, nonnegative by Ideas.Exchange.cheapestXF_nonneg); its Python prototype
@@ -54,11 +53,11 @@ pub fn see(b: &shakmaty::Board, t: Square, us: Color) -> i64 {
     loop {
         let atk = b.attacks_to(t, side, occ) & occ & b.by_color(side);
         // the least valuable attacker; a king only if the other side has no attacker left on t
-        let pick = atk.into_iter().filter_map(|s| b.piece_at(s).map(|p| (s, p.role))).min_by_key(|(s, r)| (if *r == Role::King { 100 } else { val(*r) }, *s as u32));
+        let pick = atk.into_iter().filter_map(|s| b.piece_at(s).map(|p| (s, p.role))).min_by_key(|(s, r)| (crate::valuation::order_key(*r), *s as u32));
         let Some((s, r)) = pick else { break };
         if r == Role::King && (b.attacks_to(t, !side, occ.without(s)) & occ.without(s) & b.by_color(!side)).any() { break; }
         if let Some(v) = on_square { gains.push(v - gains.last().copied().unwrap_or(0)); }
-        on_square = Some(if r == Role::King { 1000 } else { val(r) });
+        on_square = Some(val(r));                  // (a royal capturer is never taken back: it captures only when nothing of the other side can)
         occ = occ.without(s);
         side = !side;
     }
@@ -239,7 +238,7 @@ pub fn trapped_unattacked(q: &Chess, us: Color) -> Vec<(u8, i64)> {
     for sq in q.board().by_color(them) {
         let Some(p) = q.board().piece_at(sq) else { continue };
         let v = val(p.role);
-        if v < 3 || p.role == Role::King || here.contains_key(&(sq as u8)) { continue; }
+        if !crate::valuation::more_than_pawn(v) || p.role == Role::King || here.contains_key(&(sq as u8)) { continue; }
         let mut any_move = false;
         let mut trapped = true;
         for mv in q.legal_moves() {

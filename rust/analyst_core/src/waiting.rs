@@ -233,7 +233,7 @@ pub fn escapes(q: &Chess, us: Color, t: Square) -> Bitboard {
         }
     }
     let occ_wo = occ.without(t);
-    let tv = kernel_value(tp.role).max(1);
+    let tv = kernel_value(tp.role).max(crate::valuation::unit());
     dests.into_iter().filter(|e| {
         let ours = b.attacks_to(*e, us, occ_wo);
         let theirs = b.attacks_to(*e, them, occ_wo);
@@ -263,7 +263,7 @@ fn cornering(pos: &Chess, m: &Move, q: &Chess, now: &HashMap<u8, i64>, before: &
         // positions' tactics, 6 confirmed by Stockfish, were lost when the check stopped counting against escapes) --
         // two frames from one move, the king's and the piece's
         if attacked && (newly || esc < esc0 || (!king && q.is_check())) { push(name, vec![t], goal); }
-        else if !attacked && esc == 0 && esc0 > 0 && !king && kernel_value(p.role) >= 3 { push(name, vec![t], goal); }
+        else if !attacked && esc == 0 && esc0 > 0 && !king && crate::valuation::more_than_pawn(kernel_value(p.role)) { push(name, vec![t], goal); }
         else if !attacked && king && esc == 0 && esc0 > 0 { push(name, vec![t], goal); }   // a quiet move taking the last flight
     }
 }
@@ -499,7 +499,7 @@ pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache, base: &Hints, deep: bool
         BUDGET.store(u64::MAX, Ordering::Relaxed);
         if spent { tally(A_COND_CONTROL, 0); return None; }            // unknown what the change wins alone: refuse it
         let mate = s.goal >= MATE_GOAL;
-        if mate && alone >= 8 { tally(A_COND_CONTROL, 0); return None; } // a promotion (8) or a queen: the change, not the seed
+        if mate && alone >= crate::valuation::promotion_stake() { tally(A_COND_CONTROL, 0); return None; } // a promotion (its stake) or a queen: the change, not the seed
         let goal = if mate { s.goal } else { s.goal + alone };
         let (ok, rec, n, spent, tier) = prove_t(&p2, &s.uci, &s.focus, goal, cache.get(&Some(*a)).cloned(), deep);
         let on = on_ref(a);

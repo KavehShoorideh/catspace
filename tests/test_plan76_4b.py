@@ -229,11 +229,11 @@ def test_76_4b_b_illegal_input_is_refused():
     with pytest.raises(ValueError):
         A.spec_goal("x", "capture", [None] * 6, "white", ("no such law", [], 1, "attack", [None] * 5))
     with pytest.raises(ValueError):
-        A.spec_load("(<= p (not q)) (<= q (not p))", [], [], ("file", "rank"), 100, [1, 3, 3, 5, 9, 0])      # not stratified
+        A.spec_load("(<= p (not q)) (<= q (not p))", [], [], ("file", "rank"), 100)      # not stratified
     with pytest.raises(ValueError):
-        A.spec_load("(<= (p ?x) (q ?x)", [], [], ("file", "rank"), 100, [1, 3, 3, 5, 9, 0])                  # unbalanced
+        A.spec_load("(<= (p ?x) (q ?x)", [], [], ("file", "rank"), 100)                  # unbalanced
     with pytest.raises(ValueError):
-        A.spec_load(GC.SPEC.read_text(), [x for x in GC.native_bindings() if x[0] != "true.cell"], list(GC.CERTIFIED), ("file", "rank"), 100, [1, 3, 3, 5, 9, 0])
+        A.spec_load(GC.SPEC.read_text(), [x for x in GC.native_bindings() if x[0] != "true.cell"], list(GC.CERTIFIED), ("file", "rank"), 100)
     assert A.spec_loaded() and A.regress_bb(bb, g)[0] in (True, False)       # (the refused loads left the loaded spec in place)
 
 

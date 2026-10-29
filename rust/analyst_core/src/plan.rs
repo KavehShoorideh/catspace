@@ -781,8 +781,8 @@ fn tie_better(pos: &Chess, m: &Move, cur: &Move, net: i64) -> bool {
     }
     tie_score(pos, m) > tie_score(pos, cur)
 }
-/// A capturer's place in the exchange law's order: by value, the king last.
-fn capture_order(r: Role) -> i64 { if r == Role::King { 100 } else { kernel_value(r) } }
+/// A capturer's place in the exchange law's order: by worth, the royal last (plan 76.5: the valuation's order key, no number for the king).
+fn capture_order(r: Role) -> (bool, i64) { crate::valuation::order_key(r) }
 
 /// THE NET OF A MOVE (Kaveh 2026-10-10: "with a logic-based play there should be no blunders ... whatever the blunder
 /// guard is doing should be part of the main planner's job"): the one value every decision is chosen by --
@@ -1427,7 +1427,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
     mark("pool seeds");
     // 2 TARGETS by value
     let mut armed: Vec<(i64, Square, Vec<String>)> = Vec::new();        // failing seeds kept for the arming phase
-    let mut targets: Vec<(i64, Square)> = b.by_color(them).into_iter().filter_map(|sq| b.piece_at(sq).map(|p| (val(p.role), sq))).filter(|(v, _)| *v >= 3).collect();
+    let mut targets: Vec<(i64, Square)> = b.by_color(them).into_iter().filter_map(|sq| b.piece_at(sq).map(|p| (val(p.role), sq))).filter(|(v, _)| crate::valuation::more_than_pawn(*v)).collect();
     targets.sort_by(|a, b| b.0.cmp(&a.0));
     for (v, t) in targets {
         // the STOP RULE counts only IMMEDIATE wins (2026-10-09: an armed threat -- they get a move to parry it -- stopped
@@ -1436,7 +1436,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
         // (a target's bound includes what its capture itself makes: a pawn that takes it while promoting -- 2026-10-10:
         // "r on g8 is worth 5, not more than the 5 already won" cut hxg8=Q+, which takes the rook and queens, 12)
         let promo = pos.legal_moves().iter().any(|m| m.to() == t && m.is_promotion());
-        let v_bound = if promo { v + 8 } else { v };
+        let v_bound = if promo { v + crate::valuation::promotion_stake() } else { v };
         // (a STRICT surplus stops: an equal target may hold a plain capture -- 2026-10-11, "Bh5 wins 3 by force" cut the
         // bishop target where cxd4 simply took it; Qg4 "wins 3" cut Kxg2)
         let surplus = if STRICT_STOP.load(Ordering::Relaxed) { have > v_bound.min(MATE_GOAL) } else { have >= v_bound.min(MATE_GOAL) };

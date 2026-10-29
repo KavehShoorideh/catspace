@@ -564,8 +564,8 @@ fn strict(b: &shakmaty::Board, side: Color) -> Option<Chess> {
     Chess::from_setup(s, CastlingMode::Standard).ok()
 }
 
-/// graph.worth: p 1, n 3, b 3, r 5, q 9, k 0.
-fn worth_of(r: Role) -> u32 { match r { Role::Pawn => 1, Role::Knight | Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 } }
+/// graph.worth: the store's valuation (plan 76.5, valuation.rs).
+fn worth_of(r: Role) -> u32 { crate::valuation::worth(r) as u32 }
 
 /// regress.threat_value on a placement: the most `me` wins by the exchange on a piece of the other side (not the king) it attacks, `me` on move (`G.see`: 0 when
 /// shakmaty does not hold the board so).
@@ -742,11 +742,10 @@ fn duty_after_passer(p: &shakmaty::Board, mv: Mv, me: Color, ctx: u32, need: u32
         let ek = (a.kings() & a.by_color(!me)).last().map(|s| s as u32);
         if st.iter().any(|d| d.0 != "stopper" || Some(d.2.as_slice()) == ek.as_ref().map(std::slice::from_ref)) { continue; }
         if !st.is_empty() && !promote_defects_cached_on(&a, me, pw, true)?.is_empty() { continue; }
-        return Ok(STAKE_PROMOTE_U);
+        return Ok(crate::valuation::promotion_stake() as u32);
     }
     Ok(v)
 }
-const STAKE_PROMOTE_U: u32 = 8;
 
 type RunKey = ([u64; 8], u8, bool);
 fn run_cache() -> &'static Mutex<HashMap<RunKey, bool>> {

@@ -51,13 +51,12 @@ pub struct ChessBinding {
     move_of: FxHashMap<T, PMove>,
     readers: Vec<Option<Reader>>,
     clock_limit: u32,
-    worth: [i64; 7],                            // the store's material valuation by piece type (pawn 1 .. king 6)
-}
+}                                               // (plan 76.5: the 'exchange from' law's worths are the valuation's, valuation.rs)
 
 fn promo_index(p: u8) -> usize { match p { KNIGHT => 1, BISHOP => 2, ROOK => 3, QUEEN => 4, _ => 0 } }
 
 impl ChessBinding {
-    fn new(terms: &mut Interner, prog: &Program, bindings: &[(String, String)], clock_limit: u32, worth: [i64; 7]) -> Result<ChessBinding, String> {
+    fn new(terms: &mut Interner, prog: &Program, bindings: &[(String, String)], clock_limit: u32) -> Result<ChessBinding, String> {
         let files: [T; 8] = std::array::from_fn(|i| terms.sym(&((b'a' + i as u8) as char).to_string()));
         let ranks: [T; 8] = std::array::from_fn(|i| terms.sym(&(i + 1).to_string()));
         let kind_names = ["", "pawn", "knight", "bishop", "rook", "queen", "king"];
@@ -92,7 +91,7 @@ impl ChessBinding {
             let Some((_, rd)) = READERS.iter().find(|(nm, _)| nm == rust) else { return Err(format!("{rel}: its Rust binding {rust} has no reader in gdl_chess.rs")) };
             readers[r as usize] = Some(*rd);
         }
-        Ok(ChessBinding { files, ranks, white, black, kinds, noop, kingside, queenside, clock, zero, file_of, rank_of, move_term, move_of, readers, clock_limit, worth })
+        Ok(ChessBinding { files, ranks, white, black, kinds, noop, kingside, queenside, clock, zero, file_of, rank_of, move_term, move_of, readers, clock_limit })
     }
 
     fn colour(&self, white: bool) -> T { if white { self.white } else { self.black } }
@@ -258,7 +257,7 @@ impl Binding for ChessBinding {
                 let (tt, _) = y.piece_at(t)?;
                 y.piece_at(s)?;
                 if !y.is_pseudo_legal(m) { return None; }
-                let gain = self.worth[tt as usize];
+                let gain = crate::valuation::worth_pt(tt);
                 let mut after = y;
                 after.push(m);
                 let back = self.see_on(&after, t)?;
@@ -480,18 +479,16 @@ fn named_py(n: &Named) -> (usize, Option<u8>, Vec<Option<u8>>, Option<u8>, Optio
 
 // ------------------------------------------------------------------------------------------------------------------------------------------ the Python surface
 
-/// spec_load(text, bindings, certified, location_sorts, clock_limit, worth) -> (clauses, relations, strata, static relations): THE SPEC LOADED from its text
+/// spec_load(text, bindings, certified, location_sorts, clock_limit) -> (clauses, relations, strata, static relations): THE SPEC LOADED from its text
 /// (rules/chess.gdl, read by gdl_chess.py: the file is the source) with the shelf's binding table (relation, its entry's `rust` name), the certified relations,
-/// the location sorts (a file and a rank slot of a signature name a location), the clock's limit and the store's material worth (pawn .. king). Replaces a
+/// the location sorts (a file and a rank slot of a signature name a location) and the clock's limit (plan 76.5: the worths are the valuation's). Replaces a
 /// loaded spec (the cache and the goals cleared). ValueError on a description that does not parse, is not stratified, or binds a relation no reader reads.
 #[pyfunction]
-pub fn spec_load(text: &str, bindings: Vec<(String, String)>, certified: Vec<String>, location_sorts: (String, String), clock_limit: u32, worth: Vec<i64>)
+pub fn spec_load(text: &str, bindings: Vec<(String, String)>, certified: Vec<String>, location_sorts: (String, String), clock_limit: u32)
                  -> PyResult<(usize, usize, usize, usize)> {
     let mut prog = Program::load(text).map_err(|e| verr(e.0))?;
     let mut terms = std::mem::take(&mut prog.terms);
-    if worth.len() != 6 { return Err(verr("worth: one value per unit kind, pawn .. king".into())); }
-    let w: [i64; 7] = [0, worth[0], worth[1], worth[2], worth[3], worth[4], worth[5]];
-    let b = ChessBinding::new(&mut terms, &prog, &bindings, clock_limit, w).map_err(verr)?;
+    let b = ChessBinding::new(&mut terms, &prog, &bindings, clock_limit).map_err(verr)?;
     let cert: Vec<Rel> = certified.iter().map(|c| prog.rel_id(c).ok_or_else(|| verr(format!("certified {c}: no relation of the spec")))).collect::<PyResult<_>>()?;
     // every input relation and every certified one has its reader
     for r in 0..prog.nrels() {
@@ -655,6 +652,9 @@ pub fn fixes_bb(parts: Parts, goal: u32, key: (String, Option<u8>), moves: Vec<(
 /// spec_cache_clear(): the regression cache emptied (graph.CLEAR_HOOKS: with every fresh root).
 #[pyfunction]
 pub fn spec_cache_clear() -> PyResult<()> { with_engine(|e| { e.cache.clear(); Ok(()) }) }
+
+/// plan 76.5: the regression's cache emptied when the valuation changes (set_valuation), if a spec is loaded (no error when none is).
+pub(crate) fn cache_clear_if_loaded() { if let Ok(mut g) = ENGINE.lock() { if let Some(e) = g.as_mut() { e.cache.clear(); } } }
 
 /// spec_stats() -> (regressions read, served from the cache, cached now).
 #[pyfunction]

@@ -35649,3 +35649,41 @@ keeps its own worths (lib.rs value / kernel_value, rules.rs val, words.rs worth_
 surprise_loop, watch. Run with the units mixed, 25 decisions moved (loop-2 34 / 3 vs 32 / 7 the same sitting) -- none creditable to the worths. The hand entry in the store (75.2) was the
 one definition for the AGENDA; the words and the kernel never read it. NEXT, for Kaveh's word: the valuation as ONE definition read by Rust too (a Rust change); then the mined valuation can
 be judged; checkers (docs/PLAN76_4D_CHECKERS_BRIEF.md) after.
+
+
+## 2026-10-29 08:16 -- plan 76.5 (a) THE RUST CORE TAKES THE VALUATION AT INIT: one process-wide table set from the store's entry; every Rust worth reads it; the store loaded on first use (branch worktree-agent-a26115eb81d6af9dc)
+THE PARENT SNAPSHOT of this plan (main f4c23f6b, ten + wide, tiers 0 and 2, count budget, PYTHONHASHSEED=0, --jobs 11): artifacts/experiments/plan76_5/parent (walls ten t0 8 s,
+ten t2 31 s, wide t0 22 s, wide t2 78 s).
+THE TABLE: rust/analyst_core/src/valuation.rs (new) -- the worth of each unit kind, the unit of a gain and the royal unit in process-wide atomics, written by ONE pyfunction
+`analyst_core.set_valuation(worths, unit, royal)` (worths by the kernel's letters p n b r q k, each >= 0; unit >= 1; royal a letter; ValueError otherwise; a table that differs
+from the one set before empties the core's worth-dependent caches: the word cache, the passer memos, the reach cache, regress's cache, the spec's regression cache), read
+back by `valuation()`, its state by `valuation_state()` (no load). NO TABLE IS WRITTEN IN RUST: THE STORE IS LOADED ON FIRST USE -- a worth read before the call imports the
+lemma store and calls `lemma_store.install_valuation()` (THE ONE PLACE: the entry the GOAL entries count in, `goal_kinds().valuation`, handed to set_valuation); nothing calls it
+at import; a read never sees a default -- a store that does not set the table raises (a Rust panic: PanicException in Python). The quantities the sites wrote as literals are
+derived from the table: `pawn()` (an en-passant victim, the unit a promotion replaces), `promotion_stake()` (the most a promotion may place -- queen, rook, bishop, knight -- less
+the pawn: 8 for the hand worths), `more_than_pawn(w)` (the old `>= 3` / `< 3` on a worth: a piece, not a pawn), `piece_floor()` (the least worth above the pawn's: the old 3 on a
+GAIN, a threat worth a piece), `unit()` (the old `.max(1)`), `order_key(r)` (by worth, the royal above every unit: the old king 100 / 1000 in a capture ORDER -- a key, no number).
+THE RUST SITES (every one that held its own worths reads the table): lib.rs `value` (the frame episode's f64 worth: its king 100 became the table's 0 -- a frame's kings are never
+captured, so every value the episode compares moves by one constant), `kernel_value`, `worth_ge` / `captures_worth_ge` (order_key), `cap_value` and the settle / leaf / frame
+gains (promotion_stake for the literal 8), `escape_set` (unit), `corners_any` (more_than_pawn), the threat claims' heavy targets (`>= worth(Rook)` for `>= 5`), the promotion claim
+(promotion_stake); rules.rs `val` (the table), the exchange's least attacker (order_key for the king's 100), the king's recapture value (1000 -> val: a royal capturer is never
+taken back -- it captures only when nothing can), `trapped_unattacked` (more_than_pawn); words.rs `worth_of` (the table), STAKE_PROMOTE_U (promotion_stake); regress.rs
+STAKE_PROMOTE (promotion_stake), the en-passant victim (pawn); plan.rs `capture_order` (order_key), the targets' `>= 3` (more_than_pawn), the target bound's `+ 8`
+(promotion_stake); threat.rs the edge's promotion `- 1` (pawn), the fork's `clamp(1, 3)` (unit .. piece_floor), the quiet threat's `thr >= 3` (piece_floor, both searches);
+waiting.rs `escapes` (unit), the cornering seed's `>= 3` (more_than_pawn), the change's `alone >= 8` (promotion_stake); reasoning.rs `gain_of`'s `- 1` (pawn); gdl_chess.rs the
+'exchange from' law (its own worth array gone; `spec_load` no longer takes worths); pos.rs `principal_lines` (its worth argument gone: the table). Python callers: agenda.py
+`_principal_captures` calls `principal_lines()`; gdl_chess.py `native()` loads the spec without worths; tests/test_plan76_4b.py's three refused loads without them.
+LEFT AS FINDINGS (the royal as a NUMBER where it enters arithmetic or a learned feature, not a worth of the table, whose royal is 0): lib.rs `target_profile` (king 100), plan.rs
+`val` (king 1000, printed capped at MATE_GOAL), reasoning.rs `val` (king 100), waiting.rs `gate_features` (king 10: a trained gate's input encoding) -- the terminal's stand-ins
+(Lean Ideas.ExchangeLaw.valueAt: "the king counts 100"); the terminal stake itself is a GOAL entry the core does not hold (regress.rs STAKE_MATE 100, waiting.rs MATE_GOAL 500,
+reasoning.rs MATE 1000 stay copies of it: a later plan's). vocab.rs's order of kinds (q 5 r 4 b 3 n 2 p 1: the names' order, Lean Vocabulary.kindRank) is an order, not a worth.
+A Rust build (maturin develop --release, 1 m 14 s): THE SHARED EDITABLE INSTALL POINTS AT THIS BRANCH'S CRATE.
+OBS the guard (against the parent snapshot): ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces / read sets / leaf verdict lists / word lists / provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of
+10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 9 s, 30 s, 21 s, 78 s).
+NEGATIVE CONTROL (a deliberately wrong install, never committed: install_valuation hands the core the pawn at 2, the Python readers keep the store's): OBS ten t0 10 of 10 traces,
+10 of 10 read sets, 9 of 10 leaf verdict lists, 10 of 10 word lists, 10 of 10 provenance lists differ.
+tests/test_plan76_5.py (new; (a)): a fresh process importing only the core has no table, its first worth read loads the store's entry; a store that does not set the table raises
+(PanicException) and leaves none; set_valuation refuses a table that is not one; the negative control as a test (the core set to the mined entry's table reads the balance and the
+exchange in it, the store's put back reads them back exactly).
+OBS gate engine --only: test_plan76_5 4 / 0 / 0 0.6 s; test_plan76_4b 13 / 0 / 0 1.6 s; test_plan75 11 / 0 / 0 0.6 s; test_rules_shelf 12 / 0 / 0 74.3 s; test_binder_rust
+31 / 0 / 0 0.7 s; test_regress_rust 61 / 0 / 0 0.9 s.

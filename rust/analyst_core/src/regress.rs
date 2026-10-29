@@ -11,7 +11,7 @@ use shakmaty::{attacks, Bitboard, Board, EnPassantMode, Setup};
 use std::collections::BTreeMap;
 
 const STAKE_MATE: i64 = 100;
-const STAKE_PROMOTE: i64 = 8;
+// (plan 76.5: the promotion's stake is the valuation's -- crate::valuation::promotion_stake(), the queen less the pawn of the store's table)
 
 type Def = (String, Option<u8>, Vec<u8>, String);
 type Placement = (char, u8, Option<u8>);
@@ -317,12 +317,12 @@ fn forcing_whys_on(p: &Chess, ucis: Vec<String>, stake: i64, us_white: bool, mat
         if mate_threats && mate_threat(&c, me)? { out.push(("why".into(), "threat of mate".into(), 0, 0, String::new())); continue; }
         if stake >= STAKE_MATE { out.push(r("none")); continue; }
         if m.is_capture() {
-            let v = if m.is_en_passant() { 1 } else { worth(p.board().piece_at(m.to()).map_or(Role::King, |x| x.role)) };
+            let v = if m.is_en_passant() { crate::valuation::pawn() } else { worth(p.board().piece_at(m.to()).map_or(Role::King, |x| x.role)) };
             if v >= stake { out.push(("why".into(), format!("capture {v}"), 0, 0, String::new())); continue; }
         }
         let t = threat_value(&c, me);
         if t < stake {
-            out.push(if stake <= STAKE_PROMOTE && has_pawn { r("pass") } else { r("none") });
+            out.push(if stake <= crate::valuation::promotion_stake() && has_pawn { r("pass") } else { r("none") });
             continue;
         }
         let to = m.to();

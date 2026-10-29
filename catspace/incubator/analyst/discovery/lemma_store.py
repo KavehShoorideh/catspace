@@ -325,6 +325,16 @@ class Valuation:
         """The worth of a unit (an object with `.symbol()`, the domain's piece), 0 for none."""
         return 0 if unit is None else self.worth[unit.symbol().lower()]
 
+    def by_kind(self, royal: bool = True) -> dict:
+        """plan 76.5: the worths by the kernel's unit kind (names.KIND: the board's piece types) -- the form a board reader indexes by; `royal` False leaves
+        the royal unit out (a material count over the other units)."""
+        return {NM.kind(k): w for k, w in self.worth.items() if royal or k != self.royal}
+
+    @property
+    def pawn(self) -> int:
+        """plan 76.5: the worth of the unit that promotes (names.PAWN): an en-passant victim, the unit a promotion replaces."""
+        return next(w for k, w in self.worth.items() if NM.kind(k) == NM.PAWN)
+
 
 class Goal:
     """A GOAL entry as the agenda reads it (plan 75.2 (a)). `stake` is a number, or None: the question's own (the worth of its target)."""
@@ -410,6 +420,30 @@ def goal_kinds() -> GoalKinds:
     if _GOALS[0] is not store:
         _GOALS[0], _GOALS[1] = store, GoalKinds(store)
     return _GOALS[1]
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 76.5: the valuation as one definition
+# THE VALUATION THE ENGINE READS is the one its GOAL entries count in (`goal_kinds().valuation`: `material`, HAND, unless a run points the GOAL entries at
+# another VALUATION entry -- the 76.5 experiment's `material (mined)`). Every reader takes it from here: the Python readers through `valuation()` (their
+# tables by the kernel's kind through `Valuation.by_kind`), the Rust core through `install_valuation` -- THE ONE PLACE the core's table is set from.
+# Nothing calls it at import: the core calls it itself on its first worth read (the store is loaded on first use, rust/analyst_core/src/valuation.rs), so
+# no word is ever read against a default. A process reads ONE valuation: the Python readers that keep a table (selfmine.PIECE_WORTH, graph.WORTH, the
+# modules routed in 76.5) take it at their import, so a run on another valuation is another process (the harness switches the GOAL entries, then runs).
+
+def valuation() -> Valuation:
+    """THE VALUATION THE ENGINE READS (plan 76.5): the VALUATION entry the GOAL entries count in."""
+    return goal_kinds().valuation
+
+
+def install_valuation(v: "Valuation | None" = None) -> Valuation:
+    """PLAN 76.5 THE VALUATION INTO THE NATIVE CORE: `v` (by default `valuation()`) handed to the Rust core's process-wide table
+    (`analyst_core.set_valuation(worths, unit, royal)`), which every Rust site that weighs a unit reads. The core calls this itself on its first worth read; a
+    caller that wants another table in the same process (a test's control) passes it, and puts the store's back the same way (the core empties its
+    worth-dependent caches when the table changes)."""
+    v = v if v is not None else valuation()
+    import analyst_core as AC
+    AC.set_valuation(dict(v.worth), v.unit, v.royal)
+    return v
 
 
 def _measure_problems(m: dict, at: str) -> list:

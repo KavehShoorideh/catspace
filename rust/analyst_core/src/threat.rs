@@ -285,7 +285,7 @@ fn child_state(s: &FState, m: &Move, by: Color) -> FState {
     let thr = rules::threats_arr_inc(&s.thr, &q, m, by);
     let them = rules::threats_arr_inc(&s.them, &q, m, !by);
     let mover_is_by = s.pos.turn() == by;
-    let mut d = m.capture().map_or(0, kernel_value) + m.promotion().map_or(0, |r| kernel_value(r) - 1);
+    let mut d = m.capture().map_or(0, kernel_value) + m.promotion().map_or(0, |r| kernel_value(r) - crate::valuation::pawn());
     if !mover_is_by { d = -d; }
     FState { pos: q, thr, them, edge: s.edge + d, last: Some(m.clone()) }
 }
@@ -332,6 +332,7 @@ fn forcing_moves(s: &FState, by: Color, need_left: i64, corner: bool) -> Vec<(Mo
     let king = b.king_of(!by);
     let disc_t = single_blockers(q, by, targets);
     let disc_k = king.map_or(Bitboard::EMPTY, |k| single_blockers(q, by, Bitboard::from_square(k)));
+    let floor = crate::valuation::piece_floor();          // plan 76.5: a threat worth a piece (the least worth above the pawn's; 3 for the hand worths)
     let mut out = Vec::new();
     for m in q.legal_moves() {
         let special = matches!(m, Move::Castle { .. } | Move::EnPassant { .. });
@@ -366,10 +367,10 @@ fn forcing_moves(s: &FState, by: Color, need_left: i64, corner: bool) -> Vec<(Mo
         let quiet_threat = qt && !forcing_now && !c.pos.is_check() && {
             let mut new: Vec<i16> = (0..64).filter(|x| c.thr[*x] > 0 && c.thr[*x] > s.thr[*x]).map(|x| c.thr[x]).collect();
             new.sort_unstable_by(|a, b| b.cmp(a));
-            let fork = new.get(1).map_or(false, |v| (*v as i64) >= need_left.clamp(1, 3));
+            let fork = new.get(1).map_or(false, |v| (*v as i64) >= need_left.max(crate::valuation::unit()).min(floor));
             fork || (mate_cand && (only_mate || !new.is_empty()) && mate_test(q))
         };
-        if forcing_now || c.pos.is_check() || takes_flight || quiet_threat || (quiet_cand && (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x])) { out.push((m, c)); }
+        if forcing_now || c.pos.is_check() || takes_flight || quiet_threat || (quiet_cand && (0..64).any(|x| c.thr[x] as i64 >= floor && c.thr[x] > s.thr[x])) { out.push((m, c)); }
     }
     out
 }
@@ -483,6 +484,7 @@ fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
     let paths = crate::paths::attack_paths(q, by, targets);
     let arriving: std::collections::HashSet<String> = paths.iter().filter(|a| a.kind == "direct").filter_map(|a| a.mv.clone()).collect();
     let disc_from: Vec<Square> = paths.iter().filter(|a| a.kind == "discovery").filter_map(|a| a.via).collect();
+    let floor = crate::valuation::piece_floor();          // plan 76.5: a threat worth a piece
     let mut out = Vec::new();
     for m in q.legal_moves() {
         let forcing_now = m.is_capture() || m.is_promotion();
@@ -496,7 +498,7 @@ fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
             continue;
         }
         let c = child_state(s, &m, by);
-        if forcing_now || c.pos.is_check() || (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x]) { out.push((m, c)); }
+        if forcing_now || c.pos.is_check() || (0..64).any(|x| c.thr[x] as i64 >= floor && c.thr[x] > s.thr[x]) { out.push((m, c)); }
     }
     out
 }
