@@ -265,7 +265,22 @@ def _material_defects(board: chess.Board, us: str | bool, target_sq: int) -> lis
 # ---------------------------------------------------------------------------------------------------------------- forcing, routes
 
 def threat_value(board_after: chess.Board, us: str | bool) -> int:
-    """After our move (their turn) and a pass: the most we would win by the exchange on a piece of theirs (the Rust `see`, us on move)."""
+    """After our move (their turn) and a pass: the most we would win by the exchange on a piece of theirs (the Rust `see`, us on move).
+    2026-11-03 (77.0: 13 % of the search's python-chess time was this 64-square loop): the handle's `with_turn` + `exchange` (the same reading: the best static exchange of the side
+    to move on a non-king piece it attacks); `_threat_value_py` is the oracle and the path where the kernel refuses the board."""
+    me = G.colour_of(us)
+    try:
+        P = G.handle(board_after)
+        Q = P.with_turn(me) if board_after.turn != me else P
+    except ValueError:
+        Q = None
+    if Q is not None:
+        return int(Q.exchange())
+    return _threat_value_py(board_after, us)
+
+
+def _threat_value_py(board_after: chess.Board, us: str | bool) -> int:
+    """The python-chess reading of `threat_value` (the oracle)."""
     me = G.colour_of(us)
     c = G.with_turn(board_after, me)
     best = 0
@@ -545,6 +560,9 @@ def threat_of(board: chess.Board, m: chess.Move, why: str | None, us: str | bool
 def _binds(d: chess.Board, th: Threat, stake: int, me: bool) -> int:
     """Does the threat still bind on `d` (the board after their reply, our move)? -> the value it binds at (0: it does not). Re-read on the reply's own board, never assumed."""
     if th.kind == "mate":
+        P = G.pos_of(d)                                          # 2026-11-03: the handle's mate-in-one word (the python-chess loop below where the kernel refuses the board)
+        if P is not None:
+            return STAKE_MATE if P.mates() else 0
         for mv in list(d.legal_moves):
             if d.gives_check(mv):
                 d.push(mv)
@@ -577,6 +595,49 @@ def _counter(after: chess.Board, r: chess.Move, stake: int, them: bool) -> bool:
 
 
 def parries(after: chess.Board, threat: Threat, stake: int, us: str | bool | None = None) -> tuple:
+    """plan 61 A2 (Lean `Ideas.Forcing.parries` / `parryList` / `closedList`): `after` = the board after our forcing move (their turn). PARRIES are their legal replies after which the
+    threat no longer binds (re-read on the reply's board: `_binds` < stake) plus every reply that is itself forcing against us (`_counter`); CLOSED are the rest, each with the value the
+    threat still binds at on its own board. -> ([parry moves], [(closed move, value)]). A reply outside `parries` leaves the threat bound (`Ideas.Forcing.closed_binds`)."""
+    # 2026-11-03 (77.0: 10 % of the search's python-chess time): the counter test in ONE Rust batch for the replies that are neither checks nor captures worth the stake (before: one
+    # `forcing_why` call per reply); the checks and captures from the handle's reply table; `_parries_py` is the oracle and the path where the kernel refuses the board.
+    me = (not after.turn) if us is None else G.colour_of(us)
+    them = after.turn
+    replies = list(after.legal_moves)
+    try:
+        P = G.handle(after)
+        rows = {r[0]: r for r in P.replies()}                    # uci -> (uci, dbal, check, capture, recapture, mate1)
+    except ValueError:
+        return _parries_py(after, threat, stake, us)
+    if any(r.uci() not in rows for r in replies):
+        return _parries_py(after, threat, stake, us)
+    quiet = []
+    counter = {}
+    for r in replies:
+        row = rows[r.uci()]
+        if row[2]:                                               # a check
+            counter[r] = True
+        elif row[3] and (1 if after.is_en_passant(r) else G.worth(after.piece_at(r.to_square))) >= stake:      # a capture worth the stake
+            counter[r] = True
+        else:
+            quiet.append(r)
+    whys = _forcing_batch(after, quiet, stake, them) if (ROUTES_RUST and quiet) else None
+    if whys is None:
+        whys = [forcing_why(after, r, stake, them) for r in quiet]
+    for r, why in zip(quiet, whys):
+        counter[r] = why is not None
+    par, closed = [], []
+    for r in replies:
+        d = after.copy(stack=False)
+        d.push(r)
+        v = _binds(d, threat, stake, me) if not rows[r.uci()][2] else 0
+        if v and not counter[r]:
+            closed.append((r, v))
+        else:
+            par.append(r)
+    return par, closed
+
+
+def _parries_py(after: chess.Board, threat: Threat, stake: int, us: str | bool | None = None) -> tuple:
     """plan 61 A2 (Lean `Ideas.Forcing.parries` / `parryList` / `closedList`): `after` = the board after our forcing move (their turn). PARRIES are their legal replies after which the
     threat no longer binds (re-read on the reply's board: `_binds` < stake) plus every reply that is itself forcing against us (`_counter`); CLOSED are the rest, each with the value the
     threat still binds at on its own board. -> ([parry moves], [(closed move, value)]). A reply outside `parries` leaves the threat bound (`Ideas.Forcing.closed_binds`)."""
@@ -985,12 +1046,55 @@ G.CLEAR_HOOKS.append(_COST.clear)
 
 def node_cost(board: chess.Board, stake: int, us: str | bool) -> tuple:
     """plan 61 C1: THE COST OF AN UNREAD NODE (our move on `board`) = the number of the parries of OUR BEST forcing move there (best = the fewest parries: the cheapest to read in full); 0 when
-    a move of ours mates (a leaf closed by rule) or when we have no forcing move (nothing to follow). One forcing scan and one `parries` call per forcing move. -> (cost, the move's SAN or None)."""
+    a move of ours mates (a leaf closed by rule) or when we have no forcing move (nothing to follow). -> (cost, the move's SAN or None).
+    2026-11-03 (77.0: the judge's price was a fifth of the search's python-chess time): ONE handle per node -- the mates from `Pos.mates`, the forcing reasons in ONE Rust batch for every
+    legal move (before: one Rust call per move, each building a handle), the reply counts from the handle; the parries of the few cheapest candidates as before. `_node_cost_py` is the oracle."""
     me = G.colour_of(us)
     key = (board.board_fen(), board.turn, board.castling_rights, board.ep_square, stake, me)
     hit = _COST.get(key)
     if hit is not None:
         return hit
+    b = G.with_turn(board, me) if board.turn != me else board
+    try:
+        P = G.handle(b)
+    except ValueError:                                           # a counterfactual board the kernel refuses (the side not to move in check): the python-chess body
+        _COST[key] = _node_cost_py(board, stake, us)
+        return _COST[key]
+    moves = list(b.legal_moves)
+    mates = set(P.mates())
+    if mates:
+        m0 = next(m for m in moves if m.uci() in mates)          # python-chess's legal order, as the oracle's first mating move
+        _COST[key] = (0, b.san(m0))
+        return _COST[key]
+    mt = stake >= STAKE_MATE
+    whys = _forcing_batch(b, moves, stake, me, mate_threats=mt) if ROUTES_RUST else None
+    if whys is None:
+        whys = [forcing_why(b, m, stake, me, mate_threats=mt) for m in moves]
+    cands = []
+    for m, why in zip(moves, whys):
+        if why:
+            cands.append((P.push(m.uci()).legal_count(), m.uci(), m, why))
+    cands.sort(key=lambda t: t[:2])
+    best, seen = (0, None), False
+    for _n, _u, m, why in cands[:COST_CANDIDATES]:              # (the parries are at most the legal replies: the forcing moves with the fewest replies are the ones read, a bounded scan)
+        th = threat_of(b, m, why, me)
+        if th is None:
+            n = _n
+        else:
+            after = b.copy(stack=False)
+            after.push(m)
+            n = len(parries(after, th, stake, me)[0])
+        if not seen or n < best[0]:
+            best, seen = (n, b.san(m)), True
+    _COST[key] = best
+    return best
+
+
+def _node_cost_py(board: chess.Board, stake: int, us: str | bool) -> tuple:
+    """plan 61 C1: THE COST OF AN UNREAD NODE (our move on `board`) = the number of the parries of OUR BEST forcing move there (best = the fewest parries: the cheapest to read in full); 0 when
+    a move of ours mates (a leaf closed by rule) or when we have no forcing move (nothing to follow). One forcing scan and one `parries` call per forcing move. -> (cost, the move's SAN or None)."""
+    me = G.colour_of(us)
+    key = (board.board_fen(), board.turn, board.castling_rights, board.ep_square, stake, me)
     b = G.with_turn(board, me) if board.turn != me else board
     best = (0, None)
     seen = False
@@ -999,8 +1103,7 @@ def node_cost(board: chess.Board, stake: int, us: str | bool) -> tuple:
             c = b.copy(stack=False)
             c.push(m)
             if c.is_checkmate():
-                _COST[key] = (0, b.san(m))
-                return _COST[key]
+                return (0, b.san(m))
     cands = []
     for m in b.legal_moves:
         why = forcing_why(b, m, stake, me, mate_threats=stake >= STAKE_MATE)
@@ -1014,7 +1117,6 @@ def node_cost(board: chess.Board, stake: int, us: str | bool) -> tuple:
         n = _n if th is None else len(parries(after, th, stake, me)[0])
         if not seen or n < best[0]:
             best, seen = (n, b.san(m)), True
-    _COST[key] = best
     return best
 
 

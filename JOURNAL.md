@@ -35860,3 +35860,19 @@ still in Python building python-chess boards per hypothetical position -- exactl
 _forcing_batch's Python path. The question machinery is 5-11 %, the claim store 1-5 %. DECISION: (i) the slow layer -- the claim store is 1-5 % of the time: DBSP would buy architecture
 (declarative maintenance), not speed, now; deferred, not rejected; (ii) the fast layer -- no incremental sub-project yet: port the named words to Rust first (77.1 starts there); re-profile;
 only if Rust derivation then dominates is per-node recomputation the cost and the sub-project the answer. (2) the crate experiment was not run.
+
+
+## 2026-11-03 19:45 -- the hot words, read and judged; three trimmed in the main session (Kaveh: "do it yourself")
+THE WORDS (77.0's attribution of the search's python-chess time): node_cost, threat_value, _forcing_batch, parries, race_claim, pass_claim, delayed_threat, _counter, with_turn, mates,
+with_piece. NONE VESTIGIAL: every one is live on the hot path. Judged against the principle (rules in, knowledge mined): seven are RULES or SEARCH LOGIC in Python (threat_value = the pass
++ the exchange law; parries / _counter / delayed_threat = Lean-cited forcing logic; the forcing batch; the board utilities); ONE is hand-written KNOWLEDGE -- race_claim, the passer race
+word (Race.lean twins) -- the piece the miner should reproduce as it did the K+R measure, then the HAND entry retires; ONE was a design smell -- node_cost, the judge's PRICE, ran a full
+forcing scan (one Rust call per move, each building a handle) plus a python-chess mate loop to price a node: a fifth of the python-chess time.
+CHANGED (each equal to its python-chess body, kept as the oracle `_<name>_py`): node_cost -- one handle per node, the mates from `Pos.mates`, the forcing reasons in ONE Rust batch, the
+reply counts from the handle (OBS node_cost equality: nodes 862, equal 862, differ 0); threat_value -- the handle's `with_turn` + `exchange` (OBS: nodes 1326, equal 1326; 7.9x in
+isolation); parries -- the counter test in one Rust batch per node for the quiet replies, checks and captures from the reply table, `_binds`' mate case through `Pos.mates` (OBS: pairs
+1614, equal 1614). Guard against main f892022c (ten, count budget, --jobs 8): 0 of 10 traces / read sets / leaf lists / word lists / provenance lists differ (after each edit).
+OBS discovery 30 s: python-chess 15.9 s -> 14.3 s (node_cost) -> 12.7 s (all three); questions read in the 30 s 1860 -> 2215 -> 2040 (one run each, directional); node_cost left the top
+ten; the share 47 -> 43 % because the cost MOVED: what remains is the copy-and-push of a python-chess board per reply inside parries, the forcing batch's 'pass' / 'survives' fallbacks,
+and race_claim's board walks -- not trimmable from Python: the reply loop on the Rust handle (which already holds every reply's position) is 77.1's first, now exactly scoped, job.
+Gates: test_cost61 13, test_forcing61 13, test_estimate61 17, test_discovery_vocabulary 23, test_regress 87 + 1 xfailed.
