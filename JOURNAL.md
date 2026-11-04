@@ -36029,3 +36029,26 @@ OBS cost (cProfile, five loop-2 puzzles at 15 s): delayed_threat 6.2 s / 1558 ca
   check_threat 56 us per call, every_reply 75 us.
 OBS certify run: 5 bindings, 0 disagreements (2417 / 2417 / 2404 / 2404 / 360 positions); engine gate: files 52 (the 77.1 files now in its list), passed 671, failed 0, xfailed 1,
   wall 1123.9 s.
+
+## 2026-11-04 15:10 -- plan 78 written (THE END-TO-END SYSTEM, Kaveh: end to end first, then the layers; modular, chess-free; every perfect-information variant; room for imperfect
+## information; the slow parts and the loops in Rust); 78.1 THE GAME LAYER built
+
+Plan 78 in docs/ANALYST_PLAN.md: the layers as Rust crates in the workspace rust/engine/ (game, certify, tactics, planning, decision, memory), one pyo3 entry called once
+per move; today's engine (plans 52-77) becomes the chess reference approach `legacy-agenda`, not the foundation.
+78.1 BUILT: (a) the spec evaluator gdl.rs is its own crate, cs_gdl (rust/engine/gdl; analyst_core uses it -- `pub(crate) use cs_gdl as gdl`: its regression and
+chess binding unchanged); (b) cs_game (rust/engine/game): the `Game` trait (roles, the mover, legal moves, apply, the outcome per role at a terminal state, the move's
+name, a key, and `observe(state, role)` -- the state itself under perfect information, GDL-II's extension point); `GdlGame` (ANY GDL text: the `true` fluents, `init`,
+`legal`, `next` under the joint move with every other role's `noop`, `terminal`, `goal`); `KernelGame` (shakmaty's VariantPosition with its variant feature: chess,
+Chess960 by Scharnagl's numbering, crazyhouse, atomic, antichess, king of the hill, three-check, racing kings, horde -- the ONE chess module of the stack, rules
+ingestion; the hundred-halfmove draw terminal as the spec reads it); `certify::coplay` (both games played side by side from the start by seeded random legal moves:
+the mover, the legal move names, the terminal verdict and the outcome compared at every state -- no state translated); (c) the variants' rules as DELTAS on
+rules/chess.gdl (`cs_gdl::compose`: `(retract <clause>)` must match a base form exactly, the rest is added): rules/variants/kingofthehill.gdl (a king on the centre wins;
+insufficient material is no draw) and rules/variants/3check.gdl (the checks given as fluents, counted at the state whose mover is in check; the third wins; only bare kings
+draw); (d) cs_engine (rust/engine/py, maturin): `variants()`, `certify_coplay`; (e) the certify stage reads them: one co-play binding per variant with a text; the
+rest reported UNCERTIFIED.
+OBS co-play (certify run, 20 seeded games each): kernel chess (cs_game) 6431 states, 0 disagreements, 20.9 s; kingofthehill 4014, 0, 14.5 s; 3check 1833, 0, 7.1 s.
+  Game ends: every random game of the two variants ended decisively (the hill / the third check fired). NEGATIVE CONTROLS: the hill's kernel against plain chess.gdl and
+  three-check's against the hill's text both disagree. Uncertified (no GDL text yet: they play on their kernel): chess960, crazyhouse, atomic, antichess, racingkings, horde.
+OBS tests: test_plan78 4 passed (the layer crates' code free of chess words but the kernel module; co-play agreement and the controls; a retract that matches nothing
+  fails; the uncertified list); test_plan76_4a/4b/4c, test_rules_gdl 53 passed (test_76_4b's generic test reads the evaluator at its new path); the certificates the
+  crate move made stale (analyst_core's lock) re-run: 0 disagreements.

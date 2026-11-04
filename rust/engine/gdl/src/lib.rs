@@ -127,6 +127,29 @@ fn unparse(x: &Sx) -> String {
     match x { Sx::Sym(s) => s.clone(), Sx::List(v) => format!("({})", v.iter().map(unparse).collect::<Vec<_>>().join(" ")) }
 }
 
+/// plan 78.1: A DESCRIPTION COMPOSED FROM A BASE AND A DELTA -- a variant's rules written as the base's (rules/chess.gdl) less the clauses the delta retracts
+/// (`(retract <clause>)`: it must match a top-level form of the base exactly, as unparsed, or the composition fails -- a drifted base is caught) plus the delta's
+/// own forms. -> the composed text (one form per line).
+pub fn compose(base: &str, delta: &str) -> Result<String, GdlError> {
+    let mut forms: Vec<String> = parse(base)?.iter().map(unparse).collect();
+    let mut added = vec![];
+    for x in parse(delta)? {
+        if let Sx::List(v) = &x {
+            if matches!(v.first(), Some(Sx::Sym(h)) if h == "retract") {
+                if v.len() != 2 { return err(format!("(retract <clause>) takes one form: {}", unparse(&x))); }
+                let target = unparse(&v[1]);
+                let before = forms.len();
+                forms.retain(|f| *f != target);
+                if forms.len() == before { return err(format!("retract: no form of the base reads {target}")); }
+                continue;
+            }
+        }
+        added.push(unparse(&x));
+    }
+    forms.extend(added);
+    Ok(forms.join("\n"))
+}
+
 pub const FLAT: [&str; 3] = ["true", "next", "init"];
 pub const INPUTS: [&str; 2] = ["does", "record"];
 

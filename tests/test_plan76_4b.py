@@ -309,8 +309,8 @@ CHESS_WORDS = r"\b(chess|python-chess|king|queen|rook|bishop|knight|pawn|piece|s
 def test_76_4b_the_generic_core_names_no_game_object():
     """The native core's generic modules -- the description's evaluator (gdl.rs) and the regression (regression.rs) -- name no game object in their code (doc
     comments and comments aside); the chess binding is gdl_chess.rs and pyboard.rs."""
-    for f in ("gdl.rs", "regression.rs"):
-        t = (ROOT / "rust" / "analyst_core" / "src" / f).read_text()
+    for f in (ROOT / "rust" / "engine" / "gdl" / "src" / "lib.rs", ROOT / "rust" / "analyst_core" / "src" / "regression.rs"):     # (plan 78.1: gdl.rs is its own crate, cs_gdl)
+        t = f.read_text()
         code = "\n".join(re.sub(r'"[^"\n]*"', '""', ln.split("//")[0]) for ln in t.splitlines())
         hits = [m.group(0) for m in re.finditer(CHESS_WORDS, code, flags=re.I)]
         assert hits == [], (f, hits)

@@ -1,0 +1,19 @@
+;;; rules/variants/3check.gdl -- THREE-CHECK (plan 78.1): chess (rules/chess.gdl), and the side that gives its THIRD check wins at once; any unit can still give
+;;; check, so the only material draw is two bare kings. The checks given are fluents (checks ?side ?n): a check stands at a state whose side to move is in check,
+;;; and is counted into the next state; the third one ends the game where it stands. A DELTA on the base (cs_gdl::compose).
+(retract (<= draw (insufficient white) (insufficient black)))
+(retract (<= (goal ?r 50) (role ?r) drawn (not mate)))
+(signature checks side clock) (signature has_unit side) (signature bare side) (signature third_check side) (signature three)
+(init (checks white 0)) (init (checks black 0))
+(<= (has_unit ?c) (true (cell ?f ?r ?c ?k)) (distinct ?k king))
+(<= (bare ?c) (role ?c) (not (has_unit ?c)))
+(<= draw (bare white) (bare black))
+(<= (next (checks ?o ?n2)) (true (checks ?o ?n)) (true (control ?c)) (check ?c) (opponent ?c ?o) (count_succ ?n ?n2))
+(<= (next (checks ?o ?n)) (true (checks ?o ?n)) (true (control ?c)) (not (check ?c)) (opponent ?c ?o))
+(<= (next (checks ?c ?n)) (true (checks ?c ?n)) (true (control ?c)))
+(<= (third_check ?o) (true (control ?c)) (check ?c) (opponent ?c ?o) (true (checks ?o 2)))
+(<= three (third_check ?o))
+(<= terminal three)
+(<= (goal ?o 100) (third_check ?o))
+(<= (goal ?c 0) (third_check ?o) (opponent ?o ?c))
+(<= (goal ?r 50) (role ?r) drawn (not mate) (not three))

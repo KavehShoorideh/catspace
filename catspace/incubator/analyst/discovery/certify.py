@@ -340,6 +340,37 @@ BINDINGS = {
 }
 
 
+# plan 78.1: THE VARIANT KERNELS (rust/engine/game, shakmaty's variants behind the Game trait) against their GDL texts, BY CO-PLAY (cs_game::certify: seeded random
+# games played side by side from the start, the mover, the legal move names, the terminal verdict and the outcome compared at every state). A variant's text is
+# rules/chess.gdl itself, or a DELTA on it in rules/variants/ (cs_gdl::compose). A variant with no text yet plays on its kernel UNCERTIFIED (`uncertified()`).
+ENGINE = ROOT / "rust" / "engine"
+COPLAY_GAMES = 20         # the co-play's seeded games per variant (each to the kernel's terminal)
+VARIANT_TEXTS = {"chess": None, "kingofthehill": ROOT / "rules" / "variants" / "kingofthehill.gdl", "3check": ROOT / "rules" / "variants" / "3check.gdl"}
+
+
+def coplay_check(variant: str) -> tuple:
+    """The variant's kernel against its GDL text by co-play -> (states read, [disagreements])."""
+    import cs_engine as CE
+    base = GC.SPEC.read_text()
+    p = VARIANT_TEXTS[variant]
+    g, plies, states, bad = CE.certify_coplay(variant, base if p is None else p.read_text(), COPLAY_GAMES, SEED, None if p is None else base)
+    return states, [("coplay", variant, d[:300]) for d in bad]
+
+
+for _v, _p in VARIANT_TEXTS.items():
+    BINDINGS[f"kernel {_v} (cs_game)"] = (f"the rules of {_v}: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome",
+                                         "the GDL text " + ("rules/chess.gdl" if _p is None else f"rules/chess.gdl with the delta {_p.relative_to(ROOT)}") + ", read by cs_gdl",
+                                         _src(GC.SPEC, *([] if _p is None else [_p]), ENGINE / "gdl" / "src" / "lib.rs", ENGINE / "game" / "src" / "kernel.rs",
+                                              ENGINE / "game" / "src" / "gdl_game.rs", ENGINE / "game" / "src" / "certify.rs", ENGINE / "Cargo.lock"),
+                                         f"coplay:{_v}", None)
+
+
+def uncertified() -> list:
+    """The variants the kernels play with no GDL text yet: they play, uncertified (plan 78.1)."""
+    import cs_engine as CE
+    return [v for v in CE.variants() if v not in VARIANT_TEXTS]
+
+
 def key_of(name: str) -> str:
     """The hash of the files a binding's answers depend on (a version string is hashed as itself)."""
     h = hashlib.sha256()
@@ -381,6 +412,12 @@ def _check_chunk(args) -> tuple:
 def certify(name: str, jobs: int = 1) -> dict:
     """Check one binding on its corpus -> its certificate (not written)."""
     what, oracle, _srcs, corp, _check = BINDINGS[name]
+    if corp.startswith("coplay:"):
+        t = time.time()
+        states, bad = coplay_check(corp.split(":", 1)[1])
+        return {"binding": name, "ingests": what, "oracle": oracle, "corpus": f"{COPLAY_GAMES} seeded co-play games (seed {SEED})", "positions": states,
+                "invalid_left_out": 0, "disagreements": len(bad), "examples": [list(map(str, x)) for x in bad[:EXAMPLES]], "key": key_of(name),
+                "sources": BINDINGS[name][2], "date": datetime.date.today().isoformat(), "seconds": round(time.time() - t, 1)}
     fens, invalid = corpus(corp)
     t = time.time()
     chunks = [(name, fens[i::max(jobs, 1)]) for i in range(max(jobs, 1))]
@@ -467,6 +504,7 @@ def main(argv: list) -> int:
     if argv[0] == "status":
         for n, s in status().items():
             print(f"OBS certificate {n}: {s}")
+        print(f"OBS uncertified variants (no GDL text yet: they play on their kernel): {', '.join(uncertified())}")
         return 0
     jobs = int(argv[argv.index("--jobs") + 1]) if "--jobs" in argv else 1
     names = [a for a in argv[1:] if a in BINDINGS] or list(BINDINGS)

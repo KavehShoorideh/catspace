@@ -1,0 +1,14 @@
+[package]
+name = "cs_engine"
+version = "0.1.0"
+edition = "2021"
+description = "plan 78: the end-to-end system's one Python entry (called once per move)"
+
+[lib]
+name = "cs_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+cs_game = { path = "../game" }
+cs_gdl = { path = "../gdl" }
+pyo3 = { version = "0.25", features = ["extension-module"] }

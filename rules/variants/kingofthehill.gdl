@@ -1,0 +1,13 @@
+;;; rules/variants/kingofthehill.gdl -- KING OF THE HILL (plan 78.1): chess (rules/chess.gdl), and a king that stands on a centre square wins at once; a lone
+;;; king can still walk to the hill, so insufficient material is no draw. A DELTA on the base (cs_gdl::compose): (retract <clause>) removes a clause of the base,
+;;; every other form is added. Rules ingestion: the variant's rules as written by lichess / shakmaty, certified against the kernel by co-play.
+(retract (<= draw (insufficient white) (insufficient black)))
+(retract (<= (goal ?r 50) (role ?r) drawn (not mate)))
+(signature centre file rank) (signature on_hill side) (signature hill)
+(centre d 4) (centre d 5) (centre e 4) (centre e 5)
+(<= (on_hill ?c) (true (cell ?f ?r ?c king)) (centre ?f ?r))
+(<= hill (on_hill ?c))
+(<= terminal hill)
+(<= (goal ?c 100) (on_hill ?c))
+(<= (goal ?o 0) (on_hill ?c) (opponent ?c ?o))
+(<= (goal ?r 50) (role ?r) drawn (not mate) (not hill))

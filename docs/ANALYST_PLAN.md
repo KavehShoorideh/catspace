@@ -4359,3 +4359,32 @@ of every binding the hot path reads printed (OBS); a planted wrong binding (a te
 #### 77.1 (d) RESULT (2026-11-04, JOURNAL): (1) the promotion lemmas' domains are their entries' `needs` (the hand gate gone; answers identical); (2) discovery/certify.py: five bindings
 certified against their oracles (0 disagreements; certificates in lemmas/certificates/, keyed by the files their answers depend on; online checks demote a disagreeing reader; planted
 errors caught); (3) the delayed threat reads the refuting reply first (2.1 ms per call, was 4.0); the mate behind a check read two deep (test_duty63 63_2 re-read: Bg3 escapes). Gate 671 / 0.
+
+
+## 78 THE END-TO-END SYSTEM (Kaveh 2026-11-04: "i would rather have an end-to-end working system first, then improve upon the layers (and maybe multiple cooperating approaches for
+each layer). Each layer should be modular and as much as possible chess-free. Let's scope it to handle all chess variants where perfect information exists for now. We want room to be
+able to extend to not-perfect-information after getting chess done"; "the slow parts should be in rust, loops should be in rust"; "Good. Go")
+
+THE AIM: a system that plays full games of every perfect-information chess variant with EVERY LAYER PRESENT (thin where it must be), then the layers improve one by one, each layer a slot
+with competing approaches. What exists today (plans 52-77) is the TACTICS layer for chess, in Python over python-chess with its hot words in Rust; it becomes the chess REFERENCE
+approach (`legacy-agenda`), not the foundation.
+THE LAYERS (Rust crates in the workspace rust/engine/; the loops and the slow parts in Rust; Python only outside the loop -- the harness, the store editing, training, the trace's
+formatting; one pyo3 entry, called once per move):
+  game       the `Game` trait -- roles, the side to move, legal moves, apply, terminal -> the outcome per role, a state key, move names, and `observe(state, role)` (the identity for perfect
+             information: the extension point of GDL-II's `sees`). Implementations: `GdlGame` (any GDL text: the spec evaluator, slow; gdl.rs moved into its own crate, which analyst_core
+             then uses) and `KernelGame` (shakmaty's VariantPosition: chess, Chess960, crazyhouse, atomic, antichess, king of the hill, three-check, racing kings, horde).
+  certify    the kernel against its GDL text per game, in Rust (the loop); a variant without a GDL file plays on its kernel with its certificate MISSING, and the report says so.
+  tactics    trait: answer(state, goal, budget) -> claim / kill / GAP, with its trace. Approach `forcing`: the one definition (77.1) over the Game trait -- the every-reply clause on the
+             terminal outcome and on the store's measure; `legacy-agenda`: today's engine (chess only).
+  planning   trait: subgoals(state) -> ranked conditions with evidence. First approach `keep`: the cheapest move that keeps our state by the measure (the search law, 2026-10-27).
+  decision   the anytime loop within the clock: a proved claim, else the planner's move, else the fallback; every choice traced.
+  memory     the store read by Rust (serde): goals, valuations, names per game.
+THE TEST that guards it: the layer crates name no chess object (the generic test, extended to Rust); only `KernelGame` and the GDL texts are chess. Variants are the test of it: their
+goals differ (the centre, a third check, losing every unit, an explosion), their rules differ (drops, compulsory captures), antichess has no royal unit.
+STAGES:
+  78.1 the workspace; the `game` crate (the trait, GdlGame, KernelGame over every variant); certify in Rust (chess.gdl against the chess kernel first; variants' GDL texts as written --
+       king of the hill and three-check first: goal changes only); OBS per game: positions, disagreements, or the certificate MISSING.
+  78.2 the thin approaches in Rust (tactics `forcing`, planning `keep`, the decision loop); the pyo3 entry; a UCI engine (UCI_Variant) and the play server's variant games.
+  78.3 THE MEASURE: full games per variant against a fixed opponent (Fairy-Stockfish if installed; until then a random mover, and for chess the legacy engine) -- results per variant,
+       where each layer fell back, the cost per move.
+THEN the layers improve: the trajectory planner from game data (lichess has variant games), 77.3's proposer, the legacy engine's chess facts moved to the store and its loop ported.

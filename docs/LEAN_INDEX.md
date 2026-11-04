@@ -469,7 +469,7 @@ Do not edit by hand.
 - **def `Ideas.Game.Game.step`** (line 38): ONE STEP of the game: some legal move leads from `p` to `q`
   - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/lemmas/ontology/move.json, catspace/incubator/analyst/discovery/regress.py
 - **def `Ideas.Game.Game.terminal`** (line 41): No legal move.
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/gdl_chess.py, catspace/incubator/analyst/discovery/lemmas/ontology/draw-by-repetition.json, catspace/incubator/analyst/discovery/lemmas/ontology/draw-by-the-fifty-move-rule.json, catspace/incubator/analyst/discovery/lemmas/ontology/draw.json, catspace/incubator/analyst/discovery/lemmas/ontology/mate.json ...
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/certify.py, catspace/incubator/analyst/discovery/gdl_chess.py, catspace/incubator/analyst/discovery/lemmas/ontology/draw-by-repetition.json, catspace/incubator/analyst/discovery/lemmas/ontology/draw-by-the-fifty-move-rule.json, catspace/incubator/analyst/discovery/lemmas/ontology/draw.json ...
 - **def `Ideas.Game.Game.mated`** (line 44): The mover is MATED: no move, and in check.
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/lose.json, catspace/incubator/analyst/discovery/lemmas/ontology/mate.json
 - **def `Ideas.Game.Game.stalemated`** (line 47): The mover is STALEMATED: no move, not in check.
@@ -481,7 +481,7 @@ Do not edit by hand.
 - **def `Ideas.Game.Game.Reach`** (line 72): REACH in a game: from `p` (us to move) we force the `goal` (read after our move) within `n` of our moves against every reply (`Ideas.Forced.Reach` with the game's step relation on both sides; a stalemate -- no reply and 
 - **theorem `Ideas.Game.Game.Reach.mono`** (line 75)
 - **theorem `Ideas.Game.Game.race_sound`** (line 81): THE RACE IN A GAME (`Ideas.Race.race_sound` with the game's hypotheses): `μ` our remaining tempi, `ν` theirs; our move lowers `μ` by one while there is one (`hprog`); `μ = 0` is the goal (`hgoal`); no reply raises `μ` or
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/certify.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 - **def `Ideas.Game.chess`** (line 109): Chess: the kernel's legal moves and `applyMove`; the pass flips the side to move (and drops the en-passant right, which the other side cannot use); the measure is the mover's material less the other side's; in check by t
   - used by: catspace/incubator/analyst/discovery/lemmas/ontology/tempo.json, catspace/incubator/analyst/discovery/technique_lean.py
 - **theorem `Ideas.Game.chess_pass_turn`** (line 116)
@@ -1585,7 +1585,7 @@ Do not edit by hand.
 - **theorem `Ideas.Race.raceBinds_false`** (line 50): A claim read when the word does NOT bind is not a claim: `b + 1 ≤ a` (theirs strictly faster) never binds.
 - **theorem `Ideas.Race.race_arith`** (line 55): Counting fact behind the word: after `j` rounds (our move, then theirs) with `j + 1 ≤ ours ≤ theirs`, they have still made fewer than `theirs` moves when we make our `(j+1)`-th: the first to finish is us.
 - **theorem `Ideas.Race.race_sound`** (line 64): THE RACE IS SOUND (the arithmetic): an abstract game whose positions carry our remaining tempi `μ` and theirs `ν`
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/certify.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 - **theorem `Ideas.Race.race_first`** (line 94): THEY ARE NOT FIRST: on the line of `race_sound` no reply of theirs has completed their race -- `ν` stays positive after every reply, so a goal of theirs (`ν = 0`) is never on the board when we make our next move.
 - **theorem `Ideas.Race.legal_king_safe`** (line 105): A LEGAL move leaves the mover's king on a square the other side does not attack.
 - **theorem `Ideas.Race.no_stand_attacked`** (line 113): DENIED BY ATTACK: after a legal move of `p.turn` whose king stands on `t`, no piece of the other side attacks `t`.

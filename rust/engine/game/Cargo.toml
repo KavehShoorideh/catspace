@@ -1,0 +1,13 @@
+[package]
+name = "cs_game"
+version = "0.1.0"
+edition = "2021"
+description = "plan 78.1: the Game trait, any GDL text as a game, the chess kernels (shakmaty's variants), certify by co-play"
+
+[dependencies]
+cs_gdl = { path = "../gdl" }
+shakmaty = { version = "0.27", features = ["variant"] }
+
+[[bin]]
+name = "certify_coplay"
+path = "src/bin/certify_coplay.rs"

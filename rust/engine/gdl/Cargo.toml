@@ -1,0 +1,8 @@
+[package]
+name = "cs_gdl"
+version = "0.1.0"
+edition = "2021"
+description = "A GDL description read at run time from its text and evaluated bottom-up (the spec evaluator; knows no game)"
+
+[lib]
+path = "src/lib.rs"

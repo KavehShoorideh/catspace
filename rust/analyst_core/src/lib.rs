@@ -26,7 +26,7 @@ mod pos;
 mod words;
 mod sched;
 mod handlers;
-mod gdl;
+pub(crate) use cs_gdl as gdl;          // plan 78.1: the spec evaluator moved to its own crate (rust/engine/gdl)
 mod regression;
 mod pyboard;
 mod gdl_chess;
