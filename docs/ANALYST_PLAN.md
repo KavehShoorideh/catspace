@@ -4291,3 +4291,17 @@ outputs EQUAL to gdl.rs on the ten + wide + surprise positions and along a rando
 pair; a claim-store retraction (claims as a relation claim(id, square) against the changed squares) vs the current fact store's listener; the crate's license read from its Cargo.toml.
 (3) THE DECISION REPORT -- per layer: the crate for the slow layer yes / no; the sub-project for the fast layer needed yes / no given (1); what 77.1 should build.
 NOT IN 77.0: any change to the engine's decision path; adopting anything (Kaveh decides on the report).
+
+77.0 RESULT (2026-11-03, done in the main session -- Kaveh: "do it yourself"; the agent stopped): THE DERIVATION SHARE ANSWERS IT, the DBSP crate experiment deferred.
+OBS (scripts/plan77_0_profile.py; cProfile self time, which over-weights Python's many small calls against Rust's few large ones -- the ranking, not the decimals):
+  W0VFO 10 s: python-chess 31.3 %, python builtins 24.9 %, Rust words / handle / reply table 10.7 %, Python derivation glue 8.6 %, agenda / questions 6.2 %, Rust regression 2.0 %, store 1.8 %
+  discovery 30 s: python-chess 47.1 %, glue 14.1 %, Rust words 12.3 %, builtins 11.0 %, agenda 4.9 %, Rust regression 2.3 %, store 1.3 %
+  five loop-2 puzzles 15 s: python-chess 41.0 %, Rust words 15.1 %, glue 14.0 %, builtins 10.6 %, agenda 9.1 %, Rust regression 4.0 %, store 2.3 %
+  ten guard cases, count budget: python-chess 36.8 %, Rust words 20.6 %, glue 11.4 %, agenda 10.8 %, builtins 7.9 %, Rust regression 5.9 %, store 5.0 %
+  python-chess time on the discovery position attributed to its callers: regress.node_cost 19.7 % (the judge's own price), threat_value 10.4 %, _forcing_batch 9.2 %, parries 7.8 %,
+  race.race_claim 7.2 %, graph.with_turn 3.2 %, graph.mates 3.1 %, _counter 2.4 %, with_piece 2.3 %, pass_claim 2.2 %, delayed_threat 2.1 % (the rest below 2 %).
+READING: the time per question is DERIVATION (60-80 %), but its bulk is not re-deriving stable relations that incremental maintenance would save: it is a handful of hand-written words
+still in Python building python-chess boards per hypothetical position -- exactly 72.7 step 3's unported list (node_cost, race / pass claims, delayed threat) plus threat_value, parries,
+_forcing_batch's Python path. The question machinery is 5-11 %, the claim store 1-5 %. DECISION: (i) the slow layer -- the claim store is 1-5 % of the time: DBSP would buy architecture
+(declarative maintenance), not speed, now; deferred, not rejected; (ii) the fast layer -- no incremental sub-project yet: port the named words to Rust first (77.1 starts there); re-profile;
+only if Rust derivation then dominates is per-node recomputation the cost and the sub-project the answer. (2) the crate experiment was not run.
