@@ -368,7 +368,7 @@ def mate2_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
     me = G.colour_of(us)
     h = G.pos_of(board)
     if h is not None:
-        return _A.terminal_after_pass_pos(h, m.uci(), me, 2)
+        return _A.terminal_after_pass_pos(h, m.uci(), me, MATE_IN)
     return _mate2_threat_word(board, m, us)
 
 
@@ -500,6 +500,7 @@ def _claims_binding_py(board: chess.Board, me: bool, stake: int) -> dict:
 
 GAME_NAME = chess.square_name
 
+MATE_IN = 2                   # the depth of the mate-in-two word (plan 59 tier 2), the one depth the composed terminal goal is read at
 DEF_RUST = True               # plan 77.1 (a), the port: the definition's reply loop read by ONE Rust call per node (`analyst_core.definition_rows_pos`); False: the per-move body (the oracle)
 _DEF: dict = {}               # (node key, us, stake) -> (claims binding now, {uci: row}, the promotion goal's lemmas open after which moves, {(uci, new): decision})
 G.CLEAR_HOOKS.append(_DEF.clear)
@@ -700,12 +701,15 @@ def every_reply(board: chess.Board, m: chess.Move, stake: int, us: str | bool, n
     try:
         P = G.handle(board)
         rust, py = _claim_readers()
+        if stake >= STAKE_MATE:                                   # plan 77.1 (d) (3): at the mate stake the terminal goal is read at the depth of the mate-in-two word
+            rust = [(f"terminal_in:{MATE_IN}" if r == "terminal" else r, w) for r, w in rust]      # after every reply (the check behind which the mate is two moves deep)
         status, before_rows, rows = _A.reply_claims_pos(P, m.uci(), stake, me, [r for r, _w in rust], _promotion_masks(stake))
     except ValueError:
         return None
     if status != "read":
         return status
     word = dict(rust)
+    word.setdefault("terminal", word.get(f"terminal_in:{MATE_IN}"))
     before = {(word[r], None if sq < 0 else sq): v for r, sq, v in before_rows}           # (the claims binding now, read in the same call: no batch of the whole node)
     if py:
         for kk, v in _promotion_claims(board, stake).items():
@@ -1073,7 +1077,7 @@ def check_threat(board: chess.Board, x: chess.Move, stake: int, us: str | bool) 
     me = G.colour_of(us)
     if not board.gives_check(x):
         return None
-    w = every_reply(board, x, stake, me)
+    w = every_reply(board, x, stake, me, new=False)              # (a check HOLDS a claim: the callers filter what stood before -- the delayed threat's `standing`; 63.1)
     if w == "mate":
         return "check that mates"
     if w is None:
@@ -1150,6 +1154,10 @@ def _standing_forcing(board: chess.Board, stake: int, me: bool) -> frozenset:
     return hit
 
 
+_REFUTE: dict = {}             # plan 77.1 (d) (3): (node, stake, us) -> the reply that refuted the last delayed candidate there
+G.CLEAR_HOOKS.append(_REFUTE.clear)
+
+
 def delayed_threat(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
     """plan 61 A3 (Lean `Ideas.Forcing.delayedThreat`; Thomsen's lambda-2) with plan 63.1: the quiet move `m` is DELAYED-FORCING iff after it, for EVERY legal reply of theirs, some NEW move of ours is a
     follow-up (`_follow_up`: a threat / capture worth the stake, a threat of mate at any stake, or a check that is also a threat -- Lean `checkThreat`). One bounded AND level: their replies x our
@@ -1161,8 +1169,11 @@ def delayed_threat(board: chess.Board, m: chess.Move, stake: int, us: str | bool
     if c.is_check() or not replies:
         return None
     standing = _standing_forcing(board, stake, me)
-    tight, via_check = None, None
-    for r in replies:
+    rk = (board._transposition_key(), stake, me)                 # plan 77.1 (d) (3): the reply that refuted the last candidate here is read first (a failing call
+    killer = _REFUTE.get(rk)                                     # then stops at once); the answer and its text are the canonical order's
+    order = replies if killer is None else sorted(replies, key=lambda r: r.uci() != killer)
+    read = {}
+    for r in order:
         d = c.copy(stack=False)
         d.push(r)
         ours = [x for x in d.legal_moves if x.uci() not in standing]       # the threat must be NEW: a follow-up already there before `m` (a hanging queen) is not made by `m`
@@ -1172,7 +1183,12 @@ def delayed_threat(board: chess.Board, m: chess.Move, stake: int, us: str | bool
             if w:
                 hits.append((x, w))
         if not hits:
+            _REFUTE[rk] = r.uci()
             return None
+        read[r] = (d, hits)
+    tight, via_check = None, None
+    for r in replies:
+        d, hits = read[r]
         if tight is None or len(hits) < tight[0]:
             tight = (len(hits), c.san(r), d.san(hits[0][0]), hits[0][1])
         if via_check is None and all(w.startswith("check that") for _x, w in hits):          # 63.1: the replies after which ONLY a check-that-is-a-threat follows are named

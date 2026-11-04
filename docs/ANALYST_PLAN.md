@@ -4355,3 +4355,7 @@ and keeps checking on a priced share of the positions its search visits; a certi
 is demoted (that relation read from the spec evaluator: slow, right). scripts/crossplay.py, plan76_4a.py crosscheck and the port harnesses become callers. Acceptance: the certificates
 of every binding the hot path reads printed (OBS); a planted wrong binding (a test's) demoted and the decision read through the spec; the cost of the online share printed.
 (3) THEN SPEED AND DEPTH: delayed_threat's follow-up test as one batch per node; the claim behind a check as the terminal goal in n (test_duty63 63_2).
+
+#### 77.1 (d) RESULT (2026-11-04, JOURNAL): (1) the promotion lemmas' domains are their entries' `needs` (the hand gate gone; answers identical); (2) discovery/certify.py: five bindings
+certified against their oracles (0 disagreements; certificates in lemmas/certificates/, keyed by the files their answers depend on; online checks demote a disagreeing reader; planted
+errors caught); (3) the delayed threat reads the refuting reply first (2.1 ms per call, was 4.0); the mate behind a check read two deep (test_duty63 63_2 re-read: Bg3 escapes). Gate 671 / 0.

@@ -367,6 +367,10 @@ fn claims_on(x: &Chess, me: Color, stake: i64, readers: &[String]) -> Vec<ClaimR
     for r in readers {
         match r.as_str() {
             "terminal" => if crate::pos::pos_mate_in_one(x) && STAKE_MATE >= stake { out.push((r.clone(), -1, STAKE_MATE)); },
+            t if t.starts_with("terminal_in:") => {                     // the terminal goal in n moves of ours (the composition `terminal_in`, n read from the name)
+                let n: u32 = t["terminal_in:".len()..].parse().unwrap_or(1);
+                if terminal_in(x, n) && STAKE_MATE >= stake { out.push((r.clone(), -1, STAKE_MATE)); }
+            }
             "exchange" => {
                 let b = x.board();
                 for sq in b.by_color(!me) {

@@ -36010,3 +36010,22 @@ OBS test_plan77_1d: a planted wrong exchange reader (every claim +1) found onlin
   against the spec's Ra8#); W0VFO at the count budget: online positions checked 2, checks under the fuse plus one check, found 0, decision Qb7.
 OBS guard against the 77.1 (d) (1) snapshots: ten tier 0 and wide tier 2, 0 traces differ (the online checks change no answer). Engine gate: files 50, passed 661, failed 0, xfailed 2,
   wall 1100.7 s (test_fact_store's clock-edge test passed this run); gate.py's engine list now carries test_plan77_1 and test_plan77_1d (9 passed alone).
+
+## 2026-11-04 14:12 -- plan 77.1 (d) (3): the delayed threat reads the refuting reply first; the mate behind a check two moves deep (test_duty63 63_2 re-read: the bishop is not pinned)
+
+(a) delayed_threat: the reply that refuted the last candidate at the same node (`regress._REFUTE`, keyed by the node, stake, side) is read first -- a failing call stops at once; a
+succeeding one still reads every reply and builds its text in the canonical order (identical answers and texts). (b) THE TERMINAL GOAL IN n behind a check: at the mate stake the
+every-reply clause reads the terminal goal at the depth of the mate-in-two word (`MATE_IN` = 2, the one depth; the Rust reader `terminal_in:n`, the composition over the kernel), and the
+check clause HOLDS claims (new=False: the callers filter what stood before -- the delayed threat's `standing`, as 63.1's old docstring said); the threat of mate in two reads MATE_IN too.
+test_duty63 63_2 (the strict xfail of 12:11) is RE-READ, not flipped: with the mate two deep behind the check, the mate holds after the h4 bishop's three safe squares (Be7 / Bf6 / Bg5:
+Ng5+ mates in two) and after Bxf2 (Ng5+ Bh4 Qxh4+ Kg8 Qh7#) -- but NOT after Bg3, which attacks the queen (Ng5+ is answered by Bxh2). The duty (the least over its legal moves) is
+Bg3's exchange, 1; 'pinned to the mate' was the old passed board's fiction. Re-pinned: the duty (1, Bg3), not bound, every safe square cut (kept []), Bxf2 Ng5+ reads mate.
+OBS guard against 77.1 (d) (2): ten tier 0 0 of 10 traces differ; ten tier 2 1 of 10; wide tier 2 3 of 99; decisions identical on all three.
+OBS new vs old readings (603 positions): check_threat@3 agree 782, new only 81, old only 137; check_threat@100 agree 840, new only 8, old only 152 (0.14 s for 1000 readings: 140 us
+  with the deeper mate, was 10 us); no_safe_move and mate2 as at 12:11.
+OBS loop-2 batch (15 s), depth77_1d: RIGHT 33, UNKNOWN 1, WRONG 6; proved RIGHT 33, proved WRONG 3, unproved WRONG 3, none 1 (every77_1a: 33 / 33 / 2). 2 of 40 differ: frLxu WRONG ->
+  RIGHT proved (h3h7); KSMKJ RIGHT -> WRONG (f8d6 -> f8b8, both proved; it has flipped between today's runs both ways).
+OBS cost (cProfile, five loop-2 puzzles at 15 s): delayed_threat 6.2 s / 1558 calls (4.0 ms) -> 4.7 s / 2268 (2.1 ms) with the refutation first; with the depth: 4.7 s / 2122;
+  check_threat 56 us per call, every_reply 75 us.
+OBS certify run: 5 bindings, 0 disagreements (2417 / 2417 / 2404 / 2404 / 360 positions); engine gate: files 52 (the 77.1 files now in its list), passed 671, failed 0, xfailed 1,
+  wall 1123.9 s.

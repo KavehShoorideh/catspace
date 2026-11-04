@@ -95,18 +95,19 @@ def test_63_2_the_safe_moves_list_is_the_mobility_word():
             assert len(R.safe_moves(b, sq)) == G.mobility_of(b, sq)
 
 
-@pytest.mark.xfail(strict=True, reason="plan 77.1 (a) 2026-11-04: the check behind the duty is read after EVERY answer (one level): Bxf2 leaves h4 covered (Bxf2 Ng5+ Bh4), so no "
-                   "mate in one after every reply -- the mate is deeper (Qxh4+ Kg8 Qh7#). The old reading saw it only on the passed board, the fiction that also called Qxg2+ "
-                   "(the queen taken) a mate threat. Flips when the claim behind a check is the terminal goal in n (the same clause composed).")
-def test_63_2_the_bishop_on_h4_is_pinned_to_the_mate_on_h7():
+def test_63_2_every_safe_square_of_the_bishop_on_h4_loses_to_the_mate_and_only_bg3_escapes():
+    """plan 77.1 (d) (3) (2026-11-04; was 'the bishop on h4 is pinned to the mate on h7'): read after EVERY answer to the check, with the mate two moves deep behind it, the mate
+    holds after the bishop's three safe squares (Be7 / Bf6 / Bg5: Ng5+ mates in two) and after Bxf2 (Ng5+ Bh4 Qxh4+ Kg8 Qh7#) -- but not after Bg3, which attacks the queen:
+    Ng5+ is answered by Bxh2. The duty (the least over its legal moves) is Bg3's exchange. The old reading (the check on a passed board, never answered) called it pinned."""
     b, m = _bf2()
     b.push(m)
     v, what, san = R.duty(b, H4, "w")
-    assert v == 100 and "Qh7#" in what
-    assert R.duty_bound(b, H4, "w")
-    assert "pinned to a threat" in R.duty_text(b, H4, "w")
+    assert (v, san) == (1, "Bg3") and not R.duty_bound(b, H4, "w") and R.duty_text(b, H4, "w") is None
     kept, cut = R.duty_safe_moves(b, H4, "w")
-    assert kept == [] and len(cut) == G.mobility_of(b, H4) == 3                 # all 3 safe squares abandon the duty: the bishop cannot run
+    assert kept == [] and len(cut) == G.mobility_of(b, H4) == 3                 # all 3 safe squares abandon the duty: the bishop cannot run safely
+    c = b.copy()
+    c.push_uci("h4f2")
+    assert R.check_threat(c, chess.Move.from_uci("h3g5"), 100, "w").startswith("check that also threatens mate (after every reply")
 
 
 def test_63_2_duty_is_the_least_over_the_moves_lean_duty_le_and_dutyBound_abandons():
