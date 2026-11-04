@@ -4305,3 +4305,21 @@ still in Python building python-chess boards per hypothetical position -- exactl
 _forcing_batch's Python path. The question machinery is 5-11 %, the claim store 1-5 %. DECISION: (i) the slow layer -- the claim store is 1-5 % of the time: DBSP would buy architecture
 (declarative maintenance), not speed, now; deferred, not rejected; (ii) the fast layer -- no incremental sub-project yet: port the named words to Rust first (77.1 starts there); re-profile;
 only if Rust derivation then dominates is per-node recomputation the cost and the sub-project the answer. (2) the crate experiment was not run.
+
+
+### 77.1 (a) AMENDED (Kaveh 2026-11-03 "Yep"): THE REPLY LOOP IS GENERIC MACHINERY; THE WORDS IT READS COME FROM THE STORE
+The hot words were read and judged (JOURNAL 2026-11-03 19:45): none vestigial; seven are rules or search logic in Python; one (race_claim) is hand-written knowledge; node_cost was a design
+smell (trimmed). What the port must and must not do:
+GENERIC, ported as machinery over the rules kernel's handle: the reply loop (make each legal reply, read a word, unmake); parries' frame (Allis's counter-threat logic: the replies after
+which the threat no longer binds, plus the replies that are themselves forcing -- Lean `Ideas.Forcing.parries`); `_counter`; node_cost's frame (a node's cost = the parries of its cheapest
+forcing move). These name no chess object.
+NOT FROZEN INTO RUST: the "binds" dispatch on threat KINDS (mate, mate-in-two, a material threat, a pass claim, a check) and the forcing-reason list (check, capture worth the stake, threat,
+threat of mate, "survives") -- both hand-written lists, today FORCING / CLOSING entries in the store with Rust bindings on the ontology shelf but dispatched by an `if` chain in Python. An
+`if` chain in Rust would be hardcoded knowledge in a faster language. The port asks the STORE which words to read at a reply and calls each by its shelf binding; the lists leave the code.
+THE ONE DEFINITION: a move is FORCING when, after it and a pass by them, a claim of ours binds that did not bind before (pass_claim's frame, generic over the rules + the store); the regression
+(76.4a/b) computes "a claim binds" from the spec. The five hand-written kinds are fast special cases of it: the port replaces the list with the definition and keeps the kinds only as the
+regression's derived labels for the trace; EQUALITY against today's reasons on the guard positions (ten + wide, every legal move) proves nothing is lost; where the definition finds a forcing
+move the list missed, that is a FINDING (the list was incomplete), kept.
+NOT PORTED: race_claim (knowledge) -- the HAND entry stays until the technique miner reproduces it (as it did the K+R measure), then it retires.
+THE TEST that guards it: the generic test (no chess word in the generic modules) extended to the new Rust module through its exported names; the recount (CHESS FACT rows must fall: the
+`if` chains leave regress.py); the guard identical; the forcing-definition equality printed.
