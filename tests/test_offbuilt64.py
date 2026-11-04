@@ -179,8 +179,9 @@ def test_64_discovery_decides_within_15_s(monkeypatch):
     assert d is not None and d.proved and d.what in ("Nf6", "Nd6")
 
 
-@pytest.mark.xfail(strict=True, reason="LOOP TARGET 1 (2026-10-22): under the POOL the policy asks the quiet promote plan first (36 parries a route) and spends half the clock on it; Nf6 is cut by the judge. The loop (retrain the question + route heads; price-ordered reading) must flip this.")
 def test_69_pool_discovery_decides_within_15_s():
+    """LOOP TARGET 1 (2026-10-22, a strict xfail until 2026-11-04): under the POOL the policy asked the quiet promote plan first and spent half the clock on it; Nf6 was cut by
+    the judge. Flipped by plan 77.1 (a)'s port (the definition's reply loop one Rust call per node: the same answers, the reading 5x cheaper) -- the clock reaches Nf6."""
     from catspace.incubator.analyst.discovery.state import State
     ag = Agenda(State(fen="r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1", us="w", pieces=[]), seconds=15)
     ag.ask()

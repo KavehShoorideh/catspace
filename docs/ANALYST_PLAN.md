@@ -4329,3 +4329,8 @@ kinds: mate, win by the exchange law, promotion by the passer lemma or the race 
 32 proved, 1 of 40 differs), 2TUzC gained (Rxe5 proved), 07Z0P's count-budget proof lost (it stood on an unread 0-leaf). Three holes the definition exposed were closed in the leaf code
 (a 0-leaf under keep semantics reads their pass when their exchange eats the balance; the leaf's floor is the route's target; the keep family runs at a 0-balance save). The Rust port of
 this reading (one batch per node over the handle's reply table) is the next step of (a); the claims set stays a store read, never a Rust list.
+
+#### 77.1 (a) PORT RESULT (2026-11-04 10:28, JOURNAL): the reading is ONE Rust call per node (`analyst_core.definition_rows_pos`, two rule-level readers: the kernel's terminal, the
+exchange law); the claims read are the store's GOAL entries a chase pursues by their bound readers (`regress._claim_readers`; the promotion goal's lemmas stay Python, read where
+their hypothesis leaves them open); equal on 25320 of 25320 node readings, 5.4x cheaper per reading; the guard identical on all five lists; the batch equal (32 right, 32 proved);
+LOOP TARGET 1 passes. Next: delayed_threat (the definition one reply deeper), then mate2_threat.

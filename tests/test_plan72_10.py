@@ -13,7 +13,9 @@ from catspace.incubator.analyst.discovery.state import State
 
 W0VFO = "2r2rk1/R5pp/5p2/2q1p3/3pQ3/8/2P2PPP/R5K1 w - - 4 30"     # rand8_10: Qb7 threatens mate on g7
 DELAY = "5rk1/5ppp/8/8/r7/1N1B4/4QPP1/6K1 w - - 0 1"               # Qh5 threatens Qxh7#; their Ra1+ is a delay (it touches none of the frame), Nxa1 takes it back
-ROUTES = "chase: make them move -- 6 forcing route(s): Rxg7+ (check), Qxh7+ (check), Qd5+ (check), Qb7 (threat of mate), Qg6 (threat of mate), Qg4 (threat of mate)"
+# plan 77.1 (a) (2026-11-04 re-pin): the one definition drops Qg6 -- the queen hangs to hxg6 (they win 9) and no claim of ours survives that capture (the list called it a
+# mate threat with no survive test); the decision is unchanged (Qb7 +3 proved)
+ROUTES = "chase: make them move -- 5 forcing route(s): Rxg7+ (check), Qxh7+ (check), Qd5+ (check), Qb7 (threat of mate), Qg4 (threat of mate)"
 SPECIAL = ["r3k2r/pppq1ppp/2n2n2/3pp3/1b1PP1b1/2NB1N2/PPPQ1PPP/R3K2R w KQkq - 0 1",       # both castlings, both sides
            "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",                  # en passant
            "1r2k3/P1P5/8/8/8/8/5ppp/4K3 w - - 0 1",                                          # promotions, a capturing one

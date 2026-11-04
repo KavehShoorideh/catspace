@@ -305,12 +305,7 @@ impl Pos {
 
     /// `graph.see`: the word `(see sq)` read with the mover = the side to move (vocab.rs Term::See: what the side opposite the piece's owner wins by the exchange
     /// started by a capture on `sq`, rules::see, the mirror of Lean Ideas.ExchangeLaw.seeXB; 0 below zero and on an empty square).
-    fn see(&self, sq: u8) -> PyResult<u32> {
-        let s = square(sq)?;
-        let us = self.pos.turn();
-        let named = if us == Color::White { s } else { s.flip_vertical() };          // the square named from the mover's side, as `render` names it
-        Ok(crate::vocab::num(&crate::vocab::Term::See(Box::new(crate::vocab::Term::Named(named))), &self.pos, !us))
-    }
+    fn see(&self, sq: u8) -> PyResult<u32> { Ok(see_word(&self.pos, square(sq)?)) }
 
     // ------------------------------------------------------------------------------------------------------------ plan 72.7 step 2b: the static leaf's decomposition
     // agenda.py `_leaf_read` (52.10, THE LEAF READ BY THEIR AGENDA): a balance claim of ours (d1: our move x->y; the least over their replies of the most over our
@@ -456,6 +451,14 @@ pub(crate) fn pos_exchange(p: &Chess) -> i64 {
         best = best.max(crate::rules::see(b, s, us));
     }
     best
+}
+
+/// `Pos.see` on a shakmaty position: the word `(see sq)` read with the mover = the side to move (what the side opposite the piece's owner wins by the exchange started
+/// by a capture on `sq`; 0 below zero and on an empty square).
+pub(crate) fn see_word(p: &Chess, s: Square) -> u32 {
+    let us = p.turn();
+    let named = if us == Color::White { s } else { s.flip_vertical() };          // the square named from the mover's side, as `render` names it
+    crate::vocab::num(&crate::vocab::Term::See(Box::new(crate::vocab::Term::Named(named))), p, !us)
 }
 
 /// The side to move has a mate in one.

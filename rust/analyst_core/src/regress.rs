@@ -352,6 +352,85 @@ fn forcing_whys_on(p: &Chess, ucis: Vec<String>, stake: i64, us_white: bool, mat
     Ok(out)
 }
 
+// ------------------------------------------------------------------------------------------------------------------ plan 77.1 (a): the one definition's reading
+// THE REPLY LOOP OF `regress.forcing_by_definition`, one call per node: for every legal move of the side to move, the claims of ours that bind after it and a pass,
+// and after each of their captures of the unit that moved. Generic machinery over the rules kernel: WHICH claims are read is the caller's list (the store's GOAL
+// entries, by the reader each is bound to); this module binds two readers, both rule level -- "terminal" (the kernel's mate in one: some legal move checkmates)
+// and "exchange" (the exchange law on each unit of theirs we attack, the word `see`). Every other goal's claims (a lemma read in Python) are added by the caller
+// on the positions this call names (`fens`). The decision (new claim? survives? the text) stays in Python: one definition, read by two readers.
+
+/// A claim read on a position (us to move): (reader, square or -1, value). Kept when its value reaches the stake.
+type ClaimRow = (String, i64, i64);
+
+fn claims_on(x: &Chess, me: Color, stake: i64, readers: &[String]) -> Vec<ClaimRow> {
+    let mut out = vec![];
+    for r in readers {
+        match r.as_str() {
+            "terminal" => if crate::pos::pos_mate_in_one(x) && STAKE_MATE >= stake { out.push((r.clone(), -1, STAKE_MATE)); },
+            "exchange" => {
+                let b = x.board();
+                for sq in b.by_color(!me) {
+                    if b.role_at(sq) == Some(crate::valuation::royal()) || (b.attacks_to(sq, me, b.occupied()) & b.by_color(me)).is_empty() { continue; }
+                    let v = i64::from(crate::pos::see_word(x, sq));
+                    if v >= stake { out.push((r.clone(), sq as i64, v)); }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn fen_of(x: &Chess) -> String { Fen::from_position(x.clone(), EnPassantMode::Legal).to_string() }
+
+/// One capture of the moved unit: (uci, the threat ends -- it checks, or the position after it is a mate or a stalemate --, the claims then, that position's FEN or "").
+type CapRow = (String, bool, Vec<ClaimRow>, String);
+/// One move: (uci, "check" | "capture" | "ended" | "noturn" | "read", the capture's worth, the claims after the move and a pass, what they win by the exchange on the
+/// moved unit's square, its captures in the kernel's order up to the first that ends the threat (read only when that exchange wins them something), the pass
+/// position's FEN or "").
+type DefRow = (String, String, i64, Vec<ClaimRow>, i64, Vec<CapRow>, String);
+
+/// definition_rows_pos(pos, stake, us_white, readers, fens) -> (the claims binding now, [one row per legal move]) -- see the section's comment. `fens`: name the
+/// positions read (the caller adds its own readers' claims there). ValueError when it is not `us`'s move.
+#[pyfunction]
+pub fn definition_rows_pos(pos: &crate::pos::Pos, stake: i64, us_white: bool, readers: Vec<String>, fens: bool) -> PyResult<(Vec<ClaimRow>, Vec<DefRow>)> {
+    let p = &pos.pos;
+    let me = col(us_white);
+    if p.turn() != me { return Err(err("definition_rows: not our move")); }
+    let before = claims_on(p, me, stake, &readers);
+    let mut rows = Vec::new();
+    for m in p.legal_moves() {
+        let u = m.to_uci(CastlingMode::Standard).to_string();
+        let mut c = p.clone();
+        c.play_unchecked(&m);
+        if c.is_check() { rows.push((u, "check".into(), 0, vec![], 0, vec![], String::new())); continue; }
+        if m.is_capture() {
+            let v = crate::valuation::worth(if m.is_en_passant() { m.role() } else { p.board().piece_at(m.to()).map_or(crate::valuation::royal(), |x| x.role) });   // (en passant takes a unit of the mover's kind)
+            if v >= stake { rows.push((u, "capture".into(), v, vec![], 0, vec![], String::new())); continue; }
+        }
+        if c.is_checkmate() || c.is_stalemate() { rows.push((u, "ended".into(), 0, vec![], 0, vec![], String::new())); continue; }
+        let Some(q) = crate::pos::with_turn_strict(&c, me) else { rows.push((u, "noturn".into(), 0, vec![], 0, vec![], String::new())); continue };
+        let cl = claims_on(&q, me, stake, &readers);
+        let qfen = if fens { fen_of(&q) } else { String::new() };
+        let to = m.to();
+        let lost = i64::from(crate::pos::see_word(&c, to));
+        let mut caps = vec![];
+        if lost >= crate::valuation::unit() {                       // (they win something: at least the valuation's unit)
+            for r in c.legal_moves() {
+                if !r.is_capture() || r.to() != to { continue; }
+                let ru = r.to_uci(CastlingMode::Standard).to_string();
+                let mut d = c.clone();
+                d.play_unchecked(&r);
+                if d.is_check() || d.is_checkmate() || d.is_stalemate() { caps.push((ru, true, vec![], String::new())); break; }
+                let dc = claims_on(&d, me, stake, &readers);
+                caps.push((ru, false, dc, if fens { fen_of(&d) } else { String::new() }));
+            }
+        }
+        rows.push((u, "read".into(), 0, cl, lost, caps, qfen));
+    }
+    Ok((before, rows))
+}
+
 // ------------------------------------------------------------------------------------------------------------------ 54 (B4): trap, fork, skewer, drive-onto, second moves
 // Ports of regress.trap_routes / fork_routes / skewer_routes / drive_onto_routes and binder.second_moves with python-chess's candidate order (`legal_sorted`).
 // The Python wrappers write the SAN (shakmaty's SAN is not python-chess's) and keep the old path behind regress.TRAP_RUST / SKEWER_RUST and binder.SECOND_RUST.

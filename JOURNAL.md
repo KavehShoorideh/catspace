@@ -35916,3 +35916,30 @@ OBS agreement (earlier tonight): claims equality 639/639 against the regression;
 Tests re-pinned to the definition: test_forcing61 (the fork's larger claim, 'threat 6' where the list's text read 'threat 5 survives Bxf6'), test_regress 52_16 / 52_18 (same),
 52_17 (LRTF's Rd7 is no route at all under the definition: Kxd7 then c8=Q+ Kxc8 -- the list called it forcing and the test read its standing kill; 64.2's test keeps that word),
 52_14 (the keep family at keep 0 verifies Rxb5, where it was skipped and the question killed). Gates: see the commit.
+
+## 2026-11-04 10:28 -- plan 77.1 (a) the port: the one definition's reply loop is ONE Rust call per node; equal on every reading, 5x cheaper; LOOP TARGET 1 flips; the gate run (two stale pins found)
+
+`regress.forcing_by_definition` now reads its reply loop through `analyst_core.definition_rows_pos(pos, stake, us, readers, fens)`: for every legal move of the node, the claims of
+ours that bind after it and a pass, what they win by the exchange on the moved unit's square, and the claims after each of their captures of it (kernel order, up to the first that
+ends the threat). Cached per node (key, us, stake); the decision (a new claim, the survive clause, the text, the note) stays in Python on the rows (`_decide`), so the definition is
+one, read by two readers. WHICH claims are read is the store's: the GOAL entries a chase pursues (`chase`, not a keep), each by its bound reader (`_claim_readers`): the
+game-ending goal on `Game.terminal` -> the Rust "terminal" reader (the kernel's mate in one), a goal valued by the `exchange` law -> the Rust "exchange" reader, the promotion goal
+-> its lemmas in Python (passer lemma, race word), read only on the positions the call names, and only where the lemmas' common hypothesis leaves them open (they keep no knight,
+rook or queen). The Rust section names no unit kind (en passant takes a unit of the mover's kind; the royal unit is the store's). The per-move body is `_forcing_by_definition_py`,
+the oracle (`DEF_RUST = False`). The survive clause reads 'they win something' against the store's unit, not a literal 0 (the worth scan's 19th finding, from last night's commit).
+
+OBS port equality (scripts in the job dir; guard positions + rand14..17_10 + dev_20 first 15 + six endgames, each with its children; stakes 1 3 5 8 9 100; new and held claims;
+answers and notes): 25320 of 25320 node readings equal, 861228 move readings; 9.5 us per reading against 51.8 us for the per-move body (5.4x).
+OBS trace identity vs the per-move body: ten tier 0, ten tier 2, wide tier 0, wide tier 2 -- 0 differ on all five lists each.
+OBS loop-2 batch (rand14_10 .. rand17_10 at 15 s, Stockfish depth 14), port77_1a: RIGHT 32, UNKNOWN 1, WRONG 7; proved RIGHT 32, proved WRONG 3, unproved WRONG 4, none 1 -- as
+  last night's def77_1a_v3; 1 of 40 differs (frLxu, WRONG f6h4 -> WRONG c2c3, both unproved).
+OBS cost (cProfile, five loop-2 puzzles at 15 s, one run each): forcing_by_definition 22.2 s cum of 81.2 s (27.4 %, 104.5 us per call, 212558 calls) -> 3.8 s of 70.9 s (5.4 %,
+  8.5 us per call, 449555 calls): twice the readings in the same clock. What is left in forcing_why: delayed_threat 9.3 s over 1678 calls (5.5 ms each), mate2_threat 2.2 s.
+OBS the discovery position at 15 s under the POOL (one run each): the port Nf6 proved at 9.4 s (1890 questions); the per-move body Nc5 unproved at 17.7 s -- LOOP TARGET 1
+  (strict xfail since 2026-10-22, test_offbuilt64) passes: the marker is removed.
+OBS engine gate (scripts/gate.py engine, first run since c5377753): files 50, passed 660, failed 2, xfailed 1, wall 1117.9 s. Both failures were last night's definition, not the
+  port (each fails with DEF_RUST off too): (1) test_76_5_b's worth scan, 19 exchanges read against 0 over its ceiling 18 -- the survive clause's `see(to) > 0`, now read against
+  the store's unit (in the oracle, `_decide` and the Rust row); (2) test_72_10_4 pinned W0VFO's route list with Qg6 (threat of mate): under the definition Qg6 is no route -- the
+  queen hangs to hxg6 (they win 9) and no claim survives that capture; the decision is unchanged (Qb7 +3 proved); re-pinned to the five routes. Both files pass after.
+NEXT in 77.1 (a): delayed_threat (Lean `Ideas.Forcing.delayedThreat`) is the next cost and the next hand list -- its follow-up test is the definition one reply deeper (a check
+  counts only if a claim binds behind it, `check_threat`: the same claims read with us to move again); then mate2_threat.

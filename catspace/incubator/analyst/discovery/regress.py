@@ -484,8 +484,170 @@ def _claims_binding_py(board: chess.Board, me: bool, stake: int) -> dict:
 
 GAME_NAME = chess.square_name
 
+DEF_RUST = True               # plan 77.1 (a), the port: the definition's reply loop read by ONE Rust call per node (`analyst_core.definition_rows_pos`); False: the per-move body (the oracle)
+_DEF: dict = {}               # (node key, us, stake) -> (claims binding now, {uci: row}, the promotion goal's lemmas open after which moves, {(uci, new): decision})
+G.CLEAR_HOOKS.append(_DEF.clear)
+_READERS: list = [None, None]  # (the GoalKinds object they were read from, (the Rust readers, the Python goals))
+RUST_READERS = ("terminal", "exchange")      # the readers analyst_core binds (rule level: the kernel's mate in one; the exchange law on each unit of theirs we attack)
+
+
+def _claim_readers() -> tuple:
+    """plan 77.1 (a): THE CLAIMS THE DEFINITION READS are the store's GOAL entries a chase pursues (`chase`, not a keep), each by the reader it is bound to: the
+    game-ending goal on the kernel predicate `Game.terminal` -> the Rust "terminal" reader; a goal valued by the `exchange` law (its gdl value) -> the Rust "exchange"
+    reader; the promotion goal -> its lemmas, read in Python (`_promotion_claims`). -> ([(rust reader, the goal's question word)], [the Python goals]). Read once per
+    store object (a test's patched store re-reads)."""
+    gk = LS.goal_kinds()
+    if _READERS[0] is gk:
+        return _READERS[1]
+    rust, py = [], []
+    for g in gk.by_question.values():
+        if not g.chase or g.keep:
+            continue
+        law = (((g.entry.get("params") or {}).get("gdl") or {}).get("value") or {}).get("law")
+        if g.ends_game and g.rule == "Game.terminal":
+            rust.append(("terminal", g.question))
+        elif law == "exchange":
+            rust.append(("exchange", g.question))
+        elif g.promotes:
+            py.append(g)
+    _READERS[0], _READERS[1] = gk, (rust, py)
+    return _READERS[1]
+
+
+def _promotion_claims(b: chess.Board, stake: int) -> dict:
+    """The promotion goal's claims on `b` (us to move): its lemmas -- the passer lemma (unstoppablePasser2_sound) and the race word (race_sound) -- as `_claims_binding` reads them,
+    keyed by the goal's question word (the passer lemma) and the race word's own."""
+    out = {}
+    g = LS.goal_kinds().promotion
+    if g.stake < stake:
+        return out
+    from catspace.incubator.analyst import lean_passer_v2_proto as PV
+    for sq, _plies in PV.proved_passers(b, bishops=True):
+        out[(g.question, sq)] = g.stake
+    for sq in RC.race_passers(b):
+        out.setdefault(("race", sq), g.stake)
+    return out
+
+
+def _promotion_shut(board: chess.Board, me: bool) -> int:
+    """The promotion lemmas' common hypothesis read on the node: both are silent while THEY keep a knight, rook or queen (`passer_gate`: their rooks, queens and
+    knights absent; `race_claim`'s gate: no piece of theirs but king and pawns). Our quiet move and their recapture never add such a unit (a promotion of theirs only
+    shuts it further), so a node where they keep two shuts the lemmas on every position the reply loop reads; one, everywhere but after our capture of it.
+    -> how many they keep."""
+    return chess.popcount(board.occupied_co[not me] & (board.knights | board.rooks | board.queens))
+
+
+def _definition_node(board: chess.Board, P, me: bool, stake: int):
+    """The node's rows (one Rust call, cached per node): (claims binding now, {uci: row}, the moves after which the promotion lemmas may bind, {})."""
+    k = (P.key(), me, stake)
+    hit = _DEF.get(k)
+    if hit is not None:
+        return hit
+    rust, py = _claim_readers()
+    keep_big = _promotion_shut(board, me) if py else 99
+    fens = keep_big <= 1
+    before_rows, rows = _A.definition_rows_pos(P, stake, me, [r for r, _w in rust], fens)
+    word = dict(rust)
+    before = {(word[r], None if sq < 0 else sq): v for r, sq, v in before_rows}
+    if py and keep_big == 0:
+        for kk, v in _promotion_claims(board, stake).items():
+            before.setdefault(kk, v)
+    big = board.occupied_co[not me] & (board.knights | board.rooks | board.queens)
+    open_after = set()
+    if fens:
+        for row in rows:
+            to = chess.parse_square(row[0][2:4])
+            if keep_big == 0 or (big & chess.BB_SQUARES[to]):
+                open_after.add(row[0])
+    hit = _DEF[k] = (before, {row[0]: row for row in rows}, open_after, {}, word)
+    return hit
+
+
+def _claims_of(cl, word, fen, open_, stake) -> dict:
+    out = {(word[r], None if sq < 0 else sq): v for r, sq, v in cl}
+    if open_ and fen:
+        for kk, v in _promotion_claims(chess.Board(fen), stake).items():
+            out.setdefault(kk, v)
+    return out
+
 
 def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str | bool, new: bool = True, notes: list | None = None) -> str | None:
+    """plan 77.1 (a) THE ONE DEFINITION OF FORCING (see `_forcing_by_definition_py`, its per-move body and the oracle), its reply loop read by one Rust call per node
+    (`_definition_node`); the decision -- a new claim, the survive clause, the text -- read here on the rows."""
+    if not DEF_RUST:
+        return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
+    me = G.colour_of(us)
+    if board.turn != me:
+        return None
+    try:
+        P = G.handle(board)
+        before, rows, open_after, decided, word = _definition_node(board, P, me, stake)
+    except ValueError:
+        return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
+    uci = m.uci()
+    d = decided.get((uci, new))
+    if d is None:
+        row = rows.get(uci)
+        if row is None:
+            return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
+        d = decided[(uci, new)] = _decide(row, before, new, stake, word, uci in open_after)
+    why, note = d
+    if note is not None and notes is not None:
+        lost, worst_uci, worst = note
+        to = m.to_square
+        c1 = board.copy(stack=False)
+        c1.push(m)
+        pc = c1.piece_at(to)
+        sym = pc.symbol().upper() if pc else "?"
+        notes.append(f"{board.san(m)}: not a threat: the {sym} on {GAME_NAME(to)} hangs (they win {lost} by the exchange there) and the threat does not survive {c1.san(chess.Move.from_uci(worst_uci))} ({worst})")
+    if why is not None and why.startswith("threat: "):
+        PASS_CLAIMS[0] += 1
+    return why
+
+
+def _decide(row, before: dict, new: bool, stake: int, word: dict, open_: bool) -> tuple:
+    """The definition's decision on one move's row -> (why or None, the survive clause's note (what they win, the worst capture, what survives it) or None)."""
+    uci, pre, cv, cl, lost, caps, qfen = row
+    if pre == "check":
+        return "check", None
+    if pre == "capture":
+        return f"capture {cv}", None
+    if pre != "read":
+        return None, None
+    claims = _claims_of(cl, word, qfen, open_, stake)
+    fresh = {k: v for k, v in claims.items() if (new is False or k not in before)}
+    if lost >= LS.valuation().unit:                               # (they win something: at least the valuation's unit)
+        worst = worst_uci = None
+        for cu, ends, dcl, dfen in caps:
+            if ends:
+                worst, worst_uci = 0, cu
+                break
+            v = max(_claims_of(dcl, word, dfen, open_, stake).values(), default=0)
+            if worst is None or v < worst:
+                worst, worst_uci = v, cu
+        if worst is not None and worst < stake:
+            return None, (int(lost), worst_uci, worst)
+    if not fresh:
+        return None, None
+    if (word.get("terminal"), None) in fresh:                   # (the claims' words are the store's goal words: `_claim_readers`)
+        return "threat of mate", None
+    top = max(fresh.values())
+    if not any(k[0] == word.get("exchange") and v == top for k, v in fresh.items()):
+        kind, sq = min((k for k, v in fresh.items() if v == top), key=lambda k: k[1])
+        passed = chess.Board(qfen)
+        n = G.word(passed, ("pushes", G.name(sq)), passed.turn)
+        path = [G.name(x) for x in pawn_path(passed, sq, n)]
+        if kind == "race":                                        # (the key of the lemma that fired: the race word, else the passer lemma)
+            w = f"race_sound, within {2 * RC.race_passers(passed)[sq] - 1} plies"
+        else:
+            from catspace.incubator.analyst import lean_passer_v2_proto as PV
+            plies = dict(PV.proved_passers(passed, bishops=True)).get(sq)
+            w = f"unstoppablePasser2_sound, within {plies} plies"
+        return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass ({w})", None
+    return f"threat {top}", None
+
+
+def _forcing_by_definition_py(board: chess.Board, m: chess.Move, stake: int, us: str | bool, new: bool = True, notes: list | None = None) -> str | None:
     """plan 77.1 (a) THE ONE DEFINITION OF FORCING: a move is forcing when it checks (the rules), when it captures a unit worth the stake (the valuation realised), or when AFTER IT AND A
     PASS BY THEM a claim of ours binds that did not bind before it (pass_claim's frame over the rules + the store's goals), and some such new claim still binds after their capture of the
     unit that moved (the recapture counts: one reply, then the pass -- the generic form of the list's "survives" test). No hand-written list of threat kinds. `new`: a route must CREATE a claim; a counter-threat (`_counter`) only has to HOLD one. -> 'check' | 'capture v' |
@@ -515,7 +677,7 @@ def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str
         before = _BEFORE[bk] = _claims_binding(P, me, stake, board)
     new = {k: v for k, v in _claims_binding(Q, me, stake).items() if (new is False or k not in before)}      # a ROUTE must CREATE a claim (new=True); a COUNTER-THREAT
     to = m.to_square                                                                                       # (new=False) may hold a standing one: the reply keeps pressure the
-    if P1.see(to) > 0:                                            # other side must still meet (Allis's counter-threat; 3ilXU: Nxh3 Bf4 Nxf4)
+    if P1.see(to) >= LS.valuation().unit:                        # other side must still meet (Allis's counter-threat; 3ilXU: Nxh3 Bf4 Nxf4)
         # the survive clause, the list's exact test: a unit that HANGS by the exchange on its square must survive -- after each capture
         worst = None                                              # of it (a capturing CHECK ends the threat: no pass is legal) some claim of ours worth the stake must still bind; the worst decides
         worst_uci = None

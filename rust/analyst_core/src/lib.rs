@@ -1794,6 +1794,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(regress::material_defects_at, m)?)?;
     m.add_function(wrap_pyfunction!(regress::still_routes_pos, m)?)?;
     m.add_function(wrap_pyfunction!(regress::forcing_whys_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::definition_rows_pos, m)?)?;
     m.add_function(wrap_pyfunction!(regress::trap_fix_routes_pos, m)?)?;
     m.add_function(wrap_pyfunction!(regress::skewer_routes_at, m)?)?;
     m.add_function(wrap_pyfunction!(regress::drive_onto_routes_pos, m)?)?;
