@@ -145,6 +145,16 @@ def test_72_7_3a_bind_mate2_equals_its_oracle_on_puzzles_and_games():
     print(f"OBS 72.7 3a bind_mate2 against its oracle: positions {n}, bindings {hits}, every one equal")
 
 
+def _mate1_after_pass(b, m, us) -> bool:
+    c = b.copy(stack=False)
+    c.push(m)
+    if c.is_check():
+        return False
+    P = G.pos_of(c)
+    Q = P.with_turn(us) if P is not None else None
+    return bool(Q is not None and Q.mates())
+
+
 def test_72_7_3a_mate2_threat_equals_its_oracle_on_every_move():
     """mate2_threat (Rust, on the handle) against the Python body for EVERY legal move of the puzzles' positions and a sample of the games', for the side to move and
     (the word asks either) for the other side as `us`."""
@@ -155,7 +165,10 @@ def test_72_7_3a_mate2_threat_equals_its_oracle_on_every_move():
         for m in b.legal_moves:
             for us in (b.turn, not b.turn):
                 want = mate2_threat_oracle(b, m, us)
-                assert R.mate2_threat(b, m, us) == want, (b.fen(), m.uci(), us)
+                got = R.mate2_threat(b, m, us)
+                # plan 77.1 (a) (2026-11-04): the threat of mate in two is the composition (some move, then a mate in one after every reply), which counts a mate in ONE
+                # after the pass too (forcing_why reads that first, as 'threat of mate'); otherwise equal to the mined word
+                assert got == want or (got and _mate1_after_pass(b, m, us)), (b.fen(), m.uci(), us)
                 n += 1
                 hits += want
     assert hits > 0

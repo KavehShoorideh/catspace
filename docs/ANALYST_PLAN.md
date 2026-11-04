@@ -4334,3 +4334,8 @@ this reading (one batch per node over the handle's reply table) is the next step
 exchange law); the claims read are the store's GOAL entries a chase pursues by their bound readers (`regress._claim_readers`; the promotion goal's lemmas stay Python, read where
 their hypothesis leaves them open); equal on 25320 of 25320 node readings, 5.4x cheaper per reading; the guard identical on all five lists; the batch equal (32 right, 32 proved);
 LOOP TARGET 1 passes. Next: delayed_threat (the definition one reply deeper), then mate2_threat.
+
+#### 77.1 (a) THE EVERY-REPLY CLAUSE (Kaveh 2026-11-04 "yep. agree. go"; 12:11, JOURNAL): forcing = check / capture by the rules, OR a new claim after a PASS that survives the
+mover's capture, OR a claim after EVERY LEGAL REPLY (the worst deciding) -- the pass is wrong only after a check (illegal) and in a zugzwang (it flatters them). check_threat and
+no_safe_move are the clause (`regress.every_reply`, `analyst_core.reply_claims_pos`); the threat of mate in two is the composition (`terminal_after_pass_pos`, n = 2). Batch 33 right
+(was 32), 02XVK gained. Next: delayed_threat's follow-up as one batch per node; the claim behind a check as the terminal goal in n (test_duty63 63_2, strict xfail).

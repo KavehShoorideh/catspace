@@ -42,7 +42,10 @@ def test_63_1_a_bare_check_is_not_a_threat_and_a_discovered_check_with_a_mate_be
     c.push(m)
     c.push_uci("h4e7")                                                     # 1.Bf2 Be7: the h-file is open to the Qh2 behind the Nh3
     why = R.check_threat(c, chess.Move.from_uci("h3g1"), 3, "w")
-    assert why == "check that also threatens mate (Qh7#)"
+    # plan 77.1 (a) (2026-11-04): read after EVERY answer to the check -- Bh4 goes back and blocks the h-file, so no mate after every reply; the bishop on h4 is then won
+    # (the old reading, on the passed board, never let them answer: 'threatens mate (Qh7#)')
+    assert why == "check that also threatens +3 (after every reply; the worst, Bh4: then the B on h4)"
+    assert R.check_threat(c, chess.Move.from_uci("h3g5"), 3, "w") == "check that also threatens mate (after every reply; the worst, Kg8: then Qh7#)"
 
 
 def test_63_1_the_filter_is_the_lean_definition_brute_force():
@@ -92,6 +95,9 @@ def test_63_2_the_safe_moves_list_is_the_mobility_word():
             assert len(R.safe_moves(b, sq)) == G.mobility_of(b, sq)
 
 
+@pytest.mark.xfail(strict=True, reason="plan 77.1 (a) 2026-11-04: the check behind the duty is read after EVERY answer (one level): Bxf2 leaves h4 covered (Bxf2 Ng5+ Bh4), so no "
+                   "mate in one after every reply -- the mate is deeper (Qxh4+ Kg8 Qh7#). The old reading saw it only on the passed board, the fiction that also called Qxg2+ "
+                   "(the queen taken) a mate threat. Flips when the claim behind a check is the terminal goal in n (the same clause composed).")
 def test_63_2_the_bishop_on_h4_is_pinned_to_the_mate_on_h7():
     b, m = _bf2()
     b.push(m)
@@ -158,4 +164,4 @@ def test_63_4_traps_set_names_the_replies_that_lose_to_a_proved_mate_and_explain
     traps = R.traps_set(b, m, "w", limit=40)
     assert {t[0] for t in traps} >= {"Be7", "Bf6", "Bg5"} and all(t[2] in ("mate in one", "mate in two") for t in traps)       # Ng5+ (discovered) is a forced mate in two
     line = R.explain_move(b, m, ["saves our B on e3", "win their B on h4 (worth 3)"], "w")
-    assert line.startswith("Bf2: saves our B on e3; win their B on h4 (worth 3) -- the B on h4 is pinned to a threat") and "traps set: ...Be7?" in line
+    assert line.startswith("Bf2: saves our B on e3; win their B on h4 (worth 3)") and "traps set: ...Be7?" in line      # (77.1 (a): the pin clause waits on test_63_2's mate in n)

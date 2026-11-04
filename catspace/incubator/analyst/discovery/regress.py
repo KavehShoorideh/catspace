@@ -359,6 +359,18 @@ def mate_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
 
 
 def mate2_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
+    """plan 59 tier 2's threat of mate in two read by plan 77.1 (a)'s COMPOSITION (Kaveh 2026-11-04: a mate in two is a move plus a mate in one after every reply): after our
+    move `m` and a pass, the terminal goal binds in two moves of ours -- some move after which every legal reply leaves a mate in one (`analyst_core.terminal_after_pass_pos`,
+    n = 2; every move tried, promotions and castling included). The mined word's reading (`_mate2_threat_word`, Lean `Ideas.Mined.Schemas.mate_in_two`) is kept for the
+    kernel's refusals and as the comparison."""
+    me = G.colour_of(us)
+    h = G.pos_of(board)
+    if h is not None:
+        return _A.terminal_after_pass_pos(h, m.uci(), me, 2)
+    return _mate2_threat_word(board, m, us)
+
+
+def _mate2_threat_word(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
     """plan 59 tier 2: after our (quiet) move m and a pass, we have a FORCED MATE IN TWO, read by the proved word `mate_in_two` (Lean `Ideas.Mined.Schemas.mate_in_two`: a move x -> y after which
     every reply is met by a mate; bound by `selfmine.bind_mate2`, the premise read in Rust) -- the same word the binder's mate_in_two schema uses, on the board after m with the move passed to them.
     plan 72.7 step 3a: read in Rust on the board's handle in ONE call (`analyst_core.mate2_threat_pos`: the push, the pass, the binder's candidates and atoms -- words.rs); a board
@@ -645,6 +657,46 @@ def _decide(row, before: dict, new: bool, stake: int, word: dict, open_: bool) -
             w = f"unstoppablePasser2_sound, within {plies} plies"
         return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass ({w})", None
     return f"threat {top}", None
+
+
+def every_reply(board: chess.Board, m: chess.Move, stake: int, us: str | bool, new: bool = True):
+    """plan 77.1 (a) THE EVERY-REPLY CLAUSE (Kaveh 2026-11-04): where a pass is no move of theirs -- after a check (illegal) and in a zugzwang (it flatters them) -- does a claim
+    of ours bind after EVERY legal reply to our move `m`, the worst reply deciding? A reply's value is the best claim of ours then (us to move; with `new`, one that did not
+    bind before `m`) plus our balance change by the reply (what it took or promoted); a reply that checks us or ends the game is worth 0 (the threat ends). One Rust call
+    (`analyst_core.reply_claims_pos`); the claims are the definition's (the store's goals by their readers). Read reply by reply, it stops at the first below the stake.
+    -> (the worst value, its reply's uci, the claim key that holds there or None) | 'mate' | 'stalemate' (our move ends the game) | None (not our move / the kernel refuses)."""
+    me = G.colour_of(us)
+    if board.turn != me:
+        return None
+    try:
+        P = G.handle(board)
+        rust, py = _claim_readers()
+        keep_big = _promotion_shut(board, me) if py else 99
+        open_ = keep_big == 0 or (keep_big == 1 and bool(board.occupied_co[not me] & (board.knights | board.rooks | board.queens) & chess.BB_SQUARES[m.to_square]))
+        status, before_rows, rows = _A.reply_claims_pos(P, m.uci(), stake, me, [r for r, _w in rust], open_)
+    except ValueError:
+        return None
+    if status != "read":
+        return status
+    word = dict(rust)
+    before = {(word[r], None if sq < 0 else sq): v for r, sq, v in before_rows}           # (the claims binding now, read in the same call: no batch of the whole node)
+    if py and keep_big == 0:
+        for kk, v in _promotion_claims(board, stake).items():
+            before.setdefault(kk, v)
+    worst = None
+    for ru, ends, dbal, cl, fen in rows:
+        if ends:
+            v, key = 0, None
+        else:
+            claims = _claims_of(cl, word, fen, open_, stake)
+            fresh = {k: x for k, x in claims.items() if not new or k not in before}
+            key = max(fresh, key=lambda k: fresh[k]) if fresh else None
+            v = (fresh[key] if key is not None else 0) + dbal
+        if worst is None or v < worst[0]:
+            worst = (v, ru, key)
+            if v < stake:
+                break
+    return worst
 
 
 def _forcing_by_definition_py(board: chess.Board, m: chess.Move, stake: int, us: str | bool, new: bool = True, notes: list | None = None) -> str | None:
@@ -959,6 +1011,42 @@ G.CLEAR_HOOKS.append(_STANDING.clear)
 
 
 def check_threat(board: chess.Board, x: chess.Move, stake: int, us: str | bool) -> str | None:
+    """plan 63.1 (Lean `Ideas.Forcing.checkThreat`) read by plan 77.1 (a)'s EVERY-REPLY CLAUSE (Kaveh 2026-11-04): a CHECK x is also a THREAT when after EVERY legal answer
+    to it a claim of ours worth the stake binds (`every_reply`: the skewer Bb5+ K moves Bxe8 is one; the passed board of the old reading -- their king still in check, us to
+    move -- is no position of the game and saw neither the skewer nor the block that parries). -> 'check that mates' | 'check that also threatens mate (after every reply;
+    the worst, R)' | 'check that also threatens +v (after every reply; the worst, R)' | None. The old reading is `_check_threat_pass` (the kernel's refusals only)."""
+    me = G.colour_of(us)
+    if not board.gives_check(x):
+        return None
+    w = every_reply(board, x, stake, me)
+    if w == "mate":
+        return "check that mates"
+    if w is None:
+        return _check_threat_pass(board, x, stake, us)
+    if w == "stalemate" or w[0] < stake:
+        return None
+    v, ru, key = w
+    return f"check that also threatens {_after_worst(board, x, ru, key, v, me)}"
+
+
+def _after_worst(board: chess.Board, x: chess.Move, ru: str, key, v: int, me: bool) -> str:
+    """The every-reply clause's reading for the trace: 'mate (after every reply; the worst, R: then M#)' or '+v (after every reply; the worst, R: then the U on s)'."""
+    c = board.copy(stack=False)
+    c.push(x)
+    r = chess.Move.from_uci(ru)
+    worst = c.san(r)
+    d = c.copy(stack=False)
+    d.push(r)
+    if key is not None and key[0] == dict(_claim_readers()[0]).get("terminal"):     # (the worst reply's best claim is the terminal goal's: no material claim reaches it, so every reply leaves it)
+        P = G.pos_of(d)
+        ms = P.mates() if P is not None else []
+        return f"mate (after every reply; the worst, {worst}" + (f": then {d.san(chess.Move.from_uci(ms[0]))})" if ms else ")")
+    if key is not None and key[1] is not None and d.piece_at(key[1]) is not None:
+        return f"+{v} (after every reply; the worst, {worst}: then the {d.piece_at(key[1]).symbol().upper()} on {G.name(key[1])})"
+    return f"+{v} (after every reply; the worst, {worst})"
+
+
+def _check_threat_pass(board: chess.Board, x: chess.Move, stake: int, us: str | bool) -> str | None:
     """plan 63.1 (Lean `Ideas.Forcing.checkThreat`): a CHECK x that is also a THREAT. After x their king is in check, so no pass is legal; the pass test is read the way `pass_claim` /
     `threat_value` read it, on the board after x with US to move again (`G.with_turn`): a move of ours that then MATES (the discovered check Ng1+ that uncovers Qh7#: every reply that does not
     meet the mate loses), or an exchange worth at least the stake (stake < mate). A bare check with nothing behind it is None; a check that mates is 'check that mates'.
@@ -1309,6 +1397,22 @@ def explain_move(board: chess.Board, m: chess.Move, answers: list, us: str | boo
 
 
 def no_safe_move(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
+    """plan 61 A4 (Lean `Ideas.Forcing.noSafeMove`; zugzwang as 'no safe move') read by plan 77.1 (a)'s EVERY-REPLY CLAUSE (Kaveh 2026-11-04): the quiet move `m` is forcing
+    when after EVERY legal reply of theirs a new claim of ours worth the stake binds, net of what the reply took (`every_reply`; the worst reply decides) -- the zugzwang the
+    pass cannot see (it flatters them). Every claim kind counts (a mate, an exchange win, a promotion), at every stake. -> 'no safe move: every reply loses >= stake (m:
+    cheapest R loses v)' or None. The old exchange-only reading is `_no_safe_move_pass` (the kernel's refusals only)."""
+    me = G.colour_of(us)
+    if board.gives_check(m):
+        return None
+    w = every_reply(board, m, stake, me)
+    if w is None:
+        return _no_safe_move_pass(board, m, stake, us)
+    if not isinstance(w, tuple) or w[0] < stake:
+        return None
+    return f"no safe move: every reply loses >= {stake} ({board.san(m)}: {_after_worst(board, m, w[1], w[2], w[0], me)})"
+
+
+def _no_safe_move_pass(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
     """plan 61 A4 (Lean `Ideas.Forcing.noSafeMove`; zugzwang as 'no safe move'): the quiet move `m` is forcing iff after it EVERY legal reply of theirs loses at least the stake by rule: after
     the reply, the best static exchange of ours on a piece of theirs (the piece that moved or the duty it left -- the stake was not reachable before the reply, `m` being not forcing) less
     what the reply itself captured. A reply that checks us, promotes, or loses less makes the move not forcing (a free tempo move). -> "no safe move: every reply loses >= stake (cheapest: ...)" or None."""

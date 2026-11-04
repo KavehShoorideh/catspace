@@ -15,7 +15,8 @@ from catspace.incubator.analyst.discovery.state import state_of
 DOFB = "1r2k3/1bp2p2/p3p2Q/q5B1/3b4/P7/5PPP/2RR2K1 b - - 4 29"             # Qd5 (a5d5) is a threat of mate
 MATE2 = "4R3/8/7Q/8/6K1/k7/8/8 w - - 0 1"                                   # Rh8 (e8h8): a threat of mate in two
 DISCOVERY = "r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1"   # Nf6: threat 5 survives Bxf6
-ZUG = "2K5/6N1/1k3n1Q/8/8/2p5/8/8 w - - 0 1"                                # Ne8 (g7e8): the pinned Nf6 cannot move, every black move leaves Qxf6 / Nxf6
+ZUG = "8/3k4/3Pp3/8/3K4/8/6P1/8 w - - 0 1"                                  # Ke5 (d4e5): their king must move and gives up e6 (or d6); after a pass nothing new binds
+# (plan 77.1 (a) 2026-11-04: the old position, 2K5/6N1/1k3n1Q/8/8/2p5/8/8 Ne8, stood on a claim that bound BEFORE the move -- Qxf6 at once -- so Ne8 creates nothing)
 DELAY = "3KR3/1k6/1N6/8/8/8/7n/8 w - - 0 1"                                 # Rg8 (e8g8): after every reply a new threat (Rh8 hits the knight on h2)
 
 
@@ -150,28 +151,27 @@ def test_a3_a_move_with_one_reply_that_leaves_nothing_is_not_delayed_and_the_fla
 
 def test_a4_no_safe_move_every_reply_loses_the_stake():
     b = chess.Board(ZUG)
-    m = chess.Move.from_uci("g7e8")
-    assert R.forcing_why(b, m, 3, "w", mate_threats=True) is None                 # quiet by today's words (the knight hangs, the threat does not survive)
-    why = R.forcing_why(b, m, 3, "w", mate_threats=True, nosafe=True)
-    assert why.startswith("no safe move: every reply loses >= 3 (Ne8: cheapest ") and "wins 3" in why
+    m = chess.Move.from_uci("d4e5")
+    assert R.forcing_why(b, m, 1, "w", mate_threats=True) is None                 # quiet: after a pass no new claim binds
+    why = R.forcing_why(b, m, 1, "w", mate_threats=True, nosafe=True)
+    assert why.startswith("no safe move: every reply loses >= 1 (Ke5: +1 (after every reply; the worst, ") and "then the P on" in why
     c = b.copy()
     c.push(m)
     assert list(c.legal_moves)                                                    # Lean `noSafeMove_loses`: there is a reply, and each one loses
     for r in c.legal_moves:
         d = c.copy()
         d.push(r)
-        assert not d.is_check() and R._threat_square(G.with_turn(d, True), True)[0] >= 3
+        assert not d.is_check() and R._threat_square(G.with_turn(d, True), True)[0] >= 1
     assert R.threat_of(b, m, why, "w").kind == "zugzwang"
 
 
 def test_a4_a_free_tempo_reply_makes_the_move_not_forcing_and_a_bigger_stake_is_not_met():
     b = chess.Board(ZUG)
-    m = chess.Move.from_uci("g7e8")
-    assert R.no_safe_move(b, m, 5, "w") is None                                   # Lean `free_move_breaks`: the replies lose 3, not 5
-    free = chess.Board("2K5/6N1/1k3n1Q/8/8/8/8/7p w - - 0 1")                     # a pawn of theirs that can move for free: (h1 promotes -- a reply that is not a loss)
-    free.turn = True
-    assert R.no_safe_move(free, chess.Move.from_uci("g7e8"), 3, "w") is None
-    assert R.no_safe_move(b, m, R.STAKE_MATE, "w") is None                       # a mate stake is read by checks and mate threats only
+    m = chess.Move.from_uci("d4e5")
+    assert R.no_safe_move(b, m, 2, "w") is None                                   # Lean `free_move_breaks`: the replies lose 1, not 2
+    free = chess.Board("8/3k3p/3Pp3/8/3K4/8/6P1/8 w - - 0 1")                     # a pawn of theirs that can move for free (h6 / h5: a reply that is not a loss)
+    assert R.no_safe_move(free, m, 1, "w") is None
+    assert R.no_safe_move(b, m, R.STAKE_MATE, "w") is None                       # at the mate stake the clause asks a mate after every reply: none here
 
 
 # ---- the chase with the flags ON leaves a plain puzzle's decision alone ---------------------------------------------------------------------------

@@ -35943,3 +35943,38 @@ OBS engine gate (scripts/gate.py engine, first run since c5377753): files 50, pa
   queen hangs to hxg6 (they win 9) and no claim survives that capture; the decision is unchanged (Qb7 +3 proved); re-pinned to the five routes. Both files pass after.
 NEXT in 77.1 (a): delayed_threat (Lean `Ideas.Forcing.delayedThreat`) is the next cost and the next hand list -- its follow-up test is the definition one reply deeper (a check
   counts only if a claim binds behind it, `check_threat`: the same claims read with us to move again); then mate2_threat.
+
+## 2026-11-04 12:11 -- plan 77.1 (a) THE EVERY-REPLY CLAUSE (Kaveh: "the check, and zugzwang situations, make the pass actually incorrect"): check_threat and no_safe_move become it; the threat of mate in two is the composition
+
+THE DEFINITION NOW READS (Kaveh 2026-11-04 "yep. agree. go"): a move is forcing when it checks or captures by the rules, or when after a PASS a new claim of ours binds and survives their
+capture of the mover, or when after EVERY LEGAL REPLY a claim of ours binds (the worst reply deciding). The pass stays where it is the definition of a threat (what they would suffer if they
+ignored it -- a best reply in its place would keep only double threats and lose every single-threat step of a combination); it is wrong where no neutral move exists: after a CHECK (a pass
+is illegal: their answers must be read) and in a ZUGZWANG (it flatters them). Their worst move in its place was rejected (one blunder available would make every move forcing).
+BUILT: `analyst_core.reply_claims_pos` (every legal reply to our move: the claims then, by the store's readers, our balance change by the reply, the claims binding before) and
+`regress.every_reply` (a reply's value = its best NEW claim + our balance change; a reply that checks us or ends the game: 0; stops at the first reply below the stake).
+- check_threat (Lean checkThreat) = the clause after a check. The old reading played the check and read the board with US to move again -- their king still in check, a position of no game:
+  it saw no skewer (Ra8+ with the queen behind the king, Ba2+ with the queen on g8: old None, now '+9 (after every reply; the worst, Kd7: then the Q on h8)') and no answer that parries
+  (Qxg2+ 'threatens mate (Qh2#)' while Bxg2 takes the queen; POS2's Ng1+ while Bh4 goes back to block the h-file). Kept as `_check_threat_pass` for the kernel's refusals only.
+- no_safe_move (Lean noSafeMove) = the clause after a quiet move: every claim kind, every stake, the claim NEW (as the definition's routes). The old body read exchanges only and counted
+  claims that stood before the move (test_forcing61's ZUG, Ne8, stood on Qxf6 available at once -- re-pinned to the textbook K+P zugzwang 8/3k4/3Pp3/8/3K4/8/6P1/8 Ke5).
+- mate2_threat = the composition: after the move and a pass, the terminal goal in two moves of ours (`terminal_after_pass_pos`, n = 2: some move after which every reply leaves a mate in
+  one; every move tried -- the mined word skipped promotions and castling as first moves). The mined word `_mate2_threat_word` is the comparison.
+- delayed_threat reads the new check_threat through its follow-up test (the clause one level deeper: after every reply some new forcing move of ours).
+OBS new vs old readings (603 positions: the ten + loop-2 puzzles with children): check_threat@3 1000 readings, agree 828, new only 22, old only 150; check_threat@100 agree 847, new only 1,
+  old only 152; no_safe_move@1 16658, agree 16383, new only 14, old only 261 (standing claims, not made by the move); mate2 16658, agree 16202, new only 456, old only 0 -- python-chess
+  brute force on a sample: 264 of 264 new-only confirmed, every one a mate in ONE after the pass (forcing_why reads that first as 'threat of mate': no answer of the engine changes).
+  Time: check_threat 0.02 vs 0.20 s, mate2 0.54 vs 4.35 s, no_safe_move 1.44 vs 5.02 s.
+OBS guard (vs the port's snapshots): tier 0 -- decisions identical on ten and wide (traces differ 1 of 10, 9 of 99: the new check texts); tier 2 -- ten decisions identical (6 of 10 traces
+  differ), wide 1 of 99 decisions differs: 02XVK Qh6 0 unproved -> Bxg6 +9 proved (Stockfish depth 16: Bxg6 the best move, mate; Qh6 -162).
+OBS loop-2 batch (rand14_10 .. rand17_10 at 15 s), every77_1a: RIGHT 33, UNKNOWN 1, WRONG 6; proved RIGHT 33, proved WRONG 2, unproved WRONG 4, none 1 (the port's: 32 / 32 / 3). 2 of 40
+  differ: KSMKJ WRONG f8b8 proved -> RIGHT f8d6 proved; frLxu WRONG -> WRONG (unproved both; it moved between runs before).
+OBS cost (cProfile, five loop-2 puzzles at 15 s): check_threat 4.75 s / 13022 calls (365 us) -> 0.72 s / 16266 (44 us; then halved again: the claims before the move read in the same call,
+  not by a batch of the whole node); mate2_threat 2.2 -> 0.8 s; delayed_threat 9.3 -> 6.2 s (left: its follow-up test calls the definition per move, 400125 calls -- the next batch).
+OBS engine gate: files 50, passed 660, failed 1, xfailed 2, wall 1352.1 s. The failure: test_fact_store 52_19_3 (out-of-time gaps), a 0.3 s CLOCK-EDGE test (it needs a route cut mid-read:
+  'under 0.2 s no route starts'). Diagnosed from the trace: (i) a cost bug -- every_reply batched the whole node at the mate stake for the claims before the move (fixed, above); (ii) the
+  policy's scores move with the texts (+10.22 -> +10.04), the reading order and so the cut moves. After (i): the file fails 1 of 5 runs (the port's code 0 of 4). Budget not touched.
+Tests re-pinned: test_duty63 63_1 (Ng1+ -- Bh4 blocks: '+3 ... then the B on h4'; Ng5+ 'mate (after every reply; the worst, Kg8: then Qh7#)'), 63_4 (the pin clause), test_forcing61 A4
+  (the textbook zugzwang), test_plan72_7_step3 (the composition = the word, or a mate in one after the pass). STRICT XFAIL test_duty63 63_2 'the bishop on h4 is pinned to the mate': Bxf2 keeps
+  h4 covered (Bxf2 Ng5+ Bh4) -- the mate is three deep (Qxh4+ Kg8 Qh7#); the one-level clause cannot see it, the old fiction did. It flips when the claim behind a check is the terminal goal
+  in n (the same clause composed).
+NEXT: delayed_threat's follow-up test as one batch per node; the claim behind a check as the terminal goal in n (63_2).

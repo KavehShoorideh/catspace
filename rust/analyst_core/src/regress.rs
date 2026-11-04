@@ -431,6 +431,64 @@ pub fn definition_rows_pos(pos: &crate::pos::Pos, stake: i64, us_white: bool, re
     Ok((before, rows))
 }
 
+// ------------------------------------------------------------------------------------------------------------------ plan 77.1 (a): every legal reply
+// THE EVERY-REPLY CLAUSE (Kaveh 2026-11-04): where the pass is no move of theirs -- after a check (a pass is illegal) and in a zugzwang (a pass flatters them) -- the
+// question is whether a claim of ours binds after EVERY legal reply, the worst reply deciding. One call reads every reply of theirs to our move: the claims then (us to
+// move) by the caller's readers, and our balance change by the reply (what it took or promoted). The decision (new claims, the worst, the text) stays in Python.
+
+/// One reply of theirs: (uci, the threat ends -- the reply checks us, or the game is over after it --, our balance change by it, the claims then, that position's FEN or "").
+type ReplyRow = (String, bool, i64, Vec<ClaimRow>, String);
+
+/// reply_claims_pos(pos, uci, stake, us_white, readers, fens) -> ("mate" | "stalemate" | "read", the claims binding now (before the move), [one row per legal reply to
+/// our legal move `uci`, the kernel's order]).
+/// ValueError when it is not `us`'s move or the move is not legal.
+#[pyfunction]
+pub fn reply_claims_pos(pos: &crate::pos::Pos, uci: &str, stake: i64, us_white: bool, readers: Vec<String>, fens: bool) -> PyResult<(String, Vec<ClaimRow>, Vec<ReplyRow>)> {
+    let me = col(us_white);
+    if pos.pos.turn() != me { return Err(err("reply_claims: not our move")); }
+    let c = pos.push_move(uci)?.pos;
+    if c.is_checkmate() { return Ok(("mate".into(), vec![], vec![])); }
+    if c.is_stalemate() { return Ok(("stalemate".into(), vec![], vec![])); }
+    let before = claims_on(&pos.pos, me, stake, &readers);
+    let base = crate::pos::bal(&c, me);
+    let mut rows = Vec::new();
+    for r in c.legal_moves() {
+        let ru = r.to_uci(CastlingMode::Standard).to_string();
+        let mut d = c.clone();
+        d.play_unchecked(&r);
+        let dbal = crate::pos::bal(&d, me) - base;
+        if d.is_check() || d.is_stalemate() { rows.push((ru, true, dbal, vec![], String::new())); continue; }
+        let cl = claims_on(&d, me, stake, &readers);
+        rows.push((ru, false, dbal, cl, if fens { fen_of(&d) } else { String::new() }));
+    }
+    Ok(("read".into(), before, rows))
+}
+
+/// THE TERMINAL GOAL IN `n` MOVES OF OURS, composed by the same clause: some legal move ends the game by the kernel's terminal (checkmate), or (n > 1) after it every
+/// legal reply leaves the terminal goal in n - 1 (a reply-less position that is no mate is a stalemate: no). Mate in one is n = 1.
+fn terminal_in(p: &Chess, n: u32) -> bool {
+    for m in p.legal_moves() {
+        let mut q = p.clone();
+        q.play_unchecked(&m);
+        if q.is_checkmate() { return true; }
+        if n <= 1 { continue; }
+        let rs = q.legal_moves();
+        if rs.is_empty() { continue; }
+        if rs.iter().all(|r| { let mut x = q.clone(); x.play_unchecked(r); terminal_in(&x, n - 1) }) { return true; }
+    }
+    false
+}
+
+/// terminal_after_pass_pos(pos, uci, us_white, n) -> after our legal move `uci` and a pass (none after a check: False), the terminal goal binds in `n` moves of ours.
+#[pyfunction]
+pub fn terminal_after_pass_pos(pos: &crate::pos::Pos, uci: &str, us_white: bool, n: u32) -> PyResult<bool> {
+    let c = pos.push_move(uci)?.pos;
+    if c.is_check() { return Ok(false); }
+    let Some(q) = crate::pos::with_turn_strict(&c, col(us_white)) else { return Ok(false) };
+    if q.legal_moves().is_empty() { return Ok(false); }
+    Ok(terminal_in(&q, n))
+}
+
 // ------------------------------------------------------------------------------------------------------------------ 54 (B4): trap, fork, skewer, drive-onto, second moves
 // Ports of regress.trap_routes / fork_routes / skewer_routes / drive_onto_routes and binder.second_moves with python-chess's candidate order (`legal_sorted`).
 // The Python wrappers write the SAN (shakmaty's SAN is not python-chess's) and keep the old path behind regress.TRAP_RUST / SKEWER_RUST and binder.SECOND_RUST.
