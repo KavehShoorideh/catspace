@@ -80,6 +80,7 @@ NEED_PROPAGATION = True                                         # 52.23 (7): ON 
 GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
 CLOCK_PAWN = True                                              # plan 62.1c / 66.5: the chase clock also resets on a PAWN move of ours (an irreversible move, the fifty-move rule's other event); CHASE_CLOCK stays the parameter
 SURVEY = True                                                   # plan 72.5: once per ROOT agenda, after the roots are built and before the policy orders them, the trace prints the survey (regress.survey_lines): what each unit can reach, in plain words. It adds lines only; the decision is untouched
+DUMP_INNER = os.environ.get("CATSPACE_DUMP_INNER", "")      # 2026-11-03: a FEN prefix; the inner agenda on it dumps its trace to stderr (diagnosis by trace alone)
 SKELETON_GOALS = os.environ.get("CATSPACE_SKELETON", "1") != "0"      # plan 72.8 (CATSPACE_SKELETON=0 turns it off, inherited by spawned workers, as CATSPACE_DUTY): once per ROOT agenda, after the roots and before the policy orders them, the SKELETON GOALS (regress.skeleton_goals: our fast units arranged against the fixed board, priced by the roll, weighed by the stake rule) -- a reachable arrangement adds its first steps as fix routes of the root it matches, or pushes a NEW root when none matches, and its (stake - material - counter) is a policy feature. The decision stays by proof: an arrangement never claims and never kills
 PASSER_ROOTS = True                                             # plan 72.2 (a): a passed pawn is a promote root at any distance (the 3-push count stays only for pawns that are not passers)
 PARRY_PASS = True                                               # plan 72.2 (c): at the static leaf a parry that keeps one ply is read once more with the move passed to them after it -- a proved claim of theirs there means "not parried YET" (a GAP): I7k2H's Bd1 "kept" +2 one ply before c3, c2 won the bishop
@@ -1042,6 +1043,12 @@ class Agenda:
         saved = R._ids[0]
         ag = Agenda(State(fen=board.fen(), us="w" if board.turn else "b", pieces=[]), side_depth=0, units=units)
         ag.ask()
+        if DUMP_INNER and board.fen().startswith(DUMP_INNER):    # 2026-11-03: the diagnostic dump (CATSPACE_DUMP_INNER) covers THEIR agenda too
+            import sys as _sys
+            print(f"=== THEIR AGENDA {board.fen()} units {sorted(GAME.loc_name(u) for u in units) if units else 'all'} ===", file=_sys.stderr)
+            for _ln in ag.lines:
+                print(_ln, file=_sys.stderr)
+            print(f"=== END THEIR ({ag.asked} asked; claims {[(c.what, c.value) for c in ag.state.claims]}) ===", file=_sys.stderr)
         R._ids[0] = saved
         self.their_runs += 1 + ag.their_runs
         if self.ctx is not None and units is None:                                 # plan 72.2 (d): their OPEN questions there (a gap of their agenda) are read at the leaves
@@ -2996,6 +3003,12 @@ class Agenda:
                     since=self.since_capture + 1 if since is None else since, free_level=exchange,      # (52.19: what it inherits comes from the fact store, not from this agenda alone)
                     frame=local["frame"] if local is not None else None, goal=local, diff=diff if local is not None else None, pos=pos)      # plan 72.10 (2): the carried frame and goal; plan 72.7 step 1: the reply's handle (parent.pos.push(uci))
         ag.ask()
+        if DUMP_INNER and fen.startswith(DUMP_INNER):            # 2026-11-03: a diagnostic dump of ONE inner agenda's trace (CATSPACE_DUMP_INNER=<fen prefix>), to diagnose a leaf by its trace alone
+            import sys as _sys
+            print(f"=== INNER AGENDA {fen} need {need} keep {keep} their {'yes' if their is not None else 'no'} depth {self.chase_depth + 1} ===", file=_sys.stderr)
+            for _ln in ag.lines:
+                print(_ln, file=_sys.stderr)
+            print(f"=== END INNER ({ag.asked} asked; threats {[(cl.what, q.status) for q, cl in ag.threat_qs]}) ===", file=_sys.stderr)
         R._ids[0] = saved
         ctx.active.discard(pk)
         ctx.active_label.pop(pk, None)
@@ -3349,6 +3362,15 @@ class Agenda:
             mate_save = target < self.unit and self._chase_q is not None and self._chase_q.pattern.get("value", 0) >= self.end_stake      # 70.1 / 2026-10-22 (0AgL8): the chase of a save against a MATE threat
             static = (dbal >= self.unit or (mate_save and dbal >= target)) and inn["value"] < self.end_stake      # under keep semantics a balance of 0 too stands only as a static balance; against a mate threat it is read with the pass (Qc1+ Qd1: Bc6+ still mates), elsewhere the keep family's one-ply read is the standard (the pass read on every 0-leaf cost 04Qx2's Be8+ the fuse)
             t_their, claim_their, unparried, parry_note = 0, None, 0, None
+            if not static and target < self.unit and dbal >= target and inn["value"] < self.end_stake and inn["claim"] is None and not P2.is_check():
+                # 2026-11-03 (3ilXU, Qe3 Bf4): under KEEP semantics a 0-leaf is kept by its balance ONLY WHEN NOTHING OF OURS HANGS with the move passed -- the exchange law read from their side
+                # (one Rust `exchange` on the pass board, the cheap one-ply read; their whole agenda is read only when that capture would eat the balance). Before, "material +0" stood with our
+                # queen en prise: the chase of a save proved Qe3 at +0 while Bxe3 won 9, and the proved save outranked the real answer
+                Pt = P2.with_turn(not self.me)
+                hang_t = int(Pt.exchange()) if Pt is not None else 0
+                if hang_t > 0 and dbal - hang_t < self.unit:
+                    static = True
+                    ctx.keep_hang_reads = getattr(ctx, "keep_hang_reads", 0) + 1
             if target < self.unit and dbal >= target and inn["value"] < self.end_stake and P2.is_check() and inn["claim"] is None:      # 2026-10-22 (0AgL8): under KEEP semantics, IN CHECK (at target >= 1 the rule over-reaches: an in-check inner agenda whose evasion merely keeps makes no claim -- 0sjz3's Rxd6 exd6+ would read as a GAP; GWigp's Rxe6 is wrong for their a-pawn behind the leaf, LOOP TARGET 2, not for this) there is no pass to read their threat from -- a leaf the inner agenda left without a claim cannot be kept by its balance: a GAP (not parried YET), never a keep (Ne1 Bc6+ "material +0", then Ra8#); a claim of the inner agenda (the forced reply read, 2TUzC's Rxf5 Qxf1+ Kh2) keeps as any claim does
                 res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and we are in check (no pass to read their threat, no claim of ours): not parried YET")
                 res["reply"] = uci
@@ -3410,14 +3432,15 @@ class Agenda:
                     else:
                         ctx.static_parried += 1
                     self._static_line(san, san_r, dbal, claim_their, parry_note, lost)
-                    if unsure and dbal - unparried - sum(cl.value for cl in unsure) < self.unit:
+                    floor = min(self.unit, target)               # 2026-11-03 (JeZcl, Be6+ Qf7): the leaf's floor is what the route must reach -- the unit for a gain, 0 under KEEP semantics (a kept
+                    if unsure and dbal - unparried - sum(cl.value for cl in unsure) < floor:      # 0-leaf whose threats are all parried was killed as "no parry" by the unit's floor)
                         worst = max(unsure, key=lambda cl: cl.value)
                         res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: " + (getattr(worst, "parry_note", None) or "the save question was cut, not killed"))
                         res["reply"] = uci
                         ctx.budget_hits += 1
                         self._log(lkey, uci, "gap", dbal, None, None, res["gap"])
                         break
-                    if dbal - unparried < self.unit:
+                    if dbal - unparried < floor:
                         worst = max(lost, key=lambda cl: cl.value) if lost else claim_their
                         res["killed"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry")
                         self._log(lkey, uci, "killed", dbal, inn["value"], None, res["killed"])
@@ -4951,8 +4974,8 @@ class Agenda:
         base = P0.balance(self.me)
         order = sorted(routes, key=lambda r: (-(P0.push(r.move.uci()).balance(self.me) - base), r.move.uci()))      # the parry that wins most now first; the first that binds is the claim
         notes = []
-        if self.keep >= self.unit:
-            for r in order:
+        if self.keep >= self.unit or self.their is not None:      # 2026-11-03 (JeZcl, Be6+ Qf7): a save agenda handed their threats runs the keep family at a 0-balance too (the same theorem,
+            for r in order:                                        # B = the balance now); before, a 0-leaf's save went straight to the chase, which the budget cut (a GAP where Bxf7+ parries in one ply)
                 bind, note = W.verify_keep(r.move, b, self.us)
                 if bind is None:
                     notes.append(f"{r.san}: {note}")
@@ -4974,16 +4997,19 @@ class Agenda:
                     if still is not None:
                         notes.append(f"{r.san}: a counter; their mate still binds after {still}")
                         continue
-                claim = Claim(self.goals.keep.question, r.san, self.keep, LS.name(bind.theorem), f"{r.san} (every reply: {len(bind.replies)} replies; the balance is held)", move=r.move.uci())
+                claim = Claim(self.goals.keep.question, r.san, self.keep, LS.name(bind.theorem), f"{r.san} (every reply: {len(bind.replies)} replies; the balance is held)", move=r.move.uci(),
+                              kept=self.keep < self.unit)         # (a balance held at 0 is a claim: 70.1)
                 self._stamp(claim, q)
                 self.state.claims.append(claim)
                 q.status = "verified"
                 q.claimed = (0, claim, frozenset())
                 self.lines.append(f"  -> PARRY {r.san} keeps {self.keep:+d} (binds {bind.schema}, {len(bind.replies)} replies), lemma {bind.theorem}")
+                if claim.kept and self.best is None:               # a balance held at 0 is this agenda's answer when nothing gains (`_inner` reads `kept`)
+                    self.best = (0, 0, claim)
                 return
         if self._keep_goal(q) and self._chase(q):                 # 70.1: the one-ply keep family found no parry: CHASE the save (its forcing routes read with every reply, keep semantics) before any kill
             return
-        self._kill(q, f"no parry keeps the gain ({len(order)} parr{'y' if len(order) == 1 else 'ies'} tried by the keep family" + (f": {'; '.join(notes[:3])}" if notes else "") + f"; the gain to keep is {self.keep:+d})" if order else "no parry move", tempo=False)
+        self._kill(q, f"no parry keeps the gain ({len(order)} parr{'y' if len(order) == 1 else 'ies'} tried by the keep family" + (f": {'; '.join(notes)}" if notes else "") + f"; the gain to keep is {self.keep:+d})" if order else "no parry move", tempo=False)
 
     # ------------------------------------------------------------------------------------------------------------ promotion (52.6)
 

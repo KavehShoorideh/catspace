@@ -4323,3 +4323,9 @@ move the list missed, that is a FINDING (the list was incomplete), kept.
 NOT PORTED: race_claim (knowledge) -- the HAND entry stays until the technique miner reproduces it (as it did the K+R measure), then it retires.
 THE TEST that guards it: the generic test (no chess word in the generic modules) extended to the new Rust module through its exported names; the recount (CHESS FACT rows must fall: the
 `if` chains leave regress.py); the guard identical; the forcing-definition equality printed.
+
+#### 77.1 (a) RESULT (2026-11-03 22:12, JOURNAL): the one definition is BUILT in Python on the Rust handle (`regress.forcing_by_definition`, claims `_claims_binding` = the store's goal
+kinds: mate, win by the exchange law, promotion by the passer lemma or the race word); `forcing_why`'s list is its oracle (`_forcing_why_py`). Equal grade on the loop-2 batch (32 right,
+32 proved, 1 of 40 differs), 2TUzC gained (Rxe5 proved), 07Z0P's count-budget proof lost (it stood on an unread 0-leaf). Three holes the definition exposed were closed in the leaf code
+(a 0-leaf under keep semantics reads their pass when their exchange eats the balance; the leaf's floor is the route's target; the keep family runs at a 0-balance save). The Rust port of
+this reading (one batch per node over the handle's reply table) is the next step of (a); the claims set stays a store read, never a Rust list.

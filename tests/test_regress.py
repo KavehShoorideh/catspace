@@ -553,7 +553,8 @@ def test_52_14_a_threat_is_parried_and_the_gain_kept_on_a_constructed_static_lea
     monkeypatch.setattr(AG, "CHASE_SAVES", False)                                                    # the switch off: the keep family alone, as before 70.1
     gone0 = AG.Agenda(State(b.fen(), "w", []), side_depth=0, chase_depth=1, ctx=outer.ctx, min_stake=BD.MATE_VALUE, their=their, keep=0)
     gone0.ask()
-    assert gone0.threat_qs[0][0].status == "killed" and "no parry keeps the gain" in gone0.threat_qs[0][0].reason    # a gain of 0 is not kept by any one-ply parry (net 0 < 1)
+    q00 = gone0.threat_qs[0][0]                                                                      # 77.1 (a) (2026-11-03, JeZcl): a save agenda handed their threats runs the keep family at a 0-balance too: Rxb5 holds
+    assert q00.status == "verified" and q00.claimed[1].what == "Rxb5" and q00.claimed[1].kept and gone0.best is not None and gone0.best[2].what == "Rxb5"      # the balance in one ply (before 2026-11-03 the family was skipped at keep 0 and the question killed)
 
 
 # ---- 52.15 (1): in check, the checker is a win target -----------------------------------------------------------------------------------------------
@@ -716,16 +717,16 @@ DISCOVERY = "r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1"        
 def test_52_16_the_knight_sacrifice_that_still_threatens_is_forcing_and_the_hanging_rook_is_not():
     b = chess.Board(DISCOVERY)
     notes = []
-    assert R.forcing_why(b, chess.Move.from_uci("e4f6"), 5, "w", notes=notes) == "threat 5 survives Bxf6 (the N hangs, 3)"          # the battery through the vacated e4 stands after the capture
-    assert R.forcing_why(b, chess.Move.from_uci("e4d6"), 5, "w") == "threat 5 survives Bxd6 (the N hangs, 3)"
+    assert R.forcing_why(b, chess.Move.from_uci("e4f6"), 5, "w", notes=notes) == "threat 6"          # 77.1 (a): the one definition -- the fork's larger claim (the list's text read "threat 5 survives Bxf6 (the N hangs, 3)"); the battery through the vacated e4 stands after the capture
+    assert R.forcing_why(b, chess.Move.from_uci("e4d6"), 5, "w") == "threat 6"
     # 08pSj: Rc6 hangs to the queen and nothing survives its capture
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
     p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "08pSj"][0]
     b2 = chess.Board(p["fen"])
     notes = []
     rc6 = next(m for m in b2.legal_moves if b2.san(m) == "Rc6")
-    assert R.forcing_why(b2, rc6, 5, "w", notes=notes) is None
-    assert any("Rc6: not a threat: the R on c6 hangs" in n and "does not survive Qxc6" in n for n in notes)
+    assert R.forcing_why(b2, rc6, 5, "b", notes=notes) is None                                   # (black to move: the mover's side; the list tolerated "w" here, the definition reads a move of the side to move only)
+    assert any("Rc6: not a threat: the R on c6 hangs" in n and "does not survive" in n and "xc6" in n for n in notes)      # (the definition names the first worst capture, Bxc6; the list named Qxc6)
 
 
 def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read(monkeypatch):
@@ -961,11 +962,12 @@ def test_52_17_the_cheap_pass_closes_what_the_rules_close_and_leaves_the_rest_pe
     assert res.get("pending") and key not in ctx_routes(ag) and ag.ctx.agendas == 0              # Kd7 needs an inner agenda: pending, none opened, nothing memoised
     full = ag._chase_route(m)
     assert not full.get("pending") and key in ctx_routes(ag) and ag.ctx.agendas > 0
-    ag.ask()                                                                                       # a route an earlier reply already killed is killed by the cheap pass alone
-    before = ag.ctx.agendas
+    ag.ask()
+    before = ag.ctx.agendas                                                                        # 77.1 (a): Rd7 is no route at all under the one definition (Kxd7, then c8=Q+ Kxc8: the rook hangs and no
+    assert any("Rd7: not a threat: the R on d7 hangs" in x for x in ag.lines)                   # claim survives its capture); the list called it forcing and the test read its standing kill (64.2's test_offbuilt64 keeps that word)
     ag.ctx.routes.pop(ag._route_key(chess.Move.from_uci("h7d7")), None)
-    killed = ag._chase_route(chess.Move.from_uci("h7d7"), cheap=True)
-    assert killed["killed"] and "standing kill" in killed["killed"] and ag.ctx.agendas == before
+    res2 = ag._chase_route(chess.Move.from_uci("h7d7"), cheap=True)
+    assert not res2.get("killed") and ag.ctx.agendas == before                                    # the cheap pass opens no inner agenda
 
 
 def ctx_routes(ag):
@@ -1009,7 +1011,7 @@ def test_52_18_the_discovery_positions_nf6_landing_is_a_target_with_the_discover
     b = chess.Board(DISCOVERY)
     t = LD.LandingTable()
     lnd, served = t.ask(b, True, chess.E4, chess.F6)
-    assert not served and lnd.kind == "target" and lnd.claim == "exchange" and lnd.value == 5 and "threat 5 survives Bxf6" in lnd.via
+    assert not served and lnd.kind == "target" and lnd.claim == "exchange" and lnd.value == 6 and "threat 6" in lnd.via      # 77.1 (a): the definition's value (the list read 5, "threat 5 survives Bxf6")
     assert {chess.E4, chess.F6, chess.A8, chess.B7, chess.G2, chess.E8} <= lnd.reads                        # the knight, its square, the rook, the queen and the bishop behind it on the line, the queen it also hits
     again, served = t.ask(b, True, chess.E4, chess.F6)
     assert served and again is lnd

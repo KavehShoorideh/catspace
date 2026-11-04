@@ -376,11 +376,12 @@ def mate2_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
 
 
 def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None, mate2: bool = False,
-                delayed: bool = False, nosafe: bool = False) -> str | None:
+                delayed: bool = False, nosafe: bool = False, new: bool = True) -> str | None:
     """The reason `m` is forcing (see `_forcing_why_py`), or None. 54 (B2): read by analyst_core when ROUTES_RUST (the same answer, the same notes). plan 59 tier 2 (`mate2`): a quiet move
     after which a pass leaves us a forced mate in two ('threat of mate in two', `mate2_threat`) is forcing too, whatever the stake (a mate question follows checks and mate threats only)."""
-    got = _forcing_batch(board, [m], stake, us, mate_threats, notes) if ROUTES_RUST else None
-    why = got[0] if got is not None else _forcing_why_py(board, m, stake, us, mate_threats, notes)
+    why = forcing_by_definition(board, m, stake, us, new=new, notes=notes)     # plan 77.1 (a): THE ONE DEFINITION (check / capture by the rules; a new claim binding after the pass and surviving the
+    if why == "threat of mate" and not mate_threats:              # recapture); the list `_forcing_why_py` / the Rust batch is the oracle. A mate threat counts only where the caller asks.
+        why = None
     if why is None and mate2 and mate_threats and mate2_threat(board, m, us):
         why = "threat of mate in two"
     if why is None and (delayed or nosafe) and mate_threats and not board.is_capture(m) and G.colour_of(us) == board.turn:
@@ -424,6 +425,145 @@ def _forcing_batch(board: chess.Board, moves: list, stake: int, us: str | bool, 
         else:
             out.append(None)
     return out
+
+
+_BEFORE: dict = {}
+G.CLEAR_HOOKS.append(_BEFORE.clear)
+
+
+def _claims_binding(X, me: bool, stake: int, board: "chess.Board | None" = None) -> dict:
+    """plan 77.1 (a): THE CLAIMS OF OURS THAT BIND on the handle `X` (us to move) -> {(goal kind, target): value} -- the store's GOAL kinds read on the handle, no python-chess board built:
+    a mate (the kernel's mate in one, the mate goal's rule-level floor, value the terminal stake); a win on each unit of theirs we attack (the exchange law on its square -- the gain
+    goal's own valuation, 76.4a -- at least the stake); a promotion (the passer lemma, Lean unstoppablePasser2_sound; it reads a python-chess board: `board` when given, else one from the
+    handle's FEN). `_claims_binding_py` reads the same through the regression on a board and is the oracle."""
+    out = {}
+    if X.mates():
+        out[("mate", None)] = STAKE_MATE
+    if stake >= STAKE_MATE:
+        return out
+    for sq in range(64):
+        pc = X.piece_at(sq)
+        if pc is None or pc[1] == me or pc[0] == chess.KING or X.attackers(sq, me) == 0:
+            continue
+        v = int(X.see(sq))
+        if v >= stake:
+            out[("win", sq)] = v
+    if stake <= STAKE_PROMOTE:                                   # the promotion goal: its lemmas bind on this board, us to move -- the passer lemma (unstoppablePasser2_sound)
+        from catspace.incubator.analyst import lean_passer_v2_proto as PV      # and the race word (Ideas.Race.race_sound), as `pass_claim` read them (iAVbH: Kh4 Kh6 c5, the race won)
+        b = board if board is not None else chess.Board(X.fen())
+        for sq, _plies in PV.proved_passers(b, bishops=True):
+            out[("promote", sq)] = STAKE_PROMOTE
+        for sq in RC.race_passers(b):
+            out.setdefault(("race", sq), STAKE_PROMOTE)          # (keyed by the word that fired: the trace names its lemma)
+    return out
+
+
+def _claims_binding_py(board: chess.Board, me: bool, stake: int) -> dict:
+    """The regression's reading of `_claims_binding` (the oracle): the gain goal regressed on each unit of theirs."""
+    out = {}
+    P = G.pos_of(board)
+    if P is not None and P.mates():
+        out[("mate", None)] = STAKE_MATE
+    if stake >= STAKE_MATE:
+        return out
+    if stake <= STAKE_PROMOTE:                                   # the promotion goal: the passer lemma (Lean unstoppablePasser2_sound) and the race word (race_sound) bind on this board, us to move
+        from catspace.incubator.analyst import lean_passer_v2_proto as PV
+        for sq, _plies in PV.proved_passers(board, bishops=True):
+            out[("promote", sq)] = STAKE_PROMOTE
+        for sq in RC.race_passers(board):
+            out.setdefault(("race", sq), STAKE_PROMOTE)
+    for sq in chess.SQUARES:
+        pc = board.piece_at(sq)
+        if pc is None or pc.color == me or pc.piece_type == chess.KING:
+            continue
+        reg = regressor().regress(board, _goal("win", me, target=sq))
+        if reg.holds and reg.value is not None and reg.value >= stake:
+            out[("win", sq)] = int(reg.value)
+    return out
+
+
+GAME_NAME = chess.square_name
+
+
+def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str | bool, new: bool = True, notes: list | None = None) -> str | None:
+    """plan 77.1 (a) THE ONE DEFINITION OF FORCING: a move is forcing when it checks (the rules), when it captures a unit worth the stake (the valuation realised), or when AFTER IT AND A
+    PASS BY THEM a claim of ours binds that did not bind before it (pass_claim's frame over the rules + the store's goals), and some such new claim still binds after their capture of the
+    unit that moved (the recapture counts: one reply, then the pass -- the generic form of the list's "survives" test). No hand-written list of threat kinds. `new`: a route must CREATE a claim; a counter-threat (`_counter`) only has to HOLD one. -> 'check' | 'capture v' |
+    'threat of mate' | 'threat v' (the list's text shapes, so `threat_of` reads them as before) | None. `forcing_why`'s list is the oracle it was compared against (77.1 (a))."""
+    me = G.colour_of(us)
+    if board.turn != me:
+        return None
+    if board.gives_check(m):
+        return "check"
+    if board.is_capture(m):
+        v = 1 if board.is_en_passant(m) else G.worth(board.piece_at(m.to_square))
+        if v >= stake:
+            return f"capture {v}"
+    try:
+        P = G.handle(board)
+        P1 = P.push(m.uci())
+        if P1.is_checkmate() or P1.is_stalemate():
+            return None
+        Q = P1.with_turn(me)
+    except ValueError:
+        return None
+    if Q is None:
+        return None
+    bk = (P.key(), me, stake)
+    before = _BEFORE.get(bk)
+    if before is None:
+        before = _BEFORE[bk] = _claims_binding(P, me, stake, board)
+    new = {k: v for k, v in _claims_binding(Q, me, stake).items() if (new is False or k not in before)}      # a ROUTE must CREATE a claim (new=True); a COUNTER-THREAT
+    to = m.to_square                                                                                       # (new=False) may hold a standing one: the reply keeps pressure the
+    if P1.see(to) > 0:                                            # other side must still meet (Allis's counter-threat; 3ilXU: Nxh3 Bf4 Nxf4)
+        # the survive clause, the list's exact test: a unit that HANGS by the exchange on its square must survive -- after each capture
+        worst = None                                              # of it (a capturing CHECK ends the threat: no pass is legal) some claim of ours worth the stake must still bind; the worst decides
+        worst_uci = None
+        for row in P1.replies():
+            uci, _dbal, chk, cap, _rec, _m1 = row
+            if not cap or chess.parse_square(uci[2:4]) != to:
+                continue
+            if chk:
+                worst, worst_uci = 0, uci
+                break
+            try:
+                D = P1.push(uci)
+            except ValueError:
+                worst, worst_uci = 0, uci
+                break
+            if D.is_checkmate() or D.is_stalemate():
+                worst, worst_uci = 0, uci
+                break
+            v = max(_claims_binding(D, me, stake).values(), default=0)
+            if worst is None or v < worst:
+                worst, worst_uci = v, uci
+        if worst is not None and worst < stake:
+            if notes is not None:                                 # the trace's reason (as the list's `landsSafe` note read): the unit hangs and no claim worth the stake survives its capture
+                pc = P1.piece_at(to)
+                sym = chess.piece_symbol(pc[0]).upper() if pc else "?"
+                c1 = board.copy(stack=False)
+                c1.push(m)
+                notes.append(f"{board.san(m)}: not a threat: the {sym} on {GAME_NAME(to)} hangs (they win {int(P1.see(to))} by the exchange there) and the threat does not survive {c1.san(chess.Move.from_uci(worst_uci))} ({worst})")
+            return None
+    if not new:                                                   # (read after the survive clause: a hanging unit's note is the reason a reader wants, 08pSj's Rc6)
+        return None
+    if ("mate", None) in new:
+        return "threat of mate"
+    top = max(new.values())
+    if not any(k[0] == "win" and v == top for k, v in new.items()):       # the claim is a promotion: the pass-claim's text shape (`threat_of` reads the pawn's square, `_binds` re-reads the passer lemma)
+        kind, sq = min((k for k, v in new.items() if v == top), key=lambda k: k[1])
+        passed = chess.Board(Q.fen())
+        n = G.word(passed, ("pushes", G.name(sq)), me)
+        path = [G.name(x) for x in pawn_path(passed, sq, n)]
+        if kind == "promote":
+            from catspace.incubator.analyst import lean_passer_v2_proto as PV
+            plies = dict(PV.proved_passers(passed, bishops=True)).get(sq)
+            word = f"unstoppablePasser2_sound, within {plies} plies"
+        else:
+            word = f"race_sound, within {2 * RC.race_passers(passed)[sq] - 1} plies"
+        PASS_CLAIMS[0] += 1
+        return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass ({word})"
+    return f"threat {top}"
 
 
 def _forcing_why_py(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None) -> str | None:
@@ -591,7 +731,7 @@ def _counter(after: chess.Board, r: chess.Move, stake: int, them: bool) -> bool:
         v = 1 if after.is_en_passant(r) else G.worth(after.piece_at(r.to_square))
         if v >= stake:
             return True
-    return forcing_why(after, r, stake, them) is not None
+    return forcing_why(after, r, stake, them, new=False) is not None      # a counter-threat HOLDS pressure: a standing claim of theirs that survives the reply counts
 
 
 def parries(after: chess.Board, threat: Threat, stake: int, us: str | bool | None = None) -> tuple:
@@ -620,9 +760,7 @@ def parries(after: chess.Board, threat: Threat, stake: int, us: str | bool | Non
             counter[r] = True
         else:
             quiet.append(r)
-    whys = _forcing_batch(after, quiet, stake, them) if (ROUTES_RUST and quiet) else None
-    if whys is None:
-        whys = [forcing_why(after, r, stake, them) for r in quiet]
+    whys = [forcing_by_definition(after, r, stake, them, new=False) for r in quiet]      # 77.1 (a): the counter test is the one definition, HELD claims (a counter-threat need not be new)
     for r, why in zip(quiet, whys):
         counter[r] = why is not None
     par, closed = [], []

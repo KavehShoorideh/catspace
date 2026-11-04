@@ -35876,3 +35876,43 @@ OBS discovery 30 s: python-chess 15.9 s -> 14.3 s (node_cost) -> 12.7 s (all thr
 ten; the share 47 -> 43 % because the cost MOVED: what remains is the copy-and-push of a python-chess board per reply inside parries, the forcing batch's 'pass' / 'survives' fallbacks,
 and race_claim's board walks -- not trimmable from Python: the reply loop on the Rust handle (which already holds every reply's position) is 77.1's first, now exactly scoped, job.
 Gates: test_cost61 13, test_forcing61 13, test_estimate61 17, test_discovery_vocabulary 23, test_regress 87 + 1 xfailed.
+
+
+## 2026-11-03 22:12 -- plan 77.1 (a) THE ONE DEFINITION OF FORCING replaces the hand list; two leaf holes it exposed closed (the 0-leaf pass read, the keep family at 0); the race word kept
+
+The hand list of forcing reasons (check, capture worth the stake, 'threat n survives X', the delayed threat, no safe move, the pass claim) is replaced in `forcing_why` by ONE definition
+read on the Rust handle (`regress.forcing_by_definition`): a move is forcing when it checks (the rules), captures a unit worth the stake (the valuation realised), or when AFTER IT AND
+A PASS a claim of ours binds that did not bind before it, and some such claim still binds after their capture of the unit that moved. The claims are the store's GOAL kinds read on
+the handle (`_claims_binding`): the kernel's mate in one; a win on each unit of theirs the exchange law takes for at least the stake; a promotion by the passer lemma
+(unstoppablePasser2_sound) or the race word (Ideas.Race.race_sound), keyed by the lemma that fired so the trace names it. `_claims_binding_py` (the regression on a board) is the
+oracle; the list's text shapes are kept ('threat n', 'threat of mate', 'threat: b7 then b8=Q binds after a pass (lemma, within k plies)') so `threat_of` / `_binds` read them as
+before. Routes must CREATE a claim (new=True); a counter-threat (`_counter`, parries' counter test) may HOLD a standing one (new=False, 3ilXU's Nxh3 Bf4 Nxf4). The hanging mover's
+note ('Rc6: not a threat: the R on c6 hangs (they win 5 ...) and the threat does not survive Qxc6 (0)') is read before the new-claim test, as the reason a reader wants.
+
+What the definition changed, read from the traces (one run each, directional):
+- 3ilXU became a MISS (Qe3 over Nxh3) and the diagnosis found a hole OLDER than the change: under KEEP semantics a quiet reply at a 0-balance leaf was accepted as 'material +0'
+  without their pass being read -- Qe3 Bf4 counted as kept while Bxe3 won our queen (the chase of 'save our P on d4' proved Qe3 at +0 and the proved save outranked the real answer).
+  The definition's speed (the pool ends at 13.2 of 15 s with the status kept, where the list ran out) reached that chase and exposed it.
+  FIX (agenda.py, the static leaf): a 0-leaf under keep semantics is read as a static leaf when their best capture with the move passed (one Rust `exchange` on the pass board)
+  would eat the balance; their agenda is read only then. 3ilXU: Nxh3 MATCH again; Qe3 killed -- 'after Bf4: +0 stands only as a balance, their Bxe3 wins 6, no parry'.
+- The pass read then showed two more: (i) the static leaf's floor was the unit (`dbal - unparried < self.unit`), which at a kept 0-leaf killed a fully PARRIED threat as 'no parry'
+  -> the floor is the route's target (0 under keep); (ii) a save agenda handed their threats skipped the keep family at keep 0 and went straight to the chase, which the budget cut
+  (JeZcl: Be6+ Qf7, where Bxf7+ holds the balance in one ply) -> the keep family runs at a 0-balance too (the same theorem, B = the balance now); a balance held at 0 is a claim
+  (Claim.kept, 70.1) and the agenda's answer when nothing gains. (iii) iAVbH lost its proof because `_claims_binding` had the passer lemma but not the race word (Kh4 Kh6 c5, the
+  race won) -> the race passers are claims, keyed ('race', sq).
+- A diagnostic dump: CATSPACE_DUMP_INNER=<fen prefix> prints one inner agenda's (and their agenda's) trace to stderr -- diagnosis by the trace alone, no code reading. The keep
+  family's kill names EVERY parry it tried (a numbered cut of three hid the one that mattered).
+
+OBS (one run each, 15 s): 3ilXU decision Nxh3 MATCH (was Qe3 MISS mid-way); JeZcl Be6+ proved by chase (claims 8); iAVbH Kh4 proved (race_sound, unstoppablePasser2_sound);
+07Z0P Qxd5+ proved by chase (claims 15).
+OBS ten-case guard vs the parent (count budget): decisions 2 of 10 differ: 2TUzC Rc1 -1 unproved -> Rxe5 +1 proved (the puzzle answer); 07Z0P Qxd5+ +1 proved -> Qg2 -1 unproved.
+  07Z0P's parent proof stood on 'after Nxd5: material +0' with our bishop hanging and the g4 pawn loose; with the pass read no parry holds +0 under the count budget (fxg4 or Nxe3
+  drops a unit), the route is killed and the fallback picks Qg2; at 15 s the chase proves Qxd5+ (above). An unsound proof lost, not a reading lost.
+OBS loop-2 batch (rand14_10 .. rand17_10 at 15 s, Stockfish depth 14): def77_1a_v3 RIGHT 32, UNKNOWN 1, WRONG 7; proved RIGHT 32, proved WRONG 3, unproved WRONG 4, none 1 --
+  the committed build run tonight (head77): RIGHT 32, UNKNOWN 1, WRONG 7; proved RIGHT 32, proved WRONG 3, unproved WRONG 4, none 1. Per puzzle: 1 of 40 differs (KSMKJ, WRONG
+  g6h5 proved -> WRONG f8b8 proved). Earlier tonight, before (ii)/(iii): proved RIGHT 30 (JeZcl, iAVbH unproved), and before (i)-(iii) 07Z0P.
+OBS agreement (earlier tonight): claims equality 639/639 against the regression; list/definition agreement 5032/6100 moves (931 list-only: the list's threats that bound already
+  before the move -- not new; 4 definition-only: real threats the list missed, eSJqH Qa5, 4DUd2 c5); 24 us per reading (the list's Rust batch 9 us).
+Tests re-pinned to the definition: test_forcing61 (the fork's larger claim, 'threat 6' where the list's text read 'threat 5 survives Bxf6'), test_regress 52_16 / 52_18 (same),
+52_17 (LRTF's Rd7 is no route at all under the definition: Kxd7 then c8=Q+ Kxc8 -- the list called it forcing and the test read its standing kill; 64.2's test keeps that word),
+52_14 (the keep family at keep 0 verifies Rxb5, where it was skipped and the question killed). Gates: see the commit.

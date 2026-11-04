@@ -39,7 +39,7 @@ def test_a1_the_threat_object_names_the_target_the_reason_names():
     b, m, why, th = _threat_after(MATE2, "e8h8", 100, "w", mate2=True)
     assert why == "threat of mate in two" and th.kind == "mate2" and th.target == chess.A3 and th.word == "mate_in_two"
     b, m, why, th = _threat_after(DISCOVERY, "e4f6", 5, "w")
-    assert why.startswith("threat 5 survives") and th.kind == "threat" and th.value == 5
+    assert why.startswith("threat ") and th.kind == "threat" and th.value >= 5                   # 77.1 (a): the one definition reads the fork's larger claim (6 on e8) where the list's text read "threat 5 survives ..."
     assert G.see(G.with_turn(_after(DISCOVERY, "e4f6"), True), th.target) >= 5                    # the target is a piece of theirs the exchange wins that much on, after the move
     p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0Nv29"][0]
     b, m, why, th = _threat_after(p["fen"], "b5b6", 8, "w")
