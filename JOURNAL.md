@@ -35990,3 +35990,23 @@ lemma); `_promotion_claims` asks each lemma only inside its own domain.
 OBS: the definition against its per-move oracle 25320 of 25320 equal; the every-reply readings against the old: the same counts as at 12:11; the guard (ten tier 0, wide tier 2) 0 traces
 differ against the 12:11 snapshots. Tests: test_plan77_1 (the Rust section's generic test reads Role::ALL as no kind; the glue spells no kernel unit kind; a patched `needs` moves where
 the lemma is asked) and the store's 13 test files: 183 passed.
+
+## 2026-11-04 13:41 -- plan 77.1 (d) (2): THE CERTIFY STAGE -- every fast binding the hot path reads carries a certificate against its oracle, kept in the store; the search keeps checking online
+
+`discovery/certify.py` (the package, not a script): five bindings, each with what it ingests and its ORACLE -- the two kernels (python-chess; the native core) against the spec read by
+gdl.py (scripts/crossplay.py's comparison, moved: the script now samples, shrinks and files through it); the claim reader "terminal" (a mate in one) against the SPEC (its legal moves,
+next states and terminal reasons); the claim reader "exchange" against the REGRESSION on the spec (the win goal); the promotion lemmas' declared domains against the lemmas themselves
+(asked without the gate, they never fire outside). (The mate in n is machinery over the kernel: its certificate is the kernel's.) A CERTIFICATE (lemmas/certificates/, one per binding:
+positions, invalid left out, disagreements with examples, date, and a KEY -- the hash of the files its answers depend on: the GDL text, the oracle's code, the binding's sources, the
+crate lock, the goal and valuation entries) is written by `python -m catspace.incubator.analyst.discovery.certify run --jobs 11`; `status` reads fresh / stale / failing / missing;
+test_plan77_1d fails on any certificate not fresh. ONLINE: the definition's node batch checks the cheap readers (exchange against the regression; the domains) on a priced share of its
+reading time (certify.ONLINE_SHARE, a named fuse, 2 %); a disagreement is recorded and DEMOTES the reader for the process: the definition, the every-reply clause and the claims read
+through the oracle (`regress._claims_binding_py`, `_every_reply_oracle`); a demoted domain asks its lemma everywhere.
+OBS certify run (--jobs 11): kernel python-chess positions 2417 (playouts + corners + every 25th puzzle position; invalid left out 2: the corner 7k/8/8/8/8/8/8/K6R w - - 99/100 80 is
+  illegal -- the rook gives check with White to move; the first run counted it, 2 disagreements, as crossplay never did), disagreements 0, 8.5 s; kernel analyst_core 2417, 0, 17.9 s;
+  reader terminal 2404, 0, 139.8 s; reader exchange 2404, 0, 0.4 s; domains of the promotion lemmas 360 (endgames + puzzles), 0, 0.2 s.
+OBS test_plan77_1d: a planted wrong exchange reader (every claim +1) found online at the first node ('stake 3: reader [(42, 4)], regression [(42, 3)]'), demoted, and all 24 answers
+  equal the built reader's; a planted too-narrow domain (the passer lemma's needs 'Q') found and the lemma asked everywhere; the offline checks find planted errors (a dropped mate in one
+  against the spec's Ra8#); W0VFO at the count budget: online positions checked 2, checks under the fuse plus one check, found 0, decision Qb7.
+OBS guard against the 77.1 (d) (1) snapshots: ten tier 0 and wide tier 2, 0 traces differ (the online checks change no answer). Engine gate: files 50, passed 661, failed 0, xfailed 2,
+  wall 1100.7 s (test_fact_store's clock-edge test passed this run); gate.py's engine list now carries test_plan77_1 and test_plan77_1d (9 passed alone).

@@ -1,0 +1,28 @@
+{
+ "binding": "reader exchange",
+ "ingests": "the gain goal's claim: the exchange law on each unit of theirs we attack (the definition of forcing's reader)",
+ "oracle": "the regression on the spec (regression.py: the win goal, regress._claims_binding_py)",
+ "corpus": "playouts+puzzles",
+ "positions": 2404,
+ "invalid_left_out": 0,
+ "disagreements": 0,
+ "examples": [],
+ "key": "f39aa24436287bd6",
+ "sources": [
+  "rules/chess.gdl",
+  "catspace/incubator/analyst/discovery/gdl.py",
+  "catspace/incubator/analyst/discovery/gdl_chess.py",
+  "catspace/incubator/analyst/discovery/regression.py",
+  "rust/analyst_core/src/regress.rs",
+  "rust/analyst_core/src/pos.rs",
+  "rust/analyst_core/src/vocab.rs",
+  "rust/analyst_core/src/rules.rs",
+  "rust/analyst_core/src/valuation.rs",
+  "rust/analyst_core/Cargo.lock",
+  "catspace/incubator/analyst/discovery/lemmas/mate.json",
+  "catspace/incubator/analyst/discovery/lemmas/win.json",
+  "catspace/incubator/analyst/discovery/lemmas/material.json"
+ ],
+ "date": "2026-11-04",
+ "seconds": 0.4
+}

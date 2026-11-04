@@ -23,6 +23,7 @@ from __future__ import annotations
 import itertools
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -33,6 +34,7 @@ from catspace.incubator.analyst.discovery import gdl_chess as GC
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import lemma_store as LS
+from catspace.incubator.analyst.discovery import certify as CF             # plan 77.1 (d) (2): the certify stage (online checks, demoted readers)
 from catspace.incubator.analyst.discovery import regression as RGN      # plan 76.4a: THE REGRESSION -- the defects and the fix filter read off the spec
 from catspace.incubator.analyst.discovery.game import CHESS as _GAME              # plan 76.2 (b): the rules read through the Game surface (the judge's parry kinds)
 
@@ -447,7 +449,9 @@ def _claims_binding(X, me: bool, stake: int, board: "chess.Board | None" = None)
     """plan 77.1 (a): THE CLAIMS OF OURS THAT BIND on the handle `X` (us to move) -> {(goal kind, target): value} -- the store's GOAL kinds read on the handle, no python-chess board built:
     a mate (the kernel's mate in one, the mate goal's rule-level floor, value the terminal stake); a win on each unit of theirs we attack (the exchange law on its square -- the gain
     goal's own valuation, 76.4a -- at least the stake); a promotion (the passer lemma, Lean unstoppablePasser2_sound; it reads a python-chess board: `board` when given, else one from the
-    handle's FEN). `_claims_binding_py` reads the same through the regression on a board and is the oracle."""
+    handle's FEN). `_claims_binding_py` reads the same through the regression on a board and is the oracle -- and is read instead when the certify stage demoted the reader."""
+    if "exchange" in CF.DEMOTED:
+        return _claims_binding_py(board if board is not None else chess.Board(X.fen()), me, stake)
     out = {}
     if X.mates():
         out[("mate", None)] = STAKE_MATE
@@ -555,7 +559,7 @@ def _promotion_lemmas() -> list:
 def _promotion_masks(stake: int) -> list:
     """The declared domains of the promotion goal's lemmas, for the Rust rows (none when the promotion's stake cannot reach the question's)."""
     rust, py = _claim_readers()
-    return [mk for _n, mk, _k, _r in _promotion_lemmas()] if py and LS.goal_kinds().promotion.stake >= stake else []
+    return [(mk if "domain " + n not in CF.DEMOTED else 0xFF) for n, mk, _k, _r in _promotion_lemmas()] if py and LS.goal_kinds().promotion.stake >= stake else []
 
 
 def _promotion_claims(b: chess.Board, stake: int) -> dict:
@@ -566,8 +570,8 @@ def _promotion_claims(b: chess.Board, stake: int) -> dict:
     if g.stake < stake:
         return out
     k = _kinds(b, not b.turn)
-    for _name, mask, key, read in _promotion_lemmas():
-        if k & ~mask:
+    for name, mask, key, read in _promotion_lemmas():
+        if k & ~mask and "domain " + name not in CF.DEMOTED:     # (a domain the certify stage found too narrow: the lemma asked everywhere)
             continue
         for sq in read(b):
             out.setdefault((key, sq), g.stake)
@@ -581,7 +585,11 @@ def _definition_node(board: chess.Board, P, me: bool, stake: int):
     if hit is not None:
         return hit
     rust, py = _claim_readers()
+    t = time.perf_counter()
     before_rows, rows = _A.definition_rows_pos(P, stake, me, [r for r, _w in rust], _promotion_masks(stake))
+    CF.SPENT["reading"] += time.perf_counter() - t
+    if CF.online_due():                                           # plan 77.1 (d) (2): the search keeps checking its readers on a priced share (certify.ONLINE_SHARE)
+        CF.online_check(board, before_rows, stake)
     word = dict(rust)
     before = {(word[r], None if sq < 0 else sq): v for r, sq, v in before_rows}
     if py:
@@ -603,7 +611,7 @@ def _claims_of(cl, word, fen, stake) -> dict:
 def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str | bool, new: bool = True, notes: list | None = None) -> str | None:
     """plan 77.1 (a) THE ONE DEFINITION OF FORCING (see `_forcing_by_definition_py`, its per-move body and the oracle), its reply loop read by one Rust call per node
     (`_definition_node`); the decision -- a new claim, the survive clause, the text -- read here on the rows."""
-    if not DEF_RUST:
+    if not DEF_RUST or "exchange" in CF.DEMOTED:                  # (a demoted reader: the per-move body, its claims through the oracle -- `_claims_binding`)
         return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
     me = G.colour_of(us)
     if board.turn != me:
@@ -611,6 +619,8 @@ def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str
     try:
         P = G.handle(board)
         before, rows, decided, word = _definition_node(board, P, me, stake)
+        if "exchange" in CF.DEMOTED:                              # (demoted by this node's own check)
+            return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
     except ValueError:
         return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
     uci = m.uci()
@@ -685,6 +695,8 @@ def every_reply(board: chess.Board, m: chess.Move, stake: int, us: str | bool, n
     me = G.colour_of(us)
     if board.turn != me:
         return None
+    if "exchange" in CF.DEMOTED:
+        return _every_reply_oracle(board, m, stake, me, new)
     try:
         P = G.handle(board)
         rust, py = _claim_readers()
@@ -709,6 +721,34 @@ def every_reply(board: chess.Board, m: chess.Move, stake: int, us: str | bool, n
             v = (fresh[key] if key is not None else 0) + dbal
         if worst is None or v < worst[0]:
             worst = (v, ru, key)
+            if v < stake:
+                break
+    return worst
+
+
+def _every_reply_oracle(board: chess.Board, m: chess.Move, stake: int, me: bool, new: bool):
+    """`every_reply` with its claims read through the oracle (the regression on the spec, `_claims_binding_py`): the path of a demoted reader (certify.DEMOTED)."""
+    c = board.copy(stack=False)
+    c.push(m)
+    if c.is_checkmate():
+        return "mate"
+    if c.is_stalemate():
+        return "stalemate"
+    before = _claims_binding_py(board, me, stake)
+    base = G.handle(c).balance(me)
+    worst = None
+    for r in c.legal_moves:
+        d = c.copy(stack=False)
+        d.push(r)
+        dbal = G.handle(d).balance(me) - base
+        if d.is_check() or d.is_stalemate():
+            v, key = 0, None
+        else:
+            fresh = {k: x for k, x in _claims_binding_py(d, me, stake).items() if not new or k not in before}
+            key = max(fresh, key=lambda k: fresh[k]) if fresh else None
+            v = (fresh[key] if key is not None else 0) + dbal
+        if worst is None or v < worst[0]:
+            worst = (v, r.uci(), key)
             if v < stake:
                 break
     return worst

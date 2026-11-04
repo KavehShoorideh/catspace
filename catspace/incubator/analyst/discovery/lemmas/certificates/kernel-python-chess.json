@@ -1,0 +1,19 @@
+{
+ "binding": "kernel python-chess",
+ "ingests": "the rules: legal moves, the next state, the terminal reasons and verdict, the goals",
+ "oracle": "rules/chess.gdl read by discovery/gdl.py",
+ "corpus": "playouts+corners+puzzles",
+ "positions": 2417,
+ "invalid_left_out": 2,
+ "disagreements": 0,
+ "examples": [],
+ "key": "e5f037f830e79235",
+ "sources": [
+  "rules/chess.gdl",
+  "catspace/incubator/analyst/discovery/gdl.py",
+  "catspace/incubator/analyst/discovery/gdl_chess.py",
+  "python-chess 1.11.2"
+ ],
+ "date": "2026-11-04",
+ "seconds": 8.5
+}

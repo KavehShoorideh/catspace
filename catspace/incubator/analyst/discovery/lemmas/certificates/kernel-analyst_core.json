@@ -1,0 +1,22 @@
+{
+ "binding": "kernel analyst_core",
+ "ingests": "the rules: legal moves, the next state, checkmate, stalemate, the draws",
+ "oracle": "rules/chess.gdl read by discovery/gdl.py",
+ "corpus": "playouts+corners+puzzles",
+ "positions": 2417,
+ "invalid_left_out": 2,
+ "disagreements": 0,
+ "examples": [],
+ "key": "96fdf08304344e32",
+ "sources": [
+  "rules/chess.gdl",
+  "catspace/incubator/analyst/discovery/gdl.py",
+  "catspace/incubator/analyst/discovery/gdl_chess.py",
+  "rust/analyst_core/src/pos.rs",
+  "rust/analyst_core/src/game.rs",
+  "rust/analyst_core/src/rules.rs",
+  "rust/analyst_core/Cargo.lock"
+ ],
+ "date": "2026-11-04",
+ "seconds": 17.9
+}

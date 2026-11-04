@@ -1,0 +1,24 @@
+{
+ "binding": "reader terminal",
+ "ingests": "the terminal goal's claim: a mate in one (the definition of forcing's reader)",
+ "oracle": "the spec: its legal moves, next states and terminal reasons",
+ "corpus": "playouts+puzzles",
+ "positions": 2404,
+ "invalid_left_out": 0,
+ "disagreements": 0,
+ "examples": [],
+ "key": "d7dbd09db1ed17b3",
+ "sources": [
+  "rules/chess.gdl",
+  "catspace/incubator/analyst/discovery/gdl.py",
+  "catspace/incubator/analyst/discovery/gdl_chess.py",
+  "rust/analyst_core/src/regress.rs",
+  "rust/analyst_core/src/pos.rs",
+  "rust/analyst_core/Cargo.lock",
+  "catspace/incubator/analyst/discovery/lemmas/mate.json",
+  "catspace/incubator/analyst/discovery/lemmas/win.json",
+  "catspace/incubator/analyst/discovery/lemmas/material.json"
+ ],
+ "date": "2026-11-04",
+ "seconds": 139.8
+}

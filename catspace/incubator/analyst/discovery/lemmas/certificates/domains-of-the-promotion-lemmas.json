@@ -1,0 +1,19 @@
+{
+ "binding": "domains of the promotion lemmas",
+ "ingests": "each lemma's declared domain (its store entry's `needs`)",
+ "oracle": "the lemma itself, asked without the gate",
+ "corpus": "endgames+puzzles",
+ "positions": 360,
+ "invalid_left_out": 0,
+ "disagreements": 0,
+ "examples": [],
+ "key": "d0d016a3c12ded05",
+ "sources": [
+  "catspace/incubator/analyst/discovery/lemmas/unstoppablepasser2_sound.json",
+  "catspace/incubator/analyst/discovery/lemmas/ideas-race-race_sound.json",
+  "catspace/incubator/analyst/lean_passer_v2_proto.py",
+  "catspace/incubator/analyst/discovery/race.py"
+ ],
+ "date": "2026-11-04",
+ "seconds": 0.2
+}
