@@ -18,6 +18,8 @@ a run. `validate` fails on it.
 from __future__ import annotations
 
 import json
+
+import chess
 import re
 import sys
 from collections import Counter
@@ -28,7 +30,9 @@ ROOT = Path(__file__).resolve().parents[4]
 LEAN_INDEX = ROOT / "docs" / "LEAN_INDEX.md"
 
 FIELDS = ("name", "kind", "reads", "terms", "status", "lean", "origin", "plan", "journal", "measure", "evidence", "implementation", "note")
-OPTIONAL = ("params",)              # plan 75.2: the values the agenda READS from an entry at run time (a GOAL's stake and roles, a VALUATION's worths, a STOP's shape)
+OPTIONAL = ("params", "needs")            # plan 75.2: the values the agenda READS from an entry at run time (a GOAL's stake and roles, a VALUATION's worths, a STOP's shape)
+# plan 77.1 (d): `needs` -- a lemma's DECLARED DOMAIN, {theirs, why}: the unit kinds (the kernel's letters, the king included) the other side may hold for the lemma to apply
+# (its Lean hypothesis, or a hand word's own gate, named in `why`); the engine asks the lemma only where it holds, and the certify stage checks it never fires outside
 KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE", "GOAL", "VALUATION", "RULE")      # plan 76.2 (c): RULE -- a rule of the game (given)
 from catspace.incubator.analyst.discovery import names as NM  # noqa: E402  (plan 75.2 (c): the store's base reads are names of the names table)
 BASE = tuple(NM.READS)                                         # movement, attack, tempo, material: each bound to a kernel predicate and a Lean twin (names.py)
@@ -66,6 +70,12 @@ def check_entry(e: dict, where: str = "") -> list:
         return bad
     if not isinstance(e["name"], str) or not e["name"]:
         bad.append(f"{at}: name must be a non-empty string")
+    if "needs" in e:
+        nd = e["needs"]
+        kinds = {c.upper() for c in chess.PIECE_SYMBOLS if c}
+        if not isinstance(nd, dict) or set(nd) != {"theirs", "why"} or not isinstance(nd["theirs"], str) or not set(nd["theirs"]) <= kinds or not nd["theirs"] \
+                or not isinstance(nd["why"], str) or not nd["why"]:
+            bad.append(f"{at}: needs is {{theirs, why}}: the unit kinds the other side may hold (letters of {''.join(sorted(kinds))}) and the hypothesis it mirrors")
     if e["kind"] not in KINDS:
         bad.append(f"{at}: kind {e['kind']!r} not in {KINDS}")
     if not isinstance(e["reads"], list) or not e["reads"]:

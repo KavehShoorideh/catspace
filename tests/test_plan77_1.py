@@ -72,6 +72,27 @@ def test_77_1a_the_rust_section_names_no_unit_kind():
     src = (Path(R.__file__).parents[4] / "rust" / "analyst_core" / "src" / "regress.rs").read_text()
     sec = src.split("plan 77.1 (a): the one definition's reading", 1)[1].split("// ----------", 1)[0]
     code = "\n".join(ln.split("//")[0] for ln in sec.splitlines())
-    hit = re.findall(r"Role::\w+|\b(?:king|queen|rook|bishop|knight|pawn)\b", code)
+    hit = re.findall(r"Role::(?!ALL\b)\w+|\b(?:king|queen|rook|bishop|knight|pawn)\b", code)        # (Role::ALL is the kernel's list of kinds: it names none)
     assert hit == [], hit
     assert "fn definition_rows_pos" in code
+
+
+def test_77_1d_the_definitions_glue_names_no_unit_kind_and_the_lemma_domains_are_the_stores(monkeypatch):
+    """plan 77.1 (d) (1): the Python glue of the definition spells no kernel unit kind (chess.KNIGHT, board.rooks ...): the promotion lemmas' domains are their entries' `needs`;
+    a patched entry moves where the lemma is asked."""
+    import ast, inspect
+    names = ("_kinds", "_promotion_lemmas", "_promotion_masks", "_promotion_claims", "_definition_node", "_claims_of", "forcing_by_definition", "_decide", "every_reply")
+    kinds = {"PAWN", "KNIGHT", "BISHOP", "ROOK", "QUEEN", "KING", "pawns", "knights", "bishops", "rooks", "queens", "kings"}
+    for nm in names:
+        tree = ast.parse(inspect.getsource(getattr(R, nm)).lstrip())
+        hit = [n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr in kinds]
+        assert hit == [], (nm, hit)
+    assert not hasattr(R, "_promotion_shut")
+    b = chess.Board("8/5k2/8/1P6/8/8/6K1/8 w - - 0 1")
+    assert R._promotion_claims(b, 1)                                              # the passer lemma's domain holds (their king alone)
+    patched = copy.deepcopy(LS.load())
+    for n in ("unstoppablePasser2_sound", "Ideas.Race.race_sound"):
+        patched[n]["needs"]["theirs"] = "Q"                                        # a domain without their king: the board (their king alone) is outside it
+    monkeypatch.setattr(LS, "_STORE", [patched])
+    assert R._promotion_claims(b, 1) == {}                                        # outside every declared domain: no lemma asked
+    print(f"OBS 77.1d domains from the store: {[(n, bin(m)) for n, m, _k, _r in R._promotion_lemmas()]}")

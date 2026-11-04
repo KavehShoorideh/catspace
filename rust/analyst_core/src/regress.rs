@@ -357,7 +357,7 @@ fn forcing_whys_on(p: &Chess, ucis: Vec<String>, stake: i64, us_white: bool, mat
 // and after each of their captures of the unit that moved. Generic machinery over the rules kernel: WHICH claims are read is the caller's list (the store's GOAL
 // entries, by the reader each is bound to); this module binds two readers, both rule level -- "terminal" (the kernel's mate in one: some legal move checkmates)
 // and "exchange" (the exchange law on each unit of theirs we attack, the word `see`). Every other goal's claims (a lemma read in Python) are added by the caller
-// on the positions this call names (`fens`). The decision (new claim? survives? the text) stays in Python: one definition, read by two readers.
+// on the positions this call names (where the other side's units fall inside a declared domain, `open`). The decision (new claim? survives? the text) stays in Python: one definition, read by two readers.
 
 /// A claim read on a position (us to move): (reader, square or -1, value). Kept when its value reaches the stake.
 type ClaimRow = (String, i64, i64);
@@ -383,6 +383,16 @@ fn claims_on(x: &Chess, me: Color, stake: i64, readers: &[String]) -> Vec<ClaimR
 
 fn fen_of(x: &Chess) -> String { Fen::from_position(x.clone(), EnPassantMode::Legal).to_string() }
 
+/// The unit kinds the other side of `me` holds on `x`, as a mask of the kernel's kinds (bit k - 1 for kind k: the kernel's numbering, pawn 1 .. king 6).
+fn their_kinds(x: &Chess, me: Color) -> u8 {
+    let b = x.board();
+    Role::ALL.iter().filter(|r| (b.by_role(**r) & b.by_color(!me)).any()).fold(0u8, |m, r| m | (1u8 << (*r as u8 - 1)))
+}
+
+/// The position is named to the caller (its FEN) when the other side's unit kinds fall inside one of the caller's masks (a lemma's declared domain: the caller's, by its store
+/// entry; this module knows no lemma).
+fn named(x: &Chess, me: Color, open: &[u8]) -> String { let k = their_kinds(x, me); if open.iter().any(|m| k & !m == 0) { fen_of(x) } else { String::new() } }
+
 /// One capture of the moved unit: (uci, the threat ends -- it checks, or the position after it is a mate or a stalemate --, the claims then, that position's FEN or "").
 type CapRow = (String, bool, Vec<ClaimRow>, String);
 /// One move: (uci, "check" | "capture" | "ended" | "noturn" | "read", the capture's worth, the claims after the move and a pass, what they win by the exchange on the
@@ -390,10 +400,10 @@ type CapRow = (String, bool, Vec<ClaimRow>, String);
 /// position's FEN or "").
 type DefRow = (String, String, i64, Vec<ClaimRow>, i64, Vec<CapRow>, String);
 
-/// definition_rows_pos(pos, stake, us_white, readers, fens) -> (the claims binding now, [one row per legal move]) -- see the section's comment. `fens`: name the
-/// positions read (the caller adds its own readers' claims there). ValueError when it is not `us`'s move.
+/// definition_rows_pos(pos, stake, us_white, readers, open) -> (the claims binding now, [one row per legal move]) -- see the section's comment. `open`: name the
+/// positions read where the other side's units fall inside one of the `open` masks (the caller adds its own readers' claims there). ValueError when it is not `us`'s move.
 #[pyfunction]
-pub fn definition_rows_pos(pos: &crate::pos::Pos, stake: i64, us_white: bool, readers: Vec<String>, fens: bool) -> PyResult<(Vec<ClaimRow>, Vec<DefRow>)> {
+pub fn definition_rows_pos(pos: &crate::pos::Pos, stake: i64, us_white: bool, readers: Vec<String>, open: Vec<u8>) -> PyResult<(Vec<ClaimRow>, Vec<DefRow>)> {
     let p = &pos.pos;
     let me = col(us_white);
     if p.turn() != me { return Err(err("definition_rows: not our move")); }
@@ -411,7 +421,7 @@ pub fn definition_rows_pos(pos: &crate::pos::Pos, stake: i64, us_white: bool, re
         if c.is_checkmate() || c.is_stalemate() { rows.push((u, "ended".into(), 0, vec![], 0, vec![], String::new())); continue; }
         let Some(q) = crate::pos::with_turn_strict(&c, me) else { rows.push((u, "noturn".into(), 0, vec![], 0, vec![], String::new())); continue };
         let cl = claims_on(&q, me, stake, &readers);
-        let qfen = if fens { fen_of(&q) } else { String::new() };
+        let qfen = named(&q, me, &open);
         let to = m.to();
         let lost = i64::from(crate::pos::see_word(&c, to));
         let mut caps = vec![];
@@ -423,7 +433,7 @@ pub fn definition_rows_pos(pos: &crate::pos::Pos, stake: i64, us_white: bool, re
                 d.play_unchecked(&r);
                 if d.is_check() || d.is_checkmate() || d.is_stalemate() { caps.push((ru, true, vec![], String::new())); break; }
                 let dc = claims_on(&d, me, stake, &readers);
-                caps.push((ru, false, dc, if fens { fen_of(&d) } else { String::new() }));
+                caps.push((ru, false, dc, named(&d, me, &open)));
             }
         }
         rows.push((u, "read".into(), 0, cl, lost, caps, qfen));
@@ -439,11 +449,11 @@ pub fn definition_rows_pos(pos: &crate::pos::Pos, stake: i64, us_white: bool, re
 /// One reply of theirs: (uci, the threat ends -- the reply checks us, or the game is over after it --, our balance change by it, the claims then, that position's FEN or "").
 type ReplyRow = (String, bool, i64, Vec<ClaimRow>, String);
 
-/// reply_claims_pos(pos, uci, stake, us_white, readers, fens) -> ("mate" | "stalemate" | "read", the claims binding now (before the move), [one row per legal reply to
+/// reply_claims_pos(pos, uci, stake, us_white, readers, open) -> ("mate" | "stalemate" | "read", the claims binding now (before the move), [one row per legal reply to
 /// our legal move `uci`, the kernel's order]).
 /// ValueError when it is not `us`'s move or the move is not legal.
 #[pyfunction]
-pub fn reply_claims_pos(pos: &crate::pos::Pos, uci: &str, stake: i64, us_white: bool, readers: Vec<String>, fens: bool) -> PyResult<(String, Vec<ClaimRow>, Vec<ReplyRow>)> {
+pub fn reply_claims_pos(pos: &crate::pos::Pos, uci: &str, stake: i64, us_white: bool, readers: Vec<String>, open: Vec<u8>) -> PyResult<(String, Vec<ClaimRow>, Vec<ReplyRow>)> {
     let me = col(us_white);
     if pos.pos.turn() != me { return Err(err("reply_claims: not our move")); }
     let c = pos.push_move(uci)?.pos;
@@ -459,7 +469,7 @@ pub fn reply_claims_pos(pos: &crate::pos::Pos, uci: &str, stake: i64, us_white: 
         let dbal = crate::pos::bal(&d, me) - base;
         if d.is_check() || d.is_stalemate() { rows.push((ru, true, dbal, vec![], String::new())); continue; }
         let cl = claims_on(&d, me, stake, &readers);
-        rows.push((ru, false, dbal, cl, if fens { fen_of(&d) } else { String::new() }));
+        rows.push((ru, false, dbal, cl, named(&d, me, &open)));
     }
     Ok(("read".into(), before, rows))
 }

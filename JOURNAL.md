@@ -35978,3 +35978,15 @@ Tests re-pinned: test_duty63 63_1 (Ng1+ -- Bh4 blocks: '+3 ... then the B on h4'
   h4 covered (Bxf2 Ng5+ Bh4) -- the mate is three deep (Qxh4+ Kg8 Qh7#); the one-level clause cannot see it, the old fiction did. It flips when the claim behind a check is the terminal goal
   in n (the same clause composed).
 NEXT: delayed_threat's follow-up test as one batch per node; the claim behind a check as the terminal goal in n (63_2).
+
+## 2026-11-04 13:07 -- plan 77.1 (d) (1): the promotion lemmas' domains are their store entries', not code (Kaveh: no hand-coded chess; the rules ingestion minimal, its verification machinery)
+
+77.1 (d) written into the plan (the line: the GDL text is the rules; a fast binding is the ingestion of a spec relation with a certificate the engine keeps; everything else a store
+lemma with its proof, its declared domain and its certificate). (1) built: `regress._promotion_shut` -- the passer lemma's and the race word's preconditions copied into the glue
+('they keep no knight, rook or queen', added with the 77.1 (a) port) -- is gone. Each lemma's entry declares its DOMAIN (`needs`, a new optional field of the schema: the unit kinds the
+other side may hold, with the hypothesis it mirrors -- unstoppablePasser2_sound: KPB, Lean `enemyPieces`; Ideas.Race.race_sound: KP, race_claim's own gate); the Rust rows
+(`definition_rows_pos`, `reply_claims_pos`) take the domains as masks of the kernel's unit kinds and name a position only where the other side's units fall inside one (Rust knows no
+lemma); `_promotion_claims` asks each lemma only inside its own domain.
+OBS: the definition against its per-move oracle 25320 of 25320 equal; the every-reply readings against the old: the same counts as at 12:11; the guard (ten tier 0, wide tier 2) 0 traces
+differ against the 12:11 snapshots. Tests: test_plan77_1 (the Rust section's generic test reads Role::ALL as no kind; the glue spells no kernel unit kind; a patched `needs` moves where
+the lemma is asked) and the store's 13 test files: 183 passed.

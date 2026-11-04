@@ -49,5 +49,9 @@
   "catspace/incubator/analyst/discovery/agenda.py:_race_claim",
   "catspace/incubator/analyst/discovery/race.py:race_claim"
  ],
- "note": "The passer race: our promotion takes no more of our moves than their king needs to stop it or their pawns need to matter, read over a frame whose exclusions are sound against a pass."
+ "note": "The passer race: our promotion takes no more of our moves than their king needs to stop it or their pawns need to matter, read over a frame whose exclusions are sound against a pass.",
+ "needs": {
+  "theirs": "KP",
+  "why": "race.race_claim's gate (the HAND word): a knight, bishop, rook or queen of theirs can check, fork or arrive, and `hheld` is not read for it"
+ }
 }

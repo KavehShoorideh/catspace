@@ -47,5 +47,9 @@
   "catspace/incubator/analyst/lean_passer_v2_proto.py:proved_passers",
   "catspace/incubator/analyst/lean_passer_v2_proto.py:passer_v2"
  ],
- "note": "The passed pawn promotes whatever they do, claimed only when the proved passer detector fires (the docstring names the theorem by its short name)."
+ "note": "The passed pawn promotes whatever they do, claimed only when the proved passer detector fires (the docstring names the theorem by its short name).",
+ "needs": {
+  "theirs": "KPB",
+  "why": "Lean Ideas.Passer2 `enemyPieces`: their units are the king, pawns and bishops"
+ }
 }

@@ -526,58 +526,75 @@ def _claim_readers() -> tuple:
     return _READERS[1]
 
 
+_LEMMAS: list = [None, None]   # (the store object they were read from, the promotion goal's lemmas)
+
+
+def _kinds(b: chess.Board, side: bool) -> int:
+    """The unit kinds `side` holds on `b`, as a mask of the kernel's kinds (bit k - 1 for kind k: the kernel's numbering)."""
+    return sum(1 << (k - 1) for k in chess.PIECE_TYPES if b.pieces_mask(k, side))
+
+
+def _promotion_lemmas() -> list:
+    """plan 77.1 (d): THE PROMOTION GOAL'S LEMMAS, each with the DOMAIN its store entry declares (`needs`: the unit kinds the other side may hold -- the Lean hypothesis or the hand
+    word's gate it mirrors, read from the entry, never written here) -> [(entry name, the domain as a kinds mask, the claim's key word, its binding: board -> [our pawn squares])].
+    The bindings are the entries' implementations (the Lean detector; the race word); the order is the claims' precedence on a square (the passer lemma, then the race word)."""
+    st = LS.load()
+    if _LEMMAS[0] is st:
+        return _LEMMAS[1]
+    from catspace.incubator.analyst import lean_passer_v2_proto as PV
+    binds = (("unstoppablePasser2_sound", LS.goal_kinds().promotion.question, lambda b: [sq for sq, _plies in PV.proved_passers(b, bishops=True)]),
+             ("Ideas.Race.race_sound", "race", lambda b: list(RC.race_passers(b))))
+    out = []
+    for name, key, read in binds:
+        theirs = st[name]["needs"]["theirs"]
+        out.append((name, sum(1 << (chess.PIECE_SYMBOLS.index(c.lower()) - 1) for c in theirs), key, read))
+    _LEMMAS[0], _LEMMAS[1] = st, out
+    return out
+
+
+def _promotion_masks(stake: int) -> list:
+    """The declared domains of the promotion goal's lemmas, for the Rust rows (none when the promotion's stake cannot reach the question's)."""
+    rust, py = _claim_readers()
+    return [mk for _n, mk, _k, _r in _promotion_lemmas()] if py and LS.goal_kinds().promotion.stake >= stake else []
+
+
 def _promotion_claims(b: chess.Board, stake: int) -> dict:
-    """The promotion goal's claims on `b` (us to move): its lemmas -- the passer lemma (unstoppablePasser2_sound) and the race word (race_sound) -- as `_claims_binding` reads them,
-    keyed by the goal's question word (the passer lemma) and the race word's own."""
+    """The promotion goal's claims on `b` (us to move): each of its lemmas asked only where its declared domain holds (the other side's unit kinds inside its `needs`), keyed by
+    the lemma's key word and the pawn's square, worth the goal's stake."""
     out = {}
     g = LS.goal_kinds().promotion
     if g.stake < stake:
         return out
-    from catspace.incubator.analyst import lean_passer_v2_proto as PV
-    for sq, _plies in PV.proved_passers(b, bishops=True):
-        out[(g.question, sq)] = g.stake
-    for sq in RC.race_passers(b):
-        out.setdefault(("race", sq), g.stake)
+    k = _kinds(b, not b.turn)
+    for _name, mask, key, read in _promotion_lemmas():
+        if k & ~mask:
+            continue
+        for sq in read(b):
+            out.setdefault((key, sq), g.stake)
     return out
 
 
-def _promotion_shut(board: chess.Board, me: bool) -> int:
-    """The promotion lemmas' common hypothesis read on the node: both are silent while THEY keep a knight, rook or queen (`passer_gate`: their rooks, queens and
-    knights absent; `race_claim`'s gate: no piece of theirs but king and pawns). Our quiet move and their recapture never add such a unit (a promotion of theirs only
-    shuts it further), so a node where they keep two shuts the lemmas on every position the reply loop reads; one, everywhere but after our capture of it.
-    -> how many they keep."""
-    return chess.popcount(board.occupied_co[not me] & (board.knights | board.rooks | board.queens))
-
-
 def _definition_node(board: chess.Board, P, me: bool, stake: int):
-    """The node's rows (one Rust call, cached per node): (claims binding now, {uci: row}, the moves after which the promotion lemmas may bind, {})."""
+    """The node's rows (one Rust call, cached per node): (claims binding now, {uci: row}, {(uci, new): decision}, the readers' goal words)."""
     k = (P.key(), me, stake)
     hit = _DEF.get(k)
     if hit is not None:
         return hit
     rust, py = _claim_readers()
-    keep_big = _promotion_shut(board, me) if py else 99
-    fens = keep_big <= 1
-    before_rows, rows = _A.definition_rows_pos(P, stake, me, [r for r, _w in rust], fens)
+    before_rows, rows = _A.definition_rows_pos(P, stake, me, [r for r, _w in rust], _promotion_masks(stake))
     word = dict(rust)
     before = {(word[r], None if sq < 0 else sq): v for r, sq, v in before_rows}
-    if py and keep_big == 0:
+    if py:
         for kk, v in _promotion_claims(board, stake).items():
             before.setdefault(kk, v)
-    big = board.occupied_co[not me] & (board.knights | board.rooks | board.queens)
-    open_after = set()
-    if fens:
-        for row in rows:
-            to = chess.parse_square(row[0][2:4])
-            if keep_big == 0 or (big & chess.BB_SQUARES[to]):
-                open_after.add(row[0])
-    hit = _DEF[k] = (before, {row[0]: row for row in rows}, open_after, {}, word)
+    hit = _DEF[k] = (before, {row[0]: row for row in rows}, {}, word)
     return hit
 
 
-def _claims_of(cl, word, fen, open_, stake) -> dict:
+def _claims_of(cl, word, fen, stake) -> dict:
+    """A row's claims: the Rust readers', and the promotion lemmas' where the row names the position (inside a declared domain)."""
     out = {(word[r], None if sq < 0 else sq): v for r, sq, v in cl}
-    if open_ and fen:
+    if fen:
         for kk, v in _promotion_claims(chess.Board(fen), stake).items():
             out.setdefault(kk, v)
     return out
@@ -593,7 +610,7 @@ def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str
         return None
     try:
         P = G.handle(board)
-        before, rows, open_after, decided, word = _definition_node(board, P, me, stake)
+        before, rows, decided, word = _definition_node(board, P, me, stake)
     except ValueError:
         return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
     uci = m.uci()
@@ -602,7 +619,7 @@ def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str
         row = rows.get(uci)
         if row is None:
             return _forcing_by_definition_py(board, m, stake, us, new=new, notes=notes)
-        d = decided[(uci, new)] = _decide(row, before, new, stake, word, uci in open_after)
+        d = decided[(uci, new)] = _decide(row, before, new, stake, word)
     why, note = d
     if note is not None and notes is not None:
         lost, worst_uci, worst = note
@@ -617,7 +634,7 @@ def forcing_by_definition(board: chess.Board, m: chess.Move, stake: int, us: str
     return why
 
 
-def _decide(row, before: dict, new: bool, stake: int, word: dict, open_: bool) -> tuple:
+def _decide(row, before: dict, new: bool, stake: int, word: dict) -> tuple:
     """The definition's decision on one move's row -> (why or None, the survive clause's note (what they win, the worst capture, what survives it) or None)."""
     uci, pre, cv, cl, lost, caps, qfen = row
     if pre == "check":
@@ -626,7 +643,7 @@ def _decide(row, before: dict, new: bool, stake: int, word: dict, open_: bool) -
         return f"capture {cv}", None
     if pre != "read":
         return None, None
-    claims = _claims_of(cl, word, qfen, open_, stake)
+    claims = _claims_of(cl, word, qfen, stake)
     fresh = {k: v for k, v in claims.items() if (new is False or k not in before)}
     if lost >= LS.valuation().unit:                               # (they win something: at least the valuation's unit)
         worst = worst_uci = None
@@ -634,7 +651,7 @@ def _decide(row, before: dict, new: bool, stake: int, word: dict, open_: bool) -
             if ends:
                 worst, worst_uci = 0, cu
                 break
-            v = max(_claims_of(dcl, word, dfen, open_, stake).values(), default=0)
+            v = max(_claims_of(dcl, word, dfen, stake).values(), default=0)
             if worst is None or v < worst:
                 worst, worst_uci = v, cu
         if worst is not None and worst < stake:
@@ -671,16 +688,14 @@ def every_reply(board: chess.Board, m: chess.Move, stake: int, us: str | bool, n
     try:
         P = G.handle(board)
         rust, py = _claim_readers()
-        keep_big = _promotion_shut(board, me) if py else 99
-        open_ = keep_big == 0 or (keep_big == 1 and bool(board.occupied_co[not me] & (board.knights | board.rooks | board.queens) & chess.BB_SQUARES[m.to_square]))
-        status, before_rows, rows = _A.reply_claims_pos(P, m.uci(), stake, me, [r for r, _w in rust], open_)
+        status, before_rows, rows = _A.reply_claims_pos(P, m.uci(), stake, me, [r for r, _w in rust], _promotion_masks(stake))
     except ValueError:
         return None
     if status != "read":
         return status
     word = dict(rust)
     before = {(word[r], None if sq < 0 else sq): v for r, sq, v in before_rows}           # (the claims binding now, read in the same call: no batch of the whole node)
-    if py and keep_big == 0:
+    if py:
         for kk, v in _promotion_claims(board, stake).items():
             before.setdefault(kk, v)
     worst = None
@@ -688,7 +703,7 @@ def every_reply(board: chess.Board, m: chess.Move, stake: int, us: str | bool, n
         if ends:
             v, key = 0, None
         else:
-            claims = _claims_of(cl, word, fen, open_, stake)
+            claims = _claims_of(cl, word, fen, stake)
             fresh = {k: x for k, x in claims.items() if not new or k not in before}
             key = max(fresh, key=lambda k: fresh[k]) if fresh else None
             v = (fresh[key] if key is not None else 0) + dbal

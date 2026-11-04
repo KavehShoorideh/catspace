@@ -4339,3 +4339,19 @@ LOOP TARGET 1 passes. Next: delayed_threat (the definition one reply deeper), th
 mover's capture, OR a claim after EVERY LEGAL REPLY (the worst deciding) -- the pass is wrong only after a check (illegal) and in a zugzwang (it flatters them). check_threat and
 no_safe_move are the clause (`regress.every_reply`, `analyst_core.reply_claims_pos`); the threat of mate in two is the composition (`terminal_after_pass_pos`, n = 2). Batch 33 right
 (was 32), 02XVK gained. Next: delayed_threat's follow-up as one batch per node; the claim behind a check as the terminal goal in n (test_duty63 63_2, strict xfail).
+
+### 77.1 (d) RULES INGESTION KEPT MINIMAL, ITS VERIFICATION IN THE MACHINERY (Kaveh 2026-11-04: "i don't want to hand-code anything chess-related ... extracting rules from GDL
+and writing in Rust is one part of the rules ingestion process. But it has to be kept to a minimum, and the verification code should be part of the machinery"; "yes do it")
+THE LINE: the GDL text is the rules; a FAST BINDING (the kernel's legal moves, next state, check, terminal; the claim readers) is admitted only as the ingestion of a spec relation, and
+only with a CERTIFICATE the engine keeps; everything that is not a rule (the exchange law, the passer lemma, the race word) is a store lemma -- its Lean proof, its declared domain, its
+certificate against the regression -- and ideally mined.
+(1) NO CHESS FACT IN THE DEFINITION'S GLUE: `regress._promotion_shut` (the promotion lemmas' preconditions copied into code, 77.1 (a) port) leaves: each lemma's entry declares its
+domain (`needs`: the unit kinds the other side may hold -- the passer lemma's Lean hypothesis `enemyPieces`; the race word's own gate), the Rust rows mark the positions whose units fall
+inside a declared domain (masks of the kernel's unit kinds: Rust knows no lemma), and each lemma is asked only where its own domain holds. Acceptance: the definition's answers equal
+before (the guard identical), no unit kind named in the glue.
+(2) THE CERTIFY STAGE (`discovery/certify.py`, the package, not a script): every fast binding is an entry with the spec relation it ingests and its oracle (the GDL evaluator for a rule;
+the regression on the spec for a claim: win, mate, mate in n; a lemma's declared domain against the lemma: it never fires outside it). The engine certifies at load on a fixed corpus
+and keeps checking on a priced share of the positions its search visits; a certificate (positions, disagreements, date) is kept in the store; a disagreement is a fact, and the binding
+is demoted (that relation read from the spec evaluator: slow, right). scripts/crossplay.py, plan76_4a.py crosscheck and the port harnesses become callers. Acceptance: the certificates
+of every binding the hot path reads printed (OBS); a planted wrong binding (a test's) demoted and the decision read through the spec; the cost of the online share printed.
+(3) THEN SPEED AND DEPTH: delayed_threat's follow-up test as one batch per node; the claim behind a check as the terminal goal in n (test_duty63 63_2).
