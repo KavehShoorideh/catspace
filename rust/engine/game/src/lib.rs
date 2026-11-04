@@ -41,4 +41,9 @@ pub trait Game {
     fn key(&self, s: &Self::State) -> u64;
     /// What `role` sees of the state: the state itself under perfect information (the GDL-II extension point).
     fn observe(&self, s: &Self::State, _role: Role) -> Self::State { s.clone() }
+    /// The units standing in the state as (owner, kind name): what a valuation from the store counts (none for a game without units). The kind names are the
+    /// game's own; the layers read them only through a valuation table.
+    fn units(&self, _s: &Self::State) -> Vec<(Role, String)> { vec![] }
+    /// The role that is not `r` in a game of two roles (the opponent).
+    fn other(&self, r: Role) -> Role { 1 - r }
 }

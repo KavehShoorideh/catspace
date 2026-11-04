@@ -4388,3 +4388,10 @@ STAGES:
   78.3 THE MEASURE: full games per variant against a fixed opponent (Fairy-Stockfish if installed; until then a random mover, and for chess the legacy engine) -- results per variant,
        where each layer fell back, the cost per move.
 THEN the layers improve: the trajectory planner from game data (lichess has variant games), 77.3's proposer, the legacy engine's chess facts moved to the store and its loop ported.
+
+#### 78.1-78.3 RESULT (2026-11-04, JOURNAL): the end-to-end system plays every perfect-information variant -- rust/engine: cs_gdl, cs_game (the Game trait; GdlGame;
+KernelGame over shakmaty's variants; co-play certify: chess, king of the hill, three-check certified, 0 disagreements; six variants uncertified until their GDL texts are
+written), cs_tactics `forcing`, cs_planning `keep`, cs_decision; cs_engine (one call per move) and a UCI front end. The first measure (72 games, 0.2 s a move): against a
+random mover W 28 D 7 L 1; against Fairy-Stockfish at skill 0 W 2 L 34. NEXT (the layers improve): planning by subgoals (goal regression; the trajectory model from
+game data) -- racing kings and antichess show it first; tactics: the definition of forcing (77.1) ported onto the Game trait (the claims beyond the outcome: the store's
+goals by their readers); the variants' GDL texts (Chess960, crazyhouse, atomic, antichess, racing kings, horde); the variants' valuations mined into the store.

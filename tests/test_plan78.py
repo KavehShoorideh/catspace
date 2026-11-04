@@ -58,3 +58,32 @@ def test_78_1_every_variant_is_played_and_those_without_a_text_are_reported_unce
     assert set(un) == set(CE.variants()) - set(CF.VARIANT_TEXTS)
     for v in CF.VARIANT_TEXTS:
         assert CF.status()[f"kernel {v} (cs_game)"] == "fresh"
+
+
+# ---- 78.2 the thin approaches (tactics `forcing`, don't lose, planning `keep`) and the decision loop, one call per move
+
+def _worth():
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    return {k: int(v) for k, v in LS.valuation().worth.items()}
+
+
+def test_78_2_the_decision_proves_each_variants_own_goal():
+    """The tactics layer reads only the Game trait's outcome: the same search proves a chess mate, a king walking onto the hill, a third check."""
+    w = _worth()
+    for v, fen, want in (("chess", "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1", "a1a8"), ("kingofthehill", "8/8/8/8/8/2K5/8/7k w - - 0 1", "c3d4"),
+                         ("3check", "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1+3 0 3", None)):
+        mv, proved, trace, nodes, _f = CE.best_move(v, fen, [], 1.0, w)
+        print(f"OBS 78.2 {v}: {mv} proved {proved}, {nodes} nodes -- {trace[1][:120]}")
+        assert proved and (want is None or mv == want)
+
+
+def test_78_2_every_variant_gets_a_legal_move_and_dont_lose_drops_a_losing_one():
+    w = _worth()
+    for v in CE.variants():
+        mv, proved, trace, nodes, fen = CE.best_move(v, None, [], 0.2, w)
+        assert mv in CE.state(v)[2], (v, mv)
+    # chess, the fool's mate both ways: after 1.f3 e5 2.g4 Black's Qh4# is proved; after 1.f3 e5 White's 2.g4?? (it allows Qh4#) is dropped by don't-lose
+    mv, proved, trace, nodes, fen = CE.best_move("chess", None, ["f2f3", "e7e5", "g2g4"], 0.5, w)
+    assert mv == "d8h4" and proved                                                    # (Black to move: the fool's mate, proved)
+    mv, proved, trace, nodes, fen = CE.best_move("chess", None, ["f2f3", "e7e5"], 0.5, w)
+    assert mv != "g2g4" and any("don't lose" in x and "g2g4" in x for x in trace)     # (White: g4?? allows Qh4#, dropped)

@@ -11,4 +11,5 @@ crate-type = ["cdylib"]
 [dependencies]
 cs_game = { path = "../game" }
 cs_gdl = { path = "../gdl" }
+cs_decision = { path = "../decision" }
 pyo3 = { version = "0.25", features = ["extension-module"] }

@@ -82,6 +82,9 @@ impl Game for KernelGame {
     }
     fn move_name(&self, _s: &VariantPosition, m: &Move) -> String { m.to_uci(self.mode).to_string() }
     fn key(&self, s: &VariantPosition) -> u64 { s.zobrist_hash::<Zobrist64>(EnPassantMode::Legal).0 }
+    fn units(&self, s: &VariantPosition) -> Vec<(Role, String)> {
+        s.board().iter().map(|(_sq, p)| (if p.color == Color::White { 0 } else { 1 }, p.role.char().to_string())).collect()
+    }
 }
 
 /// The Chess960 start numbered `n` (Scharnagl's numbering: the light bishop, the dark bishop, the queen, the knights, then rook, king, rook in the files left).

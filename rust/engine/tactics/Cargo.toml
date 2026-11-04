@@ -1,0 +1,8 @@
+[package]
+name = "cs_tactics"
+version = "0.1.0"
+edition = "2021"
+description = "plan 78.2: the tactics layer (game-free: it reads only the Game trait)"
+
+[dependencies]
+cs_game = { path = "../game" }

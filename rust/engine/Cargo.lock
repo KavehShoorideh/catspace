@@ -30,9 +30,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cs_decision"
+version = "0.1.0"
+dependencies = [
+ "cs_game",
+ "cs_planning",
+ "cs_tactics",
+]
+
+[[package]]
 name = "cs_engine"
 version = "0.1.0"
 dependencies = [
+ "cs_decision",
  "cs_game",
  "cs_gdl",
  "pyo3",
@@ -49,6 +59,20 @@ dependencies = [
 [[package]]
 name = "cs_gdl"
 version = "0.1.0"
+
+[[package]]
+name = "cs_planning"
+version = "0.1.0"
+dependencies = [
+ "cs_game",
+]
+
+[[package]]
+name = "cs_tactics"
+version = "0.1.0"
+dependencies = [
+ "cs_game",
+]
 
 [[package]]
 name = "heck"

@@ -36052,3 +36052,23 @@ OBS co-play (certify run, 20 seeded games each): kernel chess (cs_game) 6431 sta
 OBS tests: test_plan78 4 passed (the layer crates' code free of chess words but the kernel module; co-play agreement and the controls; a retract that matches nothing
   fails; the uncertified list); test_plan76_4a/4b/4c, test_rules_gdl 53 passed (test_76_4b's generic test reads the evaluator at its new path); the certificates the
   crate move made stale (analyst_core's lock) re-run: 0 disagreements.
+
+## 2026-11-04 15:17 -- plan 78.2 + 78.3: THE END-TO-END SYSTEM PLAYS every perfect-information variant -- thin layers in Rust over the Game trait; the first measure
+
+78.2 BUILT (rust/engine, each layer a crate that reads only the `Game` trait; the generic test finds no chess word in their code): tactics `forcing` (cs_tactics: the
+outcome goal by the every-reply clause composed -- some move of ours after which every legal reply leaves it within n - 1 more; deepened while the clock lasts; a cut is a
+GAP; the order: game-ending moves, then the fewest replies); planning `keep` (cs_planning, HEURISTIC: the move whose worst reply leaves our measure highest -- our units less
+theirs by the store's valuation, read through `Game::units` (owner, kind name), so the layer names no unit); decision (cs_decision, the anytime loop: a PROVED goal is
+played; DON'T LOSE drops every move after which they force their goal within two of their moves; the planner's move among the rest; all candidates again when every move
+loses). One call per move: `cs_engine.best_move(variant, fen, moves, seconds, worth)`; `cs_engine.state`; a UCI front end, scripts/plan78_uci.py (UCI_Variant,
+UCI_Chess960; the trace as `info string`). Fairy-Stockfish 14.0.1 installed (Homebrew) as the OUTSIDE opponent and grader.
+OBS the decision on known positions (test_plan78): chess Ra8# proved (1 node); king of the hill Kd4 proved (1 node); three-check (two given) Qh5 proved within 2 (82
+  nodes); the fool's mate both ways (Black's Qh4# proved; White's 2.g4?? dropped by don't-lose); a legal move at every variant's start.
+OBS plan 78.3 THE MEASURE (scripts/plan78_games.py --games 4 --seconds 0.2; 72 games on 11 cores, wall 28 s; every game finished, no illegal move):
+  against a seeded RANDOM mover (36 games): W 28 D 7 L 1 -- 3check, atomic, chess, crazyhouse, horde, kingofthehill 4/4 each; chess960 W 2 D 2; antichess W 2 D 1 L 1;
+  racingkings D 4 (all four by threefold repetition: the goal is a king's race to the last rank, and the planner has no subgoal to steer by);
+  against FAIRY-STOCKFISH at its lowest skill (skill 0, 0.05 s a move; 36 games): W 2 D 0 L 34 -- the two wins in horde.
+  Our side: 0.09-0.15 s a move; proved moves in every variant against random (antichess 11, horde 12, chess 7 ...), none against Fairy-Stockfish but horde's 10.
+READING (directional, one run): the system is END TO END on all nine variants; its weakness is where the thin layers are thin -- (i) PLANNING: racing kings has no
+material to keep and draws by repetition; the measure is the chess valuation, wrong for antichess (losing units is its goal: its valuation is a store entry to mine);
+(ii) TACTICS: one-reply-deep danger and a shallow forced search lose to any real opponent. The baseline the layers improve from.
