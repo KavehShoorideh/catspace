@@ -4272,3 +4272,22 @@ this session is in the owner's memory dir (where_we_are_2026_10_25.md); the engi
 `scripts/trace_identity.py snapshot --jobs N` / `compare` (ten + wide, tiers 0 and 2, PYTHONHASHSEED=0); the maturin editable install re-points to whichever crate last ran
 `maturin develop`: rebuild main's after every merge of a Rust change; never commit to main while a merge chain runs; merge by hash if a branch name is lost; an old idle play server may sit
 on port 8765.
+
+
+### 77.0 THE INCREMENTAL-MAINTENANCE SPIKE (Kaveh 2026-11-03 "ok"; runs BEFORE 77.1: its numbers decide what the port builds)
+Kaveh's core idea, restated 2026-11-03: the engine is a store of claims about the position (facts, predictions, proofs) kept consistent as the observables change -- "anytime the
+observables change, all the relevant claims should change without incurring too much computation; that becomes an optimization problem". The field's name for that is INCREMENTAL VIEW
+MAINTENANCE; the mature implementation is DBSP (the Rust engine under Feldera: signed change sets, incremental joins, recursion through nested circuits; circuits built at RUN TIME, so the
+GDL file can stay the single source -- what ruled `ascent` out in 76.4b). Two kinds of change: the SLOW stream (the real game move by move; the claim store's retractions) and the FAST
+hypothetical stream (the search: thousands of positions per second, make / unmake, relations over 64 squares). Expectation, NOT a measurement: DBSP fits the slow stream; its per-step
+machinery may lose to bitboards on the fast one. If so, the fallback is NOT a fork of DBSP (its overhead is structural; a fork of a weekly-released crate is a standing cost) but a small
+SUB-PROJECT crate of our own with DBSP's semantics -- signed deltas (undo = the negated delta), delta rules compiled from rules/chess.gdl at load time, relations as bitboards over a fixed
+location domain, bounded recursion recomputed through the touched squares, the full evaluator as its oracle; game-generic by construction. And first of all: is deriving relations even a
+large share of the search's time? (The profiles say the time is in the NUMBER of questions; the Rust regression is 0.054 ms per question.)
+MEASURE: (1) THE DERIVATION SHARE -- cProfile / Rust timing of W0VFO at 10 s, the discovery position at 30 s, the ten at the count budget and five loop-2 puzzles at 15 s: the share of wall
+in deriving relations (gdl.rs, the regression, the words) vs questions / inner agendas / the judge / Python overhead. (2) THE CRATE -- a separate spike crate (rust/spike_dbsp/, its own
+Cargo.toml; analyst_core's build and the editable install untouched) building a DBSP circuit AT RUN TIME from rules/chess.gdl for cell, attack, check and the mate regression's relations;
+outputs EQUAL to gdl.rs on the ten + wide + surprise positions and along a random game; timings: full recompute (gdl.rs) vs DBSP initial load; one move's incremental update; a make + unmake
+pair; a claim-store retraction (claims as a relation claim(id, square) against the changed squares) vs the current fact store's listener; the crate's license read from its Cargo.toml.
+(3) THE DECISION REPORT -- per layer: the crate for the slow layer yes / no; the sub-project for the fast layer needed yes / no given (1); what 77.1 should build.
+NOT IN 77.0: any change to the engine's decision path; adopting anything (Kaveh decides on the report).
