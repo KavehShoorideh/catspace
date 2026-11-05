@@ -36200,3 +36200,18 @@ OBS matches (0.5 s a move, 4 random opening plies, the record in use 'units (no 
 READING: the human-games signal (78.7 (a)) is real, but as a tie-break the prior does not move play: most ties read 0 / 0 at the prior's shallow census, and its cost is
   depth. Kept as an approach, off by default (measured, not switched off unread). Next: the game record as INSTANCE knowledge in the search (a repeated position is the
   rules' draw), then the prior read at the depth that found the signal.
+
+## 2026-11-05 00:13 -- plan 78.8: the game's RECORD as instance knowledge in the search (a position met again is the rules' draw); the matches with no values and with material
+
+BUILT: the ledger search reads the INSTANCE's record -- the keys of the positions the game already holds (`Search::history`, from best_move's moves) and those on the
+line being read (`path`): a position met again reads as the rules' draw (0: nothing more lost or won). `decide_in(..., history)`; best_move(record=True) by default,
+record=False the comparison; the match runner takes --judge (the record in use, or a VALUATION entry named) and the setting `norecord`.
+OBS matches (120 games each, 0.5 s a move, 4 random opening plies; one run each):
+  NO VALUES ('units (no values)' in use): the record against no record 0.487 (se 0.018; W 8 D 101 L 11; 49 plies a game -- the draws come sooner); the record against
+  Fairy-Stockfish skill 0 0.067 (0.020; W 5 D 6 L 109; without it 0.100) -- with our losses first a draw reads 0, above every line that trades a pawn (-999): knowing the
+  record, the engine finds the draws sooner.
+  MATERIAL plugged in as a comparison ('material'): against Fairy-Stockfish skill 0 0.800 (se 0.036; W 94 D 4 L 22; 264 moves proved); the density prior against plain
+  0.475 (0.028; W 20 D 74 L 26 -- neutral, as with no values); the record against no record 0.529 (0.028; W 26 D 75 L 19).
+READING (directional): THE VALUATION IS WHAT MAKES THE NEW ENGINE PLAY -- the same search, the same clock: 0.067 with no values, 0.800 with material against the same
+  opponent. With no values the engine avoids every exchange and drifts into repetitions; the record helps it play the rules (a repetition is an outcome) and helps a
+  little with material. The density prior stays neutral under both judges at its shallow census (depth 2): what it adds is not yet measurable against its cost.

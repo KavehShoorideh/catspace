@@ -22,13 +22,14 @@ import chess.engine
 import cs_engine as CE
 from catspace.io import paths
 
-SETTINGS = {"plain": {}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}}      # plain60: the plain engine on 60 % of the clock (the prior's cost alone)
+SETTINGS = {"plain": {}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}, "norecord": {"record": False}}      # plain60: the plain engine on 60 % of the clock (the prior's cost alone)
 FSF = "/opt/homebrew/bin/fairy-stockfish"
 
 
-def judge() -> dict:
+def judge(name: str = "record") -> dict:
+    """The judge both settings read: the valuation record in use ('record'), or a VALUATION entry named (a comparison)."""
     from catspace.incubator.analyst.discovery import lemma_store as LS
-    return LS.judge_of("chess")
+    return LS.judge_of("chess", None if name == "record" else name)
 
 
 def play(job: tuple) -> dict:
@@ -90,8 +91,9 @@ def main(argv: list) -> int:
     ap.add_argument("--skill", type=int, default=0)
     ap.add_argument("--jobs", type=int, default=11)
     ap.add_argument("--tag", default="v0")
+    ap.add_argument("--judge", default="record")
     a = ap.parse_args(argv)
-    jd = judge()
+    jd = judge(a.judge)
     jobs = [(i, i % 2 == 0, a.a, a.b, a.seconds, a.random_plies, a.opponent, a.skill, jd) for i in range(a.games)]
     t0 = time.time()
     with Pool(a.jobs) as pool:

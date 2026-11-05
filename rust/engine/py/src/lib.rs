@@ -4,14 +4,22 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 
 fn state_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) -> PyResult<(kernel::KernelGame, shakmaty_state::S)> {
+    let (g, s, _h) = record_of(variant, fen, start960, moves)?;
+    Ok((g, s))
+}
+
+/// The game, the state after `moves`, and the INSTANCE's record: the keys of every position before it (plan 78.8).
+fn record_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) -> PyResult<(kernel::KernelGame, shakmaty_state::S, Vec<u64>)> {
     let g = match fen { Some(f) => kernel::KernelGame::from_fen(variant, f), None => kernel::KernelGame::new(variant, start960) }
         .map_err(pyo3::exceptions::PyValueError::new_err)?;
     let mut s = g.initial();
+    let mut keys = vec![];
     for u in moves {
         let m = g.parse(&s, u).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("illegal move {u}")))?;
+        keys.push(g.key(&s));
         s = g.apply(&s, &m);
     }
-    Ok((g, s))
+    Ok((g, s, keys))
 }
 
 mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>::State; }
@@ -20,15 +28,16 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true))]
 #[allow(clippy::too_many_arguments)]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
-             prior: bool)
+             prior: bool, record: bool)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
-    let (g, s) = state_of(variant, fen, start960, &moves)?;
+    let (g, s, keys) = record_of(variant, fen, start960, &moves)?;
+    let hist: Vec<u64> = if record { keys } else { vec![] };          // (record=False: the game's record not read -- the comparison)
     let f = g.fen(&s);
-    let choice = if worth.is_empty() { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Count, prior) }
-                 else { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, prior) };
+    let choice = if worth.is_empty() { cs_decision::decide_in(&g, &s, seconds, &cs_tactics::ledger::Count, prior, &hist) }
+                 else { cs_decision::decide_in(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, prior, &hist) };
     Ok(match choice {
         Some(c) => (Some(g.move_name(&s, &c.mv)), c.proved, c.trace, c.nodes, f),
         None => (None, false, vec!["the game is over".into()], 0, f),

@@ -63,6 +63,9 @@ pub struct Search<'a, G: Game, J: Judge> {
     deadline: Instant,
     tt: HashMap<u64, Tt>,
     stopped: bool,
+    /// INSTANCE KNOWLEDGE (plan 78.8): the keys of the positions the game's record already holds -- reached again, the rules' draw (repetition) is the outcome
+    pub history: std::collections::HashSet<u64>,
+    path: Vec<u64>,
 }
 
 /// The answer: the move, its value, the line (move names) and its ledger, the depth read in full, the nodes.
@@ -71,12 +74,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: HashMap::new(), stopped: false }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: HashMap::new(), stopped: false, history: Default::default(), path: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: HashMap::new(), stopped: false }
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: HashMap::new(), stopped: false, history: Default::default(), path: vec![] }
     }
 
     /// Did the fuse or the clock cut the last reading (its values are then lower bounds of the work, not exact)?
@@ -193,9 +196,10 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// Minimax of the judge's sum over the FUTURE of `s` (what is lost from here on), `depth` plies, alpha-beta.
     fn value(&mut self, s: &G::State, depth: i32, ply: i32, mut alpha: i64, mut beta: i64) -> i64 {
         if let Some(v) = self.g.outcome(s) { return self.terminal(&v, ply); }
+        let key = self.g.key(s);
+        if ply > 0 && (self.history.contains(&key) || self.path.contains(&key)) { return 0; }      // (a position met again: the rules' draw -- nothing more is lost or won)
         if depth <= 0 { return self.quiet(s, ply, alpha, beta, 0); }
         if self.tick() { return 0; }
-        let key = self.g.key(s);
         let (a0, b0) = (alpha, beta);
         let mut hint = None;
         if let Some(e) = self.tt.get(&key) {
@@ -208,14 +212,16 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let maxing = self.g.mover(s) == Some(self.me);
         let mut best = if maxing { i64::MIN } else { i64::MAX };
         let mut best_i = 0;
+        self.path.push(key);
         for (i, m, d) in self.ordered(s, maxing, hint) {
             let q = self.g.apply(s, &m);
             let v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
-            if self.stopped { return if best == i64::MIN || best == i64::MAX { 0 } else { best }; }
+            if self.stopped { self.path.pop(); return if best == i64::MIN || best == i64::MAX { 0 } else { best }; }
             if (maxing && v > best) || (!maxing && v < best) { best = v; best_i = i; }
             if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }
             if alpha >= beta { break; }
         }
+        self.path.pop();
         let bound = if best <= a0 { Bound::Upper } else if best >= b0 { Bound::Lower } else { Bound::Exact };
         self.tt.insert(key, Tt { depth, value: best, bound, best: best_i });
         best

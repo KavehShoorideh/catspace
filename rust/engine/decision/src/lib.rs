@@ -25,6 +25,11 @@ pub const TIE_SHARE: f64 = 0.3;            // of what is left: the share the tie
 
 /// The move for the side to move at `s` within `seconds` (None at a terminal state). `judge`: the ledger's judge (the variable: `Count` -- no values -- or `Worth`).
 pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool) -> Option<Choice<G::Move>> {
+    decide_in(g, s, seconds, judge, prior, &[])
+}
+
+/// `decide` within an INSTANCE (plan 78.8): `history` -- the keys of the positions the game's record holds before `s` (a position met again is the rules' draw).
+pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64]) -> Option<Choice<G::Move>> {
     let me = g.mover(s)?;
     let t0 = Instant::now();
     let moves = g.moves(s);
@@ -43,6 +48,7 @@ pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: 
     // (2) THE LEDGER SEARCH (plan 78.5): the move whose line loses least of ours and wins most of theirs by the judge (the variable: no values by default)
     let left = (seconds * if prior { LEDGER_SHARE } else { 1.0 } - t0.elapsed().as_secs_f64()).max(0.01);
     let mut ls = tactics::ledger::Search::new(g, judge, me, left);
+    ls.history = history.iter().copied().collect();
     let ln = ls.run(s, LEDGER_DEPTH);
     let nodes = b.nodes + ln.nodes;
     let Some(i) = ln.first_index else {
