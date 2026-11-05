@@ -96,6 +96,25 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         out
     }
 
+    /// Go on reading after the clock stopped the search: a fresh clock of `seconds` (the table kept).
+    pub fn resume(&mut self, seconds: f64) {
+        self.stopped = false;
+        self.deadline = Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0));
+    }
+
+    /// THE FIRST MOVES AS GOOD AS `best` at `depth` (each asked "at least best?" by a null window; the table of the run warms it) -> their indices in `moves`.
+    pub fn ties(&mut self, s: &G::State, depth: i32, best: i64) -> Vec<usize> {
+        let maxing = self.g.mover(s) == Some(self.me);
+        let mut out = vec![];
+        for (i, m, d) in self.ordered(s, maxing, None) {
+            let q = self.g.apply(s, &m);
+            let probe = d + self.value(&q, depth - 1, 1, best - 1 - d, best - d);
+            if self.stopped { break; }
+            if probe >= best { out.push(i); }
+        }
+        out
+    }
+
     /// THE FIRST MOVES THAT GAIN at `depth` -- each first asked only "above nothing?" (a null window: cheap), the gaining ones then read exact -> [(index, value)],
     /// best first. The census's reading: every move that gains, none that does not.
     pub fn gainers(&mut self, s: &G::State, depth: i32) -> Vec<(usize, i64)> {

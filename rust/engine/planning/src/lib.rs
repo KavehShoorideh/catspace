@@ -45,3 +45,46 @@ pub fn keep<G: Game>(g: &G, s: &G::State, me: Role, cands: &[G::Move], worth: &H
     }
     best.map(|(i, r, _)| (i, r))
 }
+
+/// PLAN 78.7 THE DENSITY PRIOR (Kaveh 2026-11-04: "use ... tactic densities ... as a policy prior to say we want to navigate to areas of more tactics"): among moves the
+/// ledger search reads as equally good, the one after which OUR tactics most outnumber THEIRS -- the census (cs_tactics::census) after the move: ours read as if they
+/// passed, theirs as they stand; compared first at 0 defects, then at 1 (the order the human-games study found: the 0-defect advantage carries the outcome; the 1-defect
+/// one turns into it). A prior over ties, never a verdict: what the ledger reads stays decided by the ledger. Read while its clock lasts; an unread move ranks last.
+pub mod density {
+    use cs_game::{Game, Role};
+    use cs_tactics::census::census;
+    use cs_tactics::ledger::Judge;
+    use std::time::Instant;
+
+    pub const DEPTH: i32 = 2;
+    pub const FUSE: u64 = 50_000;
+
+    /// One move's density reading: (ours less theirs at 0 defects, at 1 defect).
+    pub fn advantage<G: Game, J: Judge>(g: &G, s: &G::State, m: &G::Move, me: Role, judge: &J) -> Option<(i64, i64)> {
+        let q = g.apply(s, m);
+        if g.outcome(&q).is_some() { return Some((0, 0)); }
+        let count = |st: &G::State| -> [i64; 2] {
+            let r = census(g, st, judge, 1, DEPTH, FUSE);
+            let mut c = [0i64; 2];
+            for t in r.tactics { if (t.defects as usize) < 2 { c[t.defects as usize] += 1; } }
+            c
+        };
+        let theirs = count(&q);
+        let ours = match g.pass(&q) { Some(p) if g.mover(&p) == Some(me) => count(&p), _ => [0, 0] };
+        Some((ours[0] - theirs[0], ours[1] - theirs[1]))
+    }
+
+    /// THE PRIOR among `cands` (indices into `g.moves(s)`), until `deadline`: -> (the chosen index, its reading, how many were read).
+    pub fn prior<G: Game, J: Judge>(g: &G, s: &G::State, me: Role, cands: &[usize], judge: &J, deadline: Instant) -> Option<(usize, (i64, i64), usize)> {
+        let ms = g.moves(s);
+        let mut best: Option<(usize, (i64, i64))> = None;
+        let mut read = 0;
+        for &i in cands {
+            if Instant::now() >= deadline && best.is_some() { break; }
+            let Some(a) = advantage(g, s, &ms[i], me, judge) else { continue };
+            read += 1;
+            if best.as_ref().map_or(true, |(_, b)| a > *b) { best = Some((i, a)); }
+        }
+        best.map(|(i, a)| (i, a, read))
+    }
+}

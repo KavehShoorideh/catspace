@@ -36183,3 +36183,20 @@ OBS DENSITY ALONG 1000 LICHESS GAMES (records_00000 games 0..999, human against 
   advantage now <= -3 -0.48 (n 212), -2..-1 -0.16, 0 -0.02, +1..+2 +0.12, >= +3 +0.61 (n 179); the near levels added to the fit on the units and the 0-defect advantage now:
   residual mean square 0.2738 -> 0.2617 (paired -0.0122, se 0.0024: five errors). With targets named the 200-game reading's single-level signal becomes every level's:
   near tactics turn into tactics, and every level goes with the result. Directional (one corpus, one run).
+
+## 2026-11-04 23:43 -- plan 78.7 (b): THE DENSITY PRIOR built and measured -- neutral as a tie-break with no values; every head-to-head draw a threefold repetition
+
+BUILT: planning `density` (cs_planning::density, game-free): among the first moves the ledger search reads as EQUAL to its best (`Search::ties`, a null window, after
+`resume` gives the stopped search a fresh share of the clock), the one after which our tactics most outnumber theirs -- the census after the move (ours as if they
+passed, theirs as they stand; depth 2, 50 k nodes), compared at 0 defects, then at 1. A prior over ties only. With it on, the ledger search takes 60 % of the clock
+(LEDGER_SHARE), the tie reading 30 % of the rest. `best_move(..., prior=True)`; scripts/plan78_match.py (two settings of the new engine against each other, or one
+against Fairy-Stockfish; seeded random openings, colours alternating, the kernel's outcome and threefold).
+OBS matches (0.5 s a move, 4 random opening plies, the record in use 'units (no values)'; one run each): 40 games -- prior against plain 0.438 (se 0.057; W 8 D 19 L 13),
+  prior against Fairy-Stockfish skill 0 0.163 (0.052), plain against it 0.050 (0.035); 120 games -- prior against plain 0.463 (se 0.025; W 14 D 83 L 23), prior against
+  Fairy-Stockfish skill 0 0.087 (0.023; W 7 D 7 L 106), plain against it 0.100 (0.026; W 9 D 6 L 105): the 40-game gain was noise. THE CONTROL: the plain engine on 60 % of
+  the clock against the plain engine: 0.458 (se 0.021; W 8 D 94 L 18) -- the prior's head-to-head loss IS its clock; its choice among ties adds nothing measurable.
+  Every one of the 83 draws of prior against plain is a THREEFOLD REPETITION (mean 65 plies): with no values and our losses first, every line that trades a pawn reads
+  -999, so the engines shuffle rather than trade -- and neither knows the game's record, so a repetition is no outcome to it.
+READING: the human-games signal (78.7 (a)) is real, but as a tie-break the prior does not move play: most ties read 0 / 0 at the prior's shallow census, and its cost is
+  depth. Kept as an approach, off by default (measured, not switched off unread). Next: the game record as INSTANCE knowledge in the search (a repeated position is the
+  rules' draw), then the prior read at the depth that found the signal.
