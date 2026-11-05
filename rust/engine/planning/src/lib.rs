@@ -60,11 +60,11 @@ pub mod density {
     pub const FUSE: u64 = 50_000;
 
     /// One move's density reading: (ours less theirs at 0 defects, at 1 defect).
-    pub fn advantage<G: Game, J: Judge>(g: &G, s: &G::State, m: &G::Move, me: Role, judge: &J, depth: i32, fuse: u64) -> Option<(i64, i64)> {
+    pub fn advantage<G: Game, J: Judge>(g: &G, s: &G::State, m: &G::Move, me: Role, judge: &J, depth: i32, fuse: u64, defects: u32) -> Option<(i64, i64)> {
         let q = g.apply(s, m);
         if g.outcome(&q).is_some() { return Some((0, 0)); }
         let count = |st: &G::State| -> [i64; 2] {
-            let r = census(g, st, judge, 1, depth, fuse);
+            let r = census(g, st, judge, defects, depth, fuse);
             let mut c = [0i64; 2];
             for t in r.tactics { if (t.defects as usize) < 2 { c[t.defects as usize] += 1; } }
             c
@@ -75,13 +75,14 @@ pub mod density {
     }
 
     /// THE PRIOR among `cands` (indices into `g.moves(s)`), until `deadline`: -> (the chosen index, its reading, how many were read).
-    pub fn prior<G: Game, J: Judge>(g: &G, s: &G::State, me: Role, cands: &[usize], judge: &J, deadline: Instant, depth: i32, fuse: u64) -> Option<(usize, (i64, i64), usize)> {
+    pub fn prior<G: Game, J: Judge>(g: &G, s: &G::State, me: Role, cands: &[usize], judge: &J, deadline: Instant, depth: i32, fuse: u64, defects: u32)
+                                    -> Option<(usize, (i64, i64), usize)> {
         let ms = g.moves(s);
         let mut best: Option<(usize, (i64, i64))> = None;
         let mut read = 0;
         for &i in cands {
             if Instant::now() >= deadline && best.is_some() { break; }
-            let Some(a) = advantage(g, s, &ms[i], me, judge, depth, fuse) else { continue };
+            let Some(a) = advantage(g, s, &ms[i], me, judge, depth, fuse, defects) else { continue };
             read += 1;
             if best.as_ref().map_or(true, |(_, b)| a > *b) { best = Some((i, a)); }
         }

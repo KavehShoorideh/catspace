@@ -31,13 +31,13 @@ pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: 
 /// `decide` within an INSTANCE (plan 78.8): `history` -- the keys of the positions the game's record holds before `s` (a position met again is the rules' draw).
 pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64], prior_depth: i32)
                                                      -> Option<Choice<G::Move>> {
-    decide_with(g, s, seconds, judge, prior, history, prior_depth, LEDGER_SHARE)
+    decide_with(g, s, seconds, judge, prior, history, prior_depth, LEDGER_SHARE, 1)
 }
 
 /// `decide_in` with the ledger's share of the clock when the prior is on (`ledger_share`; the prior reads ties with the rest).
 #[allow(clippy::too_many_arguments)]
 pub fn decide_with<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64], prior_depth: i32,
-                                                       ledger_share: f64) -> Option<Choice<G::Move>> {
+                                                       ledger_share: f64, prior_defects: u32) -> Option<Choice<G::Move>> {
     let me = g.mover(s)?;
     let t0 = Instant::now();
     let moves = g.moves(s);
@@ -74,7 +74,7 @@ pub fn decide_with<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seco
         if ties.len() > 1 {
             let until = t0 + std::time::Duration::from_secs_f64(seconds);
             let fuse = cs_planning::density::FUSE * (1u64 << (2 * (prior_depth - cs_planning::density::DEPTH).max(0)));
-            if let Some((j, (adv0, adv1), read)) = cs_planning::density::prior(g, s, me, &ties, judge, until, prior_depth, fuse) {
+            if let Some((j, (adv0, adv1), read)) = cs_planning::density::prior(g, s, me, &ties, judge, until, prior_depth, fuse, prior_defects) {
                 prior_line = Some(format!("planning density: {} of {} equal moves read; {} -- our tactics less theirs after it: {adv0:+} at 0 defects, {adv1:+} at 1 [PRIOR]",
                                           read, ties.len(), g.move_name(s, &g.moves(s)[j])));
                 i = j;

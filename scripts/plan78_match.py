@@ -22,7 +22,8 @@ import chess.engine
 import cs_engine as CE
 from catspace.io import paths
 
-SETTINGS = {"plain": {}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}, "norecord": {"record": False}, "prior3": {"prior": True, "prior_depth": 3}, "prior3l85": {"prior": True, "prior_depth": 3, "ledger_share": 0.85}}      # plain60: the plain engine on 60 % of the clock (the prior's cost alone)
+SETTINGS = {"plain": {}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}, "norecord": {"record": False}, "prior3": {"prior": True, "prior_depth": 3}, "prior3l85": {"prior": True, "prior_depth": 3, "ledger_share": 0.85},
+            "prior0d4": {"prior": True, "prior_depth": 4, "prior_defects": 0, "ledger_share": 0.85}}      # the 0-defect count only (one reading a side), depth 4      # plain60: the plain engine on 60 % of the clock (the prior's cost alone)
 FSF = "/opt/homebrew/bin/fairy-stockfish"
 
 
@@ -33,8 +34,8 @@ def judge(name: str = "record") -> dict:
 
 
 def play(job: tuple) -> dict:
-    i, a_white, sa, sb, seconds, random_plies, opponent, skill, jd = job
-    rng = random.Random(7800 + i)
+    i, a_white, sa, sb, seconds, random_plies, opponent, skill, jd, seed = job
+    rng = random.Random(seed + i)
     b = chess.Board()
     moves: list = []
     eng = None
@@ -92,9 +93,10 @@ def main(argv: list) -> int:
     ap.add_argument("--jobs", type=int, default=11)
     ap.add_argument("--tag", default="v0")
     ap.add_argument("--judge", default="record")
+    ap.add_argument("--seed", type=int, default=7800)            # the openings' seed base (game i opens from seed + i)
     a = ap.parse_args(argv)
     jd = judge(a.judge)
-    jobs = [(i, i % 2 == 0, a.a, a.b, a.seconds, a.random_plies, a.opponent, a.skill, jd) for i in range(a.games)]
+    jobs = [(i, i % 2 == 0, a.a, a.b, a.seconds, a.random_plies, a.opponent, a.skill, jd, a.seed) for i in range(a.games)]
     t0 = time.time()
     with Pool(a.jobs) as pool:
         res = pool.map(play, jobs, chunksize=1)

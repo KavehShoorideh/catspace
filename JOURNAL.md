@@ -36239,3 +36239,13 @@ OBS matches against the plain engine at the full clock (material plugged in, 0.5
   W 37 D 81 L 42; the prior chose 5258 of 7850 moves); prior3 with the ledger on 85 % of the clock 0.478 (0.022; W 21 D 111 L 28; it chose 2430 of 7247 -- the smaller
   share reads fewer ties). With the 78.7 (c) direct test (0.584 at equal search), THE PRIOR'S CHOICE IS WORTH ITS CLOCK, NOT MORE, at every split tried. The way to a net
   gain is structural: read the threats of all quiet moves in one search, and read the tie moves in parallel when one game has the machine.
+
+## 2026-11-05 01:45 -- plan 78.7 (e): the 0-defect-only prior (one census reading a side, depth 4) -- the first 160 games looked positive; 320 more say no
+
+The prior may count the 0-defect tactics alone (best_move prior_defects=0: one reading a side, where one defect needs about thirty; the human-games weights put most
+of the signal there: 0.536 against 0.131), read at depth 4, the ledger on 85 % of the clock (match setting `prior0d4`); the match runner's openings take a seed base.
+OBS against the plain engine at the full clock (material plugged in, 0.5 s a move): openings seed 7800, 160 games 0.522 (se 0.026; W 39 D 89 L 32); openings seed 9000,
+  320 games 0.463 (se 0.016; W 43 D 210 L 67) -- together about 0.483: the first reading was noise; net of its clock this prior is slightly NEGATIVE.
+READING (directional, honest): the density of tactics goes with the result in human games (78.7 (a)) and the census-guided choice wins at equal search (78.7 (c),
+  0.584), but no form of the prior tried tonight turns that into a net gain at 0.5 s a move: what it reads costs what it earns, or more. Kept as an approach, off by
+  default. The signal may be a sign of the better player more than a lever for the move.
