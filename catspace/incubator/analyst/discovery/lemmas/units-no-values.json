@@ -19,8 +19,9 @@
   "refuted": []
  },
  "implementation": [
-  "rust/engine/tactics/src/ledger.rs:Worth",
-  "catspace/incubator/analyst/discovery/lemma_store.py:valuation_of"
+  "rust/engine/tactics/src/ledger.rs:delta",
+  "catspace/incubator/analyst/discovery/lemma_store.py:valuation_of",
+  "catspace/incubator/analyst/discovery/lemma_store.py:judge_of"
  ],
  "note": "Kaveh 2026-11-04: no values for the material yet -- a tactic's outcome is the units each side loses (a unit lost is a unit lost), and our losses come first. The valuation the end-to-end engine judges chess ledgers by while it is IN USE; switch `in_use` to another VALUATION entry (or edit the worths) to plug values in, no code changed.",
  "params": {

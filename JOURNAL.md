@@ -36136,3 +36136,6 @@ OBS 210 puzzles at 3 s (scripts/plan78_puzzles.py --tag v2; one run, 11 processe
   machine's load: one puzzle alone reads depth 9 where eleven in parallel read 5. The runner's depth column had read the proof's line, not the ledger's -- fixed (v2).
 OBS tests: test_plan78 14 passed (the record switched by `in_use` without code; two records in use refused; a promotion scored), test_plan75, test_plan76_5,
   test_plan77_1d: 39 passed; the co-play certificates re-run (kernel.rs changed): 0 disagreements.
+OBS engine gate after 2e5caa04: files 53, passed 681, failed 3 -- all test_plan73 (the store validates its entries' `implementation` references: 'units (no values)'
+  cited rust/engine/tactics/src/ledger.rs:Worth, a struct the validator's definition pattern does not read); the entry now cites ledger.rs:delta and lemma_store's
+  valuation_of / judge_of; test_plan73 and test_plan78: 23 passed.
