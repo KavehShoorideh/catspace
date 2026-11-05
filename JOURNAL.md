@@ -36163,3 +36163,7 @@ OBS DENSITY ALONG 200 LICHESS GAMES (records_00000, human against human; every 6
 KNOWN: a tactic is named by its first forcing move and what it wins, so one target reached by several routes counts once per route (the loose knight one queen move
   away: four 1-defect tactics, Qc1 / Qc2 / Qf3 / Qa4) -- the counts are ways to win, not targets (the Game trait names a unit's kind, not where it stands).
 OBS tests: test_plan78 15 passed (the census at its least defects; the other side's census after a pass); co-play certificates re-run: 0 disagreements.
+OBS 78.6 RIPENING (the same 2009 positions, read again -- no new run): 1809 pairs (t, t + 6 plies, the same side to move); the 0-defect advantage at t + 6 by the 1-defect
+  advantage at t: <= -3 (n 176) mean -0.97, -2 .. +2 (n 1493) -0.06, >= +3 (n 133) +1.33; a linear fit of the advantage at t + 6 on the units and the 0-defect advantage
+  at t, then with the 1- and 2-defect advantages added: residual mean square 4.3523 -> 4.0475 (paired -0.3048, se 0.2869: one standard error -- the tails carry it, a
+  few positions with large counts dominate the squares). Directional: near tactics in the tails turn into tactics; not established across the whole.
