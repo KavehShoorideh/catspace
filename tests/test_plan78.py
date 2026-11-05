@@ -105,7 +105,7 @@ def test_78_4_the_rust_miner_reproduces_the_stores_mined_chess_valuation():
 def test_78_4_knowledge_is_scoped_by_game_and_nothing_is_borrowed(monkeypatch):
     import copy
     from catspace.incubator.analyst.discovery import lemma_store as LS
-    assert LS.valuation_of("chess").worth == LS.valuation().worth
+    assert LS.valuation_of("chess").name == "units (no values)" and LS.valuation().name == "material"     # (78.5: the record in use; the legacy engine reads its GOAL entries')
     assert LS.valuation_of("atomic") is None                                         # the store knows no valuation of atomic: none, not chess's
     patched = copy.deepcopy(LS.load())
     e = copy.deepcopy(patched["material (mined)"])
@@ -132,16 +132,42 @@ def test_78_4_watching_an_outside_engine_makes_instances_not_store_entries(tmp_p
 
 def test_78_5_the_ledger_search_wins_a_loose_unit_and_avoids_losing_one_with_no_values():
     """No values: Qa4 against a knight it can take for nothing is the ledger 'they lose n'; a queen attacked by a pawn steps away (ours first)."""
-    mv, proved, trace, nodes, _f = CE.best_move("chess", "4k3/8/2n5/8/Q7/8/8/4K3 w - - 0 1", [], 1.0)
-    assert mv == "a4c6" and "they lose n" in trace[-1] and "we lose" not in trace[-1]
-    mv, proved, trace, nodes, _f = CE.best_move("chess", "4k3/8/8/2p5/3Q4/8/8/4K3 w - - 0 1", [], 1.0)        # the c5 pawn attacks the queen on d4
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    rec = LS.judge_of("chess")
+    mv, proved, trace, nodes, _f = CE.best_move("chess", "4k3/8/2n5/8/Q7/8/8/4K3 w - - 0 1", [], 1.0, **rec)
+    assert mv == "a4c6" and "they lose n" in trace[-1] and "we lose" not in trace[-1] and "units (no values)" in trace[-1]
+    mv, proved, trace, nodes, _f = CE.best_move("chess", "4k3/8/8/2p5/3Q4/8/8/4K3 w - - 0 1", [], 1.0, **rec)        # the c5 pawn attacks the queen on d4
     assert "we lose q" not in trace[-1]
     print(f"OBS 78.5 ledger: {trace[-1][:200]}")
+
+
+def test_78_5_the_judge_is_a_store_record_switched_without_code(monkeypatch):
+    """The engine's judge is the VALUATION record in use: moving `in_use` from 'units (no values)' to 'material' changes what best_move judges by, no code changed."""
+    import copy
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    assert LS.judge_of("chess")["valuation"] == "units (no values)" and LS.judge_of("chess")["ours_first"]
+    patched = copy.deepcopy(LS.load())
+    patched["units (no values)"]["params"]["in_use"] = False
+    patched["material"]["params"]["in_use"] = True
+    monkeypatch.setattr(LS, "_STORE", [patched])
+    assert LS.judge_of("chess")["valuation"] == "material" and LS.judge_of("chess")["worth"]["q"] == 9
+    patched["units (no values)"]["params"]["in_use"] = True
+    with pytest.raises(LS.LemmaStoreError):
+        LS.judge_of("chess")                                                         # two records in use: refused
+
+
+def test_78_5_a_promotion_is_scored_by_the_valuation():
+    """The ledger records a change of kind (pawn to queen): with 'material' plugged in it is +8 for us; with no values it is no gain (a unit is a unit)."""
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    fen = "8/4P3/8/8/8/k7/8/6K1 w - - 0 1"
+    mv, _p, trace, _n, _f = CE.best_move("chess", fen, [], 1.0, **LS.judge_of("chess", "material"))
+    assert mv == "e7e8q" and "we promote p to q" in trace[-1]
 
 
 def test_78_5_the_judge_is_a_variable():
     """The same position read by the two judges: with no values a queen-for-bishop exchange is a loss of ours; with a valuation plugged in it is a gain."""
     fen = "r5k1/2q1b1pp/pp2p1r1/3b3Q/1P1Np3/1BPnP3/P5PP/R4RK1 w - - 1 25"      # rand14_10 Ddm9j: Bxd5 wins the queen for a bishop
-    _mv, _p, t_count, _n, _f = CE.best_move("chess", fen, [], 2.0)
-    _mv, _p, t_worth, _n, _f = CE.best_move("chess", fen, [], 2.0, _worth())
-    assert "[count" in t_count[-1] and "[worth" in t_worth[-1]
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    _mv, _p, t_none, _n, _f = CE.best_move("chess", fen, [], 2.0, **LS.judge_of("chess"))
+    _mv, _p, t_mat, _n, _f = CE.best_move("chess", fen, [], 2.0, **LS.judge_of("chess", "material"))
+    assert "[units (no values)" in t_none[-1] and "[material" in t_mat[-1]

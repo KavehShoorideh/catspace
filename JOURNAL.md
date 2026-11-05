@@ -36118,3 +36118,21 @@ OBS 210 lichess puzzles (rand1_10 .. rand21_10; scripts/plan78_puzzles.py, 3 s e
   values h5d5 instead) -- the 32 puzzles the valuation adds are the cost of having none yet.
 OBS tests: test_plan78 11 passed (two new: the ledger wins a loose knight -- "they lose n" -- and does not lose an attacked queen with no values; the judge is a
   variable); the co-play certificates re-run after kernel.rs changed (captured): 0 disagreements. The legacy engine is untouched.
+
+## 2026-11-04 20:41 -- plan 78.5 (b): the engine's judge is a STORE RECORD ('units (no values)' in use), switched or edited without code; promotions scored
+
+Kaveh 2026-11-04: "I just want it to be like a variable that we can plug in"; "maybe we can just put a record in the fact store ... and modify it later"; "Yes".
+BUILT: (a) the store entry 'units (no values)' (VALUATION, HAND: every unit worth 1, `ours_first` -- our losses outweigh every gain -- and `in_use`: the valuation the
+end-to-end engine judges ledgers by, for its game); two optional VALUATION params `ours_first`, `in_use` (one in use per game, more refused); `valuation_of(game)` reads
+the record in use (else chess's GOAL valuation; else the game's own; else None) and `judge_of(game, name=None)` gives best_move its judge -- the legacy engine still reads
+its GOAL entries' valuation ('material'), unchanged. (b) Rust: one judge, `Worth {name, table, ours_first}` (the built-in `Count` only when no record is passed); (c) THE
+LEDGER RECORDS A CHANGE OF KIND: `Game::changed(s, m)` (the mover's own units: a promotion -- read off the units generically, the kernel's promotion directly), scored by
+the judge as the new kind's worth less the old ("we promote p to q": +8 with material, 0 with no values). The puzzle and games runners and the UCI front end read
+`judge_of`.
+OBS 210 puzzles at 3 s (scripts/plan78_puzzles.py --tag v2; one run, 11 processes): the record in use 'units (no values)': 152 / 210 (mates 66 / 66 proved, material 85 /
+  142, mean depth 9.0 plies on the material puzzles); 'material' plugged in as a COMPARISON: 194 / 210 (92 %; material 127 / 142, mean depth 9.5) -- with promotions
+  scored, 6 more than the 188 of 78.5 (gained 8: gU0B4, I7k2H promote in their lines; lost 2).
+  The record and the built-in count judge identically (zBouR, 2TUzC, 4FcJr alone: the same moves and depths); the 3-puzzle swing between runs (155 / 152) is the
+  machine's load: one puzzle alone reads depth 9 where eleven in parallel read 5. The runner's depth column had read the proof's line, not the ledger's -- fixed (v2).
+OBS tests: test_plan78 14 passed (the record switched by `in_use` without code; two records in use refused; a promotion scored), test_plan75, test_plan76_5,
+  test_plan77_1d: 39 passed; the co-play certificates re-run (kernel.rs changed): 0 disagreements.

@@ -91,6 +91,10 @@ impl Game for KernelGame {
         }
         match m.capture() { Some(r) => vec![(if s.turn() == Color::White { 1 } else { 0 }, r.char().to_string())], None => vec![] }
     }
+    fn changed(&self, s: &VariantPosition, m: &Move) -> Vec<(String, String)> {
+        if self.variant == Variant::Crazyhouse { return crate::units_changed(self, s, m); }
+        match m.promotion() { Some(r) => vec![("p".into(), r.char().to_string())], None => vec![] }
+    }
     fn units(&self, s: &VariantPosition) -> Vec<(Role, String)> {
         s.board().iter().map(|(_sq, p)| (if p.color == Color::White { 0 } else { 1 }, p.role.char().to_string())).collect()
     }

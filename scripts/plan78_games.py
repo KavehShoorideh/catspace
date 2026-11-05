@@ -33,8 +33,7 @@ BOARD = {"chess": chess.Board, "crazyhouse": chess.variant.CrazyhouseBoard, "ato
 def worth(variant: str = "chess") -> dict:
     """The game's own valuation from the store (plan 78.4: `valuation_of`); a game the store knows no valuation of gets none (nothing borrowed from chess)."""
     from catspace.incubator.analyst.discovery import lemma_store as LS
-    v = LS.valuation_of(variant)
-    return {k: int(x) for k, x in v.worth.items()} if v is not None else {}
+    return LS.judge_of(variant)
 
 
 def board_of(variant: str, start960: int) -> chess.Board:
@@ -69,7 +68,7 @@ def play(job: tuple) -> dict:
             ours = (mover == "white") == ours_white
             if ours:
                 t = time.time()
-                mv, proved, trace, nodes, _f = CE.best_move(variant, None, moves, seconds, w, start960)
+                mv, proved, trace, nodes, _f = CE.best_move(variant, None, moves, seconds, start960=start960, **w)
                 t_ours += time.time() - t
                 stats["our moves"] += 1
                 stats["proved"] += proved

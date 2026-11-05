@@ -50,7 +50,7 @@ pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: 
     };
     let mv = g.moves(s)[i].clone();
     let who = |r: cs_game::Role| if r == me { "we" } else { "they" };
-    let lost: Vec<String> = ln.lost.iter().map(|(o, k)| format!("{} lose {k}", who(*o))).collect();
+    let lost: Vec<String> = ln.lost.iter().map(|(o, k)| format!("{} {k}", who(*o))).collect();
     trace.push(format!("ledger search [{}]: {} at depth {} ({} nodes): the line {} -- {}; value {}", judge.name(), g.move_name(s, &mv), ln.depth, ln.nodes,
                        ln.line.join(" "), if lost.is_empty() { "nobody loses a unit".to_string() } else { lost.join(", ") }, ln.value));
     Some(Choice { mv, proved: false, trace, nodes })

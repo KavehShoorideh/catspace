@@ -16,8 +16,7 @@ SHARE = 30            # a move's share of the remaining clock (1/SHARE of it, pl
 def worth(variant: str = "chess") -> dict:
     """The game's own valuation from the store (`valuation_of`); none for a game the store knows no valuation of."""
     from catspace.incubator.analyst.discovery import lemma_store as LS
-    v = LS.valuation_of(variant)
-    return {k: int(x) for k, x in v.worth.items()} if v is not None else {}
+    return LS.judge_of(variant)
 
 
 def main() -> int:
@@ -63,7 +62,7 @@ def main() -> int:
                     left = int(t[t.index(f"{side}time") + 1]) / 1000
                     inc = int(t[t.index(f"{side}inc") + 1]) / 1000 if f"{side}inc" in t else 0.0
                     secs = left / SHARE + inc
-            mv, proved, trace, nodes, _f = CE.best_move(v, fen, moves, secs, w)
+            mv, proved, trace, nodes, _f = CE.best_move(v, fen, moves, secs, **w)
             for x in trace:
                 out("info string " + x)
             out(f"info nodes {nodes}")

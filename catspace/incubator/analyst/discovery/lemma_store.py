@@ -138,6 +138,9 @@ VALUATION_PARAMS = ("worth", "unit", "royal")
 # plan 76.4c (c): a MINED VALUATION (the valuation miner's, valuation_miner.py: weights fit only to outcomes) also says `term` (the count term of the one term
 # language it is, terms.py) and `obligation` (the Lean statement its use rests on -- the exchange law restated over the term; stated, not proved)
 VALUATION_MINED = ("term", "obligation")
+# plan 78.5: a VALUATION may also say `ours_first` (our units lost outweigh every unit of theirs won: losses avoided first) and `in_use` (the valuation the end-to-end
+# engine judges a tactic's ledger by, for its game: one per game -- the record to switch or edit, no code changed; the legacy engine reads its GOAL entries' valuation)
+VALUATION_OPTIONAL = ("ours_first", "in_use")
 # plan 76.2 (c) THE RULE SHELF: a RULE entry is a rule of the game the engine reads -- GIVEN, never derived; in Lean a DEFINITION (generated from rules/chess.gdl), never
 # an axiom. Its params say where it lives: `spec` (the generated Lean definition, Ideas.Spec.Chess.*), `gdl` (the spec's relation), `surface` (the Game methods that
 # implement it, game.SPEC); its `lean` (when PROVED) the theorems that prove the spec's definition equal to the rule kernel's (Ideas.Spec.LegalEquiv, NextEquiv);
@@ -177,8 +180,10 @@ def _params_problems(e: dict, at: str) -> list:
         return bad
     if k == "VALUATION":
         want = set(VALUATION_PARAMS) | (set(VALUATION_MINED) if e["origin"] == "MINED" else set())
-        if not isinstance(p, dict) or set(p) != want:
-            return [f"{at}: a VALUATION has params exactly {', '.join(sorted(want))} (a MINED one also its term and its obligation)"]
+        if not isinstance(p, dict) or not want <= set(p) <= want | set(VALUATION_OPTIONAL):
+            return [f"{at}: a VALUATION has params exactly {', '.join(sorted(want))} (a MINED one also its term and its obligation; any may say {', '.join(VALUATION_OPTIONAL)})"]
+        if any(k in p and not isinstance(p[k], bool) for k in VALUATION_OPTIONAL):
+            return [f"{at}: params {', '.join(VALUATION_OPTIONAL)} are true or false"]
         bad = []
         if e["origin"] == "MINED" and not (isinstance(p["term"], str) and p["term"] and isinstance(p["obligation"], str) and p["obligation"]):
             bad.append(f"{at}: a MINED VALUATION's term and obligation are statements (strings)")
@@ -331,6 +336,8 @@ class Valuation:
         self.worth = dict(p["worth"])
         self.unit = p["unit"]
         self.royal = p["royal"]
+        self.ours_first = bool(p.get("ours_first", False))      # plan 78.5: our losses outweigh every gain (the ledger's judge)
+        self.in_use = bool(p.get("in_use", False))
 
     def of(self, symbol: str) -> int:
         return self.worth[symbol.lower()]
@@ -450,13 +457,26 @@ def game_of(e: dict) -> str:
 
 
 def valuation_of(game: str) -> "Valuation | None":
-    """plan 78.4: THE VALUATION OF A GAME -- for chess the one the GOAL entries count in (`valuation()`); for another game a VALUATION entry scoped to it (MINED
-    first), or None: the store knows no valuation of that game (nothing is borrowed from another game)."""
+    """plan 78.4 / 78.5: THE VALUATION THE END-TO-END ENGINE JUDGES A GAME BY -- the VALUATION entry of that game marked `in_use` (one per game: the record to switch
+    or edit); without one, for chess the one the GOAL entries count in (`valuation()`), for another game a VALUATION entry scoped to it (MINED first), or None: the
+    store knows no valuation of that game (nothing is borrowed from another game)."""
+    ents = [e for e in load().values() if e["kind"] == "VALUATION" and game_of(e) == game]
+    used = [e for e in ents if (e.get("params") or {}).get("in_use")]
+    if len(used) > 1:
+        raise LemmaStoreError(f"{game}: {len(used)} VALUATION entries are in use ({', '.join(sorted(e['name'] for e in used))}): one is read")
+    if used:
+        return Valuation(used[0])
     if game == "chess":
         return valuation()
-    ents = [e for e in load().values() if e["kind"] == "VALUATION" and game_of(e) == game]
     ents.sort(key=lambda e: (e["origin"] != "MINED", e["name"]))
     return Valuation(ents[0]) if ents else None
+
+
+def judge_of(game: str, name: "str | None" = None) -> dict:
+    """plan 78.5: the end-to-end engine's JUDGE for `game` as cs_engine.best_move takes it -- the valuation record in use (`valuation_of`), or the entry `name` when
+    given (a comparison); {} when the store knows none (the engine's built-in Count)."""
+    v = Valuation(load()[name]) if name is not None else valuation_of(game)
+    return {} if v is None else dict(worth={k: int(x) for k, x in v.worth.items()}, ours_first=v.ours_first, valuation=v.name)
 
 
 def valuation() -> Valuation:

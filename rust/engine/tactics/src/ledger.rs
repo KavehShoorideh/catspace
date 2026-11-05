@@ -11,22 +11,38 @@ use cs_game::{Game, Role};
 use std::collections::HashMap;
 use std::time::Instant;
 
-/// The JUDGE of a ledger: what one captured unit adds for `me` (positive: theirs lost; negative: ours lost).
-pub trait Judge { fn delta(&self, me: Role, owner: Role, kind: &str) -> i64; fn name(&self) -> String; }
+/// The JUDGE of a ledger: what one captured unit adds for `me` (positive: theirs lost; negative: ours lost), and what one of a side's own units changing kind adds
+/// (a promotion: worth of the new kind less the old).
+pub trait Judge {
+    fn delta(&self, me: Role, owner: Role, kind: &str) -> i64;
+    fn change(&self, me: Role, owner: Role, from: &str, to: &str) -> i64;
+    fn name(&self) -> String;
+}
 
-/// No values: each unit of theirs lost +1; each unit of ours lost -LOSS (a loss outweighs every gain the board can hold).
+/// The built-in fallback when no valuation record is given: each unit the same (+1 theirs lost, -LOSS ours lost); a change of kind is no gain.
 pub struct Count;
 pub const LOSS: i64 = 1000;
 impl Judge for Count {
     fn delta(&self, me: Role, owner: Role, _kind: &str) -> i64 { if owner == me { -LOSS } else { 1 } }
-    fn name(&self) -> String { "count (no values: a unit lost is a unit lost; ours first)".into() }
+    fn change(&self, _me: Role, _owner: Role, _from: &str, _to: &str) -> i64 { 0 }
+    fn name(&self) -> String { "count (no record: a unit lost is a unit lost; ours first)".into() }
 }
 
-/// A valuation plugged in: the worth of each kind (a kind the table does not name counts 0).
-pub struct Worth(pub HashMap<String, i64>);
+/// A VALUATION RECORD plugged in (the store's entry in use: its worths by kind name, `ours_first` -- our losses weighted by LOSS: avoided before any gain).
+pub struct Worth { pub name: String, pub table: HashMap<String, i64>, pub ours_first: bool }
+impl Worth {
+    fn w(&self, kind: &str) -> i64 { *self.table.get(kind).unwrap_or(&0) }
+}
 impl Judge for Worth {
-    fn delta(&self, me: Role, owner: Role, kind: &str) -> i64 { let w = *self.0.get(kind).unwrap_or(&0); if owner == me { -w } else { w } }
-    fn name(&self) -> String { format!("worth {:?}", self.0) }
+    fn delta(&self, me: Role, owner: Role, kind: &str) -> i64 {
+        let w = self.w(kind);
+        if owner == me { -(w * if self.ours_first { LOSS } else { 1 }) } else { w }
+    }
+    fn change(&self, me: Role, owner: Role, from: &str, to: &str) -> i64 {
+        let d = self.w(to) - if from.is_empty() { 0 } else { self.w(from) };
+        if owner == me { d } else { -d }
+    }
+    fn name(&self) -> String { format!("{} {:?}{}", self.name, self.table, if self.ours_first { ", ours first" } else { "" }) }
 }
 
 pub const WIN: i64 = 1 << 40;
@@ -63,7 +79,9 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     }
 
     fn gain(&self, s: &G::State, m: &G::Move) -> i64 {
-        self.g.captured(s, m).iter().map(|(o, k)| self.judge.delta(self.me, *o, k)).sum()
+        let took: i64 = self.g.captured(s, m).iter().map(|(o, k)| self.judge.delta(self.me, *o, k)).sum();
+        let mover = self.g.mover(s).unwrap_or(self.me);
+        took + self.g.changed(s, m).iter().map(|(a, b)| self.judge.change(self.me, mover, a, b)).sum::<i64>()
     }
 
     fn tick(&mut self) -> bool {
@@ -130,6 +148,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
 
     /// The principal line from `s` (by the table's best moves) with its ledger.
     fn line_of(&self, s: &G::State, n: usize) -> (Vec<String>, Vec<(Role, String)>) {
+        // (the ledger's events: "lose <kind>" for a unit taken, "promote <from> to <to>" for a change of kind)
         let (mut names, mut lost) = (vec![], vec![]);
         let mut cur = s.clone();
         for _ in 0..n {
@@ -138,7 +157,9 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             let ms = self.g.moves(&cur);
             let Some(m) = ms.get(e.best) else { break };
             names.push(self.g.move_name(&cur, m));
-            lost.extend(self.g.captured(&cur, m));
+            lost.extend(self.g.captured(&cur, m).into_iter().map(|(o, k)| (o, format!("lose {k}"))));
+            let mover = self.g.mover(&cur).unwrap_or(self.me);
+            lost.extend(self.g.changed(&cur, m).into_iter().map(|(a, b)| (mover, format!("promote {} to {b}", if a.is_empty() { "-" } else { a.as_str() }))));
             cur = self.g.apply(&cur, m);
         }
         (names, lost)

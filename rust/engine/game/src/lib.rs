@@ -60,6 +60,21 @@ pub trait Game {
         }
         out
     }
+    /// THE MOVER'S OWN UNITS CHANGING KIND by a move (plan 78.5: a promotion -- a unit of one kind leaves, one of another arrives; a placement from outside the board
+    /// arrives from nothing: from ""): [(from kind, to kind)]. By default read off the mover's units before and after.
+    fn changed(&self, s: &Self::State, m: &Self::Move) -> Vec<(String, String)> where Self: Sized { units_changed(self, s, m) }
     /// The legal move named `name` on `s` (the game's own notation), or None.
     fn find_move(&self, s: &Self::State, name: &str) -> Option<Self::Move> { self.moves(s).into_iter().find(|m| self.move_name(s, m) == name) }
+}
+
+/// The default reading of `Game::changed`: the mover's units before and after the move, the kinds that left paired with those that arrived (an arrival with no
+/// departure arrives from nothing: "").
+pub fn units_changed<G: Game>(g: &G, s: &G::State, m: &G::Move) -> Vec<(String, String)> {
+    let Some(me) = g.mover(s) else { return vec![] };
+    let mine = |st: &G::State| -> Vec<String> { g.units(st).into_iter().filter(|(o, _)| *o == me).map(|(_, k)| k).collect() };
+    let (mut before, mut after) = (mine(s), mine(&g.apply(s, m)));
+    before.retain(|k| if let Some(i) = after.iter().position(|x| x == k) { after.swap_remove(i); false } else { true });
+    let mut out: Vec<(String, String)> = before.iter().zip(after.iter()).map(|(a, b)| (a.clone(), b.clone())).collect();
+    for b in after.iter().skip(before.len()) { out.push((String::new(), b.clone())); }
+    out
 }
