@@ -36215,3 +36215,17 @@ OBS matches (120 games each, 0.5 s a move, 4 random opening plies; one run each)
 READING (directional): THE VALUATION IS WHAT MAKES THE NEW ENGINE PLAY -- the same search, the same clock: 0.067 with no values, 0.800 with material against the same
   opponent. With no values the engine avoids every exchange and drifts into repetitions; the record helps it play the rules (a repetition is an outcome) and helps a
   little with material. The density prior stays neutral under both judges at its shallow census (depth 2): what it adds is not yet measurable against its cost.
+
+## 2026-11-05 00:45 -- plan 78.7 (c): THE DENSITY PRIOR'S CHOICES ARE WORTH WHAT THEY COST -- at equal search, depth-3 census, material plugged in: 0.584 (se 0.024)
+
+The prior's census depth is now a parameter (best_move prior_depth; the fuse grows four times per added ply); the match runner's settings `prior3` (prior, depth 3) and
+`plain60` (the plain engine on 60 % of the clock -- the ledger time the prior leaves itself).
+OBS matches (0.5 s a move, 4 random opening plies; one run each):
+  material plugged in: prior3 against plain 0.496 (se 0.029; 120 games; W 23 D 73 L 24); the CONTROL plain60 against plain 0.438 (0.024; 120; W 10 D 85 L 25) -- the
+  clock the prior spends costs about 0.06; THE DIRECT TEST, equal ledger time: prior3 against plain60 0.584 (se 0.024; 160 games; W 46 D 95 L 19; the prior chose 5432
+  of 7860 moves) -- the census-guided choice among the ledger's equal moves gains about 3.5 errors at equal search; net of its clock it is even (0.496).
+  no values ('units (no values)' in use): prior3 against plain60 0.519 (se 0.017; 160 games; W 18 D 130 L 12) -- with every exchange avoided the games are draws
+  (130 of 160); the choice barely shows.
+READING (directional): with a valuation the human-games signal carries into play -- among equal moves, the one that leaves our tactics outnumbering theirs wins more --
+  and its whole gain is spent on its own clock (the census is the cost: two readings per tie move, about thirty searches each at one defect). Next for the prior: a
+  cheaper census (one search for the threats of all quiet moves; the tie moves read in parallel when one game has the machine), then the net test again.

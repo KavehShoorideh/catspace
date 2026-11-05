@@ -22,7 +22,7 @@ import chess.engine
 import cs_engine as CE
 from catspace.io import paths
 
-SETTINGS = {"plain": {}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}, "norecord": {"record": False}}      # plain60: the plain engine on 60 % of the clock (the prior's cost alone)
+SETTINGS = {"plain": {}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}, "norecord": {"record": False}, "prior3": {"prior": True, "prior_depth": 3}}      # plain60: the plain engine on 60 % of the clock (the prior's cost alone)
 FSF = "/opt/homebrew/bin/fairy-stockfish"
 
 

@@ -25,11 +25,12 @@ pub const TIE_SHARE: f64 = 0.3;            // of what is left: the share the tie
 
 /// The move for the side to move at `s` within `seconds` (None at a terminal state). `judge`: the ledger's judge (the variable: `Count` -- no values -- or `Worth`).
 pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool) -> Option<Choice<G::Move>> {
-    decide_in(g, s, seconds, judge, prior, &[])
+    decide_in(g, s, seconds, judge, prior, &[], cs_planning::density::DEPTH)
 }
 
 /// `decide` within an INSTANCE (plan 78.8): `history` -- the keys of the positions the game's record holds before `s` (a position met again is the rules' draw).
-pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64]) -> Option<Choice<G::Move>> {
+pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64], prior_depth: i32)
+                                                     -> Option<Choice<G::Move>> {
     let me = g.mover(s)?;
     let t0 = Instant::now();
     let moves = g.moves(s);
@@ -65,8 +66,9 @@ pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, second
         let ties = ls.ties(s, ln.depth, ln.value);
         if ties.len() > 1 {
             let until = t0 + std::time::Duration::from_secs_f64(seconds);
-            if let Some((j, (a0, a1), read)) = cs_planning::density::prior(g, s, me, &ties, judge, until) {
-                prior_line = Some(format!("planning density: {} of {} equal moves read; {} -- our tactics less theirs after it: {a0:+} at 0 defects, {a1:+} at 1 [PRIOR]",
+            let fuse = cs_planning::density::FUSE * (1u64 << (2 * (prior_depth - cs_planning::density::DEPTH).max(0)));
+            if let Some((j, (adv0, adv1), read)) = cs_planning::density::prior(g, s, me, &ties, judge, until, prior_depth, fuse) {
+                prior_line = Some(format!("planning density: {} of {} equal moves read; {} -- our tactics less theirs after it: {adv0:+} at 0 defects, {adv1:+} at 1 [PRIOR]",
                                           read, ties.len(), g.move_name(s, &g.moves(s)[j])));
                 i = j;
             }

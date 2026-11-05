@@ -193,3 +193,22 @@ def test_78_6_the_census_of_the_other_side_is_read_after_a_pass():
     from catspace.incubator.analyst.discovery import lemma_store as LS
     theirs, _st = CE.census("chess", "4k3/8/2n5/8/Q7/8/8/4K3 b - - 0 1", [], 0, 3, 200000, "other", **LS.judge_of("chess"))
     assert any(t["line"][:1] == ["a4c6"] for t in theirs)                          # (Black to move: White's tactic, read as if Black passed)
+
+
+# ---- 78.7 / 78.8 the density prior and the game's record
+
+def test_78_7_the_density_prior_reads_ties_and_reports_its_choice():
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    mv, _p, trace, _n, _f = CE.best_move("chess", None, ["e2e4", "e7e5", "g1f3", "b8c6"], 0.5, **LS.judge_of("chess", "material"), prior=True, prior_depth=3)
+    assert any("planning density" in x and "[PRIOR]" in x for x in trace), trace
+    mv2, _p, trace2, _n, _f = CE.best_move("chess", None, ["e2e4", "e7e5", "g1f3", "b8c6"], 0.5, **LS.judge_of("chess", "material"))
+    assert not any("planning density" in x for x in trace2)                       # (off by default)
+
+
+def test_78_8_the_record_is_read_and_can_be_left_unread():
+    """A record that repeats the start: the call reads it (record=True, the default) or not; both answer a legal move."""
+    moves = ["g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1"]
+    legal = CE.state("chess", None, moves)[2]
+    for rec in (True, False):
+        mv, _p, _t, _n, _f = CE.best_move("chess", None, moves, 0.3, record=rec)
+        assert mv in legal
