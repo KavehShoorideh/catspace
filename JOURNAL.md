@@ -36249,3 +36249,7 @@ OBS against the plain engine at the full clock (material plugged in, 0.5 s a mov
 READING (directional, honest): the density of tactics goes with the result in human games (78.7 (a)) and the census-guided choice wins at equal search (78.7 (c),
   0.584), but no form of the prior tried tonight turns that into a net gain at 0.5 s a move: what it reads costs what it earns, or more. Kept as an approach, off by
   default. The signal may be a sign of the better player more than a lever for the move.
+
+OBS plan 78 STRENGTH LADDER (the new engine, 'material' plugged in as a comparison, 0.5 s a move, 4 random opening plies, 120 games each; one run each): against
+  Fairy-Stockfish skill 0 0.800 (se 0.036; W 94 D 4 L 22), skill 3 0.237 (0.037; W 24 D 9 L 87), skill 6 0.025 (0.013; W 2 D 2 L 116), skill 10 0.017 (0.010; W 1 D 2
+  L 117). With no values ('units (no values)' in use): skill 0 0.067 (78.8). The new engine plays near Fairy-Stockfish's skill 2 at this clock.
