@@ -47,6 +47,11 @@ impl Judge for Worth {
 }
 
 pub const WIN: i64 = 1 << 40;
+const NULL_MIN_DEPTH: i32 = 3;          // the null move at nodes this deep or deeper
+const NULL_R: i32 = 2;                  // ... read this much shallower
+const ZUGZWANG_UNITS: usize = 3;        // ... only while the mover keeps more units than this
+const LMR_MIN_DEPTH: i32 = 3;           // late quiet moves reduced at nodes this deep or deeper
+const LMR_AFTER: usize = 3;             // ... after this many moves read in full
 pub const NODE_FUSE: u64 = 200_000_000;
 const QUIET_FUSE: u32 = 16;            // the deepest capture run resolved at a horizon (a named fuse: captures end sooner)
 
@@ -70,6 +75,9 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// MOVE ORDERING (plan 78.9, game-free): the quiet moves that cut a sibling off at the same ply (killers) and those that cut off anywhere (history, by the
     /// square of the depth) are read early; `ordering` off reads the old order (the comparison)
     pub ordering: bool,
+    /// PRUNING (plan 78.10, game-free): the pass read shallow -- if passing already holds the bound, the node is cut (null move; never where the game has no
+    /// pass or the mover has few units: a zugzwang guard); late quiet moves read two plies shallower first (re-read in full when they look better)
+    pub prune: bool,
     killers: Vec<[Option<G::Move>; 2]>,
     hist: FxHashMap<(Role, G::Move), i64>,
 }
@@ -80,12 +88,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, killers: vec![], hist: FxHashMap::default() }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, killers: vec![], hist: FxHashMap::default() }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true,
                  killers: vec![], hist: FxHashMap::default() }
     }
 
@@ -246,12 +254,27 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             }
         }
         let maxing = self.g.mover(s) == Some(self.me);
+        if self.prune && ply > 0 && depth >= NULL_MIN_DEPTH && beta < WIN - 1000 && alpha > -WIN + 1000 {
+            let mover = self.g.mover(s);
+            let mine = self.g.units(s).iter().filter(|(o, _)| Some(*o) == mover).count();
+            if mine > ZUGZWANG_UNITS {
+                if let Some(p) = self.g.pass(s) {
+                    let v = self.value(&p, depth - 1 - NULL_R, ply + 1, alpha, beta);
+                    if self.stopped { return 0; }
+                    if (maxing && v >= beta) || (!maxing && v <= alpha) { return v; }
+                }
+            }
+        }
         let mut best = if maxing { i64::MIN } else { i64::MAX };
         let mut best_i = 0;
         self.path.push(key);
-        for (i, m, d) in self.ordered_at(s, maxing, hint, ply) {
+        for (n_read, (i, m, d)) in self.ordered_at(s, maxing, hint, ply).into_iter().enumerate() {
             let q = self.g.apply(s, &m);
-            let v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
+            let late = self.prune && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint;
+            let mut v = if late { d + self.value(&q, depth - 3, ply + 1, alpha - d, beta - d) } else { 0 };
+            if !late || (maxing && v > alpha) || (!maxing && v < beta) {
+                v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
+            }
             if self.stopped { self.path.pop(); return if best == i64::MIN || best == i64::MAX { 0 } else { best }; }
             if (maxing && v > best) || (!maxing && v < best) { best = v; best_i = i; }
             if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }

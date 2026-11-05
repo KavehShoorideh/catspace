@@ -36264,3 +36264,16 @@ OBS the per-position costs of the calls the search makes (one middlegame positio
 OBS 30 puzzles at 1 s (material): mean ledger depth 5.43 (old order) / 5.37 (new) -- no deeper; solved 28 / 28.
 OBS the match, new order against old (material, 0.5 s a move, 160 games, openings seed 9100): 0.559 (se 0.024; W 41 D 97 L 22) -- the order reads the better line at the
   same depth.
+
+## 2026-11-05 02:36 -- plan 78.10: null-move pruning and late-move reductions in the ledger search (game-free) -- depth 5.4 -> 7.7 plies at 1 s; +0.069 in play
+
+BUILT: the ledger search's PRUNING (`prune` on the call, default on): the NULL MOVE -- at nodes three or more plies deep, the side to move's PASS (`Game::pass`: none in
+check) read two plies shallower; if passing already holds the bound the node is cut; never while the mover keeps three units or fewer (the zugzwang guard, read through
+`Game::units`) -- and LATE-MOVE REDUCTIONS: after the first three moves at nodes three or more deep, a quiet move is read two plies shallower first and re-read in full
+only when it looks better. Named constants (NULL_MIN_DEPTH, NULL_R, ZUGZWANG_UNITS, LMR_MIN_DEPTH, LMR_AFTER).
+OBS 30 puzzles at 1 s (material): mean ledger depth 5.37 -> 7.73 plies, solved 28 / 28.
+OBS the match, pruning against none (material, 0.5 s a move, 160 games, openings seed 9200): 0.569 (se 0.023; W 39 D 104 L 17).
+OBS 210 puzzles at 3 s (scripts/plan78_puzzles.py --tag v3_prune): the record in use 'units (no values)' 156 / 210 (was 152; material puzzles 89 / 142 at a mean
+  depth 12.8, was 9.0); material plugged in 197 / 210 (94 %, was 194; 130 / 142 at 13.5).
+OBS THE LADDER AGAIN (material, 0.5 s a move, 120 games, openings seed 9500): Fairy-Stockfish skill 3 0.400 (se 0.043; W 43 D 10 L 67; was 0.237), skill 6 0.100
+  (0.024; W 7 D 10 L 103; was 0.025) -- with the ordering (78.9) and the pruning, the new engine plays near skill 3 to 4 at this clock.

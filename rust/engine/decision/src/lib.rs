@@ -31,13 +31,13 @@ pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: 
 /// `decide` within an INSTANCE (plan 78.8): `history` -- the keys of the positions the game's record holds before `s` (a position met again is the rules' draw).
 pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64], prior_depth: i32)
                                                      -> Option<Choice<G::Move>> {
-    decide_with(g, s, seconds, judge, prior, history, prior_depth, LEDGER_SHARE, 1, true)
+    decide_with(g, s, seconds, judge, prior, history, prior_depth, LEDGER_SHARE, 1, true, true)
 }
 
 /// `decide_in` with the ledger's share of the clock when the prior is on (`ledger_share`; the prior reads ties with the rest).
 #[allow(clippy::too_many_arguments)]
 pub fn decide_with<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64], prior_depth: i32,
-                                                       ledger_share: f64, prior_defects: u32, ordering: bool) -> Option<Choice<G::Move>> {
+                                                       ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool) -> Option<Choice<G::Move>> {
     let me = g.mover(s)?;
     let t0 = Instant::now();
     let moves = g.moves(s);
@@ -58,6 +58,7 @@ pub fn decide_with<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seco
     let mut ls = tactics::ledger::Search::new(g, judge, me, left);
     ls.history = history.iter().copied().collect();
     ls.ordering = ordering;
+    ls.prune = prune;
     let ln = ls.run(s, LEDGER_DEPTH);
     let nodes = b.nodes + ln.nodes;
     let Some(i) = ln.first_index else {
