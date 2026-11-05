@@ -52,6 +52,7 @@ const NULL_R: i32 = 2;                  // ... read this much shallower
 const ZUGZWANG_UNITS: usize = 3;        // ... only while the mover keeps more units than this
 const LMR_MIN_DEPTH: i32 = 3;           // late quiet moves reduced at nodes this deep or deeper
 const LMR_AFTER: usize = 3;             // ... after this many moves read in full
+const FEW_REPLIES: usize = 2;           // a node with this few legal moves is a forced answer: the line is not shortened there
 pub const NODE_FUSE: u64 = 200_000_000;
 const QUIET_FUSE: u32 = 16;            // the deepest capture run resolved at a horizon (a named fuse: captures end sooner)
 
@@ -78,6 +79,8 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// PRUNING (plan 78.10, game-free): the pass read shallow -- if passing already holds the bound, the node is cut (null move; never where the game has no
     /// pass or the mover has few units: a zugzwang guard); late quiet moves read two plies shallower first (re-read in full when they look better)
     pub prune: bool,
+    /// THE FEW-REPLY EXTENSION (plan 78.11): a forced answer does not shorten the line
+    pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
     hist: FxHashMap<(Role, G::Move), i64>,
 }
@@ -88,12 +91,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, killers: vec![], hist: FxHashMap::default() }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default() }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true,
                  killers: vec![], hist: FxHashMap::default() }
     }
 
@@ -268,7 +271,11 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let mut best = if maxing { i64::MIN } else { i64::MAX };
         let mut best_i = 0;
         self.path.push(key);
-        for (n_read, (i, m, d)) in self.ordered_at(s, maxing, hint, ply).into_iter().enumerate() {
+        let order = self.ordered_at(s, maxing, hint, ply);
+        // THE FEW-REPLY EXTENSION (plan 78.11, game-free): a node with at most FEW_REPLIES legal moves (a forced answer) does not shorten the line
+        let ext = if self.extend && order.len() <= FEW_REPLIES && ply < 2 * depth + 8 { 1 } else { 0 };
+        let depth = depth + ext;
+        for (n_read, (i, m, d)) in order.into_iter().enumerate() {
             let q = self.g.apply(s, &m);
             let late = self.prune && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint;
             let mut v = if late { d + self.value(&q, depth - 3, ply + 1, alpha - d, beta - d) } else { 0 };

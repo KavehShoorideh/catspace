@@ -36277,3 +36277,10 @@ OBS 210 puzzles at 3 s (scripts/plan78_puzzles.py --tag v3_prune): the record in
   depth 12.8, was 9.0); material plugged in 197 / 210 (94 %, was 194; 130 / 142 at 13.5).
 OBS THE LADDER AGAIN (material, 0.5 s a move, 120 games, openings seed 9500): Fairy-Stockfish skill 3 0.400 (se 0.043; W 43 D 10 L 67; was 0.237), skill 6 0.100
   (0.024; W 7 D 10 L 103; was 0.025) -- with the ordering (78.9) and the pruning, the new engine plays near skill 3 to 4 at this clock.
+
+## 2026-11-05 02:50 -- plan 78.11: the few-reply extension (a forced answer does not shorten the line) -- +0.044 in play
+
+BUILT (game-free): in the ledger search a node whose side to move has at most two legal moves (FEW_REPLIES: a forced answer -- mostly the answer to a check, named by
+the count, not by the rule) is read one ply deeper (bounded by the ply), `extend` on the call (default on; off the comparison: the match setting `noextend`).
+OBS the match, the extension against none (material, 0.5 s a move, 160 games, openings seed 9300): 0.544 (se 0.021; W 29 D 116 L 15).
+OBS 210 puzzles at 3 s (--tag v4_extend): no values 154 / 210 (156 before: the load's noise), material 197 / 210 (as before; material puzzles at a mean depth 13.5).

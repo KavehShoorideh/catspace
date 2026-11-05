@@ -22,7 +22,7 @@ import chess.engine
 import cs_engine as CE
 from catspace.io import paths
 
-SETTINGS = {"plain": {}, "oldorder": {"ordering": False}, "noprune": {"prune": False}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}, "norecord": {"record": False}, "prior3": {"prior": True, "prior_depth": 3}, "prior3l85": {"prior": True, "prior_depth": 3, "ledger_share": 0.85},
+SETTINGS = {"plain": {}, "oldorder": {"ordering": False}, "noprune": {"prune": False}, "noextend": {"extend": False}, "prior": {"prior": True}, "plain60": {"_scale": 0.6}, "norecord": {"record": False}, "prior3": {"prior": True, "prior_depth": 3}, "prior3l85": {"prior": True, "prior_depth": 3, "ledger_share": 0.85},
             "prior0d4": {"prior": True, "prior_depth": 4, "prior_defects": 0, "ledger_share": 0.85}}      # the 0-defect count only (one reading a side), depth 4      # plain60: the plain engine on 60 % of the clock (the prior's cost alone)
 FSF = "/opt/homebrew/bin/fairy-stockfish"
 
