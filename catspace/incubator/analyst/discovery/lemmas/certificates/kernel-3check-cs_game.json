@@ -7,7 +7,7 @@
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "9eaa60e030801ce3",
+ "key": "a232635915368c5d",
  "sources": [
   "rules/chess.gdl",
   "rules/variants/3check.gdl",

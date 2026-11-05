@@ -36253,3 +36253,14 @@ READING (directional, honest): the density of tactics goes with the result in hu
 OBS plan 78 STRENGTH LADDER (the new engine, 'material' plugged in as a comparison, 0.5 s a move, 4 random opening plies, 120 games each; one run each): against
   Fairy-Stockfish skill 0 0.800 (se 0.036; W 94 D 4 L 22), skill 3 0.237 (0.037; W 24 D 9 L 87), skill 6 0.025 (0.013; W 2 D 2 L 116), skill 10 0.017 (0.010; W 1 D 2
   L 117). With no values ('units (no values)' in use): skill 0 0.067 (78.8). The new engine plays near Fairy-Stockfish's skill 2 at this clock.
+
+## 2026-11-05 02:12 -- plan 78.9: the ledger search's move ordering (killers, history) and its tables on a fast hash -- +0.059 in play
+
+BUILT (game-free): `Game::Move: Eq + Hash` (both bindings' moves already are); the ledger search orders a node's moves: the table's best, the gaining moves (best gain
+first), the KILLERS of the ply (the quiet moves that cut a sibling off), then the quiet moves by their HISTORY (cutoffs anywhere, by the square of the depth); the
+transposition table and the history on rustc-hash's FxHashMap. `ordering` on the call (default on; off: the old order, the comparison); tactics/src/bin/bench_calls.rs.
+OBS the per-position costs of the calls the search makes (one middlegame position, 36 legal moves): moves 0.45 us, outcome 0.10, apply 0.01, captured for every move
+  0.15, changed 0.09, key 0.02, captured and judged 0.17 -- the calls are cheap; depth is set by the branching (ties at quiet nodes).
+OBS 30 puzzles at 1 s (material): mean ledger depth 5.43 (old order) / 5.37 (new) -- no deeper; solved 28 / 28.
+OBS the match, new order against old (material, 0.5 s a move, 160 games, openings seed 9100): 0.559 (se 0.024; W 41 D 97 L 22) -- the order reads the better line at the
+  same depth.

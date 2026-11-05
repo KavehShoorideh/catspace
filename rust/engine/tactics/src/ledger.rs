@@ -8,6 +8,7 @@
 //! lasts, the line's captures resolved at its horizon (each side may stop or go on capturing), a transposition table on the future part. A line ending the game
 //! scores above (or below) every ledger. Within its horizon the answer is exact; beyond it, unread.
 use cs_game::{Game, Role};
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -61,11 +62,16 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub nodes: u64,
     fuse: u64,
     deadline: Instant,
-    tt: HashMap<u64, Tt>,
+    tt: FxHashMap<u64, Tt>,
     stopped: bool,
     /// INSTANCE KNOWLEDGE (plan 78.8): the keys of the positions the game's record already holds -- reached again, the rules' draw (repetition) is the outcome
     pub history: std::collections::HashSet<u64>,
     path: Vec<u64>,
+    /// MOVE ORDERING (plan 78.9, game-free): the quiet moves that cut a sibling off at the same ply (killers) and those that cut off anywhere (history, by the
+    /// square of the depth) are read early; `ordering` off reads the old order (the comparison)
+    pub ordering: bool,
+    killers: Vec<[Option<G::Move>; 2]>,
+    hist: FxHashMap<(Role, G::Move), i64>,
 }
 
 /// The answer: the move, its value, the line (move names) and its ledger, the depth read in full, the nodes.
@@ -74,12 +80,13 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: HashMap::new(), stopped: false, history: Default::default(), path: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, killers: vec![], hist: FxHashMap::default() }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: HashMap::new(), stopped: false, history: Default::default(), path: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true,
+                 killers: vec![], hist: FxHashMap::default() }
     }
 
     /// Did the fuse or the clock cut the last reading (its values are then lower bounds of the work, not exact)?
@@ -178,6 +185,32 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         v
     }
 
+    /// `ordered` at a node of the main search (ply `ply`): the previous best first, then the moves that gain (best gain first), then the killers of this ply, then
+    /// the quiet moves by their history.
+    fn ordered_at(&self, s: &G::State, maxing: bool, hint: Option<usize>, ply: i32) -> Vec<(usize, G::Move, i64)> {
+        if !self.ordering { return self.ordered(s, maxing, hint); }
+        let mover = self.g.mover(s).unwrap_or(self.me);
+        let k = self.killers.get(ply as usize);
+        let mut v: Vec<(usize, G::Move, i64, i64)> = self.g.moves(s).into_iter().enumerate().map(|(i, m)| {
+            let d = self.gain(s, &m);
+            let rank = if Some(i) == hint { i64::MIN } else if d != 0 { -(1 << 40) + if maxing { -d } else { d } }
+                       else if k.is_some_and(|k| k.iter().any(|x| x.as_ref() == Some(&m))) { -(1 << 30) }
+                       else { -*self.hist.get(&(mover, m.clone())).unwrap_or(&0) };
+            (i, m, d, rank)
+        }).collect();
+        v.sort_by_key(|(i, _, _, r)| (*r, *i));
+        v.into_iter().map(|(i, m, d, _)| (i, m, d)).collect()
+    }
+
+    fn cutoff(&mut self, s: &G::State, m: &G::Move, d: i64, ply: i32, depth: i32) {
+        if !self.ordering || d != 0 { return; }
+        let p = ply as usize;
+        if self.killers.len() <= p { self.killers.resize(p + 1, [None, None]); }
+        if self.killers[p][0].as_ref() != Some(m) { self.killers[p][1] = self.killers[p][0].take(); self.killers[p][0] = Some(m.clone()); }
+        let mover = self.g.mover(s).unwrap_or(self.me);
+        *self.hist.entry((mover, m.clone())).or_insert(0) += (depth as i64) * (depth as i64);
+    }
+
     /// The capture run at a horizon: the side to move may stand (the ledger as it is) or go on capturing.
     fn quiet(&mut self, s: &G::State, ply: i32, mut alpha: i64, mut beta: i64, depth: u32) -> i64 {
         if let Some(v) = self.g.outcome(s) { return self.terminal(&v, ply); }
@@ -216,13 +249,13 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let mut best = if maxing { i64::MIN } else { i64::MAX };
         let mut best_i = 0;
         self.path.push(key);
-        for (i, m, d) in self.ordered(s, maxing, hint) {
+        for (i, m, d) in self.ordered_at(s, maxing, hint, ply) {
             let q = self.g.apply(s, &m);
             let v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
             if self.stopped { self.path.pop(); return if best == i64::MIN || best == i64::MAX { 0 } else { best }; }
             if (maxing && v > best) || (!maxing && v < best) { best = v; best_i = i; }
             if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }
-            if alpha >= beta { break; }
+            if alpha >= beta { self.cutoff(s, &m, d, ply, depth); break; }
         }
         self.path.pop();
         let bound = if best <= a0 { Bound::Upper } else if best >= b0 { Bound::Lower } else { Bound::Exact };

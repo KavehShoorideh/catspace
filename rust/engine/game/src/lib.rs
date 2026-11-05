@@ -21,7 +21,7 @@ pub type Role = usize;
 /// THE GAME (see the module docstring).
 pub trait Game {
     type State: Clone;
-    type Move: Clone;
+    type Move: Clone + Eq + std::hash::Hash;          // (comparable and hashable: a search remembers moves -- killers, history)
     /// The game's name.
     fn name(&self) -> String;
     /// The roles, in the game's order.
