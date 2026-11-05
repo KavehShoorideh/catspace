@@ -36167,3 +36167,19 @@ OBS 78.6 RIPENING (the same 2009 positions, read again -- no new run): 1809 pair
   advantage at t: <= -3 (n 176) mean -0.97, -2 .. +2 (n 1493) -0.06, >= +3 (n 133) +1.33; a linear fit of the advantage at t + 6 on the units and the 0-defect advantage
   at t, then with the 1- and 2-defect advantages added: residual mean square 4.3523 -> 4.0475 (paired -0.3048, se 0.2869: one standard error -- the tails carry it, a
   few positions with large counts dominate the squares). Directional: near tactics in the tails turn into tactics; not established across the whole.
+
+## 2026-11-04 23:18 -- plan 78.7 (a): a tactic is named by its TARGETS (what it takes and where it stood); the density study on 1000 human games
+
+Kaveh 2026-11-04 "Continue till tomorrow" (the order: name the targets; more games; then tactic density as a policy prior, tested in games).
+BUILT: `Game::taken_at(s, m)` -- what a move takes with the PLACE it stood (the game's own name of a location; the kernel's square; "" for a game without places); the
+census names a tactic by its targets ("n@c6", or "goal"), so one target reached by several routes is one tactic (the loose knight one queen move away: one 1-defect
+tactic, where it was four). The games script prints the ripening read itself.
+OBS DENSITY ALONG 1000 LICHESS GAMES (records_00000 games 0..999, human against human; every 6th position from ply 10 -- 10212 positions; no values; defects <= 2,
+  depth 3; 2538 s on 11 cores; one run): tactics per position, the side to move 0.07 / 0.38 / 0.87 (0 / 1 / 2 defects), the other side 0.09 / 0.37 / 0.82. The win rate
+  of the side to move by its advantage, ours less theirs (<= -2 / -1 / 0 / +1 / >= +2): 0 DEFECTS 0.19 / 0.30 / 0.49 / 0.70 / 0.86 (n 148 / 524 / 9062 / 345 / 133);
+  1 DEFECT 0.32 / 0.40 / 0.48 / 0.56 / 0.67 (n 635 / 1202 / 6469 / 1270 / 636); 2 DEFECTS 0.36 / 0.44 / 0.48 / 0.51 / 0.61 (n 1322 / 1510 / 4113 / 1785 / 1482) --
+  monotone at every level. The outcome fit (decisive games): units alone log loss 0.6526; with the counts 0.6366, paired -0.0160 (se 0.0027, games as clusters; about six
+  errors); weights units +0.417, 0-defect +0.536, 1-defect +0.131, 2-defect +0.085. RIPENING (9212 pairs, six plies on): the 0-defect advantage then by the 1-defect
+  advantage now <= -3 -0.48 (n 212), -2..-1 -0.16, 0 -0.02, +1..+2 +0.12, >= +3 +0.61 (n 179); the near levels added to the fit on the units and the 0-defect advantage now:
+  residual mean square 0.2738 -> 0.2617 (paired -0.0122, se 0.0024: five errors). With targets named the 200-game reading's single-level signal becomes every level's:
+  near tactics turn into tactics, and every level goes with the result. Directional (one corpus, one run).

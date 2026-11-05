@@ -17,12 +17,27 @@ pub struct Tactic {
     pub free: Vec<String>,             // the free moves it needs (empty: it works now)
     pub line: Vec<String>,             // the forced line from where the free moves leave us
     pub wins: Vec<String>,             // what the line takes of theirs (kind names), or "goal" (the game's own outcome)
+    pub targets: Vec<String>,          // the same, with the places they stood ("n@c6"): THE TACTIC'S NAME (one target reached by several routes is one tactic)
     pub ledger: Vec<String>,           // every event of the line ("they lose n", "we lose p", "we promote p to q")
     pub value: i64,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Report { pub tactics: Vec<Tactic>, pub readings: usize, pub cut: usize, pub nodes: u64, pub frontier: Vec<usize> }
+
+/// What a line (move names from `s`) takes of the other side, with places, sorted: the tactic's targets. A place names where the unit stood when taken; a unit of
+/// theirs does not move while we make free moves (they pass), so the places read at the tactic's start.
+fn targets_of<G: Game>(g: &G, s: &G::State, line: &[String], me: cs_game::Role) -> Vec<String> {
+    let mut out = vec![];
+    let mut cur = s.clone();
+    for name in line {
+        let Some(m) = g.find_move(&cur, name) else { break };
+        for (o, k, at) in g.taken_at(&cur, &m) { if o != me { out.push(if at.is_empty() { k } else { format!("{k}@{at}") }); } }
+        cur = g.apply(&cur, &m);
+    }
+    out.sort();
+    out
+}
 
 /// The census of the side to move at `s`: its tactics with at most `max_defects` defects, each reading `depth` plies under `fuse` nodes.
 pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u32, depth: i32, fuse: u64) -> Report {
@@ -46,10 +61,11 @@ pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u3
                     w.sort();
                     w
                 };
-                let key = format!("{}|{}", line.first().cloned().unwrap_or_default(), wins.join(","));
+                let targets = if v >= WIN - 1000 { vec!["goal".to_string()] } else { targets_of(g, st, &line, me) };
+                let key = targets.join(",");
                 if !seen.insert(key) { continue; }
                 let who = |o: cs_game::Role| if o == me { "we" } else { "they" };
-                rep.tactics.push(Tactic { defects: k, free: free.clone(), line, wins, ledger: ev.iter().map(|(o, e)| format!("{} {e}", who(*o))).collect(), value: v });
+                rep.tactics.push(Tactic { defects: k, free: free.clone(), line, wins, targets, ledger: ev.iter().map(|(o, e)| format!("{} {e}", who(*o))).collect(), value: v });
             }
         }
         if k == max_defects { break; }

@@ -136,9 +136,49 @@ def games(a) -> None:
         per[gg][1] += 1
     md = diff.mean()
     sed = np.sqrt(sum((s - c * md) ** 2 for s, c in per.values())) / len(diff)
+    ripening(rows, k)
     print(f"   the outcome (decisive games, the side to move wins?) fit on the unit-count difference alone: log loss {m0:.4f} (se {se0:.4f}); with the tactic counts by "
           f"defect level added: {m1:.4f} (se {se1:.4f}) -- the paired difference {md:+.4f} (se {sed:.4f}, games as clusters); weights: units {w1[0]:+.3f}, "
           + ", ".join(f"{d}-defect {w1[1 + d]:+.3f}" for d in range(k + 1)))
+
+
+def ripening(rows: list, k: int, lag: int = 6) -> None:
+    """Do near tactics turn into tactics? The 0-defect advantage `lag` plies later (the same side to move) by the 1-defect advantage now, in buckets; and a linear fit of
+    it on the units and the 0-defect advantage now, then with the near levels added (the paired difference, games as clusters)."""
+    by = {(r["game"], r["ply"]): r for r in rows}
+    X, y, g = [], [], []
+    for r in rows:
+        n = by.get((r["game"], r["ply"] + lag))
+        if n is None:
+            continue
+        D = [a - b for a, b in zip(r["ours"], r["theirs"])]
+        X.append([r["units"]] + D)
+        y.append(n["ours"][0] - n["theirs"][0])
+        g.append(r["game"])
+    if not X or k < 1:
+        return
+    X, y, g = np.array(X, float), np.array(y, float), np.array(g)
+    def ols(cols):
+        A = np.hstack([X[:, cols], np.ones((len(X), 1))])
+        w, *_ = np.linalg.lstsq(A, y, rcond=None)
+        return w, y - A @ w
+    _w0, r0 = ols([0, 1])
+    w1, r1 = ols(list(range(X.shape[1])))
+    d = r1 ** 2 - r0 ** 2
+    m = d.mean()
+    per = defaultdict(lambda: [0.0, 0])
+    for v, gg in zip(d, g):
+        per[gg][0] += v
+        per[gg][1] += 1
+    se = np.sqrt(sum((a - c * m) ** 2 for a, c in per.values())) / len(d)
+    buckets = []
+    for lo, hi, lab in ((-99, -3, "<= -3"), (-2, -1, "-2..-1"), (0, 0, "0"), (1, 2, "+1..+2"), (3, 99, ">= +3")):
+        sel = (X[:, 2] >= lo) & (X[:, 2] <= hi)
+        if sel.sum():
+            buckets.append(f"{lab}: n {int(sel.sum())} -> {y[sel].mean():+.2f}")
+    print(f"   RIPENING ({len(y)} pairs, {lag} plies on, the same side to move): the 0-defect advantage then, by the 1-defect advantage now -- " + "; ".join(buckets)
+          + f"; the linear fit on the units and the 0-defect advantage now: residual mean square {np.mean(r0 ** 2):.4f}, with the near levels {np.mean(r1 ** 2):.4f} "
+          f"(paired {m:+.4f}, se {se:.4f}); weights " + ", ".join(f"{n} {w:+.3f}" for n, w in zip(["units"] + [f"{d}-defect" for d in range(k + 1)], w1)))
 
 
 def main(argv: list) -> int:

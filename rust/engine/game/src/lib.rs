@@ -63,6 +63,11 @@ pub trait Game {
         }
         out
     }
+    /// THE UNITS A MOVE TAKES, WITH THEIR PLACES (plan 78.7): (owner, kind name, the place it stood: the game's own name of a location; "" for a game that has none)
+    /// -- what names a tactic's TARGET. By default the captured units with no place.
+    fn taken_at(&self, s: &Self::State, m: &Self::Move) -> Vec<(Role, String, String)> {
+        self.captured(s, m).into_iter().map(|(o, k)| (o, k, String::new())).collect()
+    }
     /// THE MOVER'S OWN UNITS CHANGING KIND by a move (plan 78.5: a promotion -- a unit of one kind leaves, one of another arrives; a placement from outside the board
     /// arrives from nothing: from ""): [(from kind, to kind)]. By default read off the mover's units before and after.
     fn changed(&self, s: &Self::State, m: &Self::Move) -> Vec<(String, String)> where Self: Sized { units_changed(self, s, m) }

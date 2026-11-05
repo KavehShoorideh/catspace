@@ -20,14 +20,15 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new()))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false))]
 #[allow(clippy::too_many_arguments)]
-fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String)
+fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
+             prior: bool)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
     let (g, s) = state_of(variant, fen, start960, &moves)?;
     let f = g.fen(&s);
-    let choice = if worth.is_empty() { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Count) }
-                 else { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }) };
+    let choice = if worth.is_empty() { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Count, prior) }
+                 else { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, prior) };
     Ok(match choice {
         Some(c) => (Some(g.move_name(&s, &c.mv)), c.proved, c.trace, c.nodes, f),
         None => (None, false, vec!["the game is over".into()], 0, f),
@@ -120,7 +121,7 @@ fn census(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, 
     let mut out = vec![];
     for t in rep.tactics {
         let d = pyo3::types::PyDict::new(py);
-        d.set_item("defects", t.defects)?; d.set_item("free", t.free)?; d.set_item("line", t.line)?; d.set_item("wins", t.wins)?;
+        d.set_item("defects", t.defects)?; d.set_item("free", t.free)?; d.set_item("line", t.line)?; d.set_item("wins", t.wins)?; d.set_item("targets", t.targets)?;
         d.set_item("ledger", t.ledger)?; d.set_item("value", t.value)?;
         out.push(d.into());
     }

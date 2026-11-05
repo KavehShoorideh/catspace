@@ -91,6 +91,15 @@ impl Game for KernelGame {
         }
         match m.capture() { Some(r) => vec![(if s.turn() == Color::White { 1 } else { 0 }, r.char().to_string())], None => vec![] }
     }
+    fn taken_at(&self, s: &VariantPosition, m: &Move) -> Vec<(Role, String, String)> {
+        if self.variant == Variant::Atomic { return self.captured(s, m).into_iter().map(|(o, k)| (o, k, String::new())).collect(); }
+        let them = if s.turn() == Color::White { 1 } else { 0 };
+        match (m.capture(), m) {
+            (Some(r), Move::EnPassant { from, to }) => vec![(them, r.char().to_string(), shakmaty::Square::from_coords(to.file(), from.rank()).to_string())],
+            (Some(r), _) => vec![(them, r.char().to_string(), m.to().to_string())],
+            (None, _) => vec![],
+        }
+    }
     fn changed(&self, s: &VariantPosition, m: &Move) -> Vec<(String, String)> {
         if self.variant == Variant::Crazyhouse { return crate::units_changed(self, s, m); }
         match m.promotion() { Some(r) => vec![("p".into(), r.char().to_string())], None => vec![] }
