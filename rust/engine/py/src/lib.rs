@@ -105,6 +105,30 @@ fn mine_valuation(py: Python<'_>, variant: &str, records: Vec<(String, Vec<Strin
     Ok(d.into())
 }
 
+/// census(variant, fen=None, moves=[], max_defects=1, depth=3, fuse=200000, side="mover", worth={}, ours_first=false, valuation="") -> (tactics, stats):
+/// plan 78.6 THE CENSUS OF TACTICS BY THEIR DEFECTS (cs_tactics::census) of the side to move ("mover") or of the other side ("other": read after a pass) --
+/// tactics: [{defects, free, line, wins, ledger, value}]; stats: {readings, cut, nodes, frontier}. The judge: the store's record, as best_move takes it.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![], max_defects=1, depth=3, fuse=200000, side="mover", worth=HashMap::new(), ours_first=false, valuation=String::new()))]
+#[allow(clippy::too_many_arguments)]
+fn census(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, max_defects: u32, depth: i32, fuse: u64, side: &str, worth: HashMap<String, i64>,
+          ours_first: bool, valuation: String) -> PyResult<(Vec<PyObject>, PyObject)> {
+    let (g, s0) = state_of(variant, fen, 518, &moves)?;
+    let s = if side == "other" { match g.pass(&s0) { Some(q) => q, None => return Ok((vec![], pyo3::types::PyDict::new(py).into())) } } else { s0 };
+    let rep = if worth.is_empty() { cs_tactics::census::census(&g, &s, &cs_tactics::ledger::Count, max_defects, depth, fuse) }
+              else { cs_tactics::census::census(&g, &s, &cs_tactics::ledger::Worth { name: valuation, table: worth, ours_first }, max_defects, depth, fuse) };
+    let mut out = vec![];
+    for t in rep.tactics {
+        let d = pyo3::types::PyDict::new(py);
+        d.set_item("defects", t.defects)?; d.set_item("free", t.free)?; d.set_item("line", t.line)?; d.set_item("wins", t.wins)?;
+        d.set_item("ledger", t.ledger)?; d.set_item("value", t.value)?;
+        out.push(d.into());
+    }
+    let st = pyo3::types::PyDict::new(py);
+    st.set_item("readings", rep.readings)?; st.set_item("cut", rep.cut)?; st.set_item("nodes", rep.nodes)?; st.set_item("frontier", rep.frontier)?;
+    Ok((out, st.into()))
+}
+
 #[pymodule]
 fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(variants, m)?)?;
@@ -112,6 +136,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(best_move, m)?)?;
     m.add_function(wrap_pyfunction!(state, m)?)?;
     m.add_function(wrap_pyfunction!(watch, m)?)?;
+    m.add_function(wrap_pyfunction!(census, m)?)?;
     m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
     Ok(())
 }

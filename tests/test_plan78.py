@@ -171,3 +171,25 @@ def test_78_5_the_judge_is_a_variable():
     _mv, _p, t_none, _n, _f = CE.best_move("chess", fen, [], 2.0, **LS.judge_of("chess"))
     _mv, _p, t_mat, _n, _f = CE.best_move("chess", fen, [], 2.0, **LS.judge_of("chess", "material"))
     assert "[units (no values)" in t_none[-1] and "[material" in t_mat[-1]
+
+
+# ---- 78.6 the census of tactics by their defects (counted in tempo: the free moves of ours a tactic needs)
+
+def test_78_6_the_census_counts_a_tactic_at_its_least_defects():
+    """No values: a loose knight the queen already attacks is a 0-defect tactic ('they lose n'); one the queen must first go to attack is a 1-defect tactic, its free
+    move named; nothing is counted twice."""
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    j = LS.judge_of("chess")
+    now, _st = CE.census("chess", "4k3/8/2n5/8/Q7/8/8/4K3 w - - 0 1", [], 1, 3, 200000, "mover", **j)
+    assert any(t["defects"] == 0 and t["line"][:1] == ["a4c6"] and t["wins"] == ["n"] for t in now)
+    later, st = CE.census("chess", "4k3/8/2n5/8/8/8/8/3QK3 w - - 0 1", [], 1, 3, 200000, "mover", **j)
+    assert not any(t["defects"] == 0 for t in later) and any(t["defects"] == 1 and t["wins"] == ["n"] and len(t["free"]) == 1 for t in later)
+    keys = [(tuple(t["line"][:1]), tuple(t["wins"])) for t in later]
+    assert len(keys) == len(set(keys))
+    print(f"OBS 78.6 census: one move short -- {[(t['free'], t['line'][:2], t['wins']) for t in later if t['defects'] == 1][:4]}; readings {st['readings']}")
+
+
+def test_78_6_the_census_of_the_other_side_is_read_after_a_pass():
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    theirs, _st = CE.census("chess", "4k3/8/2n5/8/Q7/8/8/4K3 b - - 0 1", [], 0, 3, 200000, "other", **LS.judge_of("chess"))
+    assert any(t["line"][:1] == ["a4c6"] for t in theirs)                          # (Black to move: White's tactic, read as if Black passed)

@@ -3,6 +3,7 @@
 //! legal reply leaves the goal within n - 1 more moves of ours, the outcome read from the game (a win: our goal value above every other role's). Deepened
 //! n = 1, 2, ... while the budget lasts; a cut is a GAP, never a refutation. The order of our moves: those that end the game first, then those that leave the other
 //! side the fewest replies (the forcing ones) -- an order, never a verdict.
+pub mod census;
 pub mod ledger;
 
 use cs_game::{Game, Role};

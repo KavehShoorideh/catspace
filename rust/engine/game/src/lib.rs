@@ -45,6 +45,9 @@ pub trait Game {
     /// The units standing in the state as (owner, kind name): what a valuation from the store counts (none for a game without units). The kind names are the
     /// game's own; the layers read them only through a valuation table.
     fn units(&self, _s: &Self::State) -> Vec<(Role, String)> { vec![] }
+    /// THE PASS (plan 78.6): the same state with the next role to move and nothing played -- a free move for the side that just moved (None where the game has no
+    /// pass: a side that must answer cannot pass; a game without one says None).
+    fn pass(&self, _s: &Self::State) -> Option<Self::State> { None }
     /// The role that is not `r` in a game of two roles (the opponent).
     fn other(&self, r: Role) -> Role { 1 - r }
     /// THE UNITS A MOVE TAKES (plan 78.5): what the other sides lose by it, as (owner, kind name) -- by default the units that disappear from every side but the

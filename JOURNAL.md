@@ -36139,3 +36139,27 @@ OBS tests: test_plan78 14 passed (the record switched by `in_use` without code; 
 OBS engine gate after 2e5caa04: files 53, passed 681, failed 3 -- all test_plan73 (the store validates its entries' `implementation` references: 'units (no values)'
   cited rust/engine/tactics/src/ledger.rs:Worth, a struct the validator's definition pattern does not read); the entry now cites ledger.rs:delta and lemma_store's
   valuation_of / judge_of; test_plan73 and test_plan78: 23 passed.
+
+## 2026-11-04 22:27 -- plan 78.6: THE CENSUS OF TACTICS BY THEIR DEFECTS in the new engine; its recall on puzzles; tactic density along human games against the outcome
+
+Kaveh 2026-11-04: "are we able to identify all the tactics in the position? ... even tactics that may not work right now ... one defect, two defects ... maybe three";
+"look at the density of tactics in games ... human versus human"; "Ok continue".
+BUILT (rust/engine, over the Game trait): `Game::pass` (the kernel's: the other side to move, nothing played; none in check); cs_tactics::census -- a TACTIC of the side
+to move is a forced line its judge scores above nothing (no values: they lose a unit, we lose none; or the game's goal); its DEFECTS ARE COUNTED IN TEMPO: the free moves
+of ours (they pass) it needs before it works -- 0 now; 1 one move short (a threat: the pass clause of the one definition); 2, 3 -- each tactic counted at its least k; a
+free move takes nothing and is not a check; each reading the ledger search at a fixed depth under a node fuse, a cut reading reported. The ledger search gained
+`gainers` (each first move asked "above nothing?" by a null window, the gaining ones then read exact: about seven times cheaper) and a node-fuse constructor.
+cs_engine.census(variant, fen, moves, max_defects, depth, fuse, side "mover" | "other", **judge); scripts/plan78_census.py (puzzles | games).
+OBS RECALL ON 210 PUZZLES (the answer among the 0-defect tactics; one run each): depth 3, defects <= 2 -- no values 68 / 210 (tactics per position 0.4 / 2.8 / 8.7
+  by defects 0 / 1 / 2; 35 positions with none), material 140 / 210 (1.5 / 17.2 / 81.3); depth 7 at 0 defects with a 20 M-node fuse -- no values 76 / 210 (the 66 mates and
+  10 clean gains: with no values a trade is no tactic), MATERIAL 185 / 210 (88 %), 0.6 / 1.9 s a position. (At a 200 k fuse depth 7 read FEWER than depth 5: the fuse
+  cut the readings -- a cut reading counts nothing; the fuse was raised.)
+OBS DENSITY ALONG 200 LICHESS GAMES (records_00000, human against human; every 6th position from ply 10 -- 2009 positions; no values; defects <= 2, depth 3; 523 s on
+  11 cores): tactics per position, the side to move 0.18 / 2.33 / 8.51, the other side 0.20 / 2.23 / 9.30. The outcome for the side to move by the 0-DEFECT count, ours
+  less theirs: <= -2 win 0.15 (n 60), -1 0.27 (93), 0 0.45 (1770), +1 0.65 (40), >= +2 0.85 (46); by the 1-DEFECT count: <= -2 0.32 (282) ... >= +2 0.63 (262); by the
+  2-DEFECT count: <= -2 0.37 (514) ... >= +2 0.50 (572). A logistic of 'the side to move wins' (decisive games) on the unit-count difference alone: log loss 0.6331; with
+  the tactic counts added 0.6192 -- the paired difference -0.0139, se 0.0042 (games as clusters): the counts predict beyond the units; the weights (units +0.522,
+  0-defect +0.446, 1-defect -0.033, 2-defect +0.014) put it in the 0-defect count once the units are known. Directional: 200 games, one run.
+KNOWN: a tactic is named by its first forcing move and what it wins, so one target reached by several routes counts once per route (the loose knight one queen move
+  away: four 1-defect tactics, Qc1 / Qc2 / Qf3 / Qa4) -- the counts are ways to win, not targets (the Game trait names a unit's kind, not where it stands).
+OBS tests: test_plan78 15 passed (the census at its least defects; the other side's census after a pass); co-play certificates re-run: 0 disagreements.

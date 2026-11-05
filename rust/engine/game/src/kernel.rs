@@ -95,6 +95,13 @@ impl Game for KernelGame {
         if self.variant == Variant::Crazyhouse { return crate::units_changed(self, s, m); }
         match m.promotion() { Some(r) => vec![("p".into(), r.char().to_string())], None => vec![] }
     }
+    fn pass(&self, s: &VariantPosition) -> Option<VariantPosition> {
+        if s.is_check() || self.outcome(s).is_some() { return None; }
+        let mut st = s.clone().into_setup(EnPassantMode::Always);
+        st.turn = !st.turn;
+        st.ep_square = None;
+        VariantPosition::from_setup(self.variant, st, self.mode).ok()
+    }
     fn units(&self, s: &VariantPosition) -> Vec<(Role, String)> {
         s.board().iter().map(|(_sq, p)| (if p.color == Color::White { 0 } else { 1 }, p.role.char().to_string())).collect()
     }

@@ -59,6 +59,7 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub judge: &'a J,
     pub me: Role,
     pub nodes: u64,
+    fuse: u64,
     deadline: Instant,
     tt: HashMap<u64, Tt>,
     stopped: bool,
@@ -70,7 +71,62 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: HashMap::new(), stopped: false }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: HashMap::new(), stopped: false }
+    }
+
+    /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
+    pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: HashMap::new(), stopped: false }
+    }
+
+    /// Did the fuse or the clock cut the last reading (its values are then lower bounds of the work, not exact)?
+    pub fn cut(&self) -> bool { self.stopped }
+
+    /// EVERY FIRST MOVE'S VALUE at `depth` (each read with the full window: exact within the horizon) -> [(the move's index in `moves`, its value)], best first.
+    pub fn root_values(&mut self, s: &G::State, depth: i32) -> Vec<(usize, i64)> {
+        let maxing = self.g.mover(s) == Some(self.me);
+        let mut out = vec![];
+        for (i, m, d) in self.ordered(s, maxing, None) {
+            let q = self.g.apply(s, &m);
+            let v = d + self.value(&q, depth - 1, 1, i64::MIN / 2, i64::MAX / 2);
+            if self.stopped { break; }
+            out.push((i, v));
+        }
+        out.sort_by_key(|(i, v)| (-*v, *i));
+        out
+    }
+
+    /// THE FIRST MOVES THAT GAIN at `depth` -- each first asked only "above nothing?" (a null window: cheap), the gaining ones then read exact -> [(index, value)],
+    /// best first. The census's reading: every move that gains, none that does not.
+    pub fn gainers(&mut self, s: &G::State, depth: i32) -> Vec<(usize, i64)> {
+        let maxing = self.g.mover(s) == Some(self.me);
+        let mut out = vec![];
+        for (i, m, d) in self.ordered(s, maxing, None) {
+            let q = self.g.apply(s, &m);
+            let probe = d + self.value(&q, depth - 1, 1, -d, -d + 1);         // (fails high iff the move's value is at least 1)
+            if self.stopped { break; }
+            if probe >= 1 {
+                let v = d + self.value(&q, depth - 1, 1, i64::MIN / 2, i64::MAX / 2);
+                if self.stopped { break; }
+                if v >= 1 { out.push((i, v)); }
+            }
+        }
+        out.sort_by_key(|(i, v)| (-*v, *i));
+        out
+    }
+
+    /// The line that starts with the move numbered `first` on `s`, then the table's best moves, with its ledger events.
+    pub fn line_from(&self, s: &G::State, first: usize, n: usize) -> (Vec<String>, Vec<(Role, String)>) {
+        let ms = self.g.moves(s);
+        let Some(m) = ms.get(first) else { return (vec![], vec![]) };
+        let mover = self.g.mover(s).unwrap_or(self.me);
+        let mut ev: Vec<(Role, String)> = self.g.captured(s, m).into_iter().map(|(o, k)| (o, format!("lose {k}"))).collect();
+        ev.extend(self.g.changed(s, m).into_iter().map(|(a, b)| (mover, format!("promote {} to {b}", if a.is_empty() { "-" } else { a.as_str() }))));
+        let q = self.g.apply(s, m);
+        let (mut names, rest) = self.line_of(&q, n.saturating_sub(1));
+        names.insert(0, self.g.move_name(s, m));
+        ev.extend(rest);
+        (names, ev)
     }
 
     fn terminal(&self, v: &[i64], ply: i32) -> i64 {
@@ -86,7 +142,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
 
     fn tick(&mut self) -> bool {
         self.nodes += 1;
-        if self.nodes >= NODE_FUSE || (self.nodes & 1023 == 0 && Instant::now() >= self.deadline) { self.stopped = true; }
+        if self.nodes >= self.fuse || (self.nodes & 1023 == 0 && Instant::now() >= self.deadline) { self.stopped = true; }
         self.stopped
     }
 

@@ -7,7 +7,7 @@
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "d266120194e679cd",
+ "key": "68bb76561f720666",
  "sources": [
   "rules/chess.gdl",
   "rules/variants/3check.gdl",
@@ -18,5 +18,5 @@
   "rust/engine/Cargo.lock"
  ],
  "date": "2026-11-04",
- "seconds": 7.0
+ "seconds": 7.2
 }
