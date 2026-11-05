@@ -7,7 +7,7 @@
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "2d557aa414759c9f",
+ "key": "d2bfafdcb4c8844c",
  "sources": [
   "rules/chess.gdl",
   "rules/variants/kingofthehill.gdl",
@@ -18,5 +18,5 @@
   "rust/engine/Cargo.lock"
  ],
  "date": "2026-11-04",
- "seconds": 14.4
+ "seconds": 13.8
 }

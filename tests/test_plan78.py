@@ -24,7 +24,7 @@ def _code(p: Path) -> str:
 def test_78_1_the_layer_crates_name_no_chess_object_but_the_kernel_module():
     """The generic test, extended to the Rust layers: every source of the engine workspace but the kernel module (rules ingestion) and its certify binary is free
     of chess words in its code (comments and strings aside)."""
-    allowed = {ENGINE / "game" / "src" / "kernel.rs", ENGINE / "game" / "src" / "bin" / "certify_coplay.rs", ENGINE / "py" / "src" / "lib.rs"}
+    allowed = {ENGINE / "game" / "src" / "kernel.rs", ENGINE / "game" / "src" / "outside.rs", ENGINE / "game" / "src" / "bin" / "certify_coplay.rs", ENGINE / "py" / "src" / "lib.rs"}
     seen = []
     for p in sorted(ENGINE.glob("*/src/**/*.rs")):
         if p in allowed:
@@ -87,3 +87,42 @@ def test_78_2_every_variant_gets_a_legal_move_and_dont_lose_drops_a_losing_one()
     assert mv == "d8h4" and proved                                                    # (Black to move: the fool's mate, proved)
     mv, proved, trace, nodes, fen = CE.best_move("chess", None, ["f2f3", "e7e5"], 0.5, w)
     assert mv != "g2g4" and any("don't lose" in x and "g2g4" in x for x in trace)     # (White: g4?? allows Qh4#, dropped)
+
+
+# ---- 78.4 knowledge of a game (the store, scoped by `game`) and of an instance of it (discovery/instance.py); the miners in Rust (cs_learn)
+
+def test_78_4_the_rust_miner_reproduces_the_stores_mined_chess_valuation():
+    """cs_learn's valuation miner (76.4c's definition, its loops in Rust) on the records 76.4c read: the same integer worths as the store's 'material (mined)'."""
+    from catspace.incubator.analyst.discovery import learn as LN
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    recs, what = LN.lichess_records(4000)
+    f = CE.mine_valuation("chess", recs, LN.FROM_PLY, LN.FUSE)
+    want = {k: v for k, v in LS.load()["material (mined)"]["params"]["worth"].items() if k != "k"}
+    print(f"OBS 78.4 rust miner on {what}: worth {dict(zip(f['kinds'], f['worth']))} price {f['price']}, positions {f['positions']}; the store's {want}")
+    assert dict(zip(f["kinds"], f["worth"])) == want and f["constant"] == ["k"]
+
+
+def test_78_4_knowledge_is_scoped_by_game_and_nothing_is_borrowed(monkeypatch):
+    import copy
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    assert LS.valuation_of("chess").worth == LS.valuation().worth
+    assert LS.valuation_of("atomic") is None                                         # the store knows no valuation of atomic: none, not chess's
+    patched = copy.deepcopy(LS.load())
+    e = copy.deepcopy(patched["material (mined)"])
+    e["name"], e["game"] = "material (atomic, test)", "atomic"
+    patched[e["name"]] = e
+    monkeypatch.setattr(LS, "_STORE", [patched])
+    assert LS.valuation_of("atomic").worth == e["params"]["worth"] and LS.check_entry(e) == []
+    assert LS.check_entry(dict(e, game=3))
+
+
+def test_78_4_watching_an_outside_engine_makes_instances_not_store_entries(tmp_path, monkeypatch):
+    from catspace.incubator.analyst.discovery import instance as IN
+    from catspace.incubator.analyst.discovery import learn as LN
+    recs = CE.watch("chess", LN.TEACHER, 2, 6, 5, 7, 2)
+    assert len(recs) == 2 and all(m for _s, m, _o in recs)
+    monkeypatch.setattr(IN, "folder", lambda game: tmp_path)
+    IN.save([IN.Instance(game="chess", start=s, moves=m, outcome=o, source="watch") for s, m, o in recs], "chess", "t")
+    back = IN.load("chess", "t")
+    assert [i.record() for i in back] == [(s, m, o) for s, m, o in recs]
+    print(f"OBS 78.4 watched 2 chess games: plies {[len(m) for _s, m, _o in recs]}, outcomes {[o for _s, _m, o in recs]}")

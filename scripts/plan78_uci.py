@@ -13,9 +13,11 @@ import cs_engine as CE
 SHARE = 30            # a move's share of the remaining clock (1/SHARE of it, plus the increment)
 
 
-def worth() -> dict:
+def worth(variant: str = "chess") -> dict:
+    """The game's own valuation from the store (`valuation_of`); none for a game the store knows no valuation of."""
     from catspace.incubator.analyst.discovery import lemma_store as LS
-    return {k: int(v) for k, v in LS.valuation().worth.items()}
+    v = LS.valuation_of(variant)
+    return {k: int(x) for k, x in v.worth.items()} if v is not None else {}
 
 
 def main() -> int:
@@ -32,7 +34,6 @@ def main() -> int:
             out("option name UCI_Chess960 type check default false")
             out("uciok")
         elif t[0] == "isready":
-            w = w or worth()
             out("readyok")
         elif t[0] == "setoption" and "name" in t and "value" in t:
             name, value = t[t.index("name") + 1], t[t.index("value") + 1]
@@ -50,8 +51,8 @@ def main() -> int:
                 fen = " ".join(t[i:j])
             moves = t[t.index("moves") + 1:] if "moves" in t else []
         elif t[0] == "go":
-            w = w or worth()
             v = "chess960" if c960 and variant == "chess" else variant
+            w = worth(v)
             secs = 1.0
             if "movetime" in t:
                 secs = int(t[t.index("movetime") + 1]) / 1000

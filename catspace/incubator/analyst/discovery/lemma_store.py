@@ -30,7 +30,9 @@ ROOT = Path(__file__).resolve().parents[4]
 LEAN_INDEX = ROOT / "docs" / "LEAN_INDEX.md"
 
 FIELDS = ("name", "kind", "reads", "terms", "status", "lean", "origin", "plan", "journal", "measure", "evidence", "implementation", "note")
-OPTIONAL = ("params", "needs")            # plan 75.2: the values the agenda READS from an entry at run time (a GOAL's stake and roles, a VALUATION's worths, a STOP's shape)
+OPTIONAL = ("params", "needs", "game")            # plan 75.2: the values the agenda READS from an entry at run time (a GOAL's stake and roles, a VALUATION's worths, a STOP's shape)
+# plan 78.4: `game` -- the GAME an entry is knowledge of (a name of the kernels' games: chess, chess960, crazyhouse ...); absent: chess, the game the engine plays
+# (knowledge of the game as a whole lives here; knowledge of one INSTANCE of it -- its record, what was learned while it was played -- lives in discovery/instance.py's records)
 # plan 77.1 (d): `needs` -- a lemma's DECLARED DOMAIN, {theirs, why}: the unit kinds (the kernel's letters, the king included) the other side may hold for the lemma to apply
 # (its Lean hypothesis, or a hand word's own gate, named in `why`); the engine asks the lemma only where it holds, and the certify stage checks it never fires outside
 KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE", "GOAL", "VALUATION", "RULE")      # plan 76.2 (c): RULE -- a rule of the game (given)
@@ -70,6 +72,8 @@ def check_entry(e: dict, where: str = "") -> list:
         return bad
     if not isinstance(e["name"], str) or not e["name"]:
         bad.append(f"{at}: name must be a non-empty string")
+    if "game" in e and (not isinstance(e["game"], str) or not e["game"]):
+        bad.append(f"{at}: game names the game the entry is knowledge of (a string)")
     if "needs" in e:
         nd = e["needs"]
         kinds = {c.upper() for c in chess.PIECE_SYMBOLS if c}
@@ -439,6 +443,21 @@ def goal_kinds() -> GoalKinds:
 # Nothing calls it at import: the core calls it itself on its first worth read (the store is loaded on first use, rust/analyst_core/src/valuation.rs), so
 # no word is ever read against a default. A process reads ONE valuation: the Python readers that keep a table (selfmine.PIECE_WORTH, graph.WORTH, the
 # modules routed in 76.5) take it at their import, so a run on another valuation is another process (the harness switches the GOAL entries, then runs).
+
+def game_of(e: dict) -> str:
+    """plan 78.4: the game an entry is knowledge of (absent: chess)."""
+    return e.get("game", "chess")
+
+
+def valuation_of(game: str) -> "Valuation | None":
+    """plan 78.4: THE VALUATION OF A GAME -- for chess the one the GOAL entries count in (`valuation()`); for another game a VALUATION entry scoped to it (MINED
+    first), or None: the store knows no valuation of that game (nothing is borrowed from another game)."""
+    if game == "chess":
+        return valuation()
+    ents = [e for e in load().values() if e["kind"] == "VALUATION" and game_of(e) == game]
+    ents.sort(key=lambda e: (e["origin"] != "MINED", e["name"]))
+    return Valuation(ents[0]) if ents else None
+
 
 def valuation() -> Valuation:
     """THE VALUATION THE ENGINE READS (plan 76.5): the VALUATION entry the GOAL entries count in."""

@@ -36072,3 +36072,28 @@ OBS plan 78.3 THE MEASURE (scripts/plan78_games.py --games 4 --seconds 0.2; 72 g
 READING (directional, one run): the system is END TO END on all nine variants; its weakness is where the thin layers are thin -- (i) PLANNING: racing kings has no
 material to keep and draws by repetition; the measure is the chess valuation, wrong for antichess (losing units is its goal: its valuation is a store entry to mine);
 (ii) TACTICS: one-reply-deep danger and a shallow forced search lose to any real opponent. The baseline the layers improve from.
+
+## 2026-11-04 16:51 -- plan 78.4: knowledge of a GAME and of an INSTANCE of it; the valuation miner's loops in Rust; watching an outside engine -- the capability built, chess the product
+
+Kaveh 2026-11-04: piece values are knowledge that lives in the store about that game, estimated as games are seen; "there's some knowledge I have about chess in general.
+There's some knowledge I have about this chess game that I'm playing"; then: "I don't want you to actually populate the store with facts about other games. I just want you
+to have the capability to do so later ... the product that I want to build initially is chess only with the capability to extend."
+BUILT (no other game's knowledge written): (a) GAME knowledge -- store entries may say `game` (the game they are knowledge of; absent: chess); `lemma_store.valuation_of(game)`
+gives chess's valuation, another game's own entry, or None (nothing borrowed); the games harness and the UCI front end read it. (b) INSTANCE knowledge --
+discovery/instance.py: one game played or watched (its start, moves, outcome, players, the facts learned while it was played), saved under data/derived/instances/<game>/;
+the miners read instances. (c) cs_learn (rust/engine/learn, game-free): `Record`; `watch` (a generic TEACHER -- any source of moves -- played against itself, seeded random
+openings, threefold by the game's keys; one thread per slot) and THE VALUATION MINER (76.4c's definition ported, its loops in Rust: the per-kind count atoms through
+`Game::units`, the symmetric ordinal logistic by damped Newton, the priced integer search with the one-paired-error rule, games as clusters -- SIGNED: each weight's sign
+the continuous fit's). The UCI teacher lives beside the chess kernel (cs_game::outside: the chess family's engine protocol), not in the learning layer.
+(d) discovery/learn.py: `learn valuation <game> --lichess N | --instances [name]` and `learn watch <game>`; a store entry only with --write.
+OBS the Rust miner on the records 76.4c mined (lichess 2019-01 records_00000, games 0..3999, from ply 10): positions 236380, games 4000, 1862 distinct atom vectors;
+  continuous b 0.6080 n 0.5503 p 0.2479 q 1.8197 r 0.9654 (log loss 0.84102), the king constant; integer worths q 14 r 8 b 5 n 4 p 2 at price 33 (log loss 0.84131,
+  +0.00028 within the paired error 0.00029) -- THE SAME WORTHS as the store's 'material (mined)' (Python: price 33, log loss 0.84104, 236305 positions: 75 positions and
+  0.0003 nats apart, not traced); 4.0 s. A first run found no integer vector: the per-vector scale fit started at s = 1 (the weights saturated the logistic) -- fixed by
+  starting at the continuous fit's size for the price.
+OBS watching (test): two chess games of Fairy-Stockfish against itself (5 ms a move, 6 random opening plies): 107 and 182 plies, both decisive; saved and read back as
+  instances. Chess through the harness with valuation_of: vs random W 4, vs Fairy-Stockfish skill 0 L 4 (as before).
+OBS tests: test_plan78 11 passed (the generic test now over cs_learn too -- it caught `b2`, a variable read as a square, and the UCI client in the learning crate: both
+  moved / renamed), test_plan77_1d, test_plan75: 25 passed; the co-play certificates re-run after the workspace lock changed: 0 disagreements.
+OPEN for Kaveh: the store holds two certificates of other games' kernels (king of the hill, three-check, plan 78.1) and rules/variants/ their GDL deltas -- rules
+  ingestion, not learned knowledge; kept unless he says otherwise.

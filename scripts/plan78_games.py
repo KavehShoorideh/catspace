@@ -30,9 +30,11 @@ BOARD = {"chess": chess.Board, "crazyhouse": chess.variant.CrazyhouseBoard, "ato
          "horde": chess.variant.HordeBoard}
 
 
-def worth() -> dict:
+def worth(variant: str = "chess") -> dict:
+    """The game's own valuation from the store (plan 78.4: `valuation_of`); a game the store knows no valuation of gets none (nothing borrowed from chess)."""
     from catspace.incubator.analyst.discovery import lemma_store as LS
-    return {k: int(v) for k, v in LS.valuation().worth.items()}
+    v = LS.valuation_of(variant)
+    return {k: int(x) for k, x in v.worth.items()} if v is not None else {}
 
 
 def board_of(variant: str, start960: int) -> chess.Board:
@@ -101,8 +103,7 @@ def main(argv: list) -> int:
     ap.add_argument("--fsf-skill", type=int, default=0)
     ap.add_argument("--tag", default="e2e")
     a = ap.parse_args(argv)
-    w = worth()
-    jobs = [(v, o, g % 2 == 0, 7800 + g, a.seconds, a.fsf_skill, w) for v in a.variants.split(",") for o in a.opponents.split(",") for g in range(a.games)]
+    jobs = [(v, o, g % 2 == 0, 7800 + g, a.seconds, a.fsf_skill, worth(v)) for v in a.variants.split(",") for o in a.opponents.split(",") for g in range(a.games)]
     t0 = time.time()
     with Pool(a.jobs) as pool:
         res = pool.map(play, jobs, chunksize=1)

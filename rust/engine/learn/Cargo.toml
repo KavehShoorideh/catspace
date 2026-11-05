@@ -1,0 +1,8 @@
+[package]
+name = "cs_learn"
+version = "0.1.0"
+edition = "2021"
+description = "plan 78.4: the learning layer -- watching games (records) and mining a game's knowledge from them (game-free: it reads only the Game trait)"
+
+[dependencies]
+cs_game = { path = "../game" }

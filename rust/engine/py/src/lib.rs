@@ -56,11 +56,59 @@ fn certify_coplay(variant: &str, gdl_text: &str, games: usize, seed: u64, base: 
     Ok((r.games, r.plies, r.states, r.disagreements))
 }
 
+/// watch(variant, engine, games, random_plies=6, movetime_ms=20, seed=78, threads=11, options={}) -> [(start, [moves], outcome)]: plan 78.4 -- instances by
+/// WATCHING an outside UCI engine play itself (seeded random openings; Chess960: each game its own start, seeded); the game judged by the kernel.
+#[pyfunction]
+#[pyo3(signature = (variant, engine, games, random_plies=6, movetime_ms=20, seed=78, threads=11, options=HashMap::new()))]
+fn watch(variant: &str, engine: &str, games: usize, random_plies: usize, movetime_ms: u64, seed: u64, threads: usize, options: HashMap<String, String>)
+         -> PyResult<Vec<(String, Vec<String>, Vec<i64>)>> {
+    let mut opts: Vec<(String, String)> = options.into_iter().collect();
+    if variant == "chess960" { opts.push(("UCI_Chess960".into(), "true".into())); } else if variant != "chess" { opts.push(("UCI_Variant".into(), variant.into())); }
+    kernel::KernelGame::new(variant, 518).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let v = variant.to_string();
+    struct T(cs_game::outside::UciTeacher);
+    impl cs_learn::watch::Teacher for T {
+        fn start(&mut self, start: &str) { self.0.begin(start) }
+        fn best(&mut self, moves: &[String]) -> Option<String> { self.0.answer(moves) }
+    }
+    let recs = cs_learn::watch::watch(|i| {
+        if v == "chess960" {
+            let n = (cs_game::rng::Rng::new(seed ^ (0x960 + i as u64)).next_u64() % 960) as u32;
+            let f = kernel::chess960_fen(n);
+            (kernel::KernelGame::from_fen("chess960", &f).unwrap(), format!("fen {f}"), f)
+        } else {
+            (kernel::KernelGame::new(&v, 518).unwrap(), "startpos".to_string(), String::new())
+        }
+    }, || cs_game::outside::UciTeacher::new(engine, &opts, movetime_ms).map(T), games, random_plies, seed, threads);
+    Ok(recs.into_iter().map(|r| (r.start, r.moves, r.outcome)).collect())
+}
+
+/// mine_valuation(variant, records, from_ply=10, fuse=64) -> {kinds, constant, beta, band, logloss_best, se_best, worth, price, logloss, excess, se, tried,
+/// positions, games, groups}: plan 78.4 -- THE VALUATION MINER on the records [(start, [moves], outcome)] (cs_learn::valuation).
+#[pyfunction]
+#[pyo3(signature = (variant, records, from_ply=10, fuse=64))]
+fn mine_valuation(py: Python<'_>, variant: &str, records: Vec<(String, Vec<String>, Vec<i64>)>, from_ply: usize, fuse: u32) -> PyResult<PyObject> {
+    let recs: Vec<cs_learn::Record> = records.into_iter().map(|(start, moves, outcome)| cs_learn::Record { start, moves, outcome }).collect();
+    let v = variant.to_string();
+    let c = cs_learn::valuation::corpus(|r: &cs_learn::Record| {
+        if r.start.is_empty() { kernel::KernelGame::new(&v, 518).ok() } else { kernel::KernelGame::from_fen(&v, &r.start).ok() }
+    }, &recs, from_ply);
+    let f = cs_learn::valuation::search(&c, fuse);
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("kinds", f.kinds)?; d.set_item("constant", f.constant)?; d.set_item("beta", f.beta)?; d.set_item("band", f.band)?;
+    d.set_item("logloss_best", f.logloss_best)?; d.set_item("se_best", f.se_best)?; d.set_item("worth", f.worth)?; d.set_item("price", f.price)?;
+    d.set_item("logloss", f.logloss)?; d.set_item("excess", f.excess)?; d.set_item("se", f.se)?; d.set_item("tried", f.tried)?;
+    d.set_item("positions", f.positions)?; d.set_item("games", f.games)?; d.set_item("groups", f.groups)?;
+    Ok(d.into())
+}
+
 #[pymodule]
 fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(variants, m)?)?;
     m.add_function(wrap_pyfunction!(certify_coplay, m)?)?;
     m.add_function(wrap_pyfunction!(best_move, m)?)?;
     m.add_function(wrap_pyfunction!(state, m)?)?;
+    m.add_function(wrap_pyfunction!(watch, m)?)?;
+    m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
     Ok(())
 }

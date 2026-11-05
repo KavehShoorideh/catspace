@@ -4395,3 +4395,7 @@ written), cs_tactics `forcing`, cs_planning `keep`, cs_decision; cs_engine (one 
 random mover W 28 D 7 L 1; against Fairy-Stockfish at skill 0 W 2 L 34. NEXT (the layers improve): planning by subgoals (goal regression; the trajectory model from
 game data) -- racing kings and antichess show it first; tactics: the definition of forcing (77.1) ported onto the Game trait (the claims beyond the outcome: the store's
 goals by their readers); the variants' GDL texts (Chess960, crazyhouse, atomic, antichess, racing kings, horde); the variants' valuations mined into the store.
+
+#### 78.4 RESULT (2026-11-04, JOURNAL): knowledge of a GAME (store entries scoped by `game`; `valuation_of`) and of an INSTANCE (discovery/instance.py records); cs_learn
+(watching a teacher; the valuation miner, its loops in Rust: it reproduces the store's 'material (mined)' on 76.4c's records); `learn` writes the store only with --write.
+Kaveh: the product is CHESS; the capability to learn another game's knowledge is built, not exercised.

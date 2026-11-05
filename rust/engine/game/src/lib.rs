@@ -13,6 +13,7 @@ pub mod certify;
 pub mod gdl_game;
 pub mod kernel;
 pub mod rng;
+pub mod outside;      // the binding to outside engines (their protocol), beside the kernel
 
 /// A role, by its index in `Game::roles`.
 pub type Role = usize;
@@ -46,4 +47,6 @@ pub trait Game {
     fn units(&self, _s: &Self::State) -> Vec<(Role, String)> { vec![] }
     /// The role that is not `r` in a game of two roles (the opponent).
     fn other(&self, r: Role) -> Role { 1 - r }
+    /// The legal move named `name` on `s` (the game's own notation), or None.
+    fn find_move(&self, s: &Self::State, name: &str) -> Option<Self::Move> { self.moves(s).into_iter().find(|m| self.move_name(s, m) == name) }
 }
