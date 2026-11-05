@@ -47,6 +47,19 @@ pub trait Game {
     fn units(&self, _s: &Self::State) -> Vec<(Role, String)> { vec![] }
     /// The role that is not `r` in a game of two roles (the opponent).
     fn other(&self, r: Role) -> Role { 1 - r }
+    /// THE UNITS A MOVE TAKES (plan 78.5): what the other sides lose by it, as (owner, kind name) -- by default the units that disappear from every side but the
+    /// mover's (a side's own units change on its own move only by its rules, e.g. a promotion: that is no loss). A faster binding may override it.
+    fn captured(&self, s: &Self::State, m: &Self::Move) -> Vec<(Role, String)> {
+        let me = self.mover(s);
+        let before = self.units(s);
+        let after = self.units(&self.apply(s, m));
+        let mut left: Vec<(Role, String)> = after.into_iter().filter(|(o, _)| Some(*o) != me).collect();
+        let mut out = vec![];
+        for u in before.into_iter().filter(|(o, _)| Some(*o) != me) {
+            if let Some(i) = left.iter().position(|x| *x == u) { left.swap_remove(i); } else { out.push(u); }
+        }
+        out
+    }
     /// The legal move named `name` on `s` (the game's own notation), or None.
     fn find_move(&self, s: &Self::State, name: &str) -> Option<Self::Move> { self.moves(s).into_iter().find(|m| self.move_name(s, m) == name) }
 }

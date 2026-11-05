@@ -36097,3 +36097,24 @@ OBS tests: test_plan78 11 passed (the generic test now over cs_learn too -- it c
   moved / renamed), test_plan77_1d, test_plan75: 25 passed; the co-play certificates re-run after the workspace lock changed: 0 disagreements.
 OPEN for Kaveh: the store holds two certificates of other games' kernels (king of the hill, three-check, plan 78.1) and rules/variants/ their GDL deltas -- rules
   ingestion, not learned knowledge; kept unless he says otherwise.
+
+## 2026-11-04 17:56 -- plan 78.5: THE NEW ENGINE ON PUZZLES -- a tactic's outcome is its LEDGER (the units each side loses); the judge is a variable, no values by default
+
+Kaveh 2026-11-04: "I don't want the legacy engine. I want the new engine ... see if we can solve puzzles"; "I don't want us to have value for the material yet. So that
+should be like a variable ... consider material lost as an outcome of a tactic. Okay, bishop lost, queen lost ... later we will consider what is the value of the
+thing that's lost ... we want to avoid piece losses".
+BUILT (rust/engine, over the Game trait only): `Game::captured(s, m)` -- what a move takes, generically the units that disappear from every side but the mover's (the kernel
+reads shakmaty's capture; atomic's explosions by the generic reading); cs_tactics::ledger -- THE LEDGER SEARCH: a line's outcome = the units each side lost along it (or the
+game's own outcome); a JUDGE turns it into a number and is THE VARIABLE: `Count` (no values: each unit of theirs +1, each of ours -1000 -- a loss outweighs every gain:
+losses avoided first; the default) and `Worth` (a valuation plugged in: a table of kind names to worths); alpha-beta minimax of the judge's sum, captures resolved at
+the horizon (each side may stand or capture), a transposition table, deepened while the clock lasts. The decision: the proof of the game's own outcome (forcing, now a
+fifth of the clock), then the ledger search (planning `keep` stays an approach, no longer the default). The trace names the line and its ledger: "the line ... -- they
+lose r, we lose p ...". cs_engine.best_move: `worth` empty -> Count, a table -> Worth. ~1.4 M nodes a second (one core).
+OBS 210 lichess puzzles (rand1_10 .. rand21_10; scripts/plan78_puzzles.py, 3 s each, solved = our move is the puzzle's first move; one run, directional):
+  judge COUNT (no values, the default): 155 / 210 solved (74 %) -- mates 66 / 66 (all proved by the forcing search), material 88 / 142 (62 %), other 1 / 2; the
+  material puzzles read to a mean depth of 4.8 plies;
+  judge WORTH (COMPARISON only: the store's chess valuation plugged in): 188 / 210 (90 %) -- mates 66 / 66, material 120 / 142 (85 %), other 2 / 2.
+  The difference is where a tactic trades: with no values a queen won for a bishop lost is a LOSS of ours first (Ddm9j: Bxd5 wins the queen for the bishop; with no
+  values h5d5 instead) -- the 32 puzzles the valuation adds are the cost of having none yet.
+OBS tests: test_plan78 11 passed (two new: the ledger wins a loose knight -- "they lose n" -- and does not lose an attacked queen with no values; the judge is a
+  variable); the co-play certificates re-run after kernel.rs changed (captured): 0 disagreements. The legacy engine is untouched.

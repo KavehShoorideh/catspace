@@ -1,15 +1,13 @@
-//! PLAN 78.2 THE DECISION LAYER: one move within the clock, from the `Game` trait alone. The anytime loop, each step traced: (1) a PROVED goal -- tactics
-//! `forcing` for us (the first move of a forced line is played); (2) DON'T LOSE -- every candidate after which the other side forces its goal within the danger
-//! depth is dropped (the outcome first: don't lose, then win); (3) the PLANNER's move among what is left (planning `keep`); with nothing left, every move is a
-//! candidate again (each loses: the planner picks the one that loses least by its measure). The clock is split: a share for our proof, the rest for the danger
-//! reads (named shares, not tuned numbers).
+//! PLAN 78.2 / 78.5 THE DECISION LAYER: one move within the clock, from the `Game` trait alone. The anytime loop, each step traced: (1) a PROVED goal -- tactics
+//! `forcing` for us (the first move of a forced line of the game's own outcome is played); (2) THE LEDGER SEARCH (tactics `ledger`, plan 78.5): the move whose line
+//! loses least of ours and wins most of theirs, by the judge -- the variable: no values by default (a unit lost is a unit lost, ours first), a valuation when one is
+//! plugged in; the minimax reads the game's outcome too (a line into their forced goal scores below every ledger: don't lose). Planning `keep` (78.2) stays an
+//! approach of its own, no longer the default. The clock is split: a share for the proof, the rest for the ledger search (named shares, not tuned numbers).
 use cs_game::Game;
-use cs_planning as planning;
 use cs_tactics::{self as tactics, Answer, Budget};
-use std::collections::HashMap;
 use std::time::Instant;
 
-pub const PROOF_SHARE: f64 = 0.5;          // the share of the clock our own proof may take
+pub const PROOF_SHARE: f64 = 0.2;          // the share of the clock the proof of the game's own outcome may take (the ledger search reads the outcome too)
 pub const MAX_DEPTH: u32 = 8;              // the deepest forced line asked (a named fuse: the clock is the real bound)
 pub const DANGER_DEPTH: u32 = 2;           // their forced goal looked for after each candidate, within this many of their moves
 pub const NODE_FUSE: u64 = 50_000_000;
@@ -21,8 +19,10 @@ pub struct Choice<M> {
     pub nodes: u64,
 }
 
-/// The move for the side to move at `s` within `seconds` (None at a terminal state).
-pub fn decide<G: Game>(g: &G, s: &G::State, seconds: f64, worth: &HashMap<String, i64>) -> Option<Choice<G::Move>> {
+pub const LEDGER_DEPTH: i32 = 64;          // the ledger search's deepest iteration (a named fuse: the clock is the real bound)
+
+/// The move for the side to move at `s` within `seconds` (None at a terminal state). `judge`: the ledger's judge (the variable: `Count` -- no values -- or `Worth`).
+pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J) -> Option<Choice<G::Move>> {
     let me = g.mover(s)?;
     let t0 = Instant::now();
     let moves = g.moves(s);
@@ -38,35 +38,20 @@ pub fn decide<G: Game>(g: &G, s: &G::State, seconds: f64, worth: &HashMap<String
         Answer::None { depth } => trace.push(format!("tactics forcing: no forced goal within {depth} move(s) ({} nodes)", b.nodes)),
         Answer::Gap { depth } => trace.push(format!("tactics forcing: GAP at depth {depth} -- the clock cut the reading ({} nodes)", b.nodes)),
     }
-    let mut nodes = b.nodes;
-    // (2) don't lose: drop the candidates after which they force their goal
-    let left = (seconds - t0.elapsed().as_secs_f64()).max(0.0);
-    let mut db = Budget::new(left * 0.8, NODE_FUSE);
-    let (mut safe, mut lost, mut unread) = (vec![], vec![], 0usize);
-    for m in &moves {
-        let q = g.apply(s, m);
-        let bad = match g.outcome(&q) {
-            Some(v) => !tactics::won(&v, me) && v[me] < *v.iter().max().unwrap_or(&0),
-            None => match g.mover(&q) {
-                Some(them) if them != me => match tactics::wins_in(g, &q, them, DANGER_DEPTH, &mut db) {
-                    Ok(Some(_)) => true,
-                    Ok(None) => false,
-                    Err(_) => { unread += 1; false }          // (cut: a GAP -- the move stays a candidate, unread)
-                },
-                _ => false,
-            },
-        };
-        if bad { lost.push(g.move_name(s, m)); } else { safe.push(m.clone()); }
-    }
-    nodes += db.nodes;
-    trace.push(format!("don't lose: {} candidate(s) keep us from their forced goal within {DANGER_DEPTH}; dropped {}{}{}", safe.len(), lost.len(),
-                       if lost.is_empty() { String::new() } else { format!(" ({})", lost.iter().take(6).cloned().collect::<Vec<_>>().join(", ")) },
-                       if unread > 0 { format!("; {unread} unread (GAP)") } else { String::new() }));
-    let cands = if safe.is_empty() { trace.push("don't lose: every move loses -- all are candidates again".into()); moves.clone() } else { safe };
-    // (3) the planner
-    let (i, (v, n, worst)) = planning::keep(g, s, me, &cands, worth)?;
-    let mv = cands[i].clone();
-    trace.push(format!("planning keep: {} -- its worst reply{} leaves our measure {v} ({n} replies) [HEURISTIC]", g.move_name(s, &mv),
-                       if worst.is_empty() { String::new() } else { format!(" {worst}") }));
+    // (2) THE LEDGER SEARCH (plan 78.5): the move whose line loses least of ours and wins most of theirs by the judge (the variable: no values by default)
+    let left = (seconds - t0.elapsed().as_secs_f64()).max(0.01);
+    let mut ls = tactics::ledger::Search::new(g, judge, me, left);
+    let ln = ls.run(s, LEDGER_DEPTH);
+    let nodes = b.nodes + ln.nodes;
+    let Some(i) = ln.first_index else {
+        let mv = moves[0].clone();
+        trace.push("ledger search: no line read within the clock -- the first legal move".into());
+        return Some(Choice { mv, proved: false, trace, nodes });
+    };
+    let mv = g.moves(s)[i].clone();
+    let who = |r: cs_game::Role| if r == me { "we" } else { "they" };
+    let lost: Vec<String> = ln.lost.iter().map(|(o, k)| format!("{} lose {k}", who(*o))).collect();
+    trace.push(format!("ledger search [{}]: {} at depth {} ({} nodes): the line {} -- {}; value {}", judge.name(), g.move_name(s, &mv), ln.depth, ln.nodes,
+                       ln.line.join(" "), if lost.is_empty() { "nobody loses a unit".to_string() } else { lost.join(", ") }, ln.value));
     Some(Choice { mv, proved: false, trace, nodes })
 }

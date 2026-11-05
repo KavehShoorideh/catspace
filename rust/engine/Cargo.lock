@@ -46,6 +46,7 @@ dependencies = [
  "cs_game",
  "cs_gdl",
  "cs_learn",
+ "cs_tactics",
  "pyo3",
 ]
 

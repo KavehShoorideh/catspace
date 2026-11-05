@@ -82,6 +82,15 @@ impl Game for KernelGame {
     }
     fn move_name(&self, _s: &VariantPosition, m: &Move) -> String { m.to_uci(self.mode).to_string() }
     fn key(&self, s: &VariantPosition) -> u64 { s.zobrist_hash::<Zobrist64>(EnPassantMode::Legal).0 }
+    fn captured(&self, s: &VariantPosition, m: &Move) -> Vec<(Role, String)> {
+        if self.variant == Variant::Atomic {                                  // (an explosion takes more than the captured unit: the trait's own reading)
+            let me = if s.turn() == Color::White { 0 } else { 1 };
+            let before: Vec<(Role, String)> = self.units(s).into_iter().filter(|(o, _)| *o != me).collect();
+            let mut left: Vec<(Role, String)> = self.units(&self.apply(s, m)).into_iter().filter(|(o, _)| *o != me).collect();
+            return before.into_iter().filter(|u| if let Some(i) = left.iter().position(|x| x == u) { left.swap_remove(i); false } else { true }).collect();
+        }
+        match m.capture() { Some(r) => vec![(if s.turn() == Color::White { 1 } else { 0 }, r.char().to_string())], None => vec![] }
+    }
     fn units(&self, s: &VariantPosition) -> Vec<(Role, String)> {
         s.board().iter().map(|(_sq, p)| (if p.color == Color::White { 0 } else { 1 }, p.role.char().to_string())).collect()
     }

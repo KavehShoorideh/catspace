@@ -4399,3 +4399,8 @@ goals by their readers); the variants' GDL texts (Chess960, crazyhouse, atomic, 
 #### 78.4 RESULT (2026-11-04, JOURNAL): knowledge of a GAME (store entries scoped by `game`; `valuation_of`) and of an INSTANCE (discovery/instance.py records); cs_learn
 (watching a teacher; the valuation miner, its loops in Rust: it reproduces the store's 'material (mined)' on 76.4c's records); `learn` writes the store only with --write.
 Kaveh: the product is CHESS; the capability to learn another game's knowledge is built, not exercised.
+
+#### 78.5 RESULT (2026-11-04, JOURNAL): THE NEW ENGINE SOLVES PUZZLES -- the ledger search (a tactic's outcome = the units each side loses; the judge a variable, no values by
+default): 210 lichess puzzles at 3 s, 155 solved (74 %: mates 66 / 66 proved, material 88 / 142); with the store's valuation plugged in as a comparison 188 (90 %).
+NEXT (Kaveh's questions, 2026-11-04): (1) the census of tactics by their DEFECTS (0, 1, 2; 3 where few) per position, over the regression; (2) its recall on the puzzles and
+against Stockfish's lines; (3) the density of tactics along human games (the lichess records) against the outcome; (4) if it holds, tactic density as a policy prior.

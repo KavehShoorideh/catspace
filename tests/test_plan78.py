@@ -82,11 +82,11 @@ def test_78_2_every_variant_gets_a_legal_move_and_dont_lose_drops_a_losing_one()
     for v in CE.variants():
         mv, proved, trace, nodes, fen = CE.best_move(v, None, [], 0.2, w)
         assert mv in CE.state(v)[2], (v, mv)
-    # chess, the fool's mate both ways: after 1.f3 e5 2.g4 Black's Qh4# is proved; after 1.f3 e5 White's 2.g4?? (it allows Qh4#) is dropped by don't-lose
+    # chess, the fool's mate both ways: after 1.f3 e5 2.g4 Black's Qh4# is proved; after 1.f3 e5 White's 2.g4?? (it allows Qh4#) is not played (plan 78.5)
     mv, proved, trace, nodes, fen = CE.best_move("chess", None, ["f2f3", "e7e5", "g2g4"], 0.5, w)
     assert mv == "d8h4" and proved                                                    # (Black to move: the fool's mate, proved)
     mv, proved, trace, nodes, fen = CE.best_move("chess", None, ["f2f3", "e7e5"], 0.5, w)
-    assert mv != "g2g4" and any("don't lose" in x and "g2g4" in x for x in trace)     # (White: g4?? allows Qh4#, dropped)
+    assert mv != "g2g4" and any("ledger search" in x for x in trace)                 # (White: g4?? allows Qh4#: the ledger search reads their mate below every ledger)
 
 
 # ---- 78.4 knowledge of a game (the store, scoped by `game`) and of an instance of it (discovery/instance.py); the miners in Rust (cs_learn)
@@ -126,3 +126,22 @@ def test_78_4_watching_an_outside_engine_makes_instances_not_store_entries(tmp_p
     back = IN.load("chess", "t")
     assert [i.record() for i in back] == [(s, m, o) for s, m, o in recs]
     print(f"OBS 78.4 watched 2 chess games: plies {[len(m) for _s, m, _o in recs]}, outcomes {[o for _s, _m, o in recs]}")
+
+
+# ---- 78.5 the ledger search: a tactic's outcome is the units each side loses; the judge (no values by default) is the variable
+
+def test_78_5_the_ledger_search_wins_a_loose_unit_and_avoids_losing_one_with_no_values():
+    """No values: Qa4 against a knight it can take for nothing is the ledger 'they lose n'; a queen attacked by a pawn steps away (ours first)."""
+    mv, proved, trace, nodes, _f = CE.best_move("chess", "4k3/8/2n5/8/Q7/8/8/4K3 w - - 0 1", [], 1.0)
+    assert mv == "a4c6" and "they lose n" in trace[-1] and "we lose" not in trace[-1]
+    mv, proved, trace, nodes, _f = CE.best_move("chess", "4k3/8/8/2p5/3Q4/8/8/4K3 w - - 0 1", [], 1.0)        # the c5 pawn attacks the queen on d4
+    assert "we lose q" not in trace[-1]
+    print(f"OBS 78.5 ledger: {trace[-1][:200]}")
+
+
+def test_78_5_the_judge_is_a_variable():
+    """The same position read by the two judges: with no values a queen-for-bishop exchange is a loss of ours; with a valuation plugged in it is a gain."""
+    fen = "r5k1/2q1b1pp/pp2p1r1/3b3Q/1P1Np3/1BPnP3/P5PP/R4RK1 w - - 1 25"      # rand14_10 Ddm9j: Bxd5 wins the queen for a bishop
+    _mv, _p, t_count, _n, _f = CE.best_move("chess", fen, [], 2.0)
+    _mv, _p, t_worth, _n, _f = CE.best_move("chess", fen, [], 2.0, _worth())
+    assert "[count" in t_count[-1] and "[worth" in t_worth[-1]

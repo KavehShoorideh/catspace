@@ -17,15 +17,17 @@ fn state_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) -
 mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>::State; }
 
 /// best_move(variant, fen=None, moves=[], seconds=1.0, worth={}, start960=518) -> (move or None, proved, [trace], nodes, fen after the moves): THE END-TO-END
-/// DECISION (plan 78.2: tactics `forcing`, don't lose, planning `keep`) for the side to move after `moves` from the start (or from `fen`). `worth`: the store's
-/// valuation (kind name -> worth) the planner's measure counts.
+/// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). `worth`: the ledger's judge --
+/// empty: no values (a unit lost is a unit lost, ours first); a table (kind name -> worth): that valuation plugged in.
 #[pyfunction]
 #[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518))]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
     let (g, s) = state_of(variant, fen, start960, &moves)?;
     let f = g.fen(&s);
-    Ok(match cs_decision::decide(&g, &s, seconds, &worth) {
+    let choice = if worth.is_empty() { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Count) }
+                 else { cs_decision::decide(&g, &s, seconds, &cs_tactics::ledger::Worth(worth.clone())) };
+    Ok(match choice {
         Some(c) => (Some(g.move_name(&s, &c.mv)), c.proved, c.trace, c.nodes, f),
         None => (None, false, vec!["the game is over".into()], 0, f),
     })
