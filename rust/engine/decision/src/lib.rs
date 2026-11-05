@@ -31,6 +31,13 @@ pub fn decide<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: 
 /// `decide` within an INSTANCE (plan 78.8): `history` -- the keys of the positions the game's record holds before `s` (a position met again is the rules' draw).
 pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64], prior_depth: i32)
                                                      -> Option<Choice<G::Move>> {
+    decide_with(g, s, seconds, judge, prior, history, prior_depth, LEDGER_SHARE)
+}
+
+/// `decide_in` with the ledger's share of the clock when the prior is on (`ledger_share`; the prior reads ties with the rest).
+#[allow(clippy::too_many_arguments)]
+pub fn decide_with<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior: bool, history: &[u64], prior_depth: i32,
+                                                       ledger_share: f64) -> Option<Choice<G::Move>> {
     let me = g.mover(s)?;
     let t0 = Instant::now();
     let moves = g.moves(s);
@@ -47,7 +54,7 @@ pub fn decide_in<G: Game, J: tactics::ledger::Judge>(g: &G, s: &G::State, second
         Answer::Gap { depth } => trace.push(format!("tactics forcing: GAP at depth {depth} -- the clock cut the reading ({} nodes)", b.nodes)),
     }
     // (2) THE LEDGER SEARCH (plan 78.5): the move whose line loses least of ours and wins most of theirs by the judge (the variable: no values by default)
-    let left = (seconds * if prior { LEDGER_SHARE } else { 1.0 } - t0.elapsed().as_secs_f64()).max(0.01);
+    let left = (seconds * if prior { ledger_share } else { 1.0 } - t0.elapsed().as_secs_f64()).max(0.01);
     let mut ls = tactics::ledger::Search::new(g, judge, me, left);
     ls.history = history.iter().copied().collect();
     let ln = ls.run(s, LEDGER_DEPTH);

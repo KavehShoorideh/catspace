@@ -99,6 +99,9 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         out
     }
 
+    /// A fresh node budget for the next reading, the table kept (the census reads many neighbouring positions with one search: their sub-positions are shared).
+    pub fn rebudget(&mut self, nodes: u64) { self.fuse = self.nodes + nodes; self.stopped = false; }
+
     /// Go on reading after the clock stopped the search: a fresh clock of `seconds` (the table kept).
     pub fn resume(&mut self, seconds: f64) {
         self.stopped = false;

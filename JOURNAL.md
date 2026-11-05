@@ -36229,3 +36229,13 @@ OBS matches (0.5 s a move, 4 random opening plies; one run each):
 READING (directional): with a valuation the human-games signal carries into play -- among equal moves, the one that leaves our tactics outnumbering theirs wins more --
   and its whole gain is spent on its own clock (the census is the cost: two readings per tie move, about thirty searches each at one defect). Next for the prior: a
   cheaper census (one search for the threats of all quiet moves; the tie moves read in parallel when one game has the machine), then the net test again.
+
+## 2026-11-05 01:12 -- plan 78.7 (d): a cheaper census (one search, one table, for every reading) and the prior's clock share -- still even net of its cost
+
+BUILT: the census reads every position with ONE search (`Search::rebudget`: a fresh node budget, the table kept -- the values are of the future, valid across readings):
+  OBS 210 puzzles, defects <= 1, depth 3, material: the same answers among the 0-defect tactics (135 / 210) and the same counts (1.1 / 5.4 a position) at 0.07 s a
+  position, was 0.11. The ledger's share of the clock with the prior on is a parameter (best_move ledger_share; the match setting `prior3l85`).
+OBS matches against the plain engine at the full clock (material plugged in, 0.5 s a move, 160 games each; one run each): prior3 with the cheaper census 0.484 (se 0.028;
+  W 37 D 81 L 42; the prior chose 5258 of 7850 moves); prior3 with the ledger on 85 % of the clock 0.478 (0.022; W 21 D 111 L 28; it chose 2430 of 7247 -- the smaller
+  share reads fewer ties). With the 78.7 (c) direct test (0.584 at equal search), THE PRIOR'S CHOICE IS WORTH ITS CLOCK, NOT MORE, at every split tried. The way to a net
+  gain is structural: read the threats of all quiet moves in one search, and read the tie moves in parallel when one game has the machine.

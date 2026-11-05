@@ -45,13 +45,15 @@ pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u3
     let Some(me) = g.mover(s) else { return rep };
     let mut seen: HashSet<String> = HashSet::new();
     let mut frontier: Vec<(G::State, Vec<String>)> = vec![(s.clone(), vec![])];
+    let mut se = Search::with_fuse(g, judge, me, fuse);              // ONE search for every reading: the table is shared (values are of the future: valid across them)
     for k in 0..=max_defects {
         rep.frontier.push(frontier.len());
         for (st, free) in &frontier {
-            let mut se = Search::with_fuse(g, judge, me, fuse);
+            let n0 = se.nodes;
+            se.rebudget(fuse);
             let vals = se.gainers(st, depth);
             rep.readings += 1;
-            rep.nodes += se.nodes;
+            rep.nodes += se.nodes - n0;
             if se.cut() { rep.cut += 1; }
             for (i, v) in vals {
                 if v <= 0 { break; }                                  // (best first: the rest gain nothing)
