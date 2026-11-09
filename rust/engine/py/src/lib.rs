@@ -254,23 +254,92 @@ fn facts(variant: &str, spec: &str, vocabulary: &str, fen: Option<&str>, moves: 
     Ok(fs.into_iter().map(|f| { let mut v = vec![f.relation]; v.extend(f.args); v }).collect())
 }
 
-/// estimate(variant, fen, moves, seconds, max_nodes, seed, exploration, max_playout) -> {move, value, candidates, visits, playouts, cut, depth, nodes, seconds}: the
+/// The product of two priors' weights (the gain prior and the lemma prior together).
+#[derive(Clone)]
+struct ProductPrior<A: cs_planning::rollout::Prior + Clone, B: cs_planning::rollout::Prior + Clone>(A, B);
+impl<A: cs_planning::rollout::Prior + Clone, B: cs_planning::rollout::Prior + Clone> cs_planning::rollout::Prior for ProductPrior<A, B> {
+    fn weights<G: Game>(&self, g: &G, s: &G::State, moves: &[G::Move]) -> Vec<f64> {
+        self.0.weights(g, s, moves).into_iter().zip(self.1.weights(g, s, moves)).map(|(a, b)| a * b).collect()
+    }
+    fn name(&self) -> String { format!("{} x {}", self.0.name(), self.1.name()) }
+}
+
+/// The rollout and leaf names the operator's evidence line states ("... rollout <name>, leaf <name>, value for role ...").
+fn playout_names(evidence: &[String]) -> (String, String) {
+    for e in evidence {
+        if let (Some(a), Some(b), Some(c)) = (e.find(", rollout "), e.find(", leaf "), e.find(", value for role")) {
+            if a < b && b < c { return (e[a + 10..b].to_string(), e[b + 7..c].to_string()); }
+        }
+    }
+    (String::new(), String::new())
+}
+
+/// What `estimate` was asked of the playouts, as read from its keywords.
+struct PlayoutSpec<'a> { rollout: &'a str, leaf: &'a str, eps: f64, scale: f64, temperature: f64, floor: f64, prior: bool, boost: f64, seed: u64, exploration: f64, max_playout: usize }
+
+fn estimate_leaf<G: Game, R: cs_planning::mcts::Rollout + Clone, J: cs_tactics::ledger::Judge + Clone>(g: &G, s: &G::State, me: usize, p: &PlayoutSpec, rollout: R, judge: J,
+                                                                                                       budget: cs_operator::Budget) -> Result<cs_operator::Outcome<G::Move>, String> {
+    use cs_operator::Operator;
+    let goal = cs_operator::Goal::Estimate { role: me };
+    match p.leaf {
+        "draw" => Ok(cs_planning::mcts::MctsOp::with_policy(p.exploration, p.max_playout, rollout, cs_planning::rollout::Draw).run(g, s, &goal, budget)),
+        "balance" => Ok(cs_planning::mcts::MctsOp::with_policy(p.exploration, p.max_playout, rollout, cs_planning::rollout::Balance::new(judge, p.scale)).run(g, s, &goal, budget)),
+        other => Err(format!("leaf: \"{other}\" is not draw or balance")),
+    }
+}
+
+fn estimate_with<G: Game, J: cs_tactics::ledger::Judge + Clone>(g: &G, s: &G::State, me: usize, p: &PlayoutSpec, judge: J, lemmas: Option<cs_decision::LemmaPrior>,
+                                                                budget: cs_operator::Budget) -> Result<cs_operator::Outcome<G::Move>, String> {
+    use cs_planning::rollout::{GainPrior, Greedy, Weighted};
+    match (p.rollout, p.prior, lemmas) {
+        ("uniform", false, _) => estimate_leaf(g, s, me, p, cs_planning::mcts::Uniform::new(p.seed), judge, budget),
+        ("greedy", false, _) => estimate_leaf(g, s, me, p, Greedy::new(judge.clone(), p.eps, p.seed), judge, budget),
+        ("gain", false, _) => estimate_leaf(g, s, me, p, Weighted::new(GainPrior { judge: judge.clone(), temperature: p.temperature }, p.floor, p.seed), judge, budget),
+        ("lemma", _, Some(lp)) | ("uniform", true, Some(lp)) => estimate_leaf(g, s, me, p, Weighted::new(lp, p.floor, p.seed), judge, budget),
+        ("gain", true, Some(lp)) => estimate_leaf(g, s, me, p, Weighted::new(ProductPrior(GainPrior { judge: judge.clone(), temperature: p.temperature }, lp), p.floor, p.seed), judge, budget),
+        ("greedy", true, _) => Err("prior: a lemma prior combines with rollout \"uniform\" or \"gain\" (or use rollout \"lemma\"), not \"greedy\"".into()),
+        ("lemma", _, None) | (_, true, None) => Err("the lemma prior needs store and spec (the snapshot path and the variant's description text)".into()),
+        (other, _, _) => Err(format!("rollout: \"{other}\" is not uniform, greedy, gain or lemma")),
+    }
+}
+
+/// estimate(variant, fen, moves, seconds, max_nodes, seed, exploration, max_playout, rollout="uniform", leaf="draw", eps=0.1, scale=3.0, temperature=1.0, store=None,
+/// prior=False, floor=0.05, spec=None, boost=4.0) -> {move, value, candidates, visits, playouts, cut, depth, nodes, seconds, rollout, leaf}: the
 /// Monte Carlo tree search operator's ESTIMATE of the position for the side to move (sampled playouts: an estimate, never a proof). `candidates` are the legal moves in
 /// visit order (most visited first), `visits` one row per root move (name, visits, mean outcome in hundredths of an outcome unit), `value` the root's mean for the
 /// mover in the same units. One source of a ranking among others (the teacher is another); game-free behind the Operator interface.
+/// PLAYOUTS: `rollout` is "uniform" (random moves), "greedy" (with probability `eps` random, else the move of best immediate gain), "gain" (sampled by exp(gain /
+/// `temperature`) plus `floor`) or "lemma" (sampled by the snapshot's lemma prior: `boost` on the moves a bound lemma names, 1 on the rest, plus `floor`). `leaf` is what
+/// a playout cut at `max_playout` scores: "draw" (50 for every role) or "balance" (the units' balance by the judge, squashed by `scale` worth units). The judge is the
+/// `store` snapshot's judge record (its worths) or, without one, a count (every unit worth 1). `prior=True` (with `store` and `spec`, the variant's description text)
+/// multiplies the weights of "uniform" or "gain" by the lemma prior's.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=0.2, max_nodes=10_000_000, seed=1, exploration=cs_planning::mcts::EXPLORATION, max_playout=cs_planning::mcts::MAX_PLAYOUT))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=0.2, max_nodes=10_000_000, seed=1, exploration=cs_planning::mcts::EXPLORATION, max_playout=cs_planning::mcts::MAX_PLAYOUT,
+                    rollout="uniform", leaf="draw", eps=0.1, scale=3.0, temperature=1.0, store=None, prior=false, floor=0.05, spec=None, boost=4.0))]
 #[allow(clippy::too_many_arguments)]
-fn estimate(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, max_nodes: u64, seed: u64, exploration: f64, max_playout: usize) -> PyResult<PyObject> {
-    use cs_operator::Operator;
+fn estimate(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, max_nodes: u64, seed: u64, exploration: f64, max_playout: usize, rollout: &str,
+            leaf: &str, eps: f64, scale: f64, temperature: f64, store: Option<&str>, prior: bool, floor: f64, spec: Option<&str>, boost: f64) -> PyResult<PyObject> {
     let (g, s) = state_of(variant, fen, 518, &moves)?;
     let Some(me) = g.mover(&s) else { return Err(pyo3::exceptions::PyValueError::new_err("the game is over")) };
-    let op = cs_planning::mcts::MctsOp::new(exploration, max_playout, seed);
-    let o = py.allow_threads(|| op.run(&g, &s, &cs_operator::Goal::Estimate { role: me }, cs_operator::Budget::new(seconds, max_nodes)));
+    let p = PlayoutSpec { rollout, leaf, eps, scale, temperature, floor, prior, boost, seed, exploration, max_playout };
+    let snapshot = match store { Some(path) => Some(cs_memory::snapshot::Snapshot::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?), None => None };
+    let o = py.allow_threads(|| -> Result<_, String> {
+        let budget = cs_operator::Budget::new(seconds, max_nodes);
+        // (the fact view is built here: it is not sent between threads)
+        let view = match (&snapshot, spec) { (Some(sn), Some(text)) if p.prior || p.rollout == "lemma" => Some(cs_game::gdl_game::FactView::new(text, sn.vocabulary.clone())?), _ => None };
+        let lemmas = match (&snapshot, &view) { (Some(sn), Some(v)) => Some(cs_decision::LemmaPrior::new(sn, v, p.boost)), _ => None };
+        match snapshot.as_ref().and_then(|sn| sn.judge.as_ref()) {
+            Some(j) => estimate_with(&g, &s, me, &p, cs_tactics::ledger::Worth { name: j.name.clone(), table: j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), ours_first: j.ours_first }, lemmas, budget),
+            None => estimate_with(&g, &s, me, &p, cs_tactics::ledger::Count, lemmas, budget),
+        }
+    }).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let legal = g.moves(&s);
     let name = |i: usize| g.move_name(&s, &legal[i]);
     let d = pyo3::types::PyDict::new(py);
     d.set_item("status", format!("{:?}", o.status))?;
+    let (rollout_name, leaf_name) = playout_names(&o.evidence);
+    d.set_item("rollout", rollout_name)?;
+    d.set_item("leaf", leaf_name)?;
     d.set_item("move", o.mv.as_ref().map(|m| g.move_name(&s, m)))?;
     d.set_item("value", o.value)?;
     d.set_item("depth", o.depth)?;

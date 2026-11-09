@@ -5,6 +5,7 @@
 //! approaches that come after this one.
 pub mod operators;
 pub mod mcts;
+pub mod rollout;
 
 use cs_game::{Game, Role};
 use std::collections::HashMap;

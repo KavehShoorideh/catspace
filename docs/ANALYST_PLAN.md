@@ -4541,3 +4541,37 @@ READING: on this data neither source added a verified lemma; the teacher's disag
 of 78.17 is the loop closing -- the engine measures its own coarseness, chooses a source, and every source's touch is recorded and reversible -- not a gain in lemmas yet.
 NOT DONE: a rank source stronger than 0.2 s of uniform playouts (a Rollout from the ledger or a lemma prior); the training-time controller in Rust over `Operator`s of both kits (the Python `plan_tools`
 is its first, one-rule form); the climb's cost; negated literals; the second game's Python glue.
+
+#### 78.18 THE STRONGER RANK SOURCE: INFORMED PLAYOUTS AND A LEAF VALUATION AS PLUGGABLE PIECES (2026-11-08; Kaveh: "continue building the stronger rank source")
+WHY: 78.17 measured that 0.2 s of UNIFORM playouts scored at the game's end is a noisy judge (110 disagreements, 4 confirmed). Random play in a game with units is nearly noise: a playout gives
+away what it holds, and a playout cut at its cap scores a draw whatever stands on the board. Two cheap, generic remedies, each a small trait so other policies can plug in beside them.
+BUILT (one Sonnet agent, Rust; integration here): (1) `Judge::worth(kind)` -- the plain worth of a unit kind (Count: 1; Worth: its table). (2) `cs_planning::rollout`: `Leaf` (the value per role of a
+NON-terminal state where a playout is cut): `Draw` (as before) and `Balance<J>` (each role's worth balance squashed by a logistic with a `scale` in worth units; 0 is exactly 50); `Greedy<J>` (epsilon-
+greedy over a move's immediate gain: captured worth plus a change of kind; uniform when nothing gains); `Prior` (weights over the legal moves) with `Weighted<P>` sampling proportional to weight plus a
+floor, and `GainPrior<J>` (weight exp(gain / temperature)); `search` takes a `leaf`; `MctsOp::with_policy(.., rollout, leaf)`; the evidence line names both. (3) `cs_decision::LemmaPrior`: a snapshot's
+bound lemmas as a `Prior` (boost for the moves a bound lemma's response matches), matched exactly as LemmaOp does. (4) `cs_engine.estimate(.., rollout=uniform|greedy|gain|lemma, leaf=draw|balance,
+eps, scale, temperature, store, prior, floor, spec, boost)`: the store's judge record builds the balance leaf's Worth. (5) sleep.py: `source_of("mcts:<rollout>/<leaf>")` names a policy; EstimateSource
+forwards the options and names itself `mcts:<rollout>/<leaf>`; `--source mcts:greedy/balance`. (6) discovery/rank_bench.py: a rank source's AGREEMENT with a reference (a teacher: a measurement, training
+only) on positions sampled from a wake log spread over its games -- top-1, top-3, the reference's best move's rank in the source's order -- and a MATCH of two rank sources (the first move of each
+ranking; the game's own outcome, the record's draw, the ply cap). Tests: planning/tests/rollout.rs (12), decision/tests/lemma_prior.rs (2), tests/test_plan78_19.py (5, integration).
+OBS the scholar's-mate position, 0.3 s: uniform/draw h5f7 value 9338, 22970 playouts; greedy/balance (material (mined), scale 3) h5f7 9909, 207987 playouts (952 cut: greedy play ends games fast);
+  gain/balance h5f7 9047, 14403 playouts.
+OBS RANK AGREEMENT with Stockfish (300 ms) on 60 positions of the 48-game log (one of each game in turn), each source 0.2 s a position (rank_bench_chess_m48_agree.out):
+  uniform (78.17's source):  top1 0.033, top3 0.133, mean rank of the reference's best 14.1 (median 13)
+  uniform + balance leaf:    top1 0.067, top3 0.183, mean rank 14.4 (median 15)         -- the leaf alone does little
+  greedy + draw:             top1 0.100, top3 0.217, mean rank 13.3 (median 12)         -- the greedy rollout alone helps
+  greedy + balance:          top1 0.100, top3 0.167, mean rank 11.8 (median 9)
+  gain + balance:            top1 0.100, top3 0.267, mean rank 11.6 (median 9)          -- the best of the six: the reference's move moves up from 14th to 9th in the median
+  lemma + balance:           top1 0.033, top3 0.150, mean rank 14.1 (median 12), 0.355 s a position -- no better than uniform: see the cost below
+  For context the ledger search's own choice (cs_engine.best_move, 0.2 s) agrees top-1 on 0.217 of the same positions (material (mined) and count alike): the estimate is still the weaker judge.
+OBS THE LEMMA PRIOR'S COST: the prior derives the position's facts (the variant's description evaluated as a fact view) at EVERY playout ply: 196 nodes and 1 playout in 0.3 s, 512 nodes and 2 playouts
+  in 1.0 s, against 527511 nodes and 11141 playouts for uniform in 0.3 s -- about a thousand times a uniform ply. At that price a lemma prior belongs at the TREE's nodes (once per expansion, a PUCT prior)
+  or behind a cache by state key, not in the playouts; as a rank source it is wired, named and measured, and not yet useful. On the lemma's own seed position (m48_c0:10:38) it ranked b4a5 first and the
+  lemma's b4b5 third (uniform: 7th) -- from two playouts, which is no evidence.
+OBS THE MATCH, greedy + balance against uniform (no store: every unit counts one, scale 3), 0.2 s a move, 20 games with 4 random opening plies, colours alternating (rank_bench_chess_match_gb_u.out):
+  score 0.850 (se 0.072), W16 D2 L2, 90 plies a game, 1 unfinished at the 160-ply cap -- as a PLAYER the informed estimate is far stronger than the uniform one at the same clock, though as a judge of
+  Stockfish's choice the gain is modest: it plays sound captures and keeps its material, which is most of what beats random playouts; agreeing with a strong engine's move is another matter.
+READING: informed playouts give a real but modest gain in agreement (median rank 13 -> 9 at 0.2 s) for the same clock; the estimate remains weaker than the exact ledger search at that clock (top-1 0.10 vs
+0.22), which is the point of keeping it a SECOND source. The cheap pieces (gain, greedy, balance) are the ones to use; the lemma prior needs a faster fact view first.
+NOT DONE: the lemma prior at the tree's nodes (PUCT) with a fact cache; the match of the policies at equal clock over more games; the stronger source inside sleep on the 48-game log (the 78.17 comparison
+re-run with `--source mcts:gain/balance`); a learned prior as a `Prior`.

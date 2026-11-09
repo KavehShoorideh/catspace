@@ -7,6 +7,9 @@
 //! is another `Controller`, and plugs in here without touching the operators.
 pub mod batch;
 pub mod cards;
+pub mod lemma_prior;
+
+pub use lemma_prior::LemmaPrior;
 
 use cs_game::Game;
 use cs_operator::{drive, Action, Context, Controller, Goal, Mode, Operator, Status};

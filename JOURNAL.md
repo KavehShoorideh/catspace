@@ -36352,3 +36352,14 @@ OBS same 48-game log, judge material (mined), depth 5 -- baseline 1 lemma; + tea
 READING: the loop closes (measure the lack, choose a source, record its touch) but no source added a lemma on this data; the estimate at 0.2 s is a noisy judge of exact depth-5 values. Nothing committed.
 OBS gate engine: 55 files, 695 passed, 2 failed (the three cs_game kernel certificates stale through the changed sources and lock), 1 xfailed. Certificates re-earned by co-play: chess 6431, king of the hill 4014,
   three-check 1833 positions, 0 disagreements; test_plan77_1d and test_plan78 then pass (22).
+
+## 2026-11-08 15:30 plan 78.18 -- the stronger rank source (informed playouts, a leaf valuation, the lemma prior) as pluggable pieces; the rank bench
+COMMITTED first: 10eb757b (plans 78.12-78.17, Rust) and f55887e0 (plans 78.14-78.17, Python, tests, docs); the run outputs under artifacts/experiments stay local, as agreed.
+BUILT by one Sonnet agent (generic, modular, unit-tested; repo_structure.md updated) and integrated here: Judge::worth; cs_planning::rollout (Leaf: Draw | Balance; Greedy; Prior + Weighted; GainPrior);
+search takes a leaf; MctsOp::with_policy; cs_decision::LemmaPrior; cs_engine.estimate(rollout=, leaf=, store=, ..); sleep.source_of("mcts:<rollout>/<leaf>"); discovery/rank_bench.py (agreement with a
+reference on logged positions; a match of two rank sources). Tests: rollout.rs 12, lemma_prior.rs 2, test_plan78_19 5; the plan-78 suites (46) and the Rust workspace pass.
+OBS agreement with Stockfish 300 ms, 60 positions of the m48 log, 0.2 s a position: uniform top1 0.033 / top3 0.133 / median rank 13; gain+balance 0.100 / 0.267 / median 9; greedy+balance 0.100 / 0.167 / 9;
+  lemma+balance 0.033 / 0.150 / 12 at 0.355 s. The ledger search's own choice at 0.2 s: top1 0.217.
+OBS the lemma prior's cost: 1 playout (196 nodes) in 0.3 s against 11141 playouts for uniform -- the fact view per playout ply is a thousand times a uniform ply; it belongs at the tree's nodes with a cache.
+OBS match greedy+balance vs uniform (count judge), 0.2 s a move, 20 games: 0.850 (se 0.072), W16 D2 L2, 345 s.
+READING: a modest, real gain for the same clock from the cheap pieces; the estimate stays the second source behind the exact search; the lemma prior is wired but not yet useful.

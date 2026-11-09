@@ -5,6 +5,7 @@
 //! HUNDREDTHS of an outcome unit (`VALUE_SCALE`; outcomes are 0..100, so a value of 5000 is 50.00), the candidates are the root moves most visited first.
 use cs_game::rng::Rng;
 use cs_game::{Fact, Game, Role};
+use crate::rollout::{Draw, Leaf};
 use cs_operator::{Budget, Goal, Operator, Outcome, Status};
 use std::time::Instant;
 
@@ -25,6 +26,8 @@ pub const MAX_PLAYOUT: usize = 200;
 pub trait Rollout {
     /// The index into `moves` (never empty) of the move to play at `s`.
     fn pick<G: Game>(&mut self, g: &G, s: &G::State, moves: &[G::Move]) -> usize;
+    /// The policy's name, for the operator's evidence.
+    fn name(&self) -> String;
 }
 
 /// Uniformly random legal moves from the engine's seeded generator: the same seed, the same playouts. Cloning starts the stream again from the seed (each run of an
@@ -34,6 +37,7 @@ impl Uniform { pub fn new(seed: u64) -> Uniform { Uniform { seed, rng: Rng::new(
 impl Clone for Uniform { fn clone(&self) -> Uniform { Uniform::new(self.seed) } }
 impl Rollout for Uniform {
     fn pick<G: Game>(&mut self, _g: &G, _s: &G::State, moves: &[G::Move]) -> usize { self.rng.below(moves.len()) }
+    fn name(&self) -> String { "uniform".into() }
 }
 
 struct Node<G: Game> {
@@ -67,7 +71,7 @@ pub struct Search {
 
 /// UCT from `s` until the budget's fuse or clock says stop (an iteration it interrupts is dropped, not scored). Every step -- a selection, an expansion, a playout ply
 /// -- spends one node.
-pub fn search<G: Game, R: Rollout>(g: &G, s: &G::State, budget: &mut Budget, exploration: f64, max_playout: usize, rollout: &mut R) -> Search {
+pub fn search<G: Game, R: Rollout, L: Leaf>(g: &G, s: &G::State, budget: &mut Budget, exploration: f64, max_playout: usize, rollout: &mut R, leaf: &L) -> Search {
     let n_roles = g.roles().len();
     let make = |st: G::State, depth: i64| -> Node<G> {
         let outcome = g.outcome(&st);
@@ -86,7 +90,7 @@ pub fn search<G: Game, R: Rollout>(g: &G, s: &G::State, budget: &mut Budget, exp
         let mut stopped = false;
         loop {
             if let Some(o) = &tree[cur].outcome { scored = Some(o.iter().map(|x| *x as f64).collect()); break; }
-            if tree[cur].moves.is_empty() { scored = Some(vec![DRAW; n_roles]); break; }
+            if tree[cur].moves.is_empty() { res.cut += 1; scored = Some(leaf.value(g, &tree[cur].state)); break; }
             if budget.spend().is_err() { stopped = true; break; }
             let next = if tree[cur].next < tree[cur].moves.len() {
                 let i = tree[cur].next;
@@ -123,9 +127,9 @@ pub fn search<G: Game, R: Rollout>(g: &G, s: &G::State, budget: &mut Budget, exp
                 let mut result: Option<Vec<f64>> = None;
                 loop {
                     if let Some(o) = g.outcome(&st) { result = Some(o.iter().map(|x| *x as f64).collect()); break; }
-                    if plies >= max_playout { res.cut += 1; result = Some(vec![DRAW; n_roles]); break; }
+                    if plies >= max_playout { res.cut += 1; result = Some(leaf.value(g, &st)); break; }
                     let ms = g.moves(&st);
-                    if ms.is_empty() { res.cut += 1; result = Some(vec![DRAW; n_roles]); break; }
+                    if ms.is_empty() { res.cut += 1; result = Some(leaf.value(g, &st)); break; }
                     if budget.spend().is_err() { break; }
                     let i = rollout.pick(g, &st, &ms);
                     st = g.apply(&st, &ms[i]);
@@ -157,22 +161,28 @@ pub fn search<G: Game, R: Rollout>(g: &G, s: &G::State, budget: &mut Budget, exp
     res
 }
 
-/// THE OPERATOR: MCTS as one tool of the shared interface. Reads `Goal::Estimate` only.
-pub struct MctsOp<R: Rollout + Clone = Uniform> {
+/// THE OPERATOR: MCTS as one tool of the shared interface. Reads `Goal::Estimate` only. The playout policy (`rollout`) and the valuation of a playout cut short
+/// (`leaf`) are the two seams.
+pub struct MctsOp<R: Rollout + Clone = Uniform, L: Leaf + Clone = Draw> {
     pub exploration: f64,
     pub max_playout: usize,
     pub rollout: R,
+    pub leaf: L,
 }
 
-impl MctsOp<Uniform> {
-    pub fn new(exploration: f64, max_playout: usize, seed: u64) -> MctsOp<Uniform> { MctsOp { exploration, max_playout, rollout: Uniform::new(seed) } }
+impl MctsOp<Uniform, Draw> {
+    pub fn new(exploration: f64, max_playout: usize, seed: u64) -> MctsOp<Uniform, Draw> { MctsOp { exploration, max_playout, rollout: Uniform::new(seed), leaf: Draw } }
 }
-impl<R: Rollout + Clone> MctsOp<R> {
-    /// The same search with another playout policy.
-    pub fn with_rollout(exploration: f64, max_playout: usize, rollout: R) -> MctsOp<R> { MctsOp { exploration, max_playout, rollout } }
+impl<R: Rollout + Clone> MctsOp<R, Draw> {
+    /// The same search with another playout policy (a cut playout still scores a draw).
+    pub fn with_rollout(exploration: f64, max_playout: usize, rollout: R) -> MctsOp<R, Draw> { MctsOp { exploration, max_playout, rollout, leaf: Draw } }
+}
+impl<R: Rollout + Clone, L: Leaf + Clone> MctsOp<R, L> {
+    /// Another playout policy and another valuation of a cut playout.
+    pub fn with_policy(exploration: f64, max_playout: usize, rollout: R, leaf: L) -> MctsOp<R, L> { MctsOp { exploration, max_playout, rollout, leaf } }
 }
 
-impl<G: Game, R: Rollout + Clone> Operator<G> for MctsOp<R> {
+impl<G: Game, R: Rollout + Clone, L: Leaf + Clone> Operator<G> for MctsOp<R, L> {
     fn name(&self) -> String { "mcts".into() }
     fn accepts(&self, goal: &Goal) -> bool { matches!(goal, Goal::Estimate { .. }) }
     fn run(&self, g: &G, s: &G::State, goal: &Goal, mut budget: Budget) -> Outcome<G::Move> {
@@ -181,7 +191,7 @@ impl<G: Game, R: Rollout + Clone> Operator<G> for MctsOp<R> {
         let t0 = Instant::now();
         let mut out = Outcome::new(Status::Read);
         let mut rollout = self.rollout.clone();
-        let r = search(g, s, &mut budget, self.exploration, self.max_playout, &mut rollout);
+        let r = search(g, s, &mut budget, self.exploration, self.max_playout, &mut rollout, &self.leaf);
         let moves = g.moves(s);
         let scaled = |m: f64| (m * VALUE_SCALE).round() as i64;
         if r.playouts == 0 {
@@ -203,7 +213,7 @@ impl<G: Game, R: Rollout + Clone> Operator<G> for MctsOp<R> {
         for (i, (n, sec)) in r.batches.iter().enumerate() { out.part(format!("playouts {}..{}", i as u64 * BATCH, ((i as u64 + 1) * BATCH).min(r.playouts.max(1))), *n, *sec); }
         out.cost.nodes = r.nodes;
         out.cost.seconds = t0.elapsed().as_secs_f64();
-        out.evidence.push(format!("mcts: {} playouts ({} cut at {} plies), depth {}, value for role {role} = mean outcome x {VALUE_SCALE} (an estimate by sampling, not a proof)", r.playouts, r.cut, self.max_playout, r.depth));
+        out.evidence.push(format!("mcts: {} playouts ({} cut at {} plies), depth {}, rollout {}, leaf {}, value for role {role} = mean outcome x {VALUE_SCALE} (an estimate by sampling, not a proof)", r.playouts, r.cut, self.max_playout, r.depth, self.rollout.name(), self.leaf.name()));
         out
     }
 }

@@ -161,11 +161,20 @@ class EstimateSource:
     source = "mcts"
     training_only = False
 
-    def __init__(self, seconds: float = 0.2, seed: int = 1, max_nodes: int = 10_000_000):
-        self.seconds, self.seed, self.max_nodes = seconds, seed, max_nodes
+    def __init__(self, seconds: float = 0.2, seed: int = 1, max_nodes: int = 10_000_000, **options):
+        """`options` are `cs_engine.estimate`'s (plan 78.18: rollout, leaf, eps, scale, temperature, store, prior, floor); the source's name records the policy chosen
+        (`mcts` for the plain uniform search, else `mcts:<rollout>/<leaf>`)."""
+        self.seconds, self.seed, self.max_nodes, self.options = seconds, seed, max_nodes, dict(options)
+        self.specs = self.options.pop("specs", None) or {}          # {variant: description text}: the lemma prior's fact view, per variant ranked
+        rollout, leaf = self.options.get("rollout", "uniform"), self.options.get("leaf", "draw")
+        if (rollout, leaf) != ("uniform", "draw"):
+            self.source = f"mcts:{rollout}/{leaf}"
 
     def rank(self, variant: str, moves: list, cap: "int | None" = None) -> list:
-        r = CE.estimate(variant, None, list(moves), seconds=self.seconds, max_nodes=self.max_nodes, seed=self.seed)
+        opts = dict(self.options)
+        if variant in self.specs:
+            opts["spec"] = self.specs[variant]
+        r = CE.estimate(variant, None, list(moves), seconds=self.seconds, max_nodes=self.max_nodes, seed=self.seed, **opts)
         out = sorted(((name, visits) for name, visits, _mean in r["visits"]), key=lambda x: -x[1])
         return out[:cap] if cap else out
 
@@ -175,6 +184,25 @@ class EstimateSource:
 
     def close(self) -> None:
         pass
+
+
+def source_of(name: str, seconds: float = 0.2, seed: int = 1, store: "str | None" = None) -> EstimateSource:
+    """An EstimateSource from a name: `mcts` (uniform playouts scored at the game's end: the plain search) or `mcts:<rollout>/<leaf>` (plan 78.18); `store` (a snapshot
+    path) gives the balance leaf its judge and the lemma prior its lemmas."""
+    opts = {}
+    if ":" in name:
+        rollout, _, leaf = name.split(":", 1)[1].partition("/")
+        opts["rollout"] = rollout or "uniform"
+        if leaf:
+            opts["leaf"] = leaf
+        if rollout == "lemma":
+            opts["prior"] = True
+    if store and opts:
+        opts["store"] = str(store)
+        if opts.get("prior"):
+            # the lemma prior reads a position's facts through the variant's description: the store's game has one per variant, chosen when a position is ranked
+            opts["specs"] = GS.spec_texts(CE.snapshot_info(str(store))["game"])
+    return EstimateSource(seconds, seed, **opts)
 
 
 # ---------------------------------------------------------------------------------------------------------------- the sleep
@@ -570,7 +598,8 @@ def main(argv: list) -> int:
     ap.add_argument("--teacher", default=None, help="a UCI engine to label with (training only)")
     ap.add_argument("--teacher-mode", default="label", choices=["label", "filter", "break"])
     ap.add_argument("--teacher-surprises", action="store_true", help="register the rank-based surprises (training only)")
-    ap.add_argument("--source", default=None, choices=["mcts"], help="a rank source from the inference kit (the engine's own estimate) in place of a teacher")
+    ap.add_argument("--source", default=None, help="a rank source from the inference kit in place of a teacher: `mcts` (the plain estimate) or `mcts:<rollout>/<leaf>` "
+                    "(plan 78.18: rollout uniform | greedy | gain | lemma, leaf draw | balance; the store the sleep reads gives the judge and the lemmas)")
     ap.add_argument("--source-seconds", type=float, default=0.2)
     ap.add_argument("--no-auto", action="store_true", help="do not let the diagnosis choose the tools")
     ap.add_argument("--ties", action="store_true", help="the wake reads the ledger's ties (so the sleep can measure the tie rate)")
@@ -584,7 +613,7 @@ def main(argv: list) -> int:
     if a.judge and not a.log:
         # the wake must play by the judge the sleep learns by: publish the store state with that judge (the same content is the same snapshot; nothing is written twice)
         print(f"OBS snapshot {a.game} {GS.publish(a.game, judge=GS.judge_of(a.game, a.judge))}: judge {a.judge}")
-    teacher = UciTeacher(a.teacher) if a.teacher else (EstimateSource(a.source_seconds, a.seed) if a.source else None)
+    teacher = UciTeacher(a.teacher) if a.teacher else (source_of(a.source, a.source_seconds, a.seed, GS.path_of(a.game, GS.head(a.game)) if GS.head(a.game) else None) if a.source else None)
     try:
         for c in range(a.cycles if not a.log else 1):
             log = a.log

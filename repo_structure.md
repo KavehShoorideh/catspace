@@ -48,6 +48,7 @@ consumes an end-to-end approach and never reaches into a component itself. Every
       analyst/discovery/         the analyst's discovery code; the wake/sleep loop (plan 78.14-78.17):
         wake.py sleep.py         self-play logging; sleep (surprises, cards, lemmas; rank sources: parse_multipv, disagreement, break_ties, UciTeacher)
         diagnose.py              game-free diagnostics over a wake log (ties, surprises by kind, cost, depth, gap share); tests/test_plan78_17.py
+        rank_bench.py            plan 78.18: a rank source's agreement with a reference on logged positions, and a match of two rank sources; tests/test_plan78_18.py
     approaches.md                registry of end-to-end approaches
     approaches/<name>/           config.py + src/ + experiments/
     research/
@@ -259,8 +260,13 @@ rust/engine/
                                  src/operators.rs their Operator wrappers
   planning/                      cs_planning: keep, the density prior; src/mcts.rs UCT Monte Carlo tree search (Rollout pluggable; MctsOp answers Goal::Estimate);
                                  tests/mcts.rs on tic-tac-toe in GDL
+    src/rollout.rs                 the stronger rank source as pluggable pieces: Leaf (Draw, Balance: value of a cut playout), Greedy rollout, Prior + Weighted rollout,
+                                   GainPrior (one notion of gain for Greedy and Weighted)
+    tests/rollout.rs               each piece alone, on a toy units-only Game
   memory/                        cs_memory: content-addressed snapshots, the lemma language, the one matcher, cards (the corpus lemmas are verified on), LemmaOp
   decision/                      cs_decision: Params, the Fixed controller (lemma, proof, ledger, prior), batch (JSON Lines log), cards (the card builder)
+    src/lemma_prior.rs             LemmaPrior: a snapshot's bound lemmas as a playout Prior (cs_planning::rollout), matched as LemmaOp does
+    tests/lemma_prior.rs           the lemma prior on a small GDL game; an empty snapshot gives uniform weights
   learn/                         cs_learn: THE TRAINING KIT -- watching a teacher (src/watch.rs; Teacher is training-only in the type), the valuation miner,
     src/advice.rs                  Advisor (an outside source's ordering of the legal moves), TeacherOp (Kit::Training), ScriptedAdvisor for tests.
                                  No decision-path crate depends on cs_learn (tests/test_plan78_14.py reads the manifests)

@@ -30,7 +30,9 @@ def test_78_17_the_estimate_finds_a_win_in_one_and_reports_its_cost_in_measured_
     r = CE.estimate("chess", None, ["e2e4", "e7e5", "d1h5", "b8c6", "f1c4", "g8f6"], seconds=0.3, seed=3)
     print(f"OBS 78.17 estimate: move {r['move']} value {r['value']} playouts {r['playouts']} cut {r['cut']} nodes {r['nodes']} in {r['seconds']:.2f} s")
     assert r["status"] == "Read" and r["move"] == "h5f7" and r["candidates"][0] == "h5f7"
-    assert r["value"] > 9000, "the mate is read as a win for the mover (hundredths of an outcome unit)"
+    mate = next(m for name, _v, m in r["visits"] if name == "h5f7")
+    assert mate == 10000, "the mating move's own mean is a full win every time (hundredths of an outcome unit; the root's mean also carries the explored losses)"
+    assert r["value"] > 7000, "the root's mean leans to the win (sampled: the share of exploration moves with the clock and the machine's load)"
     assert r["playouts"] > 0 and r["nodes"] > 0 and sum(v for _, v, _ in r["visits"]) == r["playouts"] - r["cut"] or sum(v for _, v, _ in r["visits"]) == r["playouts"]
     a, b = CE.estimate("chess", None, [], seconds=0.05, seed=7), CE.estimate("chess", None, [], seconds=0.05, seed=7)
     assert a["candidates"][0] == b["candidates"][0] or a["playouts"] != b["playouts"], "the same seed walks the same tree (the clock decides how far)"

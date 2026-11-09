@@ -18,18 +18,23 @@ pub trait Judge {
     fn delta(&self, me: Role, owner: Role, kind: &str) -> i64;
     fn change(&self, me: Role, owner: Role, from: &str, to: &str) -> i64;
     fn name(&self) -> String;
+    /// The plain worth of one unit of `kind` (no loss weighting: what `delta` carries for a unit of theirs).
+    fn worth(&self, kind: &str) -> i64;
 }
 
 /// The built-in fallback when no valuation record is given: each unit the same (+1 theirs lost, -LOSS ours lost); a change of kind is no gain.
+#[derive(Clone, Copy)]
 pub struct Count;
 pub const LOSS: i64 = 1000;
 impl Judge for Count {
     fn delta(&self, me: Role, owner: Role, _kind: &str) -> i64 { if owner == me { -LOSS } else { 1 } }
     fn change(&self, _me: Role, _owner: Role, _from: &str, _to: &str) -> i64 { 0 }
+    fn worth(&self, _kind: &str) -> i64 { 1 }
     fn name(&self) -> String { "count (no record: a unit lost is a unit lost; ours first)".into() }
 }
 
 /// A VALUATION RECORD plugged in (the store's entry in use: its worths by kind name, `ours_first` -- our losses weighted by LOSS: avoided before any gain).
+#[derive(Clone)]
 pub struct Worth { pub name: String, pub table: HashMap<String, i64>, pub ours_first: bool }
 impl Worth {
     fn w(&self, kind: &str) -> i64 { *self.table.get(kind).unwrap_or(&0) }
@@ -43,6 +48,7 @@ impl Judge for Worth {
         let d = self.w(to) - if from.is_empty() { 0 } else { self.w(from) };
         if owner == me { d } else { -d }
     }
+    fn worth(&self, kind: &str) -> i64 { self.w(kind) }
     fn name(&self) -> String { format!("{} {:?}{}", self.name, self.table, if self.ours_first { ", ours first" } else { "" }) }
 }
 
