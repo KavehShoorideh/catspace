@@ -36363,3 +36363,14 @@ OBS agreement with Stockfish 300 ms, 60 positions of the m48 log, 0.2 s a positi
 OBS the lemma prior's cost: 1 playout (196 nodes) in 0.3 s against 11141 playouts for uniform -- the fact view per playout ply is a thousand times a uniform ply; it belongs at the tree's nodes with a cache.
 OBS match greedy+balance vs uniform (count judge), 0.2 s a move, 20 games: 0.850 (se 0.072), W16 D2 L2, 345 s.
 READING: a modest, real gain for the same clock from the cheap pieces; the estimate stays the second source behind the exact search; the lemma prior is wired but not yet useful.
+
+## 2026-11-08 17:10 plan 78.19 PLANNED (not built): the fast fact layer -- demand, certified readers, the event stream, salvaged from plans 39-77; the human games as a training source
+Kaveh: the lemma prior's thousand-fold cost is the efficiency the earlier event-stream work was for; salvage it, design properly, adapt. Two read-only surveys (docs; code) found the lineage: footprint memos,
+the incremental ledger, the FactStore with justifications, the event loop, the diff that decides what is re-asked, the incremental exchange index with its Lean frame lemmas and 175,502-move audit, the
+demand-driven prover with certified bitboard relations, gdl.py's `wanted`, and the 77.0 DBSP spike (deferred, never created). What paid: exact incremental maintenance of cheap local relations, demand,
+certified native readers, interning. What did not: deep-result reuse across moves, approximate footprints, global memos, ported machinery, Ascent. Key soundness (BUGS class 1) and the oracle + off switch +
+equality audit rule carried into every stage.
+OBS the cost now: cs_engine.facts 3.21 ms a chess position (134 facts, 103 attack) vs the kernel's replay + legal moves 0.005 ms; the view evaluates all 114 rules (legality, next, terminal) to read `attack`.
+PLAN 78.19 in ANALYST_PLAN.md: A demand + interned rows (run_for the wanted cone, statics shared, no strings); B certified native readers through a Game hook; C the event stream (signed base deltas,
+support counts + delta rules compiled from the description, path-local memory with undo, lemma re-matching triggered by the deltas it reads); D the lemma prior at the tree's nodes (PUCT); E HumanSource
+(training only) over an index of the lichess records -- first when the judge is coarse, to break ties and raise disagreement surprises whose exact confirmation becomes lemmas. Nothing built; nothing committed.

@@ -4575,3 +4575,66 @@ READING: informed playouts give a real but modest gain in agreement (median rank
 0.22), which is the point of keeping it a SECOND source. The cheap pieces (gain, greedy, balance) are the ones to use; the lemma prior needs a faster fact view first.
 NOT DONE: the lemma prior at the tree's nodes (PUCT) with a fact cache; the match of the policies at equal clock over more games; the stronger source inside sleep on the 48-game log (the 78.17 comparison
 re-run with `--source mcts:gain/balance`); a learned prior as a `Prior`.
+
+#### 78.19 PLAN: THE FAST FACT LAYER -- DEMAND, CERTIFIED READERS, THE EVENT STREAM (salvaged from plans 39-77), AND THE HUMAN GAMES AS A TRAINING SOURCE (2026-11-08; Kaveh: "these are the
+efficiencies you need to build in ... salvage what we had from before ... design it properly and then adapt what we've built to it ... the pitfalls we found before are directly applicable")
+A PLAN, NOT BUILT. Written from two read-only surveys of the docs (plans 39-77, the journal) and the code (rust/analyst_core, discovery/*.py, rust/engine).
+THE COST, MEASURED (this session): `cs_engine.facts` on a chess position 3.21 ms for 134 facts (103 of them `attack`); the kernel's own replay-and-legal-moves 0.005 ms. The description has 114 rules
+over 49 relations; the vocabulary derives ONE (`attack`, over `cell` deltas). `FactView::facts` runs `Program::run`, which (i) clones every static relation into a fresh Db, (ii) evaluates EVERY
+stratum that reads input -- candidates, the legality machinery (`vacates`/`fills`/`after`/`king_ray`/`exposed`, per candidate per cell), `legal`, mate/draw/terminal/goal, `next.*` -- to read
+`attack`, (iii) parses every base fact from a string and renders every row back to one, then sorts. The lemma prior then also diffs string fact sets per legal move. Hence 196 nodes in 0.3 s (78.18).
+WHAT WAS BUILT BEFORE AND WHAT IT TAUGHT (the survey; J = JOURNAL.md, AP = this file):
+  built: footprint memos (J 21423), the incremental ledger in the goal search (200 s -> 78 s, J 21950), the FactStore with justifications and stale flags (52.19, discovery/facts.py), read sets and
+  listeners (39.5-39.6), the event loop (40, analyst_core/agenda.rs), the diff that decides what is re-asked (52.12-13, Pos.push/diff; 72.10 `move_diff`, Lean Ideas.Frame.chess_neglect), the
+  incremental static exchange `exchange_affected` / `threats_arr_inc` with an equality audit of 175,502 moves (J 28818; Lean PathLemma / FrameLemma / ExchangeLocal), the demand-driven tabled prover with
+  CERTIFIED relations read from bitboards (76.4b, analyst_core/regression.rs + gdl_chess.rs; Lean attackBy_iff / legal_iff), gdl.py's `wanted` (compute only what is needed; the Rust `run` lost it),
+  and the incremental-maintenance spike 77.0 (DBSP: signed change sets, delta rules compiled at load, two streams SLOW and FAST) -- planned, deferred, never created.
+  paid: EXACT incremental maintenance of cheap LOCAL relations (the exchange index; "the static index is where incremental reuse pays, and it is exact", J 28910); demand (the prover's cone); certified
+  native readers (mate 0.692 -> 0.054 ms, AP 4176); interning and fixed arrays (65.7 -> 38.5 s, J 28821-28828).
+  did not pay: reusing DEEP results across moves ("structurally vacuous on a chessboard", J 28910; zone reuse 0.0 a move); approximate footprints (stale on 4.0 % then 1.0 % of statuses, six missed
+  tactics -- recompute by default, J 28196); global memos flooded by scratch positions (J 21921); schema claims served across positions ("not portable, full stop", J 31975); ported machinery that
+  measured nothing (B3 cache, J 31965; scheduler/route reader, J 32018); Ascent inside the hot loop (J 27993) and Ascent at all for a description loaded at run time (AP 4169).
+  the rules we broke and must not again (docs/BUGS.md class 1, key soundness): a key that does not record something the computation read -- the empty dependency (13 of 540 decisions changed, J 28950),
+  the stale halfmove clock in a cached FEN (J 31966), `Pos.diff` comparing attacker COUNTS so a swap was missed (AP 3632), the word cache that must replay its read set on a hit (RUST_BOUNDARY.md 185).
+  the process rule: every incremental path ships with its ORACLE (the full evaluation), an OFF switch, an equality audit that prints its counts, and a negative control (dropping the semi-naive rounds once
+  gave 57,238 disagreements, J 35334 -- the harness is what found it).
+THE DESIGN. The fact layer becomes a STREAM: a line of play (the game's slow stream; the search's fast stream of make/unmake) emits SIGNED DELTAS of base facts; derived facts are MAINTAINED, not
+recomputed; lemma matching is TRIGGERED by the deltas it reads. Generic: everything is derived from the description's rules and the Game trait; a game's fast binding may answer a relation natively
+only under a certificate. Each stage is exact against the stage before it, measured, and switchable off. The target: facts of a child state at the cost of the kernel's move (microseconds), so a
+lemma prior at every tree node is affordable and LemmaOp's "facts" part vanishes from the decision's clock.
+  STAGE A -- DEMAND AND NO STRINGS (cs_gdl, FactView; exact by construction; the gdl.py `needed` and the 76.4b interning salvaged):
+    A1 `Program::run_for(wanted: &[Rel])`: only the strata in the wanted relations' dependency cone (chess: attack <- attack_by <- slide / empty / occupied + statics: a handful of the 114 rules).
+    A2 statics shared (a Db layered over the program's static relations, never cloned per run).
+    A3 interned rows end to end: `Game::base_rows` or a string -> term memo in the view; cs_memory's FactIndex / bindings / delta / perspective over `T` rows (perspective = a role swap on ids); strings
+       only at the JSON boundary (cards, lemma files). A4 the evaluator's quadratic corners (index cleared on every add, Vec::contains dedup, cloned lookups).
+    oracle: `run` == `run_for` on every position and every child of the m48 log; the view's facts before == after on the same (an audit binary that prints counts). Expected: a large cut; unknown until measured.
+  STAGE B -- CERTIFIED NATIVE READERS (the 76.4b `Certified` kind salvaged into the Game trait): `Game::derived(s, relation) -> Option<Vec<Row>>`: a fast binding may answer a vocabulary relation
+    itself (chess kernel: `attack` from its attack maps); FactView reads it ONLY while the relation holds a CERTIFICATE from co-play (certify.rs extended: on every position of the co-play games the native
+    rows equal the description's; a disagreement demotes the relation to the evaluator -- the existing demotion rule, AP 4345). Game-free: the hook is generic, the certificate is the check.
+  STAGE C -- THE EVENT STREAM (the FAST stream of 77.0; `exchange_affected`, `move_diff`, the FactStore's stale flags and frame restore salvaged, made generic):
+    C1 `Game::delta(s, m) -> (removed, added)` base facts (default: the diff of `base_facts`; a kernel overrides it from the move alone -- 72.10's `move_diff` is the chess instance). Signed: undo is the negation.
+    C2 `FactMemory` carried along a search path: the node's facts as interned rows with SUPPORT COUNTS per derived row; a delta is pushed through DELTA RULES compiled from the description at load (for each
+       rule and each body literal: join that literal's delta against the rest -- semi-naive over signed deltas; deletions by counting in non-recursive strata, DRed-style re-derivation for the recursive ones,
+       bounded to the rows reachable from the touched terms). Locality falls out of the rules (a `slide` row that reads no touched cell is untouched: the Lean frame lemmas' content, derived not hand-coded).
+       `pop` restores by the negated delta (the FactStore's `restore`). No global memo: the memory lives on the path (the flooding lesson). Keys include the mover and the clocks (class 1).
+    C3 the TRIGGER: lemmas indexed by the relations and constants of their bodies; a delta re-matches only the lemmas it meets, a bound lemma keeps its binding until a fact it read is removed (the
+       Listener / Rete-lite reading of 39.6, kept to one index). The same event stream feeds LemmaOp in a decision and the lemma prior in the tree.
+    oracle: at every node in audit mode the memory's facts == the full evaluation's (`INC_OFF`, counts printed); a negative control (a corrupted delta must break the equality).
+  STAGE D -- WHERE THE FACTS ARE USED: the lemma prior moves from the playouts to the TREE (PUCT: the prior's weight per child enters the selection term; computed once per expansion from the node's
+    FactMemory); playouts stay cheap (gain / greedy + balance, 78.18). LemmaOp in a decision reads the same memory. Measured by rank_bench (agreement, match) and by the 78.17 sleep comparison re-run.
+  STAGE E -- THE HUMAN GAMES AS A TRAINING SOURCE (Kaveh, this session: "in the beginning, if it doesn't know what to do, it should query the human games ... during training ... that should allow it
+    to learn some lemmas"): `HumanSource` of the rank-source shape (`rank(variant, moves) -> [(move, score)]`, score = how often humans played it, with the outcomes behind it), TRAINING ONLY
+    (`training_only = True`, source "human"; Kit::Training), read from an index over data/records (19,354,162 lichess games kept, 200,000 a shard; the valuation of 78.4 is already mined from them):
+    position key -> {move: count, outcomes}, built once a shard (generic: any game with records and a state key), queried at the position after `moves`. Its uses in sleep: `plan_tools` turns it on
+    FIRST when the diagnosis says the judge is coarse ("does not know what to do": the tie rate), before the teacher; `break_ties` by human frequency; `disagreement` surprises where humans strongly
+    prefer a move our judge does not rank, confirmed by our exact deeper replay and then seeded like any other -- the lemma is the explanation of why the humans' move is better, and it is what enters the
+    store; the raw frequencies never do (the inference kit sees lemmas and distilled records only). Outcome frequencies are the "probabilities without understanding" of 78.17, kept as training evidence.
+    Independent of A-D (Python, beside UciTeacher and EstimateSource): can be built first.
+WHAT TO SALVAGE, WHERE: gdl.py `Program.needed/run(wanted)` (discovery/gdl.py:515-535) -> A1; analyst_core/regression.rs `Spec::new(.., certified)` / `Kind::Certified` and gdl_chess.rs `certified()`
+  -> B; regress.py `move_diff` + Lean Ideas.Frame.chess_neglect and rules.rs `touched_by` / `exchange_affected` + Lean PathLemma/FrameLemma -> C1's chess override and C2's exactness argument;
+  discovery/facts.py FactStore (`invalidate`, `restore`, the inverted read index) -> C2/C3's shape; analyst_core/agenda.rs `Event -> Condition -> question` -> C3's trigger; rules.rs `threats_inc_audit`
+  and tests/test_plan72_10.py -> the audit harness's form; docs/BUGS.md class 1 -> the key rule. NOT salvaged: the Ascent program (compile-time, chess-only, dead), ReasoningLedger's quadratic retract,
+  schema-claim portability, approximate footprints.
+ORDER AND MEASURE: E and A in parallel (E is Python and independent; A is the certain win); then B (chess only needs the hook + certificate); C only if A+B leave derivation dominant at the tree's nodes
+  (77.0's own rule: "only if Rust derivation then dominates is per-node recomputation the cost and the sub-project the answer"); D as soon as A makes a per-node prior affordable. Every stage prints
+  OBS facts/ms and the audit's equal/unequal counts on the m48 positions before the next starts.
