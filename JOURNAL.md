@@ -36284,3 +36284,71 @@ BUILT (game-free): in the ledger search a node whose side to move has at most tw
 the count, not by the rule) is read one ply deeper (bounded by the ply), `extend` on the call (default on; off the comparison: the match setting `noextend`).
 OBS the match, the extension against none (material, 0.5 s a move, 160 games, openings seed 9300): 0.544 (se 0.021; W 29 D 116 L 15).
 OBS 210 puzzles at 3 s (--tag v4_extend): no values 154 / 210 (156 before: the load's noise), material 197 / 210 (as before; material puzzles at a mean depth 13.5).
+
+## 2026-11-05 17:05 -- plan 78.12: the shared interface (Operator, Controller, Goal, Outcome) and the batch solver; the play unchanged
+
+BUILT (docs/ANALYST_PLAN.md 78.12), from the comparison of rust/engine with the architecture document: a new crate `cs_operator` (Operator, Controller, Goal with modes,
+Outcome with evidence, measured cost and facts, Budget, the `drive` loop); `forcing`, `ledger`, `census` (tactics) and `keep`, `density` (planning) behind it, each wrapping the
+unchanged function; the decision layer is the `Fixed` controller driving them (`decide_with` keeps its signature); `cs_engine.solve_batch` -- many positions in one call, a thread
+pool, the lock released, a JSON Lines log of every step tagged with the caller's snapshot id.
+OBS equivalence against the kept 78.11 decision (depth-capped, deterministic), 14 positions each: prior off 2 proved / prior on 2 proved, 7 with the density prior / valuation judge,
+  no record, 3 with the prior -- identical move, proved flag and trace in all.
+OBS eight positions at 0.4 s each (tests/test_plan78_12.py): one thread 3.21 s, four threads 0.80 s; a Python thread ticked 54 times during a 0.8 s batch (the lock is released).
+OBS 210 puzzles at 3 s (scripts/plan78_puzzles.py), the previous commit's engine built in a worktree against this one, two runs each, one after the other: the record in use
+  152 / 153 (before) and 152 / 153 (after); material plugged in 197 / 197 (before) and 196 / 197 (after) -- the same within the load's noise (156 in 78.10 was a quieter machine).
+FOUND: the three cs_game certificates went stale because they hash Cargo.lock, which gained the new crates (the kernel and spec files are unchanged); re-run by co-play: chess 6431,
+  kingofthehill 4014, 3check 1833 positions, 0 disagreements, as before.
+CHANGED: `Choice.nodes` now includes the tie reading and the density prior's census readings (the old figure left them out); the prior reports the nodes it spends.
+NOT DONE: a store snapshot, a columnar log, the teacher's training-only flag, a trained router, MCTS as an operator (see 78.12).
+
+## 2026-11-06 14:05 -- plans 78.13-78.15: costs in parts, the teacher's flag, the fact layer, snapshots and lemmas, the wake and the sleep on the new engine (Kaveh: "go on all 3 ... generic, correct, complete, modular")
+
+BUILT (docs/ANALYST_PLAN.md 78.13, 78.14, 78.15): (1) COSTS IN PARTS -- every operator reports what each deepening step, defect level, candidate read and phase cost, measured, and the parts add up to the
+total; the batch log carries them with the principal line and ledger events. (2) THE TEACHER'S FLAG -- `Teacher::training_only` in the type, refused by `watch` if false, the decision-path crates free of the learning
+crate and of any teacher (a test reads the manifests and sources); provenance on the lemma and the snapshot. (3) THE FACT LAYER -- `Game::base_facts`, a `Vocabulary`, `FactView`, `GdlGame` units from its
+vocabulary, the chess kernels' facts certified against the description by co-play. (4) cs_memory -- SHA-256 content-addressed immutable snapshots, the lemma language in the mover's perspective, one matcher,
+cards and the evaluation of a lemma on them (precision, chance, excess, selectivity, independent games), the lemma operator (`Respond`) whose proposals the ledger search reads first -- a prior, never a verdict.
+(5) wake.py, sleep.py, abstraction.py, game_store.py -- self-play in lockstep, the surprise loop with its funnel, the exact-checked climb, held-out verification, snapshot publishing.
+FOUND: the co-play of facts found a real error in my first three-check conversion (the description counts a check one state late); fixed in the conversion. The exact check also refuted my first over-general
+planted lemma (a pawn on the fifth rank beside the black king: a quiet pawn step beats the capture), and showed the climb preferred dropping the attack literal to lifting a constant until the order was
+changed (lifts before drops).
+OBS facts co-play, 6 seeded games each: chess 2115 states / 2109 with facts / 0 disagreements; king of the hill 1207 / 1201 / 0; three-check 497 / 491 / 0; the control disagrees. Certificates re-run: chess 6431,
+  king of the hill 4014, three-check 1833 positions, 0 disagreements.
+OBS prefer leaves the value alone: 18 comparisons identical. OBS equivalence of the fixed controller against the 78.11 decision still 14 positions each, identical.
+OBS planted motif (a pawn attacked by a pawn it can take, with decoys): 7 steps, 10 development firings at precision 1.0, held-out 10 firings in 10 games at precision 1.0, excess 0.80.
+OBS 210 puzzles at 3 s: the record in use 153, material 196 (the previous commit: 152 / 153 and 196 / 197 on this machine).
+OBS the funnel on real self-play, 24 games: surprises 240, replayable 179, confirmed 94, seeds 55, climbed 41, supported on dev 8, verified on held-out 0. 96 games: surprises 895, replayable 669, confirmed 256,
+  seeds 150 (60 read), climbed 33, supported on dev 8, verified on held-out 0 (1306 s). The 8 that reached the held-out stage had precision 1.0 on 3-11 development firings and 0.0-0.75 held-out: small-sample
+  overfitting, caught.
+OBS credit by removal (sleep.credit) on the hand-written capture lemma, 6 firing positions: depth 19.50 with and without it (se 0.0). The engine gate: 53 files, 688 passed, 0 failed, 1 xfailed.
+NOT DONE: no lemma has been discovered from real self-play yet (the loop is correct on a planted motif; the data and the dev gate are the limit); negated literals in mined lemmas; a
+statistical gate on dev precision; the Python glue for GDL games other than the kernels'; MCTS as an operator; a trained router.
+
+## 2026-11-08 09:40 -- the review of 78.13-78.15: the judge named, the gate a bound, the first lemma from play (Kaveh: "check the work done so far ... see what can be improved")
+
+FOUND in review: the 78.15 wake and cards both ran on the built-in count (no snapshot existed; sleep.py passed no judge to the card builder); the development gate was a point estimate
+on 3 firings while the climb selects among many candidates on the same cards; the seed cap read the first games only; rejected seeds had no figures; the sleep's time was not split.
+CHANGED: a named store VALUATION record is the sleep's judge (published into the wake's snapshot, passed to the cards, recorded on the lemma); support = one-sided Wilson lower bound
+on precision >= 0.7 at 95 % (3 of 3: 0.53; 7 of 7: 0.72; 11 of 11: 0.80) plus firings and independent games; seeds interleaved by game; figures on every rejection; phase timings.
+OBS ties on the same 40 positions at depth 5: 0.22 of legal moves tie for optimal under units (no values), 0.47 under material (mined) -- my hypothesis that the count judge made
+  the claim cheap was WRONG: ties are abundant under either; the excess gate does the work.
+OBS sleep, 48 games at 0.02 s, judge material (mined), depth 5, 507 s: decisions 3714, surprises 588, replayable 72, confirmed 23, with saving 13, seeds 31, climbed 28, supported dev 3,
+  verified held 1 -- cell-response-0265aee4 (push the pawn that attacks a rook-defended pawn, rather than take): dev 11/11 in 11 games (bound 0.80), held 8/8 in 8 games (bound 0.75),
+  excess 0.25. Not an ablation against 78.15 (judge, seconds, seed order and gate all differ). Of the 25 rejected for support, 3 would have passed the old gate.
+OBS credit by removal, 400 positions at 0.1 s: fired on 3, decision changed on 3, depth equal, nodes 25600 with / 28672 without. Three positions say nothing yet.
+OBS tests: test_plan78_14 (15, one new: the bound), test_plan78_12, the generic test: pass.
+NOT WRITTEN to rules/learned: the lemma waits for Kaveh. Nothing committed.
+
+## 2026-11-08 12:10 -- plan 78.17: the two tool kits (Kaveh: "multiple tools ... used intelligently when training; at inference only lemmas and MCTS")
+
+BUILT by three Sonnet agents (generic, modular, unit-tested pieces; repo_structure.md updated; no new crates fetched -- the build is offline) and integrated here: Kit (Inference | Training) on every
+Operator with the refusal in `drive`; Advisor / TeacherOp in cs_learn; UCT MCTS in cs_planning behind Goal::Estimate, exposed as cs_engine.estimate; Params.ties (ties without the prior); diagnose.py;
+rank sources (UciTeacher.rank via python-chess MultiPV, EstimateSource via MCTS), the rank-based disagreement surprise confirmed by our own deeper exact replay, tie-breaking, and plan_tools (the sleep
+chooses by the diagnosis). Tests: test_plan78_17 (6), test_plan78_18 (4, integration), the crates (cs_operator 3, cs_learn 4, cs_planning 5, decision interface 8), generic and boundary tests: pass.
+OBS diagnosis, 4 games at 0.02 s with --ties: tie rate 0.5, mean 4.6 tied moves. OBS estimate on the scholar's mate, 0.3 s: h5f7, value 9279/10000, 20803 playouts.
+OBS same 48-game log, judge material (mined), depth 5 -- baseline 1 lemma; + teacher (Stockfish 50 ms): 25 disagreements / 5 confirmed / 36 seeds / verified 1 (the same lemma), 565 s;
+  + estimate (MCTS 0.2 s): 110 disagreements / 4 confirmed / 35 seeds / verified 0 (the baseline seed displaced by the estimate's tie order; fixed: the engine's own choice stays), 760 s.
+  Time: climbs 391-483 s, cards 110-113 s, verify < 1 s.
+READING: the loop closes (measure the lack, choose a source, record its touch) but no source added a lemma on this data; the estimate at 0.2 s is a noisy judge of exact depth-5 values. Nothing committed.
+OBS gate engine: 55 files, 695 passed, 2 failed (the three cs_game kernel certificates stale through the changed sources and lock), 1 xfailed. Certificates re-earned by co-play: chess 6431, king of the hill 4014,
+  three-check 1833 positions, 0 disagreements; test_plan77_1d and test_plan78 then pass (22).

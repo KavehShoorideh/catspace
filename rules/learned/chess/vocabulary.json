@@ -1,0 +1,8 @@
+{
+ "spec": "chess.gdl",
+ "variants": {"chess": null, "kingofthehill": "variants/kingofthehill.gdl", "3check": "variants/3check.gdl"},
+ "derived": ["attack"],
+ "delta": ["cell"],
+ "units": null,
+ "note": "The fact vocabulary of chess (plan 78.14): the lemmas of rules/learned/chess/lemmas are written over the description's state relations (cell, control, castling_right, ep_square, halfmove) and its derived relation attack, in the mover's perspective (us / them); a move's effect is read in cell."
+}

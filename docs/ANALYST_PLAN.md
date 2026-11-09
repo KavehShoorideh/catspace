@@ -4404,3 +4404,140 @@ Kaveh: the product is CHESS; the capability to learn another game's knowledge is
 default): 210 lichess puzzles at 3 s, 155 solved (74 %: mates 66 / 66 proved, material 88 / 142); with the store's valuation plugged in as a comparison 188 (90 %).
 NEXT (Kaveh's questions, 2026-11-04): (1) the census of tactics by their DEFECTS (0, 1, 2; 3 where few) per position, over the regression; (2) its recall on the puzzles and
 against Stockfish's lines; (3) the density of tactics along human games (the lichess records) against the outcome; (4) if it holds, tactic density as a policy prior.
+
+#### 78.12 THE SHARED INTERFACE AND THE BATCH SOLVER (2026-11-05; reconciling rust/engine with "Interpretable Game-Learning Engine Architecture", Kaveh's document of 2026-11-05)
+THE AIM: the layers keep doing exactly what they do (no change of play), but through the interface the architecture document names, so a trained router, a mixture of experts
+or a new operator plugs in without touching the others, and so a whole puzzle set is one call. Constraints kept: nothing game-specific in the interface (the generic test of
+78.1 covers the new crates); every cost MEASURED (nodes and seconds returned by the call, never estimated); the Rust loop unchanged, Python only outside it.
+  cs_operator (new crate)  `Operator::run(game, state, goal, budget) -> Outcome`; `Controller::choose(context) -> Action` (run an operator toward a goal with a budget, or play);
+             `drive` (the loop, a step fuse). `Goal` = Win / Ledger / Keep / Prefer / Survey, each with its MODE (forced, cooperative, modeled) where it has one -- an operator that
+             does not read a mode answers `Unsupported`, never a guess (mixing modes produces false lemmas). `Outcome` = status (Proved, NoLine, Gap, Read, Unsupported), the move,
+             value, depth, equally good candidates, the evidence lines, the measured cost, the new facts. `Budget` (moved from cs_tactics, re-exported) gains a depth cap and the
+             deadline of the whole decision.
+  operators  tactics: `forcing` (Forced only), `ledger` (the judge a field; reads its ties on request), `census` (its tactics as `tactic` facts); planning: `keep`, `density`.
+             Each wraps the function the engine has always called, unchanged.
+  controller cs_decision `Fixed` = the order of 78.5-78.8 (proof, ledger, density over the ledger's ties); `decide_with` is now a call of `decide_params` and keeps its signature.
+  batch      cs_decision::batch + `cs_engine.solve_batch(positions, ...)`: one call, a rayon pool, the Python lock released, one summary per position in order, a panic or a bad
+             position is its own error row; every decision's steps appended to a JSON Lines log tagged with the SNAPSHOT id the caller names.
+WHAT CHANGED THAT IS NOT A WRAPPER: the density prior reports the nodes its census readings spend (the old decision's node count left them out; `Choice.nodes` now counts them).
+NOT DONE (the document's remaining distance): a store SNAPSHOT (the id is the caller's label; the store is still read at init), a columnar log (the JSON Lines schema is flat; a
+Parquet conversion belongs to the harness), the training-only flag on the teacher, a router or gate and its training, subgoal proposals with modes beyond Forced, MCTS as an operator.
+TESTS: rust/engine/decision/tests/equivalence.rs (the 78.11 decision kept as the oracle: same move, same proved flag, same trace on depth-capped runs, prior off / on / valuation
+judge), interface.rs (modes refused, the missing operator, the step fuse, batch order and panic), tests/test_plan78_12.py (the Python entry, the log, threads, the lock), and the
+generic test of 78.1 over the new sources. The three cs_game certificates were stale only through Cargo.lock (new crates); re-run by co-play, 0 disagreements.
+
+#### 78.13 COSTS IN PARTS, THE TEACHER'S FLAG, THE FACT LAYER (2026-11-06; Kaveh: "costs should be recorded with granularity", "go on all 3 ... stay generic as much as possible, but stay correct, and complete, and modular")
+COSTS IN PARTS: `Outcome.parts` -- what each deepening step of the proof and of the ledger search, each defect level of the census, each candidate the density prior read, each phase of the
+lemma operator spent, as measured (nodes and seconds); the parts add up to the call's total (tested for the proof, the ledger and the census). The batch log carries them, with each step's
+principal line and ledger events.
+THE TEACHER'S FLAG: `cs_learn::watch::Teacher` has `training_only` (true unless an implementor says otherwise; `watch` refuses one that does), and no crate of the decision path (operator,
+tactics, planning, memory, decision) depends on the learning crate or names a teacher -- tests/test_plan78_14.py reads the manifests and the sources. What a teacher touched is recorded on the
+lemma (`meta.teacher`) and on the snapshot (`teacher_used`): every result can be reported with and without it.
+THE FACT LAYER (the architecture document's "ground facts and derived predicates"): `Game::base_facts` (the state as ground facts), a `Vocabulary` per game (the derived relations that belong to
+the layer, the relations a move's effect is read in, how a state holds its units), `FactView` (a description evaluated over base facts: base plus derived), and `GdlGame` now declares units from
+its vocabulary, so the ledger, census and lemma layers run on any GDL game. The chess kernels' conversion to the description's fluents is certified by co-play like the rest (chess, king of the
+hill, three-check; certify::coplay compares the facts at every state).
+FOUND by that certificate: the first conversion of three-check counted a check when it is given; the description counts it one state later ("counted into the next state"). Fixed in the
+conversion, not in the description.
+OBS facts co-play (rust/engine/game/tests/facts.rs, 6 seeded games each): chess 2115 states, 2109 with facts compared, 0 disagreements; king of the hill 1207 / 1201 / 0; three-check 497 / 491 / 0; the
+  control (the three-check kernel against plain chess's description) disagrees. The three kernel certificates re-run: chess 6431, king of the hill 4014, three-check 1833 positions, 0 disagreements.
+ANOTHER GAME: a six-line description of a game that is not chess (a row of pieces that step or take) declares its units and its vocabulary and runs through the same facts, cards and lemma operator
+(rust/engine/decision/tests/lemmas.rs): the layers name no game.
+
+#### 78.14 THE MEMORY LAYER: SNAPSHOTS, THE LEMMA LANGUAGE, ONE MATCHER, THE LEMMA OPERATOR (2026-11-06)
+cs_memory (new crate; game-free). A SNAPSHOT is an immutable store state for one game -- its vocabulary, its judge (copied from the legacy store's valuation entry in use), its lemmas, its parent --
+named by the first 16 hex digits of the SHA-256 of its bytes; the engine refuses a file that does not hash to its name, a batch logs the id of the snapshot it read, and the Python publisher
+(discovery/game_store.py) writes a new one only when the content changes (the chain: HEAD, parent). The LEMMA LANGUAGE is restricted Datalog over the game's fact vocabulary: a body of positive
+literals (and negated ones with their variables bound), a response (the facts a move removes and adds), in the mover's perspective (`us`, `them`) so one lemma serves both colours. ONE MATCHER binds
+a body to facts (most constrained literal first, a binding limit, a step fuse); the operator and the verification both use it, so a lemma means the same in both. The LEMMA OPERATOR answers the new
+goal `Respond`: it proposes the moves a snapshot's lemmas name, and the fixed controller hands them to the ledger search as `prefer`, read first. A PRIOR, never a verdict: the value the search finds
+does not depend on the order (tested: 18 comparisons identical), and a wrong lemma costs reading time and nothing else (AGENTS.md rule 7).
+THE CLAIM A LEMMA MAKES, AND HOW IT IS CHECKED: "if the body holds, an optimal move of the response's kind exists". Checked on CARDS: a position's facts and, for every legal move, its effect and its exact value
+at a stated depth (the plain minimax of the judge -- no null-move pruning or reductions, which are not exact -- or the card says its reading was cut), with the units each side loses along its best line.
+The evaluation reports fires, holds, refutations, the independent games they came from, the precision, the precision a random choice of as many moves would reach (`expected`), the excess over it, and the
+share of the legal moves the response matches (`selectivity`): the gates against a lemma that is true but trivial. Status SAMPLED -- exact on a sample, not proved (Lean stays the source of truth).
+The learned lemmas live in rules/learned/<game>/ (a person reads them; rules/learned/README.md); the legacy lemma store (chess words, Lean-cited) is untouched and still the valuation's home.
+OBS (rust/engine/decision/tests/lemmas.rs): the hand-written "take the attacker" lemma proposes exactly the capture, from either side; on 4 cards it fires 3, holds 2, refuted 1.
+
+#### 78.15 THE WAKE AND THE SLEEP: THE SURPRISE LOOP ON THE NEW ENGINE (2026-11-06)
+wake.py: self-play in lockstep, every ply the running games decided in ONE batch call, every decision a labelled row of the trace log (its steps, goals, evidence, cost in parts, the snapshot read), games
+ended by the outcome, the threefold repetition or the ply cap. sleep.py (the document's surprise loop; Python orchestrates, the engine reads): (1) DETECT a surprise -- the second side sees a loss of the
+first side's units along its best line that the first side's best line did not foresee (read from the ledger events in the log; a proved win counts); (2) REPLAY the position as a card and CONFIRM the
+loss at an exact depth that can reach it (the plies the second side read, plus one -- the funnel counts the replayable ones: a loss one ply past what a replay can reach is a horizon effect it cannot
+reproduce), and take the SAVING moves (they lose fewer units and are optimal); (3) EXPLAIN: the saving move's effect, with the facts around it and around where the loss happens, is a ground seed;
+(4) ABSTRACT (abstraction.py): the climb of single LIFTS (a constant to a variable everywhere) and DROPS (a body literal), every step read by the engine on the development games' cards and taken only if
+the lemma stays admissible (precision, excess over chance, selectivity, no cut reading) and fires on at least as many cards -- lifts before drops, so the body keeps the literals that exclude the cases the
+claim is false on; (5) VERIFY on the held-out games' cards (games the seed and the climb never saw): the same gates and enough firings in enough independent games; only then is a lemma stored; (6) PUBLISH.
+The funnel and every rejection are reported. The climb was found correct on a planted motif in real positions (a pawn attacked by a pawn it can take, with decoys): every file, rank and kind became a
+variable, the attack literal stayed (it is what excludes a rook that can take a defended pawn), and the lemma held at precision 1.0 on 10 held-out positions in 10 games. Over-generalization is caught
+by exact counterexamples (a pawn on the fifth rank beside the black king: taking is not best, a quiet pawn move is).
+RESULTS (2026-11-06; scripts/printed OBS lines, JOURNAL): the machinery is complete and correct on a planted motif; on real self-play NO lemma has yet survived the held-out gates. The funnel, self-play at 0.01 s a move
+(about depth 4), replay depth 5, dev / held-out split of the GAMES:
+  24 games:  decisions 1105, surprises 240, replayable 179, confirmed 94, with saving moves 26, seeds 55, climbed 41, supported on dev 8, verified on held-out 0.
+  96 games:  decisions 4210, surprises 895, replayable 669, confirmed 256, with saving moves 77, seeds 150 (60 read), climbed 33, supported on dev 8, verified on held-out 0 (1306 s).
+Every one of the 8 that reached the held-out stage had precision 1.0 on 3 to 11 development firings and failed there (precision 0.0 to 0.75; the excess over chance below 0.2 for six of the eight): small-sample
+overfitting, caught by the games the climb never saw. That is the gate working, not a bug, and it says where the work is: (a) more data per lemma (the dev gate at 3 firings is too soft: a lower
+confidence bound on the precision, not the point estimate, should gate a seed); (b) a richer language (the body has no negation yet in what it mines: "undefended" needs it); (c) better surprises --
+a self-play engine at depth 4 loses material to horizon effects, which may often have no local pattern (not tested); human games or a stronger opponent may give tactics worth learning. The cost is
+in the exact cards (depth 5 over every legal move) and the climbs; how the 1306 s of the 96-game sleep divide between them is not yet measured.
+CREDIT BY REMOVAL is written (sleep.credit: each lemma left out in turn, the same positions decided again; on the positions it fired on, how often the decision changed and the depth and nodes with and without,
+with the standard error) but has not yet been run on a lemma found in play -- there is none; on the hand-written capture lemma over 6 firing positions the depth is the same with and without it (those pawn
+endings are read to their end either way).
+NOT DONE: mining negated literals; a
+statistical gate on the development precision; the Python wake / sleep for GDL games other than the kernels' (the Rust stack runs on any `Game`: tested on a second game; the Python glue builds
+games by variant name); Monte Carlo tree search as an operator; a trained router.
+
+#### 78.16 THE REVIEW OF 78.13-78.15 AND THE FIRST LEMMA FROM PLAY (2026-11-08; Kaveh: "check the work done so far ... see what can be improved")
+WHAT THE REVIEW FOUND: (1) the wake and the cards of 78.15 both ran on the engine's built-in count (no snapshot had been published, and sleep.py built its cards with no
+judge), so "optimal" in the claim was by a judge the sleep never named; (2) the development gate was a point estimate (3 clean firings), and the climb selects among many
+candidates on the same development cards -- the eight lemmas that failed held-out had passed it on 3-11 firings; (3) the seed cap took the first 60 seeds by game order;
+(4) a seed found inadmissible was reported without its figures, and the time of a sleep was not split by phase.
+CHANGED: the sleep's judge is a named store VALUATION record (`--judge`, Settings.judge; `game_store.judge_of(game, name)`), published into the snapshot the wake plays
+by and passed to the card builder, and recorded on every lemma (`stats.judge`); SUPPORT is a lower confidence bound on the precision (abstraction.lower_bound: one-sided
+Wilson at 95 %; `Gates.min_lower` 0.7 -- 3 of 3 firings bound 0.53, 7 of 7 0.72, 11 of 11 0.80) besides the firings and the independent games; seeds are interleaved by game
+(sleep.spread); an inadmissible seed is reported with its figures; the report carries the seconds of the cards, the climbs and the verification. Admissibility is
+unchanged: a refutation on the cards is an exact counterexample.
+OBS ties (40 self-play positions, cards at depth 5, the same positions under both judges): the share of legal moves tied for optimal is 0.22 under `units (no values)` and 0.47 under
+  `material (mined)`. Ties are abundant under either judge of units in quiet positions; the judge is not what made the claim cheap, and the `excess` gate is what does the work.
+OBS the sleep, 48 games at 0.02 s a move, judge material (mined), cards at depth 5 (507 s): decisions 3714, surprises 588, replayable 72, confirmed 23, with saving moves 13, seeds 31,
+  climbed 28, supported on dev 3, verified on held-out 1. Rejected: 25 for support (dev bound 0.27-0.65: 1-5 firings), 3 seeds inadmissible, 1 refuted on held-out (dev 16/16, held 2 of 8),
+  1 with one held-out firing.
+OBS the lemma cell-response-0265aee4: our pawn attacks an enemy pawn standing on a file that holds an enemy rook, with a pawn of ours beside; the response is to PUSH the attacking pawn
+  (not to take). Development 11 firings in 11 games, precision 1.0 (bound 0.80); held-out 8 firings in 8 games, precision 1.0 (bound 0.75), expected 0.75, excess 0.25, selectivity 0.04.
+  Seed: m48_c0 game 10 ply 38, b4a5 (a8a5 recaptured) -- b4b5 was the saving move. The run is not an ablation: it differed from 78.15's in the judge, the seconds a move (replayable
+  surprises fell from 669 of 895 to 72 of 588: a deeper wake has fewer horizon surprises), the seed order and the gate, so the one lemma is not attributed to one change.
+OBS credit by removal (400 self-play positions at 0.1 s, scratch snapshot): the lemma fired on 3, the decision changed on all 3, depth 6.67 with and without, nodes 25600 with / 28672 without.
+  Three positions: evidence of nothing yet.
+NOT WRITTEN: the lemma is in artifacts/experiments/sleep_chess_20261108-092256_0.json, not in rules/learned (Kaveh's call: the first lemma to enter the store).
+STILL OPEN: the timing split was added after this run started (its report has none); negated literals; a second game's Python glue; MCTS; the router.
+
+#### 78.17 THE TWO TOOL KITS: THE KIT IN THE TYPE, THE ESTIMATE, THE SELF-DIAGNOSIS, THE SLEEP THAT CHOOSES ITS TOOLS (2026-11-08; Kaveh: "the engine has multiple tools available to it,
+and it should use those tools intelligently in order to be able to assess the position at hand, when training. At inference time (analysis or playing), it only has access to lemmas and MCTS,
+not past game data"; built by three Sonnet agents under the rules: generic, modular, unit-test the pieces, record the structure, prefer lightweight off-the-shelf parts)
+THE PRINCIPLE: two kits. INFERENCE reads the snapshot (lemmas, the distilled valuation) and searches over the rules (the proof, the ledger, Monte Carlo tree search). TRAINING (the sleep) may also ask
+a teacher, past game data and deeper search -- chosen by what the engine's own log says it lacks, at a measured cost -- and stores the explanation (a lemma), never the oracle.
+BUILT: (1) `cs_operator::Kit { Inference, Training }` is a property of every Operator (`kit()`, default Inference); `drive` = `drive_in(Kit::Inference, ..)`: an inference drive does not run a training
+operator -- the step records Unsupported and says why; a training drive runs both. `Step.kit` says who answered. (2) cs_learn (the training kit): `Advisor` (an outside source's ordering of the legal
+moves with scores of unknown scale), `TeacherOp` (Kit::Training, answers the new `Goal::Advise`), `ScriptedAdvisor` for tests; no decision-path crate depends on cs_learn (the 78.13 test still reads the
+manifests). (3) `cs_planning::mcts`: UCT over the Game trait, multi-role, a pluggable `Rollout` (Uniform by default, the game crate's seeded RNG), budget-bounded with parts per 64 playouts, answering
+the new `Goal::Estimate` -- an estimate, never a proof; `cs_engine.estimate` exposes it. (4) `cs_decision::Params.ties`: the ledger's ties read WITHOUT the prior (the ledger keeps `ledger_share` of
+the clock), so the tie rate is measurable; `solve_batch(ties=)`, `wake --ties`. (5) discovery/diagnose.py: the engine's self-diagnosis over its own log -- the tie rate, surprises by kind, Gap share,
+cost by operator and part, the depth distribution. (6) sleep.py: RANK SOURCES of one shape (`rank(variant, moves) -> [(move, score)]`): `UciTeacher.rank` (python-chess MultiPV; training-only) and
+`EstimateSource` (the engine's own MCTS; inference kit, so nothing it touches is flagged as taught); the SECOND KIND OF SURPRISE (`disagreement`: rank-based, scale-free -- the source's top move
+is below our best, or none of our optimal moves is in its top k), confirmed only when OUR exact replay two plies deeper finds the source's move optimal, then seeded like any other; tie-BREAKING
+among the judge-tied saving moves by the source (`break_ties`); and `plan_tools`: the sleep reads the diagnosis and turns the source on when the judge ties often or the wake never read ties.
+Held-out verification is untouched by any source: exact, by our judge, on cards no source saw. Provenance: `meta.teacher` only for a training-only source, `meta.source` always.
+OBS the engine's own diagnosis (tests/test_plan78_18.py, 4 games at 0.02 s with --ties): tie rate 0.5, mean 4.6 moves as good as the best where ties were read. The 78.16 log (m48) never read ties: the chooser
+  calls the coarseness unknown and turns the source on.
+OBS the estimate (cs_engine.estimate): the scholar's-mate position, 0.3 s: h5f7 most visited, value 9279 of 10000 for the mover, 20803 playouts (2605 cut), 589056 nodes.
+OBS THE CONTROLLED COMPARISON, the same 48-game log, judge material (mined), cards at depth 5 (the 78.16 baseline: 1 lemma verified; climbs 391 s / cards 113 s measured here):
+  teacher (Stockfish, 50 ms MultiPV): 200 positions ranked, 25 disagreements, 5 confirmed by the deeper exact replay (20 not), seeds 36, climbed 30, supported 3, verified 1 -- the SAME lemma as the baseline
+    (cell-response-0265aee4, now flagged teacher because the teacher ordered its tie); the five teacher seeds all fell for support. 565 s.
+  estimate (MCTS 0.2 s): 200 ranked, 110 disagreements, 4 confirmed (106 not: a sampled estimate at 0.2 s disagrees with the exact depth-5 reading more often than not), seeds 35, climbed 31, supported 1,
+    verified 0 -- the baseline's seed was DISPLACED: in break mode the estimate ordered three other tied saving moves ahead of b4b5 and the cap of three cut it. 760 s.
+FOUND AND FIXED: a source that breaks ties can order the engine's own first choice out of the seeds; break mode now keeps it among them (sleep.py).
+WHERE THE TIME GOES (now measured): the climbs (391-483 s) dominate the cards (110-113 s); verification is negligible.
+READING: on this data neither source added a verified lemma; the teacher's disagreements are few and mostly unconfirmable at depth 7 (horizon or positional), the estimate's are mostly noise. The honest value
+of 78.17 is the loop closing -- the engine measures its own coarseness, chooses a source, and every source's touch is recorded and reversible -- not a gain in lemmas yet.
+NOT DONE: a rank source stronger than 0.2 s of uniform playouts (a Rollout from the ledger or a lemma prior); the training-time controller in Rust over `Operator`s of both kits (the Python `plan_tools`
+is its first, one-rule form); the climb's cost; negated literals; the second game's Python glue.

@@ -45,6 +45,9 @@ consumes an end-to-end approach and never reaches into a component itself. Every
     orchestrator.py introspection.py watchlist.py priors.py fields.py values.py
     io/paths.py                  THE PATH REGISTRY (see Data)
     incubator/                   explicit holding pen: work with no home yet
+      analyst/discovery/         the analyst's discovery code; the wake/sleep loop (plan 78.14-78.17):
+        wake.py sleep.py         self-play logging; sleep (surprises, cards, lemmas; rank sources: parse_multipv, disagreement, break_ties, UciTeacher)
+        diagnose.py              game-free diagnostics over a wake log (ties, surprises by kind, cost, depth, gap share); tests/test_plan78_17.py
     approaches.md                registry of end-to-end approaches
     approaches/<name>/           config.py + src/ + experiments/
     research/
@@ -235,3 +238,34 @@ Recorded so the difference is a decision rather than a discrepancy:
    registry is the indirection that makes location a one-line change; relocating ~100
    DVC-tracked outputs is a separate, riskier operation and the plan's access rule (always
    via the registry) is satisfied without it.
+
+## Rust engine (rust/engine, a Cargo workspace; game-free layer crates)
+
+Plan 78's end-to-end system (docs/ANALYST_PLAN.md 78). One crate per layer; every layer crate reads only the `Game` trait and names no chess object
+(tests/test_plan78.py's generic test scans their sources). The build is offline: `cargo test --release --offline --workspace --exclude cs_engine`;
+the Python extension `cs_engine` is built from `py/` with `maturin develop --release --offline` (the venv's python).
+
+```
+rust/engine/
+  gdl/                           cs_gdl: the GDL reader and spec evaluator (compose a variant's delta onto a base description)
+  game/                          cs_game: the Game trait (roles, mover, moves, apply, outcome, key, base_facts), GdlGame (any description),
+    src/kernel.rs                  KernelGame over shakmaty's variants -- THE ONE CHESS MODULE (rules ingestion); src/outside.rs the outside engines
+    src/certify.rs                 co-play certification of a kernel against its description (states, moves, facts); src/rng.rs the seeded RNG
+    src/gdl_game.rs                FactView: the vocabulary's derived relations evaluated over base facts
+  operator/src/lib.rs            cs_operator: THE SHARED INTERFACE -- Goal (+ its Mode), Budget, Outcome (status, move, value, candidates, evidence, line, events,
+                                 measured cost in parts, facts), Operator, Controller, drive; Kit (Inference | Training) is a property of each Operator and
+                                 drive = drive_in(Kit::Inference, ...): an inference drive refuses a training operator in the type (plan 78.17)
+  tactics/                       cs_tactics: forcing (proof), the ledger search (events along the line, a Judge turns them into a value: Count or Worth), census;
+                                 src/operators.rs their Operator wrappers
+  planning/                      cs_planning: keep, the density prior; src/mcts.rs UCT Monte Carlo tree search (Rollout pluggable; MctsOp answers Goal::Estimate);
+                                 tests/mcts.rs on tic-tac-toe in GDL
+  memory/                        cs_memory: content-addressed snapshots, the lemma language, the one matcher, cards (the corpus lemmas are verified on), LemmaOp
+  decision/                      cs_decision: Params, the Fixed controller (lemma, proof, ledger, prior), batch (JSON Lines log), cards (the card builder)
+  learn/                         cs_learn: THE TRAINING KIT -- watching a teacher (src/watch.rs; Teacher is training-only in the type), the valuation miner,
+    src/advice.rs                  Advisor (an outside source's ordering of the legal moves), TeacherOp (Kit::Training), ScriptedAdvisor for tests.
+                                 No decision-path crate depends on cs_learn (tests/test_plan78_14.py reads the manifests)
+  py/src/lib.rs                  cs_engine: the one Python entry (best_move, solve_batch, build_cards, estimate, facts, snapshots, certify, watch, mine)
+```
+
+The Python side of the loop is `catspace/incubator/analyst/discovery/` (wake, sleep, diagnose, abstraction, game_store); the learned knowledge is
+`rules/learned/<game>/` (vocabulary, lemmas) and its immutable snapshots under `data/derived/snapshots/<game>/`.

@@ -1,0 +1,180 @@
+"""PLAN 78.14 THE GAME STORE: what the engine has LEARNED about a game, kept where a person can read it, and published as immutable snapshots the Rust core reads.
+
+  rules/learned/<game>/vocabulary.json      the game's FACT VOCABULARY (rules ingestion's second half): its description (and, per variant, the delta that composes it),
+                                            the derived relations that belong to the fact layer, the relations a move's effect is read in, how a state holds its units.
+  rules/learned/<game>/lemmas/<name>.json   one learned lemma per file (the source of truth, committed): its body and response in the lemma language
+                                            (rust/engine/memory/src/lemma.rs), what verification measured, where it came from.
+  data/derived/snapshots/<game>/<id>.json   a SNAPSHOT: vocabulary + judge + lemmas + parent, immutable, named by the first 16 hex digits of the SHA-256 of its bytes
+                                            (the Rust core refuses a file that does not hash to its name). `HEAD` holds the id of the latest.
+
+The VALUATION stays the legacy store's entry (lemma_store.judge_of); a snapshot copies it in as its judge, nothing here replaces it. A learned lemma is a PRIOR:
+the engine reads the moves it proposes first, and the search's values are untouched (AGENTS.md rule 7: subgoals enter through the prior, never the value). Its
+status is SAMPLED -- verified exactly on a sample of positions, not proved; Lean stays the source of truth for what is proved (rule 11).
+
+  .venv/bin/python -m catspace.incubator.analyst.discovery.game_store publish chess      # publish the next snapshot of the game's lemmas
+  .venv/bin/python -m catspace.incubator.analyst.discovery.game_store status chess
+"""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+import cs_engine as CE
+
+from catspace.io import paths
+
+ROOT = paths.REPO_ROOT
+RULES = ROOT / "rules"
+
+
+# Where the learned sources and the snapshots live; a test points them at a temporary directory so it never touches the real store.
+LEARNED_ROOT: "Path | None" = None
+SNAPSHOT_ROOT: "Path | None" = None
+
+
+def learned_dir(game: str) -> Path:
+    return (LEARNED_ROOT or RULES / "learned") / game
+
+
+def slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9_]+", "-", name.lower()).strip("-")
+
+
+def vocabulary_file(game: str) -> dict:
+    p = learned_dir(game) / "vocabulary.json"
+    if not p.is_file():
+        raise FileNotFoundError(f"{p}: the game {game} has no fact vocabulary (rules/learned/<game>/vocabulary.json)")
+    return json.loads(p.read_text())
+
+
+def vocabulary(game: str) -> dict:
+    """The vocabulary as the Rust core reads it: {derived, delta, units}."""
+    v = vocabulary_file(game)
+    return {"derived": list(v.get("derived", [])), "delta": list(v.get("delta", [])), "units": v.get("units")}
+
+
+def spec_texts(game: str) -> dict:
+    """{variant: description text} for the variants of the game that have a description: the base text, composed with the variant's delta where it has one."""
+    v = vocabulary_file(game)
+    base = (RULES / v["spec"]).read_text()
+    out = {}
+    for variant, delta in v["variants"].items():
+        out[variant] = base if delta is None else CE.compose(base, (RULES / delta).read_text())
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- lemma sources
+
+def lemma_dir(game: str) -> Path:
+    return learned_dir(game) / "lemmas"
+
+
+def check_lemma(lemma: dict) -> None:
+    """The engine's own reading of the lemma (raises ValueError if it is not well formed)."""
+    CE.check_lemma(json.dumps(lemma))
+
+
+def write_lemma(game: str, lemma: dict) -> Path:
+    check_lemma(lemma)
+    d = lemma_dir(game)
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{slug(lemma['name'])}.json"
+    p.write_text(json.dumps(lemma, indent=1, sort_keys=True) + "\n")
+    return p
+
+
+def read_lemmas(game: str) -> list:
+    d = lemma_dir(game)
+    out = []
+    for p in sorted(d.glob("*.json")) if d.is_dir() else []:
+        e = json.loads(p.read_text())
+        if p.stem != slug(e["name"]):
+            raise ValueError(f"{p.name}: the file is named {slug(e['name'])}.json by the lemma's name")
+        check_lemma(e)
+        out.append(e)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- snapshots
+
+def snapshot_dir(game: str) -> Path:
+    if SNAPSHOT_ROOT is not None:
+        d = SNAPSHOT_ROOT / game
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    return Path(paths.derived("snapshots", game, ".keep")).parent
+
+
+def judge_of(game: str, name: "str | None" = None) -> "dict | None":
+    """The legacy store's valuation record in use for `game` -- or the record `name` (a comparison, or the judge a sleep learns by) -- as the snapshot's judge
+    (None: the engine's built-in count). Values come from the store's records only, never from code."""
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    j = LS.judge_of(game, name)
+    return None if not j else {"name": j["valuation"], "worth": {k: int(v) for k, v in j["worth"].items()}, "ours_first": bool(j["ours_first"])}
+
+
+def build(game: str, *, parent: "str | None" = None, teacher_used: bool = False, judge: "dict | None | str" = "store") -> bytes:
+    """The canonical bytes of the game's next snapshot: its vocabulary, judge and lemma sources. Canonical: sorted keys, no spaces, so the same content is the same
+    bytes and the same id."""
+    lemmas = read_lemmas(game)
+    snap = {"format": 1, "game": game, "parent": parent, "vocabulary": vocabulary(game),
+            "judge": judge_of(game) if judge == "store" else judge, "teacher_used": bool(teacher_used) or any((l.get("meta") or {}).get("teacher") for l in lemmas),
+            "lemmas": lemmas}
+    return json.dumps(snap, sort_keys=True, separators=(",", ":")).encode()
+
+
+def head(game: str) -> "str | None":
+    p = snapshot_dir(game) / "HEAD"
+    return p.read_text().strip() if p.is_file() else None
+
+
+def path_of(game: str, snapshot_id: str) -> Path:
+    return snapshot_dir(game) / f"{snapshot_id}.json"
+
+
+def publish(game: str, **kw) -> str:
+    """Publish the next snapshot of `game` (its parent the current HEAD) and make it HEAD -> its id. The same content publishes to the same id (nothing new is written);
+    the file is read back the way the engine reads it, and refused if it does not hash to its name."""
+    data = build(game, parent=head(game), **kw)
+    sid = CE.content_id(data)
+    p = path_of(game, sid)
+    # the same lemmas and judge under another parent are the same state of the store: do not grow the chain for nothing
+    cur = head(game)
+    if cur and path_of(game, cur).is_file():
+        old = json.loads(path_of(game, cur).read_bytes())
+        new = json.loads(data)
+        if {k: v for k, v in old.items() if k != "parent"} == {k: v for k, v in new.items() if k != "parent"}:
+            return cur
+    if not p.is_file():
+        p.write_bytes(data)
+    info = CE.snapshot_info(str(p))
+    assert info["id"] == sid, (info, sid)
+    (snapshot_dir(game) / "HEAD").write_text(sid + "\n")
+    return sid
+
+
+def info(game: str, snapshot_id: "str | None" = None) -> dict:
+    sid = snapshot_id or head(game)
+    if sid is None:
+        raise FileNotFoundError(f"{game}: no snapshot published")
+    return CE.snapshot_info(str(path_of(game, sid)))
+
+
+def main(argv: list) -> int:
+    if len(argv) != 2 or argv[0] not in ("publish", "status"):
+        print(__doc__)
+        return 2
+    game = argv[1]
+    if argv[0] == "publish":
+        sid = publish(game)
+        print(f"OBS snapshot {game} {sid}: {len(info(game, sid)['lemmas'])} lemma(s), parent {info(game, sid)['parent']}")
+    else:
+        i = info(game)
+        print(f"OBS snapshot {game} HEAD {i['id']}: {len(i['lemmas'])} lemma(s) {i['lemmas']}, parent {i['parent']}, teacher used {i['teacher_used']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

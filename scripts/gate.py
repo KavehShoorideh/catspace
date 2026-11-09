@@ -54,7 +54,9 @@ ENGINE_NAMES = (
     "test_plan76_4b "                                                                   # 2026-10-29: plan 76.4b the regression in Rust (the spec loaded from its text; the Python reading the oracle)
     "test_plan76_4c "                                                                   # 2026-10-29: plan 76.4c mining objects and material (the term language; mined relations; the mined valuation)
     "test_plan76_5 "                                                                     # 2026-10-29: plan 76.5 the valuation as one definition (the core's table from the store; the scan; the readers agree)
-    "test_plan77_1 test_plan77_1d test_plan78"                                                      # 2026-11-04: plan 77.1 (a) the one definition's port; (d) the certify stage (fresh certificates, online demotion)
+    "test_plan77_1 test_plan77_1d test_plan78 "                                                     # 2026-11-04: plan 77.1 (a) the one definition's port; (d) the certify stage (fresh certificates, online demotion)
+    "test_plan78_12 test_plan78_14"                                                                 # 2026-11-06: plan 78.12 the interface and the batch solver; 78.13-78.15 the fact layer, snapshots, wake and sleep
+    "test_plan78_17 test_plan78_18"                                                                 # 2026-11-08: plan 78.17 the two kits: diagnosis, rank sources (teacher, estimate), the sleep's tool choice
 ).split()
 
 PYTEST_FLAGS = ["-q", "-p", "no:cacheprovider", "-W", "ignore", "--durations=3"]
