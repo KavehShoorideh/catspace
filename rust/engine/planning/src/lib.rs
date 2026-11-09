@@ -3,6 +3,9 @@
 //! is our units less theirs by the store's valuation (a table from kind names to worths: the game reports its units, the layer never names one); the other side's
 //! fewest replies break a tie (it keeps them busy); then the move's name (a stable order). Subgoals (goal regression, the trajectory model from game data) are the
 //! approaches that come after this one.
+pub mod operators;
+pub mod mcts;
+
 use cs_game::{Game, Role};
 use std::collections::HashMap;
 
@@ -59,33 +62,41 @@ pub mod density {
     pub const DEPTH: i32 = 2;
     pub const FUSE: u64 = 50_000;
 
-    /// One move's density reading: (ours less theirs at 0 defects, at 1 defect).
-    pub fn advantage<G: Game, J: Judge>(g: &G, s: &G::State, m: &G::Move, me: Role, judge: &J, depth: i32, fuse: u64, defects: u32) -> Option<(i64, i64)> {
+    /// One move's density reading: (ours less theirs at 0 defects, at 1 defect), and the nodes the census readings spent.
+    pub fn advantage<G: Game, J: Judge>(g: &G, s: &G::State, m: &G::Move, me: Role, judge: &J, depth: i32, fuse: u64, defects: u32) -> Option<((i64, i64), u64)> {
         let q = g.apply(s, m);
-        if g.outcome(&q).is_some() { return Some((0, 0)); }
-        let count = |st: &G::State| -> [i64; 2] {
+        if g.outcome(&q).is_some() { return Some(((0, 0), 0)); }
+        let mut nodes = 0u64;
+        let mut count = |st: &G::State| -> [i64; 2] {
             let r = census(g, st, judge, defects, depth, fuse);
+            nodes += r.nodes;
             let mut c = [0i64; 2];
             for t in r.tactics { if (t.defects as usize) < 2 { c[t.defects as usize] += 1; } }
             c
         };
         let theirs = count(&q);
         let ours = match g.pass(&q) { Some(p) if g.mover(&p) == Some(me) => count(&p), _ => [0, 0] };
-        Some((ours[0] - theirs[0], ours[1] - theirs[1]))
+        Some(((ours[0] - theirs[0], ours[1] - theirs[1]), nodes))
     }
 
-    /// THE PRIOR among `cands` (indices into `g.moves(s)`), until `deadline`: -> (the chosen index, its reading, how many were read).
-    pub fn prior<G: Game, J: Judge>(g: &G, s: &G::State, me: Role, cands: &[usize], judge: &J, deadline: Instant, depth: i32, fuse: u64, defects: u32)
-                                    -> Option<(usize, (i64, i64), usize)> {
+    /// THE PRIOR's answer: the chosen index, its reading, how many were read, the nodes spent, and what each candidate read cost (index, nodes, seconds).
+    #[derive(Debug, Clone)]
+    pub struct Prior { pub index: usize, pub advantage: (i64, i64), pub read: usize, pub nodes: u64, pub reads: Vec<(usize, u64, f64)> }
+
+    /// THE PRIOR among `cands` (indices into `g.moves(s)`), until `deadline`.
+    pub fn prior<G: Game, J: Judge>(g: &G, s: &G::State, me: Role, cands: &[usize], judge: &J, deadline: Instant, depth: i32, fuse: u64, defects: u32) -> Option<Prior> {
         let ms = g.moves(s);
         let mut best: Option<(usize, (i64, i64))> = None;
-        let mut read = 0;
+        let mut reads = vec![];
+        let mut nodes = 0u64;
         for &i in cands {
             if Instant::now() >= deadline && best.is_some() { break; }
-            let Some(a) = advantage(g, s, &ms[i], me, judge, depth, fuse, defects) else { continue };
-            read += 1;
+            let t0 = Instant::now();
+            let Some((a, n)) = advantage(g, s, &ms[i], me, judge, depth, fuse, defects) else { continue };
+            reads.push((i, n, t0.elapsed().as_secs_f64()));
+            nodes += n;
             if best.as_ref().map_or(true, |(_, b)| a > *b) { best = Some((i, a)); }
         }
-        best.map(|(i, a)| (i, a, read))
+        best.map(|(i, a)| Prior { index: i, advantage: a, read: reads.len(), nodes, reads })
     }
 }

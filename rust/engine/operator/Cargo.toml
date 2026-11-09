@@ -1,0 +1,8 @@
+[package]
+name = "cs_operator"
+version = "0.1.0"
+edition = "2021"
+description = "plan 78.12: the shared interface of the layers -- Operator, Controller, Goal, Outcome, Budget and the driver loop (game-free: it reads only the Game trait)"
+
+[dependencies]
+cs_game = { path = "../game" }

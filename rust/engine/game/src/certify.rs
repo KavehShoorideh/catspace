@@ -11,6 +11,8 @@ pub struct Report {
     pub games: usize,
     pub plies: usize,
     pub states: usize,
+    /// The states whose facts both sides gave and agreed on (the fact layer's certificate).
+    pub fact_states: usize,
     pub terminals: Vec<String>,
     pub disagreements: Vec<String>,
 }
@@ -35,6 +37,14 @@ pub fn coplay<A: Game, B: Game>(fast: &A, oracle: &B, name: &dyn Fn(&str) -> Str
                 rep.terminals.push(format!("{o:?}"));
                 break;
             }
+            let (fa, fb) = (fast.base_facts(&a), oracle.base_facts(&b));
+            if !fa.is_empty() && !fb.is_empty() && fa != fb {
+                let only_a: Vec<String> = fa.iter().filter(|f| !fb.contains(f)).map(|f| f.to_string()).collect();
+                let only_b: Vec<String> = fb.iter().filter(|f| !fa.contains(f)).map(|f| f.to_string()).collect();
+                rep.disagreements.push(format!("game {g} after {:?}: facts -- the binding only {only_a:?}, the oracle only {only_b:?}", line));
+                break;
+            }
+            rep.fact_states += (!fa.is_empty() && !fb.is_empty()) as usize;
             let (ma, mb) = (fast.mover(&a), oracle.mover(&b));
             if ma.map(|r| roles[r].clone()) != mb.map(|r| oracle.roles()[r].clone()) {
                 rep.disagreements.push(format!("game {g} after {:?}: the mover {ma:?} against the oracle's {mb:?}", line));

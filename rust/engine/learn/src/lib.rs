@@ -4,8 +4,10 @@
 //! knowledge.
 //!   `Record`      one instance: the move names from the start, and the outcome (the goal per role).
 //!   `watch`       instances by watching: an outside engine (any UCI engine) played against itself, seeded random openings, the game judged by the Game trait.
+//!   `advice`      the training kit's first operator: an outside source's ordering of the legal moves (an `Advisor`), behind the shared `Operator` interface.
 //!   `valuation`   THE VALUATION MINER (plan 76.4c's definition, its loops here): unit-kind counts fit to outcomes by a symmetric ordinal logistic, then the cheapest
 //!                 integer worths that predict as well (one paired standard error, games as clusters) -- signed: a game whose goal is to shed units values them below 0.
+pub mod advice;
 pub mod valuation;
 pub mod watch;
 

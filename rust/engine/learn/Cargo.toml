@@ -6,3 +6,4 @@ description = "plan 78.4: the learning layer -- watching games (records) and min
 
 [dependencies]
 cs_game = { path = "../game" }
+cs_operator = { path = "../operator" }

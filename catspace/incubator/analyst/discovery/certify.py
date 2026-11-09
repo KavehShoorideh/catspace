@@ -358,7 +358,7 @@ def coplay_check(variant: str) -> tuple:
 
 
 for _v, _p in VARIANT_TEXTS.items():
-    BINDINGS[f"kernel {_v} (cs_game)"] = (f"the rules of {_v}: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome",
+    BINDINGS[f"kernel {_v} (cs_game)"] = (f"the rules of {_v}: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome, the state's facts (the fact layer's base, plan 78.13)",
                                          "the GDL text " + ("rules/chess.gdl" if _p is None else f"rules/chess.gdl with the delta {_p.relative_to(ROOT)}") + ", read by cs_gdl",
                                          _src(GC.SPEC, *([] if _p is None else [_p]), ENGINE / "gdl" / "src" / "lib.rs", ENGINE / "game" / "src" / "kernel.rs",
                                               ENGINE / "game" / "src" / "gdl_game.rs", ENGINE / "game" / "src" / "certify.rs", ENGINE / "Cargo.lock"),

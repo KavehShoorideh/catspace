@@ -1,13 +1,13 @@
 {
  "binding": "kernel 3check (cs_game)",
- "ingests": "the rules of 3check: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome",
+ "ingests": "the rules of 3check: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome, the state's facts (the fact layer's base, plan 78.13)",
  "oracle": "the GDL text rules/chess.gdl with the delta rules/variants/3check.gdl, read by cs_gdl",
  "corpus": "20 seeded co-play games (seed 77)",
  "positions": 1833,
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "a232635915368c5d",
+ "key": "727f6cca11c84bed",
  "sources": [
   "rules/chess.gdl",
   "rules/variants/3check.gdl",
@@ -17,6 +17,6 @@
   "rust/engine/game/src/certify.rs",
   "rust/engine/Cargo.lock"
  ],
- "date": "2026-11-05",
- "seconds": 7.1
+ "date": "2026-11-08",
+ "seconds": 7.2
 }

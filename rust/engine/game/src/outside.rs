@@ -42,6 +42,7 @@ impl Drop for Uci {
 }
 
 
+/// TRAINING ONLY (see cs_learn::watch::Teacher): nothing of the decision path may depend on this module.
 /// The UCI engine as a game's move source at a fixed move time (the learning layer's `Teacher`, implemented in cs_learn's terms by the caller).
 pub struct UciTeacher { pub eng: Uci, pub movetime_ms: u64, pub start: String }
 

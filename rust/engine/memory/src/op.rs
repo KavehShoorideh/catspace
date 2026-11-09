@@ -1,0 +1,89 @@
+//! THE LEMMA OPERATOR (plan 78.14): binds a snapshot's lemmas to the position and proposes the moves they name -- the architecture document's lemma matcher and
+//! response generator in one. It answers `Goal::Respond`. What it returns is a PRIOR: candidate move indices a search may read first. It never says a move is best
+//! or a line is lost, so a wrong lemma costs reading time and nothing else. Every row the matcher examines and the seconds each phase takes are reported.
+use crate::lemma::Lemma;
+use crate::matcher::{bindings_fused, Binding, FactIndex};
+use crate::cards::response_matches;
+use crate::perspective;
+use crate::snapshot::Snapshot;
+use cs_game::gdl_game::FactView;
+use cs_game::{Fact, Game};
+use cs_operator::{Budget, Goal, Operator, Outcome, Status};
+use std::collections::BTreeSet;
+
+/// The cap on the bindings one lemma may produce at one position (a named fuse).
+pub const MAX_BINDINGS: usize = 64;
+
+pub struct LemmaOp<'a> {
+    pub snapshot: &'a Snapshot,
+    pub view: &'a FactView,
+    /// Lemmas left out (the ablation: credit a lemma by removing it and measuring again).
+    pub exclude: BTreeSet<String>,
+}
+
+impl<'a> LemmaOp<'a> {
+    pub fn new(snapshot: &'a Snapshot, view: &'a FactView) -> Self { LemmaOp { snapshot, view, exclude: BTreeSet::new() } }
+
+    pub fn lemmas(&self) -> impl Iterator<Item = &Lemma> { self.snapshot.lemmas.iter().filter(|l| !self.exclude.contains(&l.name)) }
+}
+
+/// The delta of a move on the delta relations: (removed, added).
+pub fn delta(before: &[Fact], after: &[Fact], relations: &[String]) -> (Vec<Fact>, Vec<Fact>) {
+    let keep = |f: &&Fact| relations.contains(&f.relation);
+    let (b, a): (BTreeSet<&Fact>, BTreeSet<&Fact>) = (before.iter().filter(keep).collect(), after.iter().filter(keep).collect());
+    (b.difference(&a).map(|f| (*f).clone()).collect(), a.difference(&b).map(|f| (*f).clone()).collect())
+}
+
+impl<'a, G: Game> Operator<G> for LemmaOp<'a> {
+    fn name(&self) -> String { "lemma".into() }
+    fn accepts(&self, goal: &Goal) -> bool { matches!(goal, Goal::Respond { .. }) }
+    fn run(&self, g: &G, s: &G::State, goal: &Goal, _b: Budget) -> Outcome<G::Move> {
+        let Goal::Respond { .. } = goal else { return Outcome::unsupported("lemma", goal) };
+        let t0 = std::time::Instant::now();
+        let mut o = Outcome::new(Status::NoLine);
+        let base = g.base_facts(s);
+        if base.is_empty() {
+            o.evidence.push("lemma: the game gives no facts of this state".into());
+            return o;
+        }
+        let roles = g.roles();
+        let Some(mover) = g.mover(s) else { o.evidence.push("lemma: the game is over".into()); return o; };
+        let facts = match self.view.facts(&base).map(|f| perspective(&f, &roles, mover)) {
+            Ok(f) => f,
+            Err(e) => { o.status = Status::Gap; o.evidence.push(format!("lemma: the fact view failed: {e}")); return o; }
+        };
+        o.part("facts", facts.len() as u64, t0.elapsed().as_secs_f64());
+        let idx = FactIndex::new(&facts);
+        let moves = g.moves(s);
+        let mut deltas: Option<Vec<(FactIndex, FactIndex)>> = None;
+        let mut steps_total = 0u64;
+        let mut hit: BTreeSet<usize> = BTreeSet::new();
+        for lemma in self.lemmas() {
+            let t1 = std::time::Instant::now();
+            let mut steps = 0u64;
+            let (bs, cut) = bindings_fused(&lemma.body, &Binding::new(), &idx, MAX_BINDINGS, &mut steps, crate::cards::STEP_FUSE);
+            if cut { o.evidence.push(format!("lemma {}: the match was cut by the step fuse", lemma.name)); }
+            if !bs.is_empty() {
+                let ds = deltas.get_or_insert_with(|| moves.iter().map(|m| {
+                    let after = g.base_facts(&g.apply(s, m));
+                    let (r, a) = delta(&base, &after, &self.snapshot.vocabulary.delta);
+                    (FactIndex::new(&perspective(&r, &roles, mover)), FactIndex::new(&perspective(&a, &roles, mover)))
+                }).collect());
+                let mut mine: BTreeSet<usize> = BTreeSet::new();
+                for (i, (r, a)) in ds.iter().enumerate() {
+                    if bs.iter().any(|b| response_matches(lemma, b, r, a, &mut steps)) { mine.insert(i); }
+                }
+                o.evidence.push(format!("lemma {}: {} binding(s), {} move(s) proposed", lemma.name, bs.len(), mine.len()));
+                o.facts.push(Fact { relation: "fired".into(), args: vec![lemma.name.clone(), bs.len().to_string(), mine.len().to_string()] });
+                hit.extend(mine);
+            }
+            o.part(format!("match {}", lemma.name), steps, t1.elapsed().as_secs_f64());
+            steps_total += steps;
+        }
+        o.candidates = hit.into_iter().collect();
+        if !o.candidates.is_empty() { o.status = Status::Read; }
+        o.cost.nodes = steps_total + facts.len() as u64;
+        o.cost.seconds = t0.elapsed().as_secs_f64();
+        o
+    }
+}

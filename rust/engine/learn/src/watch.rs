@@ -9,7 +9,17 @@ use std::collections::HashMap;
 
 /// A TEACHER: an outside source of moves to watch (an engine, a person, a record). `start` opens a game from its descriptor; `best` answers the move after the
 /// moves played so far (None: it has no move -- the game ends unfinished).
+///
+/// FLAGGED TRAINING-ONLY (the architecture document: "a teacher may label positions during wake and sleep only"): a teacher's moves and labels are DATA for the
+/// miners, never part of a decision. The flag is in the type: `training_only` is true unless an implementor says otherwise, `watch` refuses a teacher that says
+/// otherwise, and no crate of the decision path (operator, tactics, planning, memory, decision) depends on this crate or on `cs_game::outside` -- a test reads the
+/// manifests. Whatever a teacher contributed to a lemma is recorded on the lemma and on the snapshot (`teacher_used`), so every result can be reported with and
+/// without it, and the teacher removed without touching another box.
 pub trait Teacher {
+    /// The teacher's name, for the provenance of what it labelled.
+    fn name(&self) -> String;
+    /// Always true for a teacher; a source that may decide is not a teacher.
+    fn training_only(&self) -> bool { true }
     fn start(&mut self, start: &str);
     fn best(&mut self, moves: &[String]) -> Option<String>;
 }
@@ -49,6 +59,7 @@ pub fn watch<G: Game, T: Teacher, F: Fn(usize) -> (G, String, String) + Sync, M:
         for _ in 0..threads.max(1) {
             sc.spawn(|| {
                 let Some(mut eng) = teacher() else { return };
+                assert!(eng.training_only(), "{} is not a training-only teacher: a teacher never decides", eng.name());
                 loop {
                     let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     if i >= games { break; }

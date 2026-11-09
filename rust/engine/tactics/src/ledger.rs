@@ -83,7 +83,16 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
     hist: FxHashMap<(Role, G::Move), i64>,
+    /// ROOT PRIOR (plan 78.14): indices of the root's legal moves a learned lemma proposes; read first (after the table's best), in this order. An order, never a
+    /// verdict: an exact search returns the same value whatever the order.
+    pub root_first: Vec<usize>,
+    /// The deepening steps of the runs so far, as measured (the granular cost of the search).
+    pub reads: Vec<DepthRead>,
 }
+
+/// One deepening step of `run`, as measured: the depth, the nodes it spent, its seconds, and whether it finished (the last one may have been cut by the clock).
+#[derive(Debug, Clone, Copy)]
+pub struct DepthRead { pub depth: i32, pub nodes: u64, pub seconds: f64, pub complete: bool }
 
 /// The answer: the move, its value, the line (move names) and its ledger, the depth read in full, the nodes.
 #[derive(Debug, Clone)]
@@ -91,14 +100,17 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default() }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
         Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true,
-                 killers: vec![], hist: FxHashMap::default() }
+                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], reads: vec![] }
     }
+
+    /// The node fuse (a named cap; the interface's budget sets it).
+    pub fn set_fuse(&mut self, nodes: u64) { self.fuse = nodes; }
 
     /// Did the fuse or the clock cut the last reading (its values are then lower bounds of the work, not exact)?
     pub fn cut(&self) -> bool { self.stopped }
@@ -204,7 +216,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let k = self.killers.get(ply as usize);
         let mut v: Vec<(usize, G::Move, i64, i64)> = self.g.moves(s).into_iter().enumerate().map(|(i, m)| {
             let d = self.gain(s, &m);
-            let rank = if Some(i) == hint { i64::MIN } else if d != 0 { -(1 << 40) + if maxing { -d } else { d } }
+            let rank = if Some(i) == hint { i64::MIN } else if ply == 0 && self.root_first.contains(&i) { i64::MIN / 2 + self.root_first.iter().position(|x| *x == i).unwrap() as i64 } else if d != 0 { -(1 << 40) + if maxing { -d } else { d } }
                        else if k.is_some_and(|k| k.iter().any(|x| x.as_ref() == Some(&m))) { -(1 << 30) }
                        else { -*self.hist.get(&(mover, m.clone())).unwrap_or(&0) };
             (i, m, d, rank)
@@ -316,7 +328,9 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn run(&mut self, s: &G::State, max_depth: i32) -> Line {
         let mut out = Line { first: None, value: 0, line: vec![], lost: vec![], depth: 0, nodes: 0, first_index: None };
         for d in 1..=max_depth {
+            let (n0, t0) = (self.nodes, Instant::now());
             let v = self.value(s, d, 0, i64::MIN / 2, i64::MAX / 2);
+            self.reads.push(DepthRead { depth: d, nodes: self.nodes - n0, seconds: t0.elapsed().as_secs_f64(), complete: !self.stopped });
             if self.stopped { break; }
             let (line, lost) = self.line_of(s, d as usize + 8);
             let fi = self.tt.get(&self.g.key(s)).map(|e| e.best);

@@ -5,28 +5,11 @@
 //! side the fewest replies (the forcing ones) -- an order, never a verdict.
 pub mod census;
 pub mod ledger;
+pub mod operators;
 
 use cs_game::{Game, Role};
-use std::time::Instant;
 
-/// The search's budget: a deadline and a node fuse (a named cap, checked as nodes are spent).
-pub struct Budget { pub deadline: Instant, pub max_nodes: u64, pub nodes: u64 }
-
-impl Budget {
-    pub fn new(seconds: f64, max_nodes: u64) -> Budget {
-        Budget { deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), max_nodes, nodes: 0 }
-    }
-    fn spend(&mut self) -> Result<(), Cut> {
-        self.nodes += 1;
-        if self.nodes >= self.max_nodes || (self.nodes & 255 == 0 && Instant::now() >= self.deadline) { return Err(Cut); }
-        Ok(())
-    }
-    pub fn left(&self) -> bool { self.nodes < self.max_nodes && Instant::now() < self.deadline }
-}
-
-/// The budget ran out: what was being read is a GAP.
-#[derive(Debug, Clone, Copy)]
-pub struct Cut;
+pub use cs_operator::{Budget, Cut};
 
 /// A side's goal reached at a terminal state: its goal value above every other role's.
 pub fn won(v: &[i64], me: Role) -> bool { v.iter().enumerate().all(|(i, x)| i == me || v[me] > *x) }
@@ -78,16 +61,29 @@ pub fn wins_in<G: Game>(g: &G, s: &G::State, me: Role, n: u32, b: &mut Budget) -
     Ok(None)
 }
 
+/// One deepening step of `force`, as measured: the depth asked, the nodes it spent, its seconds.
+#[derive(Debug, Clone, Copy)]
+pub struct ForceRead { pub depth: u32, pub nodes: u64, pub seconds: f64 }
+
 /// THE `forcing` APPROACH: `me` (to move at `s`) forces its goal? Deepened from one move to `max_depth` while the budget lasts.
 pub fn force<G: Game>(g: &G, s: &G::State, me: Role, max_depth: u32, b: &mut Budget) -> Answer<G::Move> {
+    force_traced(g, s, me, max_depth, b).0
+}
+
+/// `force` with the cost of each deepening step.
+pub fn force_traced<G: Game>(g: &G, s: &G::State, me: Role, max_depth: u32, b: &mut Budget) -> (Answer<G::Move>, Vec<ForceRead>) {
     let mut done = 0;
+    let mut reads = vec![];
     for n in 1..=max_depth {
-        match wins_in(g, s, me, n, b) {
-            Ok(Some(m)) => return Answer::Proved { first: m, depth: n },
+        let (n0, t0) = (b.nodes, std::time::Instant::now());
+        let r = wins_in(g, s, me, n, b);
+        reads.push(ForceRead { depth: n, nodes: b.nodes - n0, seconds: t0.elapsed().as_secs_f64() });
+        match r {
+            Ok(Some(m)) => return (Answer::Proved { first: m, depth: n }, reads),
             Ok(None) => done = n,
-            Err(Cut) => return Answer::Gap { depth: n },
+            Err(Cut) => return (Answer::Gap { depth: n }, reads),
         }
-        if !b.left() { return if done == max_depth { Answer::None { depth: done } } else { Answer::Gap { depth: n + 1 } }; }
+        if !b.left() { return (if done == max_depth { Answer::None { depth: done } } else { Answer::Gap { depth: n + 1 } }, reads); }
     }
-    Answer::None { depth: done }
+    (Answer::None { depth: done }, reads)
 }

@@ -18,6 +18,30 @@ pub mod outside;      // the binding to outside engines (their protocol), beside
 /// A role, by its index in `Game::roles`.
 pub type Role = usize;
 
+/// A ground fact as text: a relation name and its arguments (the store's language; the layers know no game).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Fact { pub relation: String, pub args: Vec<String> }
+
+impl Fact {
+    pub fn new(relation: &str, args: &[&str]) -> Fact { Fact { relation: relation.to_string(), args: args.iter().map(|a| a.to_string()).collect() } }
+}
+
+impl std::fmt::Display for Fact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.args.is_empty() { write!(f, "{}", self.relation) } else { write!(f, "({} {})", self.relation, self.args.join(" ")) }
+    }
+}
+
+/// Where a game keeps its UNITS in the state: the fluent `relation`, the argument holding the owner (a role's name) and, if any, the one holding the kind; the other
+/// arguments are the unit's place. A game's declaration of what a unit is -- nothing else in the layers names a unit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitDecl { pub relation: String, pub owner: usize, pub kind: Option<usize> }
+
+/// A game's FACT VOCABULARY (rules ingestion's second half): which derived relations of its description belong to the fact layer beside the state's own fluents,
+/// which relations a move's effect is read in (`delta`), and how a state holds its units. The learned lemmas are written in this language.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Vocabulary { pub derived: Vec<String>, pub delta: Vec<String>, pub units: Option<UnitDecl> }
+
 /// THE GAME (see the module docstring).
 pub trait Game {
     type State: Clone;
@@ -71,6 +95,9 @@ pub trait Game {
     /// THE MOVER'S OWN UNITS CHANGING KIND by a move (plan 78.5: a promotion -- a unit of one kind leaves, one of another arrives; a placement from outside the board
     /// arrives from nothing: from ""): [(from kind, to kind)]. By default read off the mover's units before and after.
     fn changed(&self, s: &Self::State, m: &Self::Move) -> Vec<(String, String)> where Self: Sized { units_changed(self, s, m) }
+    /// THE STATE AS GROUND FACTS (plan 78.13): the game's own state relations, one fact per true fluent -- what a fact view derives its relations from, and what the
+    /// co-play certificate compares. Empty for a game that gives none.
+    fn base_facts(&self, _s: &Self::State) -> Vec<Fact> { vec![] }
     /// The legal move named `name` on `s` (the game's own notation), or None.
     fn find_move(&self, s: &Self::State, name: &str) -> Option<Self::Move> { self.moves(s).into_iter().find(|m| self.move_name(s, m) == name) }
 }

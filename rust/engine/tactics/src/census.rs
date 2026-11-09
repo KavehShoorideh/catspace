@@ -23,7 +23,11 @@ pub struct Tactic {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Report { pub tactics: Vec<Tactic>, pub readings: usize, pub cut: usize, pub nodes: u64, pub frontier: Vec<usize> }
+pub struct Report { pub tactics: Vec<Tactic>, pub readings: usize, pub cut: usize, pub nodes: u64, pub frontier: Vec<usize>, pub levels: Vec<Level> }
+
+/// What one defect level of the census cost, as measured.
+#[derive(Debug, Clone, Copy)]
+pub struct Level { pub defects: u32, pub readings: usize, pub nodes: u64, pub seconds: f64 }
 
 /// What a line (move names from `s`) takes of the other side, with places, sorted: the tactic's targets. A place names where the unit stood when taken; a unit of
 /// theirs does not move while we make free moves (they pass), so the places read at the tactic's start.
@@ -48,6 +52,7 @@ pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u3
     let mut se = Search::with_fuse(g, judge, me, fuse);              // ONE search for every reading: the table is shared (values are of the future: valid across them)
     for k in 0..=max_defects {
         rep.frontier.push(frontier.len());
+        let (level_n0, level_r0, level_t0) = (rep.nodes, rep.readings, std::time::Instant::now());
         for (st, free) in &frontier {
             let n0 = se.nodes;
             se.rebudget(fuse);
@@ -70,6 +75,7 @@ pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u3
                 rep.tactics.push(Tactic { defects: k, free: free.clone(), line, wins, targets, ledger: ev.iter().map(|(o, e)| format!("{} {e}", who(*o))).collect(), value: v });
             }
         }
+        rep.levels.push(Level { defects: k, readings: rep.readings - level_r0, nodes: rep.nodes - level_n0, seconds: level_t0.elapsed().as_secs_f64() });
         if k == max_defects { break; }
         let mut next = vec![];
         for (st, free) in &frontier {

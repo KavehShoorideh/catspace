@@ -1,13 +1,13 @@
 {
  "binding": "kernel kingofthehill (cs_game)",
- "ingests": "the rules of kingofthehill: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome",
+ "ingests": "the rules of kingofthehill: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome, the state's facts (the fact layer's base, plan 78.13)",
  "oracle": "the GDL text rules/chess.gdl with the delta rules/variants/kingofthehill.gdl, read by cs_gdl",
  "corpus": "20 seeded co-play games (seed 77)",
  "positions": 4014,
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "bcc9ff10b2f71412",
+ "key": "b46f279ddb3a08cd",
  "sources": [
   "rules/chess.gdl",
   "rules/variants/kingofthehill.gdl",
@@ -17,6 +17,6 @@
   "rust/engine/game/src/certify.rs",
   "rust/engine/Cargo.lock"
  ],
- "date": "2026-11-05",
- "seconds": 14.3
+ "date": "2026-11-08",
+ "seconds": 14.5
 }

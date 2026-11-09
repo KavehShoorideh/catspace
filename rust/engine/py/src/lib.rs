@@ -81,6 +81,7 @@ fn watch(variant: &str, engine: &str, games: usize, random_plies: usize, movetim
     let v = variant.to_string();
     struct T(cs_game::outside::UciTeacher);
     impl cs_learn::watch::Teacher for T {
+        fn name(&self) -> String { "uci".into() }
         fn start(&mut self, start: &str) { self.0.begin(start) }
         fn best(&mut self, moves: &[String]) -> Option<String> { self.0.answer(moves) }
     }
@@ -139,11 +140,307 @@ fn census(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, 
     Ok((out, st.into()))
 }
 
+type BatchItem = (String, Option<String>, Vec<String>);
+type BatchRow = (Option<String>, bool, u64, f64, Option<String>);
+
+/// The snapshot a batch reads and the descriptions its lemmas are bound through (per variant: the text and its content id).
+struct Store { snapshot: cs_memory::snapshot::Snapshot, specs: HashMap<String, (String, String)> }
+
+thread_local! {
+    /// One fact view per (variant, description, snapshot) on each worker: compiling a description is costly, reading a position through it is not.
+    static VIEWS: std::cell::RefCell<HashMap<String, std::rc::Rc<cs_game::gdl_game::FactView>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn view_for(store: &Store, variant: &str) -> Option<std::rc::Rc<cs_game::gdl_game::FactView>> {
+    let (text, id) = store.specs.get(variant)?;
+    let key = format!("{variant}|{id}|{}", store.snapshot.id);
+    VIEWS.with(|v| {
+        if let Some(x) = v.borrow().get(&key) { return Some(x.clone()); }
+        let view = std::rc::Rc::new(cs_game::gdl_game::FactView::new(text, store.snapshot.vocabulary.clone()).ok()?);
+        v.borrow_mut().insert(key, view.clone());
+        Some(view)
+    })
+}
+
+/// One position of a batch: the game and state after the item's moves (its record read unless `record` is off), then the fixed controller's decision -- with the
+/// snapshot's lemma operator when the batch has a store and the variant a description; the row for the log and the summary for the caller. A position that does
+/// not parse, or is over, is an error row; the batch goes on.
+fn batch_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, label: &str, judge: &J, seconds: f64, snapshot: &str, params: &cs_decision::Params, record: bool,
+                                           store: Option<&Store>, ablate: &std::collections::BTreeSet<String>) -> (cs_decision::batch::Summary, serde_json::Value) {
+    use cs_decision::batch;
+    let label = if label.is_empty() { format!("{} {} {}", it.0, it.1.as_deref().unwrap_or("startpos"), it.2.join(" ")) } else { label.to_string() };
+    let (g, s, keys) = match record_of(&it.0, it.1.as_deref(), 518, &it.2) {
+        Ok(x) => x,
+        Err(e) => return batch::error_row(i, snapshot, &label, &format!("{e}")),
+    };
+    let mut p = params.clone();
+    p.history = if record { keys } else { vec![] };
+    let view = store.and_then(|st| if st.snapshot.lemmas.is_empty() { None } else { view_for(st, &it.0) });
+    let decision = match (store, &view) {
+        (Some(st), Some(v)) => {
+            let mut op = cs_memory::op::LemmaOp::new(&st.snapshot, v);
+            op.exclude = ablate.clone();
+            cs_decision::decide_with_lemmas(&g, &s, seconds, judge, &p, Some(&op as &dyn cs_operator::Operator<kernel::KernelGame>))
+        }
+        _ => cs_decision::decide_params(&g, &s, seconds, judge, &p),
+    };
+    match decision {
+        Some(d) => batch::row(i, snapshot, &label, &g, &s, &d),
+        None => batch::error_row(i, snapshot, &label, "the game is over"),
+    }
+}
+
+fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
+    let snapshot = cs_memory::snapshot::Snapshot::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let specs = specs.into_iter().map(|(k, v)| { let id = cs_memory::sha::content_id(v.as_bytes()); (k, (v, id)) }).collect();
+    Ok(Store { snapshot, specs })
+}
+
+/// solve_batch(positions, seconds=1.0, worth={}, ours_first=False, valuation="", snapshot="", trace_path=None, threads=0, prior=False, record=True, prior_depth=2,
+/// ledger_share=0.6, prior_defects=1, ordering=True, prune=True, extend=True, store=None, specs={}, labels=None, ablate=[])
+/// -> [(move or None, proved, nodes, seconds, error or None)]: plan 78.12 / 78.14 THE BATCH SOLVER -- `positions` is [(variant, fen or None, moves)], all decided in ONE
+/// call on `threads` workers (0: one per core) with the Python lock released, one summary per position in order. `seconds` is each position's own clock (positions run
+/// side by side: keep `threads` within the cores, or the clocks measure the contention). `store` is a snapshot file (<id>.json, which must hash to its name): its id
+/// tags the log, its judge is used when `worth` is empty, and its lemmas are bound through `specs` ({variant: description text}) by the lemma operator, whose proposals
+/// the ledger search reads first (`ablate`: lemma names left out). `labels` names the positions in the log. With `trace_path` every decision's steps are appended to
+/// that JSON Lines log.
+#[pyfunction]
+#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false))]
+#[allow(clippy::too_many_arguments)]
+fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, snapshot: String,
+               trace_path: Option<String>, threads: usize, prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool,
+               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool) -> PyResult<Vec<BatchRow>> {
+    let params = cs_decision::Params { prior, ties, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
+    let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
+    let snapshot = store.as_ref().map(|s| s.snapshot.id.clone()).unwrap_or(snapshot);
+    if let Some(l) = &labels { if l.len() != positions.len() { return Err(pyo3::exceptions::PyValueError::new_err("labels: one per position")); } }
+    let ablate: std::collections::BTreeSet<String> = ablate.into_iter().collect();
+    // the snapshot's judge stands in when the caller gives none
+    let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
+        store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
+    } else { Some((worth.clone(), ours_first, valuation.clone())) };
+    let lab = |i: usize| labels.as_ref().map(|l| l[i].clone()).unwrap_or_default();
+    let done = py.allow_threads(|| match &judge_worth {
+        None => cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &cs_tactics::ledger::Count, seconds, &snapshot, &params, record, store.as_ref(), &ablate)),
+        Some((w, of, name)) => {
+            let j = cs_tactics::ledger::Worth { name: name.clone(), table: w.clone(), ours_first: *of };
+            cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &j, seconds, &snapshot, &params, record, store.as_ref(), &ablate))
+        }
+    });
+    if let Some(path) = trace_path {
+        let rows: Vec<serde_json::Value> = done.iter().map(|(_, v)| v.clone()).collect();
+        cs_decision::batch::append(std::path::Path::new(&path), &rows).map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("{path}: {e}")))?;
+    }
+    Ok(done.into_iter().map(|(s, _)| (s.mv, s.proved, s.nodes, s.seconds, s.error)).collect())
+}
+
+fn vocab_of(json: &str) -> PyResult<cs_game::Vocabulary> {
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("vocabulary: {e}")))?;
+    cs_memory::snapshot::vocabulary_from_json(&v).map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
+/// facts(variant, description, vocabulary, fen=None, moves=[], perspective=True) -> [[relation, arg ...]]: the FACT LAYER of a position -- the kernel's base facts
+/// (certified against the description by co-play) and the derived relations the vocabulary (JSON) names, evaluated through the description; in the mover's
+/// perspective (`us` / `them`) by default.
+#[pyfunction]
+#[pyo3(signature = (variant, spec, vocabulary, fen=None, moves=vec![], perspective=true))]
+fn facts(variant: &str, spec: &str, vocabulary: &str, fen: Option<&str>, moves: Vec<String>, perspective: bool) -> PyResult<Vec<Vec<String>>> {
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    let view = cs_game::gdl_game::FactView::new(spec, vocab_of(vocabulary)?).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let base = g.base_facts(&s);
+    if base.is_empty() { return Err(pyo3::exceptions::PyValueError::new_err(format!("{variant} gives no facts (no description is certified for it)"))); }
+    let mut fs = view.facts(&base).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    if perspective { if let Some(me) = g.mover(&s) { fs = cs_memory::perspective(&fs, &g.roles(), me); } }
+    Ok(fs.into_iter().map(|f| { let mut v = vec![f.relation]; v.extend(f.args); v }).collect())
+}
+
+/// estimate(variant, fen, moves, seconds, max_nodes, seed, exploration, max_playout) -> {move, value, candidates, visits, playouts, cut, depth, nodes, seconds}: the
+/// Monte Carlo tree search operator's ESTIMATE of the position for the side to move (sampled playouts: an estimate, never a proof). `candidates` are the legal moves in
+/// visit order (most visited first), `visits` one row per root move (name, visits, mean outcome in hundredths of an outcome unit), `value` the root's mean for the
+/// mover in the same units. One source of a ranking among others (the teacher is another); game-free behind the Operator interface.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=0.2, max_nodes=10_000_000, seed=1, exploration=cs_planning::mcts::EXPLORATION, max_playout=cs_planning::mcts::MAX_PLAYOUT))]
+#[allow(clippy::too_many_arguments)]
+fn estimate(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, max_nodes: u64, seed: u64, exploration: f64, max_playout: usize) -> PyResult<PyObject> {
+    use cs_operator::Operator;
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    let Some(me) = g.mover(&s) else { return Err(pyo3::exceptions::PyValueError::new_err("the game is over")) };
+    let op = cs_planning::mcts::MctsOp::new(exploration, max_playout, seed);
+    let o = py.allow_threads(|| op.run(&g, &s, &cs_operator::Goal::Estimate { role: me }, cs_operator::Budget::new(seconds, max_nodes)));
+    let legal = g.moves(&s);
+    let name = |i: usize| g.move_name(&s, &legal[i]);
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("status", format!("{:?}", o.status))?;
+    d.set_item("move", o.mv.as_ref().map(|m| g.move_name(&s, m)))?;
+    d.set_item("value", o.value)?;
+    d.set_item("depth", o.depth)?;
+    d.set_item("candidates", o.candidates.iter().map(|&i| name(i)).collect::<Vec<_>>())?;
+    let mut visits = vec![];
+    let (mut playouts, mut cut) = (0i64, 0i64);
+    for f in &o.facts {
+        match f.relation.as_str() {
+            "visits" => if let (Ok(i), Ok(v), Ok(m)) = (f.args[0].parse::<usize>(), f.args[1].parse::<i64>(), f.args[2].parse::<i64>()) { visits.push((name(i), v, m)); },
+            "playouts" => { playouts = f.args[0].parse().unwrap_or(0); cut = f.args[1].parse().unwrap_or(0); }
+            _ => {}
+        }
+    }
+    d.set_item("visits", visits)?;
+    d.set_item("playouts", playouts)?;
+    d.set_item("cut", cut)?;
+    d.set_item("nodes", o.cost.nodes)?;
+    d.set_item("seconds", o.cost.seconds)?;
+    Ok(d.into())
+}
+
+/// A corpus of cards (positions with their facts and the exact value of every legal move) lemmas are verified on.
+#[pyclass]
+struct CardSet { inner: std::sync::Arc<cs_memory::cards::CardSet> }
+
+fn lemma_of(text: &str) -> PyResult<cs_memory::lemma::Lemma> {
+    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("lemma: {e}")))?;
+    cs_memory::lemma::Lemma::from_json(&v).map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
+fn eval_dict(py: Python<'_>, ev: &cs_memory::cards::Eval) -> PyResult<PyObject> {
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("fires", ev.fires)?; d.set_item("holds", ev.holds)?; d.set_item("refuted", ev.refuted)?; d.set_item("unknown", ev.unknown)?;
+    d.set_item("groups", ev.groups)?; d.set_item("groups_held", ev.groups_held)?; d.set_item("precision", ev.precision)?; d.set_item("expected", ev.expected)?;
+    d.set_item("excess", ev.excess)?; d.set_item("selectivity", ev.selectivity)?; d.set_item("truncated", ev.truncated)?; d.set_item("stopped", ev.stopped)?; d.set_item("steps", ev.steps)?;
+    d.set_item("cases", ev.cases.clone())?;
+    Ok(d.into())
+}
+
+impl CardSet {
+    fn check_indices(&self, indices: &Option<Vec<usize>>) -> PyResult<()> {
+        if let Some(ix) = indices { if ix.iter().any(|i| *i >= self.inner.len()) { return Err(pyo3::exceptions::PyIndexError::new_err("a card index is out of range")); } }
+        Ok(())
+    }
+}
+
+#[pymethods]
+impl CardSet {
+    fn __len__(&self) -> usize { self.inner.len() }
+    /// The card at `i` as JSON text.
+    fn card(&self, i: usize) -> PyResult<String> {
+        self.inner.cards.get(i).map(|c| c.to_json().to_string()).ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("no such card"))
+    }
+    /// eval(lemma_json, indices=None, max_bindings=64, max_refuted=None) -> {fires, holds, refuted, unknown, groups, groups_held, precision, expected, excess, selectivity, truncated, stopped, steps, cases}; with `max_refuted` it stops at the first card past that many refutations (partial counts, `stopped`).
+    #[pyo3(signature = (lemma, indices=None, max_bindings=64, max_refuted=None))]
+    fn eval(&self, py: Python<'_>, lemma: &str, indices: Option<Vec<usize>>, max_bindings: usize, max_refuted: Option<usize>) -> PyResult<PyObject> {
+        let l = lemma_of(lemma)?;
+        self.check_indices(&indices)?;
+        let set = self.inner.clone();
+        let ev = py.allow_threads(|| set.eval_bounded(&l, indices.as_deref(), max_bindings, max_refuted));
+        eval_dict(py, &ev)
+    }
+    /// eval_many([lemma_json], indices=None, max_bindings=64) -> [the eval dict of each]: the lemmas read side by side on the cores, in one call (the climb reads every
+    /// candidate step at once). A lemma that is not well formed is an error for the whole call.
+    #[pyo3(signature = (lemmas, indices=None, max_bindings=64, max_refuted=None))]
+    fn eval_many(&self, py: Python<'_>, lemmas: Vec<String>, indices: Option<Vec<usize>>, max_bindings: usize, max_refuted: Option<usize>) -> PyResult<Vec<PyObject>> {
+        let ls = lemmas.iter().map(|l| lemma_of(l)).collect::<PyResult<Vec<_>>>()?;
+        self.check_indices(&indices)?;
+        let set = self.inner.clone();
+        let evs: Vec<cs_memory::cards::Eval> = py.allow_threads(|| {
+            use rayon::prelude::*;
+            ls.par_iter().map(|l| set.eval_bounded(l, indices.as_deref(), max_bindings, max_refuted)).collect()
+        });
+        evs.iter().map(|e| eval_dict(py, e)).collect()
+    }
+    /// Append the cards to a JSON Lines file.
+    fn save(&self, path: &str) -> PyResult<()> {
+        let rows: Vec<serde_json::Value> = self.inner.cards.iter().map(|c| c.to_json()).collect();
+        cs_decision::batch::append(std::path::Path::new(path), &rows).map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("{path}: {e}")))
+    }
+    #[staticmethod]
+    fn load(path: &str) -> PyResult<CardSet> {
+        let text = std::fs::read_to_string(path).map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("{path}: {e}")))?;
+        let cards = text.lines().filter(|l| !l.trim().is_empty()).map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).map_err(|e| e.to_string())?;
+            cs_memory::cards::Card::from_json(&v)
+        }).collect::<Result<Vec<_>, String>>().map_err(pyo3::exceptions::PyValueError::new_err)?;
+        Ok(CardSet { inner: std::sync::Arc::new(cs_memory::cards::CardSet::new(cards)) })
+    }
+    /// The cards of several sets, in order, as one.
+    #[staticmethod]
+    fn merge(sets: Vec<PyRef<CardSet>>) -> CardSet {
+        let cards = sets.iter().flat_map(|s| s.inner.cards.iter().cloned()).collect();
+        CardSet { inner: std::sync::Arc::new(cs_memory::cards::CardSet::new(cards)) }
+    }
+}
+
+/// build_cards(items, specs, vocabulary, depth=3, fuse=50_000_000, threads=0, worth={}, ours_first=False) -> CardSet: the cards of the positions [(variant, fen or None,
+/// moves, id, group)] -- facts in the mover's perspective, every legal move's effect and exact value at `depth` (the plain minimax of the judge, no pruning), the nodes
+/// of one card's reading capped by `fuse` (a cut card says so and is never used to refute). `specs` is {variant: description text}.
+#[pyfunction]
+#[pyo3(signature = (items, specs, vocabulary, depth=3, fuse=50_000_000, threads=0, worth=HashMap::new(), ours_first=false))]
+#[allow(clippy::too_many_arguments)]
+fn build_cards(py: Python<'_>, items: Vec<(String, Option<String>, Vec<String>, String, String)>, specs: HashMap<String, String>, vocabulary: &str, depth: i32, fuse: u64,
+               threads: usize, worth: HashMap<String, i64>, ours_first: bool) -> PyResult<CardSet> {
+    let vocab = vocab_of(vocabulary)?;
+    let judged = !worth.is_empty();
+    let w = cs_tactics::ledger::Worth { name: "cards".into(), table: worth, ours_first };
+    let one = |it: &(String, Option<String>, Vec<String>, String, String)| -> Result<Option<cs_memory::cards::Card>, String> {
+        let spec = specs.get(&it.0).ok_or_else(|| format!("no description for {}", it.0))?;
+        let (g, s) = state_of(&it.0, it.1.as_deref(), 518, &it.2).map_err(|e| e.to_string())?;
+        thread_local! { static V: std::cell::RefCell<HashMap<String, std::rc::Rc<cs_game::gdl_game::FactView>>> = std::cell::RefCell::new(HashMap::new()); }
+        let key = format!("{}|{}|{:?}", it.0, cs_memory::sha::content_id(spec.as_bytes()), vocab);
+        let view = V.with(|m| -> Result<_, String> {
+            if let Some(x) = m.borrow().get(&key) { return Ok(x.clone()); }
+            let x = std::rc::Rc::new(cs_game::gdl_game::FactView::new(spec, vocab.clone())?);
+            m.borrow_mut().insert(key, x.clone());
+            Ok(x)
+        })?;
+        if judged { cs_decision::cards::card_of(&g, &view, &w, &s, depth, fuse, &it.3, &it.4) } else { cs_decision::cards::card_of(&g, &view, &cs_tactics::ledger::Count, &s, depth, fuse, &it.3, &it.4) }
+    };
+    let results: Vec<Result<Option<cs_memory::cards::Card>, String>> = py.allow_threads(|| {
+        use rayon::prelude::*;
+        let run = || items.par_iter().map(|it| std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| one(it))).unwrap_or_else(|_| Err("a worker panicked".into()))).collect::<Vec<_>>();
+        match rayon::ThreadPoolBuilder::new().num_threads(threads).build() { Ok(pool) => pool.install(run), Err(_) => run() }
+    });
+    let mut cards = vec![];
+    for r in results { if let Some(c) = r.map_err(pyo3::exceptions::PyValueError::new_err)? { cards.push(c); } }
+    Ok(CardSet { inner: std::sync::Arc::new(cs_memory::cards::CardSet::new(cards)) })
+}
+
+/// snapshot_info(path) -> {id, game, parent, lemmas, teacher_used}: a snapshot read the way the engine reads it (it must hash to its name).
+#[pyfunction]
+fn snapshot_info(py: Python<'_>, path: &str) -> PyResult<PyObject> {
+    let s = cs_memory::snapshot::Snapshot::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("id", s.id)?; d.set_item("game", s.game)?; d.set_item("parent", s.parent)?;
+    d.set_item("lemmas", s.lemmas.iter().map(|l| l.name.clone()).collect::<Vec<_>>())?; d.set_item("teacher_used", s.teacher_used)?;
+    Ok(d.into())
+}
+
+/// compose(base, delta) -> the description with the delta applied (retractions and additions), as the certificate reads a variant's text.
+#[pyfunction]
+fn compose(base: &str, delta: &str) -> PyResult<String> { cs_gdl::compose(base, delta).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.0)) }
+
+/// content_id(bytes) -> the first 16 hex digits of the SHA-256: a snapshot's id.
+#[pyfunction]
+fn content_id(data: &[u8]) -> String { cs_memory::sha::content_id(data) }
+
+/// check_lemma(lemma_json) -> None: raises ValueError if the lemma is not well formed (the engine's own reading of it).
+#[pyfunction]
+fn check_lemma(lemma: &str) -> PyResult<()> {
+    let v: serde_json::Value = serde_json::from_str(lemma).map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("lemma: {e}")))?;
+    cs_memory::lemma::Lemma::from_json(&v).map(|_| ()).map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
 #[pymodule]
 fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(variants, m)?)?;
     m.add_function(wrap_pyfunction!(certify_coplay, m)?)?;
     m.add_function(wrap_pyfunction!(best_move, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(facts, m)?)?;
+    m.add_function(wrap_pyfunction!(build_cards, m)?)?;
+    m.add_function(wrap_pyfunction!(estimate, m)?)?;
+    m.add_function(wrap_pyfunction!(snapshot_info, m)?)?;
+    m.add_function(wrap_pyfunction!(content_id, m)?)?;
+    m.add_function(wrap_pyfunction!(compose, m)?)?;
+    m.add_function(wrap_pyfunction!(check_lemma, m)?)?;
+    m.add_class::<CardSet>()?;
     m.add_function(wrap_pyfunction!(state, m)?)?;
     m.add_function(wrap_pyfunction!(watch, m)?)?;
     m.add_function(wrap_pyfunction!(census, m)?)?;

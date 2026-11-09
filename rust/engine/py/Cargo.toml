@@ -12,6 +12,11 @@ crate-type = ["cdylib"]
 cs_game = { path = "../game" }
 cs_gdl = { path = "../gdl" }
 cs_decision = { path = "../decision" }
+cs_operator = { path = "../operator" }
+cs_memory = { path = "../memory" }
+serde_json = "1"
+rayon = "1"
 cs_tactics = { path = "../tactics" }
+cs_planning = { path = "../planning" }
 cs_learn = { path = "../learn" }
 pyo3 = { version = "0.25", features = ["extension-module"] }

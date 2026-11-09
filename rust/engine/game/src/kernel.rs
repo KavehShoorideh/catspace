@@ -2,12 +2,12 @@
 //! of the layer stack: what the variants' rules are is shakmaty's (certified against a GDL text where one is written); the terminal rules mirror the spec's
 //! (rules/chess.gdl: the hundred-halfmove draw is terminal). Variants by lichess's names: chess, chess960, crazyhouse, atomic, antichess, kingofthehill, 3check,
 //! racingkings, horde. Repetition is the game record's, not the state's: a harness that keeps the record reads it.
-use crate::{Game, Role};
+use crate::{Fact, Game, Role};
 use shakmaty::fen::Fen;
 use shakmaty::uci::UciMove;
 use shakmaty::variant::{Variant, VariantPosition};
 use shakmaty::zobrist::{Zobrist64, ZobristHash};
-use shakmaty::{CastlingMode, Color, EnPassantMode, Move, Outcome, Position};
+use shakmaty::{CastlingMode, CastlingSide, Color, EnPassantMode, Move, Outcome, Position};
 
 /// The variants this kernel plays (lichess's names; chess960 is chess with its castling mode and a start drawn from the 960).
 pub const VARIANTS: [&str; 9] = ["chess", "chess960", "crazyhouse", "atomic", "antichess", "kingofthehill", "3check", "racingkings", "horde"];
@@ -110,6 +110,40 @@ impl Game for KernelGame {
         st.turn = !st.turn;
         st.ep_square = None;
         VariantPosition::from_setup(self.variant, st, self.mode).ok()
+    }
+    /// RULES INGESTION OF THE FACT LAYER: the position as the spec's own `true` fluents (rules/chess.gdl: cell, control, castling_right, ep_square, halfmove -- the
+    /// clock saturating at 100 -- and, for three-check, the checks each side has given). Only the variants with a written description give facts; the others none.
+    /// Certified against the description by co-play (certify::coplay compares these with the oracle's fluents at every state).
+    fn base_facts(&self, s: &VariantPosition) -> Vec<Fact> {
+        if !matches!(self.variant, Variant::Chess | Variant::KingOfTheHill | Variant::ThreeCheck) { return vec![]; }
+        let side = |c: Color| if c == Color::White { "white" } else { "black" };
+        let mut out = vec![];
+        for (sq, p) in s.board().iter() {
+            let kind = match p.role { shakmaty::Role::Pawn => "pawn", shakmaty::Role::Knight => "knight", shakmaty::Role::Bishop => "bishop",
+                                      shakmaty::Role::Rook => "rook", shakmaty::Role::Queen => "queen", shakmaty::Role::King => "king" };
+            out.push(Fact { relation: "cell".into(), args: vec![sq.file().char().to_string(), sq.rank().char().to_string(), side(p.color).into(), kind.into()] });
+        }
+        out.push(Fact { relation: "control".into(), args: vec![side(s.turn()).into()] });
+        for c in [Color::White, Color::Black] {
+            for (cs, wing) in [(CastlingSide::KingSide, "kingside"), (CastlingSide::QueenSide, "queenside")] {
+                if s.castles().has(c, cs) { out.push(Fact { relation: "castling_right".into(), args: vec![side(c).into(), wing.into()] }); }
+            }
+        }
+        if let Some(sq) = s.ep_square(EnPassantMode::Always) { out.push(Fact { relation: "ep_square".into(), args: vec![sq.file().char().to_string(), sq.rank().char().to_string()] }); }
+        out.push(Fact { relation: "halfmove".into(), args: vec![s.halfmoves().min(CLOCK_LIMIT).to_string()] });
+        if self.variant == Variant::ThreeCheck {
+            // (the description counts a check one state late -- "a check stands at a state whose side to move is in check, and is counted into the next state" --
+            // so while the checked side is to move, the check just given is not yet in the count)
+            if let Some(rc) = s.clone().into_setup(EnPassantMode::Always).remaining_checks {
+                for (c, r) in [(Color::White, rc.white), (Color::Black, rc.black)] {
+                    let left: u32 = r.into();
+                    let pending = s.is_check() && s.turn() == !c;
+                    out.push(Fact { relation: "checks".into(), args: vec![side(c).into(), (3 - left - pending as u32).to_string()] });
+                }
+            }
+        }
+        out.sort();
+        out
     }
     fn units(&self, s: &VariantPosition) -> Vec<(Role, String)> {
         s.board().iter().map(|(_sq, p)| (if p.color == Color::White { 0 } else { 1 }, p.role.char().to_string())).collect()
