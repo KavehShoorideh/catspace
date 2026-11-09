@@ -139,19 +139,28 @@ def break_ties(moves: list, ranking: list) -> list:
 
 def plan_tools(diag: dict, source, s: "Settings") -> dict:
     """THE SLEEP CHOOSES ITS TOOLS FROM WHAT THE ENGINE'S OWN LOG SAYS IT LACKS (the training-time controller, in its first and simplest form). `diag`: diagnose.diagnose's
-    report of the wake log; `source`: a rank source (a teacher or an estimate) or None. The one rule so far: when the judge ties often -- the tie rate is above
+    report of the wake log; `source`: a rank source (a teacher or an estimate), a LIST of them, or None. The one rule so far: when the judge ties often -- the tie rate is above
     `tie_threshold`, or the wake never asked for ties so the rate is unknown -- a rank source is worth its cost: it breaks the ties among saving moves and registers
-    the rank-based surprises. Everything chosen and why is returned, so the report says it."""
+    the rank-based surprises. With several sources the human games (`source == "human"`, plan 78.19 stage E: "in the beginning, if it doesn't know what to do, it queries the
+    human games") come FIRST when coarse, the others after in the order given; `sources` names the order and `source` stays the first. Everything chosen and why is returned."""
     ties = diag.get("ties", {})
     asked, rate = bool(ties.get("asked")), ties.get("rate")
     coarse = (not asked) or (rate is not None and rate >= s.tie_threshold)
     why = ("the wake did not read ties: the judge's coarseness is unknown" if not asked else f"tie rate {rate} against the threshold {s.tie_threshold}")
     chosen = {"teacher_mode": s.teacher_mode, "teacher_surprises": s.teacher_surprises}
-    if source is None:
+    many = [x for x in (source if isinstance(source, (list, tuple)) else [source]) if x is not None]
+    if not many:
         return {"diagnosis": ties, "coarse": coarse, "chosen": chosen, "why": "no rank source given; " + why}
     if coarse:
         chosen = {"teacher_mode": "break", "teacher_surprises": True}
-    return {"diagnosis": ties, "coarse": coarse, "source": getattr(source, "source", "teacher"), "training_only": bool(getattr(source, "training_only", True)), "chosen": chosen, "why": why}
+        many = sorted(many, key=lambda x: getattr(x, "source", "teacher") != "human")          # stable: the human source first, the rest as given
+        if getattr(many[0], "source", "") == "human":
+            why += "; the human games are queried first"
+    first = many[0]
+    out = {"diagnosis": ties, "coarse": coarse, "source": getattr(first, "source", "teacher"), "training_only": bool(getattr(first, "training_only", True)), "chosen": chosen, "why": why}
+    if isinstance(source, (list, tuple)):
+        out["sources"] = [getattr(x, "source", "teacher") for x in many]
+    return out
 
 
 class EstimateSource:
@@ -186,9 +195,12 @@ class EstimateSource:
         pass
 
 
-def source_of(name: str, seconds: float = 0.2, seed: int = 1, store: "str | None" = None) -> EstimateSource:
-    """An EstimateSource from a name: `mcts` (uniform playouts scored at the game's end: the plain search) or `mcts:<rollout>/<leaf>` (plan 78.18); `store` (a snapshot
+def source_of(name: str, seconds: float = 0.2, seed: int = 1, store: "str | None" = None):
+    """`human` or `human:<path>`: the HumanSource over the human-games index (human_index.py; training only; default path human_index.default_path("chess")). Else an EstimateSource from a name: `mcts` (uniform playouts scored at the game's end: the plain search) or `mcts:<rollout>/<leaf>` (plan 78.18); `store` (a snapshot
     path) gives the balance leaf its judge and the lemma prior its lemmas."""
+    if name == "human" or name.startswith("human:"):
+        from catspace.incubator.analyst.discovery import human_index as HI
+        return HI.HumanSource(name.partition(":")[2] or None)
     opts = {}
     if ":" in name:
         rollout, _, leaf = name.split(":", 1)[1].partition("/")
@@ -599,7 +611,7 @@ def main(argv: list) -> int:
     ap.add_argument("--teacher-mode", default="label", choices=["label", "filter", "break"])
     ap.add_argument("--teacher-surprises", action="store_true", help="register the rank-based surprises (training only)")
     ap.add_argument("--source", default=None, help="a rank source from the inference kit in place of a teacher: `mcts` (the plain estimate) or `mcts:<rollout>/<leaf>` "
-                    "(plan 78.18: rollout uniform | greedy | gain | lemma, leaf draw | balance; the store the sleep reads gives the judge and the lemmas)")
+                    "or `human[:<path>]` (the human-games index, training only, plan 78.19 E); (plan 78.18: rollout uniform | greedy | gain | lemma, leaf draw | balance; the store the sleep reads gives the judge and the lemmas)")
     ap.add_argument("--source-seconds", type=float, default=0.2)
     ap.add_argument("--no-auto", action="store_true", help="do not let the diagnosis choose the tools")
     ap.add_argument("--ties", action="store_true", help="the wake reads the ledger's ties (so the sleep can measure the tie rate)")

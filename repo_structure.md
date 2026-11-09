@@ -46,9 +46,11 @@ consumes an end-to-end approach and never reaches into a component itself. Every
     io/paths.py                  THE PATH REGISTRY (see Data)
     incubator/                   explicit holding pen: work with no home yet
       analyst/discovery/         the analyst's discovery code; the wake/sleep loop (plan 78.14-78.17):
-        wake.py sleep.py         self-play logging; sleep (surprises, cards, lemmas; rank sources: parse_multipv, disagreement, break_ties, UciTeacher)
+        wake.py sleep.py         self-play logging; sleep (surprises, cards, lemmas; rank sources: parse_multipv, disagreement, break_ties, plan_tools (one source or a list: the human source first when coarse), source_of (mcts | human[:path]), UciTeacher)
         diagnose.py              game-free diagnostics over a wake log (ties, surprises by kind, cost, depth, gap share); tests/test_plan78_17.py
         rank_bench.py            plan 78.18: a rank source's agreement with a reference on logged positions, and a match of two rank sources; tests/test_plan78_18.py
+        human_index.py           plan 78.19 stage E, TRAINING ONLY: the human-games index (sqlite: position key -> move n, mover's points; build, lichess_records_iter, kernel_key, signed, points_of, default_path, main CLI)
+                                 and HumanSource (rank/detail/__call__/close; source "human"); read by sleep's training kit only; tests/test_plan78_19e.py
     approaches.md                registry of end-to-end approaches
     approaches/<name>/           config.py + src/ + experiments/
     research/
@@ -248,11 +250,16 @@ the Python extension `cs_engine` is built from `py/` with `maturin develop --rel
 
 ```
 rust/engine/
-  gdl/                           cs_gdl: the GDL reader and spec evaluator (compose a variant's delta onto a base description)
+  gdl/                           cs_gdl: the GDL reader and spec evaluator (compose a variant's delta onto a base description); plan 78.19 A: `Program::run_for(wanted)`
+                                 (only the dependency cone's strata; `cone`, `cone_rules`, `run_in` for the audit's wrong cone; `run` stays the oracle), statics shared by
+                                 `Rc` with prebuilt indexes (`Db` layered over them), indexes kept current on `add`; tests/demand.rs (run == run_for on the cone, negative control)
   game/                          cs_game: the Game trait (roles, mover, moves, apply, outcome, key, base_facts), GdlGame (any description),
     src/kernel.rs                  KernelGame over shakmaty's variants -- THE ONE CHESS MODULE (rules ingestion); src/outside.rs the outside engines
     src/certify.rs                 co-play certification of a kernel against its description (states, moves, facts); src/rng.rs the seeded RNG
-    src/gdl_game.rs                FactView: the vocabulary's derived relations evaluated over base facts
+    src/gdl_game.rs                FactView: the vocabulary's derived relations evaluated over base facts; `with_demand(bool)` (off = full `run`, the oracle), `rows` (derived
+                                   rows interned, no strings), `cone_size`, string<->term memos (plan 78.19 A)
+    src/fact_audit.rs              plan 78.19 A: `positions` (seeded random play of any Game) and `audit` (demand view vs full view: equal/unequal, ms each); py `facts_audit`
+    tests/demand.rs                demand == full facts over random play, the cone's size, a negative control (a wrong cone is caught), rows vs facts, statics' copy cost
   operator/src/lib.rs            cs_operator: THE SHARED INTERFACE -- Goal (+ its Mode), Budget, Outcome (status, move, value, candidates, evidence, line, events,
                                  measured cost in parts, facts), Operator, Controller, drive; Kit (Inference | Training) is a property of each Operator and
                                  drive = drive_in(Kit::Inference, ...): an inference drive refuses a training operator in the type (plan 78.17)

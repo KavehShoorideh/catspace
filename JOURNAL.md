@@ -36374,3 +36374,13 @@ OBS the cost now: cs_engine.facts 3.21 ms a chess position (134 facts, 103 attac
 PLAN 78.19 in ANALYST_PLAN.md: A demand + interned rows (run_for the wanted cone, statics shared, no strings); B certified native readers through a Game hook; C the event stream (signed base deltas,
 support counts + delta rules compiled from the description, path-local memory with undo, lemma re-matching triggered by the deltas it reads); D the lemma prior at the tree's nodes (PUCT); E HumanSource
 (training only) over an index of the lichess records -- first when the judge is coarse, to break ties and raise disagreement surprises whose exact confirmation becomes lemmas. Nothing built; nothing committed.
+
+## 2026-11-08 23:05 -- plan 78.19 BUILT A and E (Kaveh: "go"): demand evaluation exact and 4x; the human games index covers the opening only
+Stage A (Sonnet subagent): `Program::run_for` over the wanted cone, statics shared behind an Rc with prebuilt indexes, no per-run copies, index-preserving adds, borrowed lookups, FactView memos
+and `rows`; `cs_game::fact_audit` + `cs_engine.facts_audit`; OFF switch `with_demand(false)`; negative control. OBS facts_audit chess 1205 positions equal 1205 unequal 0, 1.70 -> 0.41 ms a
+position; cone 18 relations / 73 clauses of 99 / 368. The kernel certificates re-run (0 disagreements). Python `facts` now caches its view (it loaded the description per call: 4.71 ms before the
+cache, 1.01 ms after with demand, baseline 3.18). The lemma prior in the playouts: 196 -> 256 nodes in 0.3 s; with no lemmas 512: derivation is half the step, string matching the other half.
+Stage E (Sonnet subagent): human_index.py (sqlite index by kernel key, incremental over shards; HumanSource training-only, source "human"); sleep `source_of("human")`, `plan_tools` over a list
+puts the human source first when coarse; rank_bench passes it through. OBS: one shard 200,000 games -> 5,595,833 positions in 70.6 s; coverage of held-out human games 200/200 at ply 0, 79/200 at
+ply 12, 2/200 at ply 20; of the m48 self-play positions 0/60; the m48 sleep with --source human: teacher_surprises 0 (it never answered). Written up in ANALYST_PLAN 78.19 BUILT with the two
+generic ways out ((i) sleep on the human games as a wake log; (ii) index by the abstraction, the lemma language as the key), neither built. Tests: test_plan78_19e 7, suites 78/78.12/14/17/18/19 pass.

@@ -4638,3 +4638,43 @@ WHAT TO SALVAGE, WHERE: gdl.py `Program.needed/run(wanted)` (discovery/gdl.py:51
 ORDER AND MEASURE: E and A in parallel (E is Python and independent; A is the certain win); then B (chess only needs the hook + certificate); C only if A+B leave derivation dominant at the tree's nodes
   (77.0's own rule: "only if Rust derivation then dominates is per-node recomputation the cost and the sub-project the answer"); D as soon as A makes a per-node prior affordable. Every stage prints
   OBS facts/ms and the audit's equal/unequal counts on the m48 positions before the next starts.
+
+#### 78.19 BUILT (A and E): DEMAND EVALUATION AND THE HUMAN GAMES AS A RANK SOURCE -- what each bought, measured (2026-11-08; Kaveh: "go")
+STAGE A -- DEMAND AND NO STRINGS (cs_gdl, FactView): `Program::run_for(facts, wanted)` evaluates only the strata of the wanted relations' dependency cone (`cone`, `cone_rules`; `run_in` takes an explicit
+  cone for the negative control; `run` unchanged, the oracle); the statics are shared behind an `Rc` with their lookup indexes prebuilt at load (a run copies none; `Db::layered`, `Db::get`);
+  `Relation::add` updates its indexes instead of clearing them, lookups borrow (`Cow`) instead of cloning, the recursive dedup is a set; FactView memoises string <-> term and fluent -> relation,
+  gives `rows` (interned derived rows, for the later stages) beside `facts` (unchanged contract), `with_demand(false)` is the OFF switch, `cone_size()` reports. `cs_game::fact_audit` (generic:
+  seeded random play over any Game, demand view against full view) behind `cs_engine.facts_audit(variant, spec, vocabulary, games, plies, seed, demand)`; `cs_engine.facts(..., demand=True)`
+  now keeps one view per (description, vocabulary, demand) on the thread (loading a description costs more than reading a position through it). Tests: gdl/tests/demand.rs (4),
+  game/tests/demand.rs (5, one the negative control). The kernel certificates were re-run after the edits (0 disagreements each; they are keyed on the hash of gdl/src/lib.rs and gdl_game.rs).
+  OBS 78.19 facts_audit chess (games 20, plies 60, seed 1): positions 1205, equal 1205, unequal 0; ms_per_position_full 1.70, ms_per_position_demand 0.41; cone 18 relations / 73 clauses of 99 / 368
+    (the loader's count: true./next/init/does fluents and `or`-expanded clauses count separately -- not the 49 / 114 of the plan text, which counted the source). The cone's dynamic part: attack,
+    attack_by, slide, empty, occupied; the rest statics.
+  OBS 78.19 negative control: 127 disagreements over 26 positions (each cone relation dropped in turn); OBS 78.19 A2: copying the statics cost 0.275 ms a run (35 relations, 1667 rows), now none.
+  OBS cs_engine.facts, the same 1200 random-play positions as the baseline (view cached): demand=False 2.12 ms, demand=True 1.01 ms a position; baseline before A (view built per call) 3.18 ms.
+    The Python call now includes the kernel's replay and the perspective; the in-Rust figure is the 0.41 ms above.
+  OBS estimate 0.3 s at the start position, lemma+balance (the lemma prior in the playouts, 78.18): nodes 256, playouts 1 (78.18: 196, 1); with the store's lemmas removed (facts + perspective +
+    index only): nodes 512, playouts 3; gain+balance without the prior: nodes 258,395, playouts 1,442.
+  READING: exact (1205 of 1205) and 4x cheaper per position; the audit can fail (the negative control). But the lemma prior moved from 196 to 256 nodes: at ~1 ms a step, half of it is still the
+  fact view with its string perspective and index, half is matching ONE lemma body with string bindings. Both halves are ~100x off the kernel. Stage A was necessary and is not sufficient: B (a
+  certified native `attack` reader: microseconds) and the interned matcher (A3 in full, the strings out of perspective / FactIndex / bindings) are the next cuts, before C; D stays gated on them.
+STAGE E -- THE HUMAN GAMES AS A TRAINING SOURCE (discovery/human_index.py; sleep.py `source_of("human[:<path>]")`, `plan_tools` over a list of sources; rank_bench passes "human" through):
+  the index is sqlite (stdlib) keyed by the kernel's u64 state key -> (move, n, points from the mover's view), built shard by shard from any records supplier (`lichess_records_iter` is the one
+  supplier); `HumanSource` (training_only, source "human") ranks the legal moves by human frequency with the mean points behind (`detail`); unknown position -> []. Default path
+  `paths.derived("human_index_<game>.sqlite")` (local, ignored by git). `plan_tools([human, mcts])` puts the human source first when the judge is coarse ("in the beginning, if it doesn't know
+  what to do, it queries the human games") and names the order. Tests: tests/test_plan78_19e.py (tmp_path index through the real kernel key; order, legality filter, unknown -> [], the choice).
+  OBS human index chess: games 200000, positions 5595833, rows 5876165, max_ply 40, min_count 1, seconds 70.6 (one shard of 97; nearly every position is seen once).
+  OBS HumanSource.rank at the start: e2e4 122448, d2d4 49382, c2c4 7509, g1f3 6830 ...; after e2e4 e7e5: g1f3 33973 (mean points 53.36), f1c4 5011, f2f4 3405, d2d4 3072 ...
+  OBS human coverage m48: 0/60 sampled self-play positions known to the one-shard index (plies 4..96, median 46).
+  OBS human coverage lichess (held-out shard, 200 games): ply 0: 200/200, ply 4: 198/200, ply 8: 155/200, ply 12: 79/200, ply 16: 14/200, ply 20: 2/200, ply 30: 0/194.
+  OBS rank agreement chess human: 60 positions, top1 0.000, top3 0.017, mean rank 30.00 (median 32) -- the source answered nothing on them (rank = len+1 when the source does not rank).
+  OBS sleep funnel chess (judge units (no values), depth 5), --source human on the m48 log: seeds 24, teacher_surprises 0, teacher_confirmed 0, climbed 21, supported_dev 1, verified_held 0, 689 s
+    (the 78.17/78.18 runs used --judge "material (mined)"; this one did not, so the funnel counts are not like-for-like -- the source's own counts are: it fired on nothing).
+  READING: an EXACT-POSITION index of human games covers the opening and nothing else: human games leave the book by ply 16-20, and our self-play positions (random opening plies, median ply 46)
+  are never in it. As a rank source AT OUR POSITIONS it is empty exactly where the engine "does not know what to do". Two ways to make the human games teach, both generic, neither built:
+    (i) SLEEP ON THE HUMAN GAMES: the records as a wake log (game rows from the records; position rows by replaying our own decision at the human's positions, or none), so the funnel's
+        surprises and cards come from positions where the human's move IS known and other humans' choices at the same position often are (the opening) -- the human move is the "source top"
+        of `disagreement`, the lemma that explains it is what enters the store. Generic: any game with records; the existing funnel unchanged.
+    (ii) GENERALISE THE KEY: index by the ABSTRACTION (the facts in the mover's perspective that the lemma language reads), not the exact state -- human frequency over fact patterns. This is the
+        lemma language used as a hash; it is what "learning from the human games" means once the exact key fails, and it needs stage A3's interned facts to be cheap.
+  (i) is the smaller step and reuses everything; (ii) is the real one. Both wait for Kaveh.
