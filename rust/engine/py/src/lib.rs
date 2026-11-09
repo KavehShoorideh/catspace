@@ -243,15 +243,48 @@ fn vocab_of(json: &str) -> PyResult<cs_game::Vocabulary> {
 /// (certified against the description by co-play) and the derived relations the vocabulary (JSON) names, evaluated through the description; in the mover's
 /// perspective (`us` / `them`) by default.
 #[pyfunction]
-#[pyo3(signature = (variant, spec, vocabulary, fen=None, moves=vec![], perspective=true))]
-fn facts(variant: &str, spec: &str, vocabulary: &str, fen: Option<&str>, moves: Vec<String>, perspective: bool) -> PyResult<Vec<Vec<String>>> {
+#[pyo3(signature = (variant, spec, vocabulary, fen=None, moves=vec![], perspective=true, demand=true))]
+fn facts(variant: &str, spec: &str, vocabulary: &str, fen: Option<&str>, moves: Vec<String>, perspective: bool, demand: bool) -> PyResult<Vec<Vec<String>>> {
     let (g, s) = state_of(variant, fen, 518, &moves)?;
-    let view = cs_game::gdl_game::FactView::new(spec, vocab_of(vocabulary)?).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let view = facts_view_for(spec, vocabulary, demand)?;
     let base = g.base_facts(&s);
     if base.is_empty() { return Err(pyo3::exceptions::PyValueError::new_err(format!("{variant} gives no facts (no description is certified for it)"))); }
     let mut fs = view.facts(&base).map_err(pyo3::exceptions::PyValueError::new_err)?;
     if perspective { if let Some(me) = g.mover(&s) { fs = cs_memory::perspective(&fs, &g.roles(), me); } }
     Ok(fs.into_iter().map(|f| { let mut v = vec![f.relation]; v.extend(f.args); v }).collect())
+}
+
+thread_local! {
+    /// One fact view per (description, vocabulary, demand) for `facts`: loading a description (its statics and their indexes) costs more than reading a position through it (plan 78.19 A).
+    static FACT_VIEWS: std::cell::RefCell<HashMap<String, std::rc::Rc<cs_game::gdl_game::FactView>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn facts_view_for(spec: &str, vocabulary: &str, demand: bool) -> PyResult<std::rc::Rc<cs_game::gdl_game::FactView>> {
+    let key = format!("{}|{vocabulary}|{demand}", cs_memory::sha::sha256_hex(spec.as_bytes()));
+    FACT_VIEWS.with(|v| {
+        if let Some(x) = v.borrow().get(&key) { return Ok(x.clone()); }
+        let view = std::rc::Rc::new(cs_game::gdl_game::FactView::new(spec, vocab_of(vocabulary)?).map_err(pyo3::exceptions::PyValueError::new_err)?.with_demand(demand));
+        v.borrow_mut().insert(key, view.clone());
+        Ok(view)
+    })
+}
+
+/// facts_audit(variant, spec, vocabulary, games, plies, seed, demand=True) -> dict: PLAN 78.19 A's AUDIT. `games` seeded random games of the variant's kernel, at most
+/// `plies` plies each; at every position the fact view with demand evaluation (`demand`, else the full run on both sides) is compared with the full evaluation (the
+/// oracle). {positions, equal, unequal, ms_per_position_full, ms_per_position_demand, cone_relations, cone_clauses, relations, clauses}.
+#[pyfunction]
+#[pyo3(signature = (variant, spec, vocabulary, games, plies, seed, demand=true))]
+fn facts_audit(variant: &str, spec: &str, vocabulary: &str, games: usize, plies: usize, seed: u64, demand: bool) -> PyResult<HashMap<String, f64>> {
+    let g = kernel::KernelGame::new(variant, 518).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let vocab = vocab_of(vocabulary)?;
+    let mk = |d: bool| cs_game::gdl_game::FactView::new(spec, vocab.clone()).map(|v| v.with_demand(d)).map_err(pyo3::exceptions::PyValueError::new_err);
+    let (full, dem) = (mk(false)?, mk(demand)?);
+    let pos = cs_game::fact_audit::positions(&g, games, plies, seed);
+    let r = cs_game::fact_audit::audit(&full, &dem, &pos).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let ((cr, cc), (tr, tc)) = dem.cone_size();
+    Ok(HashMap::from([("positions".to_string(), r.positions as f64), ("equal".to_string(), r.equal as f64), ("unequal".to_string(), r.unequal as f64),
+        ("ms_per_position_full".to_string(), r.ms_per_position_full()), ("ms_per_position_demand".to_string(), r.ms_per_position_demand()),
+        ("cone_relations".to_string(), cr as f64), ("cone_clauses".to_string(), cc as f64), ("relations".to_string(), tr as f64), ("clauses".to_string(), tc as f64)]))
 }
 
 /// The product of two priors' weights (the gain prior and the lemma prior together).
@@ -503,6 +536,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(best_move, m)?)?;
     m.add_function(wrap_pyfunction!(solve_batch, m)?)?;
     m.add_function(wrap_pyfunction!(facts, m)?)?;
+    m.add_function(wrap_pyfunction!(facts_audit, m)?)?;
     m.add_function(wrap_pyfunction!(build_cards, m)?)?;
     m.add_function(wrap_pyfunction!(estimate, m)?)?;
     m.add_function(wrap_pyfunction!(snapshot_info, m)?)?;

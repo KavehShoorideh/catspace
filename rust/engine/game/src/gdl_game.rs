@@ -5,6 +5,7 @@
 use crate::{Fact, Game, Role, Vocabulary};
 use cs_gdl::{Db, Program, Rel, Row, ARITY_MAX, FREE, T};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -212,32 +213,83 @@ pub fn parse_term(p: &mut Program, text: &str) -> Result<T, String> {
 pub struct FactView {
     prog: RefCell<Program>,
     vocab: Vocabulary,
+    derived: Vec<Rel>,
+    demand: bool,
+    memo: RefCell<Memo>,
 }
+
+/// A3-lite: what the view has already read or rendered -- a base fact's argument text -> its interned term, a term -> its text, a fluent name -> its relation.
+/// The interner only grows, so an entry never goes stale.
+#[derive(Default)]
+struct Memo { term_of: HashMap<String, T>, text_of: HashMap<T, String>, fluent: HashMap<String, Option<Rel>> }
 
 impl FactView {
     pub fn new(text: &str, vocab: Vocabulary) -> Result<FactView, String> {
         let p = Program::load(text).map_err(|e| e.0)?;
-        for d in &vocab.derived { if p.rel_id(d).is_none() { return Err(format!("the description has no relation {d} (the vocabulary names it)")); } }
-        Ok(FactView { prog: RefCell::new(p), vocab })
+        let mut derived = vec![];
+        for d in &vocab.derived { derived.push(p.rel_id(d).ok_or_else(|| format!("the description has no relation {d} (the vocabulary names it)"))?); }
+        Ok(FactView { prog: RefCell::new(p), vocab, derived, demand: true, memo: RefCell::new(Memo::default()) })
     }
+    /// The view with DEMAND on (default: only the strata the vocabulary's relations depend on are evaluated) or off (the full `Program::run`, the oracle).
+    pub fn with_demand(mut self, on: bool) -> FactView { self.demand = on; self }
+    pub fn demand(&self) -> bool { self.demand }
     pub fn vocabulary(&self) -> &Vocabulary { &self.vocab }
+    /// (relations, clauses) of the dependency cone of the vocabulary's derived relations, and the description's totals (relations, clauses).
+    pub fn cone_size(&self) -> ((usize, usize), (usize, usize)) {
+        let p = self.prog.borrow();
+        let c = p.cone(&self.derived);
+        ((c.len(), p.cone_rules(&c)), (p.nodes.len(), p.clauses.len()))
+    }
+
+    /// The base facts as interned rows (memoised: a repeated argument is parsed once). A base fact the description has no fluent for is an error.
+    fn rows_of(&self, p: &mut Program, base: &[Fact]) -> Result<Vec<(Rel, Row)>, String> {
+        let mut m = self.memo.borrow_mut();
+        let mut rows = Vec::with_capacity(base.len());
+        for f in base {
+            let r = match m.fluent.get(&f.relation) {
+                Some(r) => *r,
+                None => { let r = p.rel_id(&format!("true.{}", f.relation)); m.fluent.insert(f.relation.clone(), r); r }
+            };
+            let r = r.ok_or_else(|| format!("the description has no fluent {}", f.relation))?;
+            if f.args.len() > ARITY_MAX { return Err(format!("{f}: too many arguments")); }
+            let mut row = [FREE; ARITY_MAX];
+            for (i, a) in f.args.iter().enumerate() {
+                row[i] = match m.term_of.get(a) {
+                    Some(t) => *t,
+                    None => { let t = parse_term(p, a)?; m.term_of.insert(a.clone(), t); t }
+                };
+            }
+            rows.push((r, row));
+        }
+        Ok(rows)
+    }
+
+    fn evaluate(&self, p: &mut Program, rows: &[(Rel, Row)]) -> Db {
+        if self.demand { p.run_for(rows, &self.derived) } else { p.run(rows) }
+    }
+
+    /// The derived rows of a state as interned rows, relation by relation in the vocabulary's order (what a later stage reads without strings).
+    pub fn rows(&self, base: &[Fact]) -> Result<Vec<(Rel, Row)>, String> {
+        let mut p = self.prog.borrow_mut();
+        let rows = self.rows_of(&mut p, base)?;
+        let db = self.evaluate(&mut p, &rows);
+        let mut out = vec![];
+        for &r in &self.derived { for row in db.facts(r) { out.push((r, row)); } }
+        Ok(out)
+    }
 
     /// The fact layer of a state: its base facts and the derived relations of the vocabulary, sorted. A base fact the description has no fluent for is an error.
     pub fn facts(&self, base: &[Fact]) -> Result<Vec<Fact>, String> {
         let mut p = self.prog.borrow_mut();
-        let mut rows: Vec<(Rel, Row)> = vec![];
-        for f in base {
-            let r = p.rel_id(&format!("true.{}", f.relation)).ok_or_else(|| format!("the description has no fluent {}", f.relation))?;
-            if f.args.len() > ARITY_MAX { return Err(format!("{f}: too many arguments")); }
-            let mut row = [FREE; ARITY_MAX];
-            for (i, a) in f.args.iter().enumerate() { row[i] = parse_term(&mut p, a)?; }
-            rows.push((r, row));
-        }
-        let db = p.run(&rows);
+        let rows = self.rows_of(&mut p, base)?;
+        let db = self.evaluate(&mut p, &rows);
+        let mut m = self.memo.borrow_mut();
         let mut out: Vec<Fact> = base.to_vec();
-        for d in &self.vocab.derived {
-            let r = p.rel_id(d).expect("checked at construction");
-            for row in db.facts(r) { out.push(Fact { relation: d.clone(), args: row_args(&row).iter().map(|t| render_term(&p, *t)).collect() }); }
+        for (d, &r) in self.vocab.derived.iter().zip(&self.derived) {
+            for row in db.facts(r) {
+                let args = row_args(&row).iter().map(|t| m.text_of.entry(*t).or_insert_with(|| render_term(&p, *t)).clone()).collect();
+                out.push(Fact { relation: d.clone(), args });
+            }
         }
         out.sort();
         out.dedup();

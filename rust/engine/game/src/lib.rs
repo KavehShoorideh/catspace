@@ -10,6 +10,7 @@
 //!                         three-check, racing kings, horde): fast, and the ONLY chess module of the layer stack -- rules ingestion, certified against its GDL
 //!                         text where one is written (`certify`).
 pub mod certify;
+pub mod fact_audit;   // plan 78.19: the demand fact view against the full one, over seeded random play
 pub mod gdl_game;
 pub mod kernel;
 pub mod rng;
