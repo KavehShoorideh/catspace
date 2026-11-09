@@ -36384,3 +36384,11 @@ Stage E (Sonnet subagent): human_index.py (sqlite index by kernel key, increment
 puts the human source first when coarse; rank_bench passes it through. OBS: one shard 200,000 games -> 5,595,833 positions in 70.6 s; coverage of held-out human games 200/200 at ply 0, 79/200 at
 ply 12, 2/200 at ply 20; of the m48 self-play positions 0/60; the m48 sleep with --source human: teacher_surprises 0 (it never answered). Written up in ANALYST_PLAN 78.19 BUILT with the two
 generic ways out ((i) sleep on the human games as a wake log; (ii) index by the abstraction, the lemma language as the key), neither built. Tests: test_plan78_19e 7, suites 78/78.12/14/17/18/19 pass.
+
+## 2026-11-09 01:20 -- plan 78.20: the typed fact graph and a graph-net prior, the cheap test (Kaveh's graph-of-nodes idea; "sure")
+Kaveh asked whether pieces are still graph nodes (no: square-centred cell/attack rows; the old L3 graph.py and the learned trunk were the graph places) and laid out the idea: facts, proven facts,
+conjectures, probabilities as typed nodes with supports/refutes edges, a GNN over it as the policy. Assessment given (sound as the shared representation; GNN as a prior at expansions only; new
+instances yes, new kinds need retraining; speed ~ms a graph; the lemmas stay the claims). Built by a Sonnet subagent: fact_graph.py (graph_of over term/fact/move/claim nodes, graph_hash WL),
+graph_prior.py (HeteroConv SAGE net, train on cards, GraphSource "gnn"), source_of wiring, tests/test_plan78_20.py (7). OBS: 3714 cards from the m48 log in 215 s; held top1 0.4876 at 30 epochs
+(uniform 0.4213, fewest-lost oracle 0.6810); agreement with Stockfish on 60 d1 positions: gnn top1 0.133 top3 0.383 median rank 8 at 22 ms, against uniform 0.100/0.217/10 and gain+balance
+0.067/0.233/11 at 200 ms; the exact-key human index 0.000/0.033. Written as 78.20 in ANALYST_PLAN; gate gains test_plan78_20.

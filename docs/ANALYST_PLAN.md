@@ -4678,3 +4678,38 @@ STAGE E -- THE HUMAN GAMES AS A TRAINING SOURCE (discovery/human_index.py; sleep
     (ii) GENERALISE THE KEY: index by the ABSTRACTION (the facts in the mover's perspective that the lemma language reads), not the exact state -- human frequency over fact patterns. This is the
         lemma language used as a hash; it is what "learning from the human games" means once the exact key fails, and it needs stage A3's interned facts to be cheap.
   (i) is the smaller step and reuses everything; (ii) is the real one. Both wait for Kaveh.
+
+#### 78.20 THE TYPED FACT GRAPH AND A GRAPH-NET PRIOR -- the cheap test (2026-11-09; Kaveh: pieces, facts, proven facts, conjectures and probabilities as typed nodes with supports / refutes /
+derived-from edges, "and then a graph neural network on top of all of this to become my policy whenever I need a policy ... if I add a new node with new information my policy will take it into
+account, as opposed to having it as text context for an LLM"; answer: yes as the shared representation and as a PRIOR at expansions, never as a claim -- the lemmas stay the explanation)
+THE GRAPH (discovery/fact_graph.py, generic -- tokens, not game names): `graph_of(facts, moves, vocabulary, bindings=None) -> HeteroData`. Node types `term` (one per constant), `fact` (one per
+  row; relation token, kind ground / derived by the vocabulary, `present`), `move` (one per legal move; targets y / opt / lost when a card gives them), `claim` (lemma bindings / conjectures with
+  a probability; the type exists and takes `bindings`, nothing supplies them yet). Edge types `(fact, arg_i, term)` per argument position, `(move, removes|adds, fact)` (an added row not in the
+  position becomes a fact node with present 0), `(claim, binds, fact)`, and the reverses. Token vocabularies (UNK = 0) are learned from the corpus and saved with the model: a new INSTANCE of a
+  known kind enters the graph and is read; a new KIND gets UNK until retrained (the honest limit of "add a node and the policy takes it into account"). `graph_hash` is a Weisfeiler-Lehman hash of
+  the term/fact graph (3 rounds; permutation-invariant, sensitive to one changed fact): the abstraction key 78.19's reading (ii) asked for, the same object serving the net, the lemma matcher
+  (a body is a subgraph pattern), the human index and the event stream.
+THE NET (discovery/graph_prior.py, torch_geometric): `GraphNet` 3 layers x 64, HeteroConv of SAGEConv per edge type with residual + LayerNorm, an MLP head on the move nodes; loss = cross-entropy of
+  the softmax over a position's moves against the uniform distribution over the OPTIMAL set (value == max by the judge at the card's depth). `train(cards_path, out_path, epochs, seed)`; CLI
+  `graph_prior build-cards <game> --log --depth --stride --max-cards --judge --out` (sleep's corpus construction; even subsampling) and `train`. Trained in the TRAINING kit (cards, so the judge's
+  exact depth-5 values are the labels; a teacher or the human games could label as well). `GraphSource` (source "gnn", training_only False: a prior of the inference kit -- it ranks, it claims
+  nothing): facts via cs_engine.facts, each move's removed / added rows as the child-minus-parent difference over the delta relations with the child's perspective swapped back (tested equal to
+  build_cards' rows on 5 positions, 100+ moves). `source_of("gnn[:<model>]")` in sleep and rank_bench; default model paths.derived("graph_prior_<game>.pt") (local). Tests: tests/test_plan78_20.py (7).
+OBS gnn build-cards chess: 3714 cards from 3714 positions, depth 5, judge material (mined), 215 s (the m48 log, stride 1).
+OBS gnn corpus: cards 3714, dev 2139, held 1575 (split by game), terms 37, relations 9, graph seconds 3.0.
+OBS gnn baselines held (1575 cards, 1535 contested): uniform 0.4213, fewest lost 0.6810 (fewest lost reads the card's depth-5 `lost`: an oracle the inference kit cannot compute cheaply).
+OBS gnn epoch 30: loss 2.9604, held top1 0.4876 (contested 0.4743), 101 s; a 100-epoch run (scratch, not the default model): held top1 0.5238 at epoch 100, loss 2.68, 335 s; held top1 swings ~0.03
+  between epochs (small sets: read as directional).
+OBS gnn GraphSource.rank: 40 positions, 24.8 ms a position (dominated by one cs_engine.facts call per legal move, not by the net).
+OBS RANK AGREEMENT with Stockfish (300 ms) on 60 positions of the d1 log (96 games; NOT the training log), rank_bench_chess_d1_agree.out and rank_bench_chess_d1_gnn_agree.out:
+  source          top1   top3   mean rank  median   s a position
+  uniform         0.100  0.217  11.72      10       0.200
+  gain+balance    0.067  0.233  13.02      11       0.200
+  gnn (30 epochs) 0.133  0.383  10.75       8       0.022
+  human (exact)   0.000  0.033  28.03      29       0.001   (78.19 E: the index answers nothing off the opening)
+READING: the net learned from 2139 cards of 24 games and, with no search at all, ranks the engine's optimal move and Stockfish's move better than 0.2 s of Monte Carlo search with the informed
+  playouts, at a tenth of the cost -- top3 0.383 against 0.233 is the figure to read (60 positions: top1 differences of 0.03 are noise). It is far below the fewest-lost oracle on the cards, so
+  the labels hold much more than it has learned; more games (the wake logs accumulate; the human games label the opening) and the claim nodes are the next inputs. The 24.8 ms is the fact
+  layer again (one facts call per child): the event stream (78.19 C) or a kernel delta (`Game::changed`) cuts it to one call. DONE as the cheap test; its two uses now: (1) `--source gnn` is a
+  rank source for sleep's tie-breaking and surprises like any other, (2) a per-expansion PUCT prior in the tree (78.19 D) once the per-position cost is a millisecond. Not done: claim nodes
+  (lemma bindings need a bindings API out of cs_memory), the margin term on values, ONNX export for the Rust tree (onnxruntime is not in the venv; onnx is).

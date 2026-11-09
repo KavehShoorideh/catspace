@@ -33,7 +33,7 @@ DRAW = [50, 50]
 
 def source_of(name: str, seconds: float, seed: int = 1, store: "str | None" = None) -> "SL.EstimateSource":
     """A rank source from its name: sleep's `source_of` names (`mcts`, `mcts:<rollout>/<leaf>`); a bare `<rollout>[+<leaf>]` is read as `mcts:<rollout>/<leaf>`."""
-    if name == "human" or name.startswith("human:"):
+    if name in ("human", "gnn") or name.startswith(("human:", "gnn:")):
         return SL.source_of(name, seconds, seed, store)
     if not name.startswith("mcts"):
         rollout, _, leaf = name.partition("+")

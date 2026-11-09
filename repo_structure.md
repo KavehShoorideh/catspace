@@ -46,10 +46,12 @@ consumes an end-to-end approach and never reaches into a component itself. Every
     io/paths.py                  THE PATH REGISTRY (see Data)
     incubator/                   explicit holding pen: work with no home yet
       analyst/discovery/         the analyst's discovery code; the wake/sleep loop (plan 78.14-78.17):
-        wake.py sleep.py         self-play logging; sleep (surprises, cards, lemmas; rank sources: parse_multipv, disagreement, break_ties, plan_tools (one source or a list: the human source first when coarse), source_of (mcts | human[:path]), UciTeacher)
+        wake.py sleep.py         self-play logging; sleep (surprises, cards, lemmas; rank sources: parse_multipv, disagreement, break_ties, plan_tools (one source or a list: the human source first when coarse), source_of (mcts | human[:path] | gnn[:path]), UciTeacher)
         diagnose.py              game-free diagnostics over a wake log (ties, surprises by kind, cost, depth, gap share); tests/test_plan78_17.py
         rank_bench.py            plan 78.18: a rank source's agreement with a reference on logged positions, and a match of two rank sources; tests/test_plan78_18.py
         human_index.py           plan 78.19 stage E, TRAINING ONLY: the human-games index (sqlite: position key -> move n, mover's points; build, lichess_records_iter, kernel_key, signed, points_of, default_path, main CLI)
+        fact_graph.py          plan 78.20, generic: the typed fact graph (graph_of(facts, moves, vocabulary, bindings) -> HeteroData: term / fact / move / claim nodes, arg<i> / removes / adds / binds edges + reverses; Vocab (UNK = 0), encode, edge_types) and graph_hash (Weisfeiler-Lehman abstraction key of 78.19 reading ii); the claim type is built but nothing supplies bindings yet
+        graph_prior.py         plan 78.20: GraphNet (HeteroConv SAGE, scores the move nodes), train (cross-entropy against the optimal set, dev/held by group, OBS gnn lines and the uniform / fewest-lost baselines), GraphSource (rank source `gnn`, inference kit: facts + each move's delta-relation removed/added in the parent's perspective), build-cards / train CLI; tests/test_plan78_20.py
                                  and HumanSource (rank/detail/__call__/close; source "human"); read by sleep's training kit only; tests/test_plan78_19e.py
     approaches.md                registry of end-to-end approaches
     approaches/<name>/           config.py + src/ + experiments/
