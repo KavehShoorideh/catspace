@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 import cs_engine as CE
 
 from catspace.incubator.analyst.discovery import abstraction as AB
+from catspace.incubator.analyst.discovery import detectors as D
 from catspace.incubator.analyst.discovery import game_store as GS
 
 
@@ -49,6 +50,7 @@ def read_log(path: str) -> tuple:
             continue
         r = json.loads(line)
         if r.get("kind") == "game":
+            r.setdefault("start", None)                      # (a log from before plan 78.22 has no start: the game's own)
             games[(r["run"], r["game"])] = r
         elif r.get("kind") == "position" and r.get("label", "").count(":") >= 3 and not r.get("error"):
             run, g, ply, role = r["label"].rsplit(":", 3)
@@ -84,7 +86,7 @@ def surprises(decisions: dict, games: dict, min_units: int = 1) -> list:
         else:
             need = None if bd is None else bd + 1           # the first side's move, then what the second side read
         out.append({"run": run, "game": g, "ply": ply, "role": a["role"], "predicted": predicted, "seen": seen, "played": a["move"], "reply": b["move"],
-                    "b_depth": bd, "need": need, "moves_before": list(game["moves"][:ply]), "group": f"{run}:{g}", "id": f"{run}:{g}:{ply}"})
+                    "b_depth": bd, "need": need, "moves_before": list(game["moves"][:ply]), "start": game.get("start"), "group": f"{run}:{g}", "id": f"{run}:{g}:{ply}"})
     return out
 
 
@@ -179,16 +181,16 @@ class EstimateSource:
         if (rollout, leaf) != ("uniform", "draw"):
             self.source = f"mcts:{rollout}/{leaf}"
 
-    def rank(self, variant: str, moves: list, cap: "int | None" = None) -> list:
+    def rank(self, variant: str, moves: list, cap: "int | None" = None, start: "str | None" = None) -> list:
         opts = dict(self.options)
         if variant in self.specs:
             opts["spec"] = self.specs[variant]
-        r = CE.estimate(variant, None, list(moves), seconds=self.seconds, max_nodes=self.max_nodes, seed=self.seed, **opts)
+        r = CE.estimate(variant, start, list(moves), seconds=self.seconds, max_nodes=self.max_nodes, seed=self.seed, **opts)
         out = sorted(((name, visits) for name, visits, _mean in r["visits"]), key=lambda x: -x[1])
         return out[:cap] if cap else out
 
-    def __call__(self, variant: str, moves: list) -> "str | None":
-        r = self.rank(variant, moves)
+    def __call__(self, variant: str, moves: list, start: "str | None" = None) -> "str | None":
+        r = self.rank(variant, moves, start=start)
         return r[0][0] if r else None
 
     def close(self) -> None:
@@ -241,6 +243,7 @@ class Settings:
     auto_tools: bool = True          # let the diagnosis of the log choose the tools (a rank source breaks ties and registers surprises when the judge ties often)
     tie_threshold: float = 0.2       # the tie rate (decisions with more than one move as good as the best) above which the judge is called too coarse
     teacher_top_k: int = 3
+    regret: bool = True              # plan 78.22: whenever a rank source is given, the move PLAYED is read against its ranking (detectors.Regret), whatever the tie diagnosis says
     judge: "str | None" = None       # the store's VALUATION record the cards are valued by (None: the record in use); never values written in code
     gates: AB.Gates = field(default_factory=AB.Gates)
     held: AB.Gates = field(default_factory=lambda: AB.Gates(min_fires=3, min_groups=2))
@@ -269,45 +272,13 @@ def spread(seeds: list, key) -> list:
     return out
 
 
-def teacher_seeds(cards, dev_idx: list, moves_of: dict, teacher, variant: str, spec: dict, vocab: str, judge: dict, s: "Settings", rep: dict) -> tuple:
-    """The rank-based surprises on the DEVELOPMENT cards: each position the source ranks whose ordering disagrees with the card's is a surprise (`disagreement`); one is
-    CONFIRMED when a card of the same position one `+2` deeper (ours, exact) finds the source's top move optimal, and only then is a seed made of it (a move our own deeper
-    reading cannot confirm is not seeded). -> (seeds [(x, card, move, tm, played, dev indices)], the deeper CardSet or None). Records rep["teacher"]."""
-    t = rep["teacher"] = {"source": getattr(teacher, "source", "teacher"), "ranked": 0, "surprises": 0, "confirmed": 0, "unconfirmed": [], "cut": [], "deeper_depth": s.depth + 2}
-    stride = max(1, len(dev_idx) // max(1, s.teacher_positions))
-    found = []
-    for i in dev_idx[::stride][:s.teacher_positions]:
-        card = json.loads(cards.card(i))
-        if card["cut"] or card["id"] not in moves_of:
-            continue
-        ranking = teacher.rank(variant, moves_of[card["id"]])
-        t["ranked"] += 1
-        d = disagreement(card, ranking, t["source"], s.teacher_top_k)
-        if d is not None:
-            found.append((i, card, d))
-    t["surprises"] = len(found)
-    if not found:
-        return [], None
-    items = [(variant, None, moves_of[c["id"]], c["id"], c["group"]) for _, c, _ in found]
-    deep = CE.build_cards(items, spec, vocab, s.depth + 2, s.fuse, s.threads, judge.get("worth", {}), bool(judge.get("ours_first", False)))
-    seeds = []
-    for k, (i, card, d) in enumerate(found):
-        dc = json.loads(deep.card(k))
-        top = next((m for m in dc["moves"] if m["name"] == d["source_top"]), None)
-        if top is None or dc["cut"]:
-            t["cut" if dc["cut"] else "unconfirmed"].append(card["id"])
-            continue
-        if top["value"] != max(m["value"] for m in dc["moves"]):
-            t["unconfirmed"].append(card["id"])
-            continue
-        t["confirmed"] += 1
-        ours = max(dc["moves"], key=lambda m: (m["value"], -m["lost"]))
-        x = {"id": card["id"], "group": card["group"], "played": ours["name"], "reply": d["source_top"], "predicted": 0, "seen": 0, "kind": "teacher", "disagreement": d}
-        seeds.append((x, dc, top, d["source_top"], ours, ("deep", k, i)))
-    # the dev indices of a seed: the development cards with its own position's card replaced by the deeper one (appended after the depth-`depth` cards)
-    n = len(cards)
-    seeds = [(x, dc, top, tm, ours, [j for j in dev_idx if j != i] + [n + k]) for (x, dc, top, tm, ours, (_, k, i)) in seeds]
-    return seeds, deep
+def teacher_seeds(cards, dev_idx: list, positions: dict, teacher, variant: str, spec: dict, vocab: str, judge: dict, s: "Settings", rep: dict, played: "dict | None" = None,
+                  detector: str = "disagreement") -> tuple:
+    """The rank-based surprises on the DEVELOPMENT cards (plan 78.22: through detectors.py, which this wraps; `detector` is `disagreement` or `regret`). `positions`:
+    {card id: (start, moves)}; `played`: {card id: the move played} (the regret's). A seed only where our own deeper reading confirms (`detectors.confirm`).
+    -> (seeds [(x, card, move, source move, played, dev indices)], the deeper CardSet or None). Records rep["teacher"] (disagreement) or rep["regret"]."""
+    ctx = D.Context(variant, s, {}, {}, cards=cards, dev_idx=dev_idx, positions=positions, played=played or {}, spec=spec, vocab=vocab, judge=judge, rep=rep)
+    return D.run(ctx, [D.detector_of(detector, teacher)])
 
 
 def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Settings | None" = None, teacher=None, write: bool = False, say=print) -> dict:
@@ -329,25 +300,29 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     rep["tools"]["applied"] = {"teacher_mode": s.teacher_mode, "teacher_surprises": s.teacher_surprises}
     f = rep["funnel"]
     f["games"], f["decisions"] = len(games), len(decisions)
-    sur_all = surprises(decisions, games, s.min_units)
+    ctx = D.Context(variant, s, decisions, games, spec=spec, vocab=vocab, judge=judge, rep=rep)
+    sur_all = D.Hindsight().detect(ctx)
     f["surprises"] = len(sur_all)
     sur = [x for x in sur_all if x["need"] is not None and x["need"] <= s.depth]          # a replay of `depth` plies can only reproduce a loss it can reach
     f["replayable"] = len(sur)
     # the corpus: every game's decision positions at the stride (capped), then the surprises' positions
     items, seen, moves_of = [], set(), {}
+    positions, played_of = {}, {}                          # {card id: (start, moves)}, {card id: the move the engine played}
     for (run, g, ply), d in sorted(decisions.items()):
         game_row = games.get((run, g))
         if game_row is None or ply % s.stride != 0 or len(items) >= s.max_cards:
             continue
         cid = f"{run}:{g}:{ply}"
-        items.append((variant, None, list(game_row["moves"][:ply]), cid, f"{run}:{g}"))
+        items.append((variant, game_row.get("start"), list(game_row["moves"][:ply]), cid, f"{run}:{g}"))
         seen.add(cid)
         moves_of[cid] = list(game_row["moves"][:ply])
+        positions[cid], played_of[cid] = (game_row.get("start"), moves_of[cid]), d["move"]
     for x in sur:
         if x["id"] not in seen:
             moves_of[x["id"]] = x["moves_before"]
-            items.append((variant, None, x["moves_before"], x["id"], x["group"]))
+            items.append((variant, x["start"], x["moves_before"], x["id"], x["group"]))
             seen.add(x["id"])
+            positions[x["id"]], played_of[x["id"]] = (x["start"], x["moves_before"]), x["played"]
     t_cards = time.perf_counter()
     cards = CE.build_cards(items, spec, vocab, s.depth, s.fuse, s.threads, judge.get("worth", {}), bool(judge.get("ours_first", False)))
     timing = {"cards": round(time.perf_counter() - t_cards, 2), "climb": 0.0, "verify": 0.0}
@@ -356,6 +331,7 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     groups = [json.loads(cards.card(i))["group"] for i in range(len(cards))]
     index = {cid: i for i, cid in enumerate(ids)}
     dev_idx = [i for i, g in enumerate(groups) if is_dev(g, s)]
+    ctx.cards, ctx.dev_idx, ctx.index, ctx.positions, ctx.played = cards, dev_idx, index, positions, played_of
     held_idx = [i for i, g in enumerate(groups) if not is_dev(g, s)]
     f["cards_dev"], f["cards_held"] = len(dev_idx), len(held_idx)
     # replay: confirm the surprises on the development games and find the saving moves
@@ -375,13 +351,13 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
         if teacher is not None and s.teacher_mode == "break":
             if len(saving) > 1:                                        # only a tie is the teacher's to break
                 own = saving[0]                                        # the engine's own first choice stays among the seeds: a noisy source may order it out (found 2026-11-08: the
-                ranking = teacher.rank(variant, x["moves_before"])     #  estimate displaced the one seed that verifies)
+                ranking = D.ask(teacher, variant, x["moves_before"], x["start"])     #  estimate displaced the one seed that verifies)
                 saving = break_ties(saving, ranking)
                 if own not in saving[:s.max_saving]:
                     saving = saving[:max(0, s.max_saving - 1)] + [own] + [m for m in saving[max(0, s.max_saving - 1):] if m is not own]
                 tm = saving[0]["name"] if any(m == saving[0]["name"] for m, _ in ranking) else None
         elif teacher is not None and s.teacher_mode != "off":
-            tm = teacher(variant, x["moves_before"])
+            tm = teacher(variant, x["moves_before"]) if x["start"] is None else teacher(variant, x["moves_before"], start=x["start"])
             if s.teacher_mode == "filter":
                 saving = [m for m in saving if m["name"] == tm]
         if not saving:
@@ -390,13 +366,24 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
         for m in saving[:s.max_saving]:
             seeds.append((x, card, m, tm, played, None))
     f["confirmed"], f["with_saving"], f["seeds"] = confirmed, with_saving, len(seeds)
-    # the rank-based surprises (development cards only): the source's ordering against the card; a seed only where our own deeper reading confirms the source's move
+    # the rank-based surprises (development cards only), through the detectors: the source's ordering against the card's (Disagreement, when the tools say so) and the move
+    # played against the source's ranking (Regret, whenever a source is given); a seed only where our own deeper reading confirms the source's move (detectors.confirm)
     f["teacher_surprises"] = f["teacher_confirmed"] = 0
+    f["regret_surprises"] = f["regret_confirmed"] = f["regret_tied"] = f["regret_unconfirmed"] = 0
     deep_cards, cards_all = None, cards
+    dets = []
     if teacher is not None and s.teacher_surprises:
-        tseeds, deep_cards = teacher_seeds(cards, dev_idx, moves_of, teacher, variant, spec, vocab, judge, s, rep)
+        dets.append(D.detector_of("disagreement", teacher))
+    if teacher is not None and s.regret:
+        dets.append(D.detector_of("regret", teacher))
+    if dets:
+        tseeds, deep_cards = D.run(ctx, dets)
         seeds += tseeds
-        f["teacher_surprises"], f["teacher_confirmed"] = rep["teacher"]["surprises"], rep["teacher"]["confirmed"]
+        if "teacher" in rep:
+            f["teacher_surprises"], f["teacher_confirmed"] = rep["teacher"]["surprises"], rep["teacher"]["confirmed"]
+        if "regret" in rep:
+            r = rep["regret"]
+            f["regret_surprises"], f["regret_confirmed"], f["regret_tied"], f["regret_unconfirmed"] = r["surprises"], len(r["confirmed"]), len(r["tied"]), len(r["unconfirmed"])
         f["seeds"] = len(seeds)
         if deep_cards is not None:
             cards_all = CE.CardSet.merge([cards, deep_cards])
@@ -510,24 +497,26 @@ class UciTeacher:
     training_only = True
     source = "uci"
     MULTIPV_CAP = 64
+    gap = 100                         # the regret detector's threshold, in THIS source's units (centipawns: a pawn); a mate is +-MATE_SCORE so a missed win always counts
 
-    def rank(self, variant: str, moves: list, cap: "int | None" = None) -> list:
+    def rank(self, variant: str, moves: list, cap: "int | None" = None, start: "str | None" = None) -> list:
         """-> [(move, score)] best first for EVERY legal move (MultiPV up to `cap`, default MULTIPV_CAP), scores from the mover's view; a mate is +-MATE_SCORE less its
         distance. Through python-chess's engine wrapper when it imports and knows the variant (the one place chess appears: the boundary returns the generic shape);
-        else through the raw UCI pipe and `parse_multipv`. Only the order is used by the callers."""
+        else through the raw UCI pipe and `parse_multipv`. `start` (plan 78.22) is a position (a FEN) the moves are played from, None for the game's own start. Only the order
+        is used by the callers, except the regret detector's `gap`."""
         cap = cap or self.MULTIPV_CAP
         try:
             import chess
             import chess.engine
             import chess.variant
         except ImportError:
-            return self._rank_raw(variant, moves, cap)
-        board = chess.variant.find_variant(variant)() if variant != "chess" else chess.Board()
+            return self._rank_raw(variant, moves, cap, start)
         try:
+            board = (chess.variant.find_variant(variant)(start) if start else chess.variant.find_variant(variant)()) if variant != "chess" else (chess.Board(start) if start else chess.Board())
             for m in moves:
                 board.push_uci(m)
         except ValueError:
-            return self._rank_raw(variant, moves, cap)
+            return self._rank_raw(variant, moves, cap, start)
         n = min(cap, board.legal_moves.count())
         if n == 0:
             return []
@@ -542,10 +531,10 @@ class UciTeacher:
                 out.append((pv[0].uci(), info["score"].relative.score(mate_score=MATE_SCORE)))
         return out
 
-    def _rank_raw(self, variant: str, moves: list, cap: int) -> list:
+    def _rank_raw(self, variant: str, moves: list, cap: int, start: "str | None" = None) -> list:
         """The fallback: the engine's own pipe, MultiPV set, `info` lines parsed by `parse_multipv`."""
         self._send(f"setoption name MultiPV value {cap}")
-        self._send("position startpos" + (" moves " + " ".join(moves) if moves else ""))
+        self._send(self._position(moves, start))
         self._send(f"go movetime {self.movetime}")
         lines = []
         for line in self.p.stdout:
@@ -578,8 +567,12 @@ class UciTeacher:
                 return line.strip()
         raise RuntimeError("the engine closed its output")
 
-    def __call__(self, variant: str, moves: list) -> "str | None":
-        self._send("position startpos" + (" moves " + " ".join(moves) if moves else ""))
+    @staticmethod
+    def _position(moves: list, start: "str | None" = None) -> str:
+        return ("position fen " + start if start else "position startpos") + (" moves " + " ".join(moves) if moves else "")
+
+    def __call__(self, variant: str, moves: list, start: "str | None" = None) -> "str | None":
+        self._send(self._position(moves, start))
         self._send(f"go movetime {self.movetime}")
         m = self._until("bestmove").split()
         return m[1] if len(m) > 1 and m[1] != "(none)" else None
@@ -616,6 +609,8 @@ def main(argv: list) -> int:
     ap.add_argument("--teacher-surprises", action="store_true", help="register the rank-based surprises (training only)")
     ap.add_argument("--source", default=None, help="a rank source from the inference kit in place of a teacher: `mcts` (the plain estimate) or `mcts:<rollout>/<leaf>` "
                     "or `human[:<path>]` (the human-games index, training only, plan 78.19 E); (plan 78.18: rollout uniform | greedy | gain | lemma, leaf draw | balance; the store the sleep reads gives the judge and the lemmas)")
+    ap.add_argument("--teacher-ms", type=int, default=100, help="the UCI teacher's time per position, in milliseconds")
+    ap.add_argument("--teacher-option", action="append", default=[], metavar="NAME=VALUE", help="a UCI option for the teacher (repeatable), e.g. SyzygyPath=/path")
     ap.add_argument("--source-seconds", type=float, default=0.2)
     ap.add_argument("--no-auto", action="store_true", help="do not let the diagnosis choose the tools")
     ap.add_argument("--ties", action="store_true", help="the wake reads the ledger's ties (so the sleep can measure the tie rate)")
@@ -629,7 +624,8 @@ def main(argv: list) -> int:
     if a.judge and not a.log:
         # the wake must play by the judge the sleep learns by: publish the store state with that judge (the same content is the same snapshot; nothing is written twice)
         print(f"OBS snapshot {a.game} {GS.publish(a.game, judge=GS.judge_of(a.game, a.judge))}: judge {a.judge}")
-    teacher = UciTeacher(a.teacher) if a.teacher else (source_of(a.source, a.source_seconds, a.seed, GS.path_of(a.game, GS.head(a.game)) if GS.head(a.game) else None) if a.source else None)
+    options = dict(o.partition("=")[::2] for o in a.teacher_option)
+    teacher = UciTeacher(a.teacher, a.teacher_ms, options) if a.teacher else (source_of(a.source, a.source_seconds, a.seed, GS.path_of(a.game, GS.head(a.game)) if GS.head(a.game) else None) if a.source else None)
     try:
         for c in range(a.cycles if not a.log else 1):
             log = a.log

@@ -124,20 +124,24 @@ class HumanSource:
         self.path, self.min_count, self.key_of = path or default_path("chess"), min_count, key_of
         self.con = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
 
-    def detail(self, variant: str, moves: list) -> dict:
-        st = CE.state(variant, None, list(moves))
+    def detail(self, variant: str, moves: list, start: "str | None" = None) -> dict:
+        """With a `start` (plan 78.22) the position's key is the kernel's own (the index is keyed by it, so a sub-position met in human games transposes into it); a source
+        built on another `key_of` answers {} for a non-None start (its key knows only the game's own start)."""
+        if start is not None and self.key_of is not kernel_key:
+            return {}
+        st = CE.state(variant, start, list(moves))
         legal = set(st[2])
         key = signed(st[4]) if self.key_of is kernel_key else self.key_of(variant, moves)
         rows = self.con.execute("SELECT move, n, points FROM moves WHERE key = ? AND n >= ?", (key, self.min_count)).fetchall()
         return {m: {"n": n, "mean_points": p / n} for m, n, p in rows if m in legal}
 
-    def rank(self, variant: str, moves: list, cap: "int | None" = None) -> list:
-        d = self.detail(variant, moves)
+    def rank(self, variant: str, moves: list, cap: "int | None" = None, start: "str | None" = None) -> list:
+        d = self.detail(variant, moves, start)
         out = sorted(((m, v["n"]) for m, v in d.items()), key=lambda x: (-x[1], x[0]))
         return out[:cap] if cap else out
 
-    def __call__(self, variant: str, moves: list) -> "str | None":
-        r = self.rank(variant, moves)
+    def __call__(self, variant: str, moves: list, start: "str | None" = None) -> "str | None":
+        r = self.rank(variant, moves, start=start)
         return r[0][0] if r else None
 
     def close(self) -> None:

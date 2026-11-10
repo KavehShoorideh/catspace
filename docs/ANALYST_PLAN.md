@@ -4756,3 +4756,37 @@ READING: (1) on the judge's own labels the net went from 0.4876 to 0.6711 held t
   relations and the concepts together. Next levers, in order of expected yield: better labels (a teacher or the human games label the cards in the training kit; the net stays an inference-kit
   prior), move-mutation edges (what a move newly attacks; the edges that paid in the earlier graph nets), the forward pass (cache the static layer; a tuned matrix kernel), then the PUCT prior
   at expansions (78.19 D) and the claim nodes. DONE as specified: built, ported, one test.
+
+#### 78.22 THE INITIALIZATION PHASE, stages 1 and 2: start positions, the material curriculum, surprise detectors as modules (2026-11-09; Kaveh: an initialization phase that explores the game
+from the smallest material upward -- two kings and one more piece on their starting squares, then four, five, ... under a budget -- learning cards, claims and lemmas at each size, with variants
+that are counter-positions to a lemma ("what if this weren't here"), then games with wake / sleep; "to get surprise, compare with the teacher ... one way to generate surprise; keep it modular so
+that we could use [another] method for cases where we don't have an oracle. But now that we do have a cheap oracle in Stockfish, let's just consult it.")
+THE FLOW AS PLANNED: (1) start positions + the curriculum, (2) detectors with the teacher always consulted, (3) the lemma bindings interface, then counter-positions and claim nodes on it,
+  (4) the driver that climbs sizes under a budget and stops on yield (new verified lemmas an hour). Stages 1 and 2 are BUILT here; 3 and 4 are not.
+START POSITIONS: a start is an opaque position string the kernel accepts (None = the game's own). wake.play_self(starts=[...]) / `--starts <file>`; the game rows carry `start`; read_log, the corpus
+  items, the deeper cards, graph_prior's corpus and rank_bench's samples carry it; the rank-source shape is now `rank(variant, moves, cap=None, start=None)` (UciTeacher, EstimateSource,
+  HumanSource, GraphSource). Old logs read as before.
+THE CURRICULUM (discovery/curriculum.py, generic): the sub-positions of the game's initial position that keep `size` units. A `PositionCodec` (units, keep) is the one game-specific adapter
+  (ChessCodec over FENs; castling rights only where king and rook still stand); `required(game)` is found BY TEST (a unit whose removal the kernel rejects or that ends the game); every candidate
+  is checked by the kernel (accepted, not over, has moves); a seeded sample when there are more than the limit. CLI `curriculum <game> --size n`.
+THE DETECTORS (discovery/detectors.py): one shape -- `name`, `training_only`, `detect(ctx) -> [surprise]` -- and a registry. `Hindsight` (the engine's own later reading against its earlier: the
+  method with no oracle), `Disagreement(source)` (a rank source's ordering against the card's), `Regret(source)` NEW (the move PLAYED against the source's ranking: worse than its best by the
+  source's own declared gap, UciTeacher.gap 100; order alone when a source declares none). Regret runs whenever a rank source is given (Settings.regret), whatever the tie diagnosis. A rank-based
+  surprise becomes a seed only when OUR exact card two plies deeper confirms it; for Regret: the source's top move optimal there AND the played move strictly worse. Source's top optimal but the
+  played move tied under our judge is OPEN and is listed (rep["regret"]["open"]): the judge cannot see what the source sees. The teacher still never enters the store.
+Tests: tests/test_plan78_22.py (15). sleep CLI gains --teacher-ms and --teacher-option NAME=VALUE (SyzygyPath makes Stockfish exact on the 3-5 unit positions; our tables end at 5).
+THE FIRST INITIALIZATION PASS, size 3, Stockfish (100 ms, SyzygyPath) as the teacher, judge material (mined), 0.2 s a move, 4 games a start with 2 random plies, depth 5:
+OBS curriculum chess: size 3, required 2 ['e1', 'e8'], combinations 30, candidates 30, kept 22, rejected 8 {'over': 8} (the kernel calls a lone knight or bishop with the kings over)
+OBS init wake chess size 3: starts 22, games 88, plies 2574, outcomes {'[50, 50]': 82, '[100, 0]': 5, '[0, 100]': 1}, 33 s
+OBS init3 outcomes by the extra unit: {'P [100, 0]': 1, 'P [50, 50]': 31, 'Q [100, 0]': 2, 'Q [50, 50]': 2, 'R [100, 0]': 2, 'R [50, 50]': 6, 'p [0, 100]': 1, 'p [50, 50]': 31, 'q [50, 50]': 4, 'r [50, 50]': 8}
+OBS sleep funnel chess (judge material (mined), depth 5): games 88, decisions 2398, surprises 24, replayable 12, cards 1223, cards_dev 559, cards_held 664, confirmed 0, with_saving 0, seeds 3,
+  teacher_surprises 13, teacher_confirmed 3, regret_surprises 58, regret_confirmed 0, regret_tied 58, regret_unconfirmed 0, climbed 0, supported_dev 0, verified_held 0, 21.7 s
+OBS init3 regret: ranked 200 surprises 58 confirmed 0 tied 58 unconfirmed 0 deeper depth 7
+OBS init3 tools: tie rate 0.6784511784511784 against the threshold 0.2
+OBS init3 open regrets by the extra unit of the start: {'R': 8, 'Q': 13, 'P': 31, 'p': 6}
+READING: (1) the engine cannot play these positions: 82 of 88 games drawn, king and queen against king won 2 times of 8, king and rook 2 of 16; the search and the material judge see no
+  progress short of a capture or a promotion within the horizon. (2) The oracle sees it at once: of 200 positions asked, the played move was a regret in 58. (3) NOT ONE is confirmable by our own
+  reading: all 58 are tied under the material judge at depth 7. The detectors work and the pipe is whole; what is missing is a judge that reads the RESULT of the game (win / draw / loss, and how
+  far), since in these positions nothing material changes until the end. Small material is where that is affordable exactly: the 3- and 4-unit positions can be solved by our own backward search
+  over the kernel (generic, no teacher), with the tablebase as the check. No lemma was learned (verified_held 0). NEXT: the result judge for small material (cards valued by the solved result),
+  then stage 3 (bindings, counter-positions) and stage 4 (the driver). Not done here: play_match from starts, a codec for another game, a list of sources inside one sleep.

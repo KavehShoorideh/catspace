@@ -72,8 +72,8 @@ class GraphNet(nn.Module):
 # ---------------------------------------------------------------------------------------------------------------- the corpus
 
 def graphs_of_cards(cards, items: dict, spec: str, vocabulary_json: str, dev_fn) -> tuple:
-    """-> (dev graphs, held graphs, history, skipped): one engine-built graph per card whose id is in `items` ({id: (variant, None, moves, id, group)}, `corpus_items`) and whose
-    legal moves ALL carry a value; the move values / units lost come from the card by move name. `history` {id: (variant, moves)} lets a graph be rebuilt or scored in Rust;
+    """-> (dev graphs, held graphs, history, skipped): one engine-built graph per card whose id is in `items` ({id: (variant, start, moves, id, group)}, `corpus_items`) and whose
+    legal moves ALL carry a value; the move values / units lost come from the card by move name. `history` {id: (variant, moves, start)} lets a graph be rebuilt or scored in Rust;
     `skipped` counts the cards left out. `dev_fn(group) -> bool`."""
     dev, held, history = [], [], {}
     skipped = {"no_moves": 0, "unknown_id": 0, "partial": 0}
@@ -86,14 +86,14 @@ def graphs_of_cards(cards, items: dict, spec: str, vocabulary_json: str, dev_fn)
         if it is None:
             skipped["unknown_id"] += 1
             continue
-        d = CE.graph(it[0], spec, vocabulary_json, None, it[2])
+        d = CE.graph(it[0], spec, vocabulary_json, it[1], it[2])
         g = FG.from_engine(d, {m["name"]: m["value"] for m in c["moves"]}, {m["name"]: m.get("lost", 0) for m in c["moves"]})
         if not bool(g["move"].has_target.all()):
             skipped["partial"] += 1
             continue
         del g.tokens
         g.cid = c["id"]
-        history[c["id"]] = (it[0], it[2])
+        history[c["id"]] = (it[0], it[2], it[1])
         (dev if dev_fn(c["group"]) else held).append(g)
     return dev, held, history, skipped
 
@@ -212,8 +212,8 @@ def parity_of(net: "GraphNet", weights_path: str, specs: dict, vocabulary_json: 
     model = CE.GraphModel(weights_path, specs, vocabulary_json)
     worst, moves = 0.0, 0
     for g in graphs:
-        variant, hist = history[g.cid]
-        names, rust = model.scores(variant, list(hist))
+        variant, hist, *start = history[g.cid]
+        names, rust = model.scores(variant, list(hist), *start)
         ts = net(g).tolist()
         assert len(names) == len(ts), (g.cid, len(names), len(ts))
         worst = max([worst] + [abs(a - b) for a, b in zip(ts, rust)])
@@ -276,12 +276,12 @@ class GraphSource:
         t = self.model.timing()
         return t["ms_total"] if t["positions"] else float("nan")
 
-    def rank(self, variant: str, moves: list, cap: "int | None" = None) -> list:
-        out = self.model.rank(variant, list(moves))
+    def rank(self, variant: str, moves: list, cap: "int | None" = None, start: "str | None" = None) -> list:
+        out = self.model.rank(variant, list(moves), start)
         return out[:cap] if cap else out
 
-    def __call__(self, variant: str, moves: list) -> "str | None":
-        r = self.rank(variant, moves)
+    def __call__(self, variant: str, moves: list, start: "str | None" = None) -> "str | None":
+        r = self.rank(variant, moves, start=start)
         return r[0][0] if r else None
 
     def close(self) -> None:
@@ -295,7 +295,7 @@ def default_path(game: str = "chess") -> str:
 # ---------------------------------------------------------------------------------------------------------------- the CLI
 
 def corpus_items(log: str, variant: str, stride: int, max_cards: int) -> list:
-    """The decision positions of a wake log at a stride (sleep's corpus), capped at `max_cards` by an even subsample -> [(variant, None, moves, id, group)]."""
+    """The decision positions of a wake log at a stride (sleep's corpus), capped at `max_cards` by an even subsample -> [(variant, start, moves, id, group)] (`start`: the game's own start position string, None for the game's initial position)."""
     from catspace.incubator.analyst.discovery import sleep as SL
     decisions, games = SL.read_log(log)
     items = []
@@ -303,7 +303,7 @@ def corpus_items(log: str, variant: str, stride: int, max_cards: int) -> list:
         row = games.get((run, g))
         if row is None or ply % stride != 0:
             continue
-        items.append((variant, None, list(row["moves"][:ply]), f"{run}:{g}:{ply}", f"{run}:{g}"))
+        items.append((variant, row.get("start"), list(row["moves"][:ply]), f"{run}:{g}:{ply}", f"{run}:{g}"))
     if len(items) > max_cards:
         items = [items[int(i * len(items) / max_cards)] for i in range(max_cards)]
     return items

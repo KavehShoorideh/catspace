@@ -36404,3 +36404,13 @@ the Cargo.lock change (0 disagreements). OBS: facts_audit 610 positions unequal 
 READING: the representation now learns the judge's labels nearly to the oracle; agreement with Stockfish is label-limited. Written as 78.21 in ANALYST_PLAN; gate gains test_plan78_21 and
 test_plan78_21_concepts.
 OBS gate engine: files 60, passed 744, failed 0, xfailed 1, errors 0, wall 1181.3 s
+
+## 2026-11-09 19:50 -- plan 78.22: the initialization phase, stages 1 and 2 (start positions, the material curriculum, surprise detectors as modules); first pass at size 3
+Kaveh laid out the general flow: initialize by exploring the smallest material upward (lemmas at 3 units, then 4, 5, ... under a budget), with counter-positions aimed at a lemma, then games with
+wake / sleep; and for surprise: consult the teacher (Stockfish is a cheap oracle), as one detector among several so games without an oracle have another way. Built by a Sonnet subagent: starts
+through wake, the log, the cards and every rank source; curriculum.py (PositionCodec, required units found by test, kernel-checked sub-positions); detectors.py (Hindsight, Disagreement, Regret
+behind one shape; Regret always on with a source; rank-based seeds only on our own deeper confirmation; the tied ones listed as OPEN); tests/test_plan78_22.py (15).
+OBS size 3: 22 starts of 30 (8 over: lone knight or bishop), 88 games, 82 drawn (K+Q v K won 2 of 8, K+R v K 2 of 16); Stockfish with the tables asked on 200 positions: 58 regrets, 0
+confirmed, 58 tied under the material judge at depth 7; verified_held 0. READING: the oracle sees what our judge cannot; the missing piece is a judge that reads the game's result, exact on
+small material by our own backward search. Written as 78.22 in ANALYST_PLAN; gate gains test_plan78_22.
+OBS gate engine: files 61, passed 759, failed 0, xfailed 1, errors 0, wall 1420.8 s

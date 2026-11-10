@@ -42,7 +42,7 @@ def source_of(name: str, seconds: float, seed: int = 1, store: "str | None" = No
 
 
 def sample_positions(log: str, n: int, seed: int = 1, min_plies: int = 4) -> list:
-    """`n` decided positions of a wake log, spread over its games (a round-robin over the games, each game's decisions shuffled by `seed`) -> [{id, variant, moves_before}]."""
+    """`n` decided positions of a wake log, spread over its games (a round-robin over the games, each game's decisions shuffled by `seed`) -> [{id, variant, moves_before, start}] (`start`: the game's own start position string or None)."""
     decisions, games = SL.read_log(log)
     by_game: dict = {}
     for (run, g, ply), d in sorted(decisions.items()):
@@ -61,7 +61,7 @@ def sample_positions(log: str, n: int, seed: int = 1, min_plies: int = 4) -> lis
             if q and len(out) < n:
                 ply, d = q.pop()
                 game = games[key]
-                out.append({"id": f"{key[0]}:{key[1]}:{ply}", "variant": game["variant"], "moves_before": list(game["moves"][:ply]), "role": d["role"]})
+                out.append({"id": f"{key[0]}:{key[1]}:{ply}", "variant": game["variant"], "moves_before": list(game["moves"][:ply]), "start": game.get("start"), "role": d["role"]})
     return out
 
 
@@ -70,12 +70,13 @@ def agreement(positions: list, reference, source) -> dict:
     source never listed counts as the number of legal moves plus one."""
     ranks, agree, secs = [], 0, 0.0
     for p in positions:
-        ref = reference.rank(p["variant"], p["moves_before"])
+        kw = {} if p.get("start") is None else {"start": p["start"]}          # (a source without the keyword keeps working on ordinary games)
+        ref = reference.rank(p["variant"], p["moves_before"], **kw)
         if not ref:
             continue
         best = ref[0][0]
         t0 = time.perf_counter()
-        ours = source.rank(p["variant"], p["moves_before"])
+        ours = source.rank(p["variant"], p["moves_before"], **kw)
         secs += time.perf_counter() - t0
         order = [m for m, _ in ours]
         r = order.index(best) + 1 if best in order else len(ref) + 1
