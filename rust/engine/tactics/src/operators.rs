@@ -2,6 +2,7 @@
 //! called, unchanged; what is new is that the call states its goal and mode, returns its evidence, and reports the cost it measured. Game-free.
 use crate::census::census;
 use crate::ledger::{Judge, Search, WIN};
+use crate::reason::{explain, reason_within, REASON_DEPTH, REASON_FUSE};
 use crate::{force_traced, Answer};
 use cs_game::Game;
 use cs_operator::{Budget, Fact, Goal, Mode, Operator, Outcome, Status};
@@ -133,6 +134,43 @@ impl<'a, G: Game, J: Judge> Operator<G> for CensusOp<'a, J> {
         o.evidence.push(format!("census: {} tactics, {} readings, {} cut, {} nodes", r.tactics.len(), r.readings, r.cut, r.nodes));
         o.facts = r.tactics.iter().map(|t| Fact { relation: "tactic".into(), args: vec![t.defects.to_string(), t.targets.join(","), t.line.join(" ")] }).collect();
         for l in &r.levels { o.part(format!("defects {}", l.defects), l.nodes, l.seconds); }
+        o.cost.nodes = r.nodes;
+        o.cost.seconds = t0.elapsed().as_secs_f64();
+        o
+    }
+}
+
+/// `reason`: the reasoning chain of the side to move (threats by stake, the frame, parry or counter; with no threat, our own tactics). Status Read, or Gap when the
+/// budget cut a reading; `mv` the best candidate and `value` its net (or, with no threat, its tactic's value); `candidates` the order proposed; `evidence` the
+/// explanation; facts `threat`(stake, targets, line), `frame`(facts), `answer`(kind, move, net), `irrelevant`(facts, moves). An ORDER and an explanation, never a verdict.
+pub struct ReasonOp<'a, J: Judge> { pub judge: &'a J }
+
+impl<'a, G: Game, J: Judge> Operator<G> for ReasonOp<'a, J> {
+    fn name(&self) -> String { "reason".into() }
+    fn accepts(&self, goal: &Goal) -> bool { matches!(goal, Goal::Reason { .. }) }
+    fn run(&self, g: &G, s: &G::State, goal: &Goal, b: Budget) -> Outcome<G::Move> {
+        let Goal::Reason { .. } = goal else { return Outcome::unsupported("reason", goal) };
+        let t0 = std::time::Instant::now();
+        let fuse = b.max_nodes.min(REASON_FUSE);
+        let r = reason_within(g, s, self.judge, b.max_depth.map_or(REASON_DEPTH, |d| d as i32), fuse, Some(b.seconds_left()));
+        let mut o = Outcome::new(if r.cut == 0 && r.unread.is_empty() { Status::Read } else { Status::Gap });
+        let moves = g.moves(s);
+        o.candidates = r.candidates.clone();
+        if let Some(i) = r.candidates.first() {
+            o.mv = moves.get(*i).cloned();
+            o.value = r.answers.iter().find(|a| a.index == *i).map(|a| a.net);
+        }
+        o.evidence = explain(&r);
+        let join = |v: &[Fact]| v.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(" ");
+        for t in &r.threats {
+            o.facts.push(Fact { relation: "threat".into(), args: vec![t.stake.to_string(), t.targets.join(","), t.line.join(" ")] });
+            o.facts.push(Fact { relation: "frame".into(), args: vec![t.stake.to_string(), join(&t.frame)] });
+        }
+        for a in &r.answers { o.facts.push(Fact { relation: "answer".into(), args: vec![a.kind.word().into(), a.name.clone(), a.net.to_string()] }); }
+        for u in &r.irrelevant { o.facts.push(Fact { relation: "irrelevant".into(), args: vec![join(&u.facts), u.moves.iter().map(|i| r.names[*i].clone()).collect::<Vec<_>>().join(" ")] }); }
+        o.part("threats", r.threat_nodes, r.threat_seconds);
+        o.part("answers", r.answer_nodes, r.answer_seconds);
+        if r.ours_nodes > 0 || r.ours_seconds > 0.0 { o.part("ours", r.ours_nodes, r.ours_seconds); }
         o.cost.nodes = r.nodes;
         o.cost.seconds = t0.elapsed().as_secs_f64();
         o

@@ -28,15 +28,21 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false))]
 #[allow(clippy::too_many_arguments)]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
-             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool)
+             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
     let (g, s, keys) = record_of(variant, fen, start960, &moves)?;
     let hist: Vec<u64> = if record { keys } else { vec![] };          // (record=False: the game's record not read -- the comparison)
     let f = g.fen(&s);
-    let choice = if worth.is_empty() { cs_decision::decide_with(&g, &s, seconds, &cs_tactics::ledger::Count, prior, &hist, prior_depth, ledger_share, prior_defects, ordering, prune, extend) }
+    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, ..cs_decision::Params::default() };
+    let choice = if reason {
+        // (plan 78.25: the reasoning chain on: the same decision with the "reason" step; off, the call below is exactly what it was)
+        (if worth.is_empty() { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Count, &params) }
+         else { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, &params) })
+            .map(|d| cs_decision::Choice { mv: d.mv.expect("a decision with a move"), proved: d.proved, trace: d.trace, nodes: d.cost.nodes })
+    } else if worth.is_empty() { cs_decision::decide_with(&g, &s, seconds, &cs_tactics::ledger::Count, prior, &hist, prior_depth, ledger_share, prior_defects, ordering, prune, extend) }
                  else { cs_decision::decide_with(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, prior, &hist, prior_depth, ledger_share, prior_defects, ordering, prune, extend) };
     Ok(match choice {
         Some(c) => (Some(g.move_name(&s, &c.mv)), c.proved, c.trace, c.nodes, f),
@@ -140,6 +146,59 @@ fn census(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, 
     Ok((out, st.into()))
 }
 
+/// reason(variant, fen=None, moves=[], depth=2, fuse=200000, worth={}, ours_first=false, valuation="") -> dict: plan 78.25 THE REASONING CHAIN (cs_tactics::reason) of the
+/// side to move -- {must_answer, threats: [{stake, goal, targets, line, frame}], answers: [{index, move, kind, net, line}], irrelevant: [{facts, moves}], unread: [move
+/// names], leaving, ours: [{defects, free, line, targets, value}], candidates: [indices], candidate_moves: [names], evidence: [lines], readings, cut, nodes}. The judge:
+/// the store's record, as census takes it. An order and an explanation, never a verdict.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![], depth=cs_tactics::reason::REASON_DEPTH, fuse=cs_tactics::reason::REASON_FUSE, worth=HashMap::new(), ours_first=false, valuation=String::new()))]
+#[allow(clippy::too_many_arguments)]
+fn reason(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, depth: i32, fuse: u64, worth: HashMap<String, i64>, ours_first: bool, valuation: String) -> PyResult<PyObject> {
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    let rep = if worth.is_empty() { cs_tactics::reason::reason(&g, &s, &cs_tactics::ledger::Count, depth, fuse) }
+              else { cs_tactics::reason::reason(&g, &s, &cs_tactics::ledger::Worth { name: valuation, table: worth, ours_first }, depth, fuse) };
+    let facts = |fs: &[cs_game::Fact]| fs.iter().map(|f| f.to_string()).collect::<Vec<String>>();
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("must_answer", rep.must_answer)?;
+    let mut threats = vec![];
+    for t in &rep.threats {
+        let x = pyo3::types::PyDict::new(py);
+        x.set_item("stake", t.stake)?; x.set_item("goal", t.goal)?; x.set_item("targets", t.targets.clone())?; x.set_item("line", t.line.clone())?; x.set_item("frame", facts(&t.frame))?;
+        threats.push(x);
+    }
+    d.set_item("threats", threats)?;
+    let mut answers = vec![];
+    for a in &rep.answers {
+        let x = pyo3::types::PyDict::new(py);
+        x.set_item("index", a.index)?; x.set_item("move", a.name.clone())?; x.set_item("kind", a.kind.word())?; x.set_item("net", a.net)?; x.set_item("line", a.line.clone())?;
+        x.set_item("in_frame", a.in_frame)?;
+        x.set_item("if_executed", a.if_executed)?; x.set_item("executed_line", a.executed_line.clone())?;
+        answers.push(x);
+    }
+    d.set_item("answers", answers)?;
+    let mut irr = vec![];
+    for u in &rep.irrelevant {
+        let x = pyo3::types::PyDict::new(py);
+        x.set_item("facts", facts(&u.facts))?; x.set_item("moves", u.moves.iter().map(|i| rep.names[*i].clone()).collect::<Vec<String>>())?;
+        irr.push(x);
+    }
+    d.set_item("irrelevant", irr)?;
+    d.set_item("unread", rep.unread.iter().map(|i| rep.names[*i].clone()).collect::<Vec<String>>())?;
+    d.set_item("leaving", rep.leaving)?;
+    let mut ours = vec![];
+    for t in &rep.ours {
+        let x = pyo3::types::PyDict::new(py);
+        x.set_item("defects", t.defects)?; x.set_item("free", t.free.clone())?; x.set_item("line", t.line.clone())?; x.set_item("targets", t.targets.clone())?; x.set_item("value", t.value)?;
+        ours.push(x);
+    }
+    d.set_item("ours", ours)?;
+    d.set_item("candidates", rep.candidates.clone())?;
+    d.set_item("candidate_moves", rep.candidates.iter().map(|i| rep.names[*i].clone()).collect::<Vec<String>>())?;
+    d.set_item("evidence", cs_tactics::reason::explain(&rep))?;
+    d.set_item("readings", rep.readings)?; d.set_item("cut", rep.cut)?; d.set_item("nodes", rep.nodes)?;
+    Ok(d.into())
+}
+
 type BatchItem = (String, Option<String>, Vec<String>);
 type BatchRow = (Option<String>, bool, u64, f64, Option<String>);
 
@@ -197,7 +256,7 @@ fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
 }
 
 /// solve_batch(positions, seconds=1.0, worth={}, ours_first=False, valuation="", snapshot="", trace_path=None, threads=0, prior=False, record=True, prior_depth=2,
-/// ledger_share=0.6, prior_defects=1, ordering=True, prune=True, extend=True, store=None, specs={}, labels=None, ablate=[])
+/// ledger_share=0.6, prior_defects=1, ordering=True, prune=True, extend=True, store=None, specs={}, labels=None, ablate=[], ties=False, reason=False)
 /// -> [(move or None, proved, nodes, seconds, error or None)]: plan 78.12 / 78.14 THE BATCH SOLVER -- `positions` is [(variant, fen or None, moves)], all decided in ONE
 /// call on `threads` workers (0: one per core) with the Python lock released, one summary per position in order. `seconds` is each position's own clock (positions run
 /// side by side: keep `threads` within the cores, or the clocks measure the contention). `store` is a snapshot file (<id>.json, which must hash to its name): its id
@@ -205,12 +264,12 @@ fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
 /// the ledger search reads first (`ablate`: lemma names left out). `labels` names the positions in the log. With `trace_path` every decision's steps are appended to
 /// that JSON Lines log.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false))]
+#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false))]
 #[allow(clippy::too_many_arguments)]
 fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, snapshot: String,
                trace_path: Option<String>, threads: usize, prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool,
-               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool) -> PyResult<Vec<BatchRow>> {
-    let params = cs_decision::Params { prior, ties, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
+               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool) -> PyResult<Vec<BatchRow>> {
+    let params = cs_decision::Params { prior, ties, reason, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let snapshot = store.as_ref().map(|s| s.snapshot.id.clone()).unwrap_or(snapshot);
     if let Some(l) = &labels { if l.len() != positions.len() { return Err(pyo3::exceptions::PyValueError::new_err("labels: one per position")); } }
@@ -677,6 +736,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(state, m)?)?;
     m.add_function(wrap_pyfunction!(watch, m)?)?;
     m.add_function(wrap_pyfunction!(census, m)?)?;
+    m.add_function(wrap_pyfunction!(reason, m)?)?;
     m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
     Ok(())
 }

@@ -4858,3 +4858,71 @@ READING. (1) THE MACHINERY IS WHOLE: two lemmas were mined, filed in the sandbox
 OPEN: counterexamples back to a filed lemma (refine or retire); counter-positions aimed at a lemma; the gates against constants on thin support; the facts at the end of the refutation
   line against the best line as the shape of the lemma; `source_of` and `credit` still read the default vocabulary; default and named vocabularies share one HEAD; UCI sources cut cards
   with more than 64 legal moves; derived-delta cards cost about 13 times the base ones; sizes 4 to 7 and the budget driver.
+
+#### 78.25 THE REASONING CHAIN AS A TOOL: THREATS BY STAKE, THE FRAME, PARRY OR COUNTER, AND WHAT IS IRRELEVANT (2026-11-10; Kaveh: "my king is about to get mated ... that means I can ignore
+the pawn on the corner because it's irrelevant to the mate ... first of all, I should not get mated ... how do I create a greater threat than mate? I can't. But if my rook is under attack, I
+could create a greater threat than my rook ... this logical reasoning chain was a lot more useful, and I want that to be a part of one of the tools available here")
+THE LOOK BACK. The lemmas Kaveh remembered are October's: plans 41 to 51 (selfmine: a window, the root lemma, diagnose, repair, the perturbation drill, schemas proved once in Lean and bound
+everywhere) and plans 52 to 72 (the agenda: root questions in order of stake, defects and fixes, their agenda on the passed board, the frame carried forward, a budget hit is a GAP).
+Both still run today: selfmine on game sHa6yUKv binds `delayed_balance_alive_d2`; analyse on dev_20 01IFU decides Nf3+ by mate_in_two. What stopped it, from its own record: schemas for
+one and two of our moves only, a chase clock, material-only leaves, and no estimate past the budget (plan 61's ESTIMATE fired on 0 leaves; plan 69.2 was not built); 428 hand-written rows
+of chess facts in the agenda. A prior net says WHICH unit matters; the chain says WHY. This slice brings the chain into the engine as ONE OPERATOR among the others, on the Game trait only.
+DEFINITIONS (cs_tactics::reason, no game named):
+  STAKE: the ledger value of a threat's line by the judge in use; the game's own goal is above every unit.
+  THREAT against the side to move: a tactic of the other side with no defect on the PASSED state (the census of 78.6); a side with no pass must answer, every move is then read.
+  FRAME of a threat: the base facts its line removes or adds, the line cut at its last ledger event; facts every legal move changes are no part of it.
+  NET of a move of ours: its exact ledger value one ply deeper than the threat was read (`root_values`). A move ANSWERS when its net beats passing (net > -stake).
+  The question asked of each answer is whether they can STILL CARRY THE THREAT OUT: the threat's first move, if still legal, is read exactly and its line searched for the targets.
+    PARRY: they cannot. COUNTER: they can, and our net if they do is above 0 (a greater threat). COVER: it is 0 (what they take is taken back or matched).
+    LESSEN: it is below 0 and still better than passing. A threat on the goal has parries only: nothing outbids it.
+  UNIT: the facts of ours a move removes. IRRELEVANT: a unit none of whose moves answers and none of whose facts is in the frame. A move the budget left unread is never called irrelevant.
+  With no threat against us the candidates are OUR tactics: the ones that work now, then the threats one free move creates.
+  The result is an ORDER (the ledger search reads these moves first, after the lemmas') and an EXPLANATION (`reason:` lines in the decision's trace). Never a verdict: the ledger's value decides.
+BUILT (a Sonnet subagent, then refined at integration): rust/engine/tactics/src/reason.rs (`reason`, `reason_within`, `explain`), `ReasonOp`, `Goal::Reason`, `Params.reason` (default OFF,
+REASON_SHARE 0.1 of the clock), py `reason(...)` and `reason=` on best_move and solve_batch, wake `--reason`. Tests: tests/test_plan78_25_reason.py (10).
+INTEGRATION FINDINGS, each fixed and tested: (1) the first parry / counter split called Rxa8 (taking the attacker) a counter and a knight move that attacks the queen a parry; the question
+"can they still carry it out" replaced it. (2) A threat's line carried the reading's quiet tail into the frame; the line now ends at its last ledger event. (3) A guard was named a counter
+("outbid") at net 0; COVER is its own kind. (4) Our own census ran under its node fuse alone:
+OBS decision seconds on n 423 median 0.201 p95 0.203 max 0.463 over 0.25: 4
+  One deadline now holds for the whole chain (`census_within`); after it, same run:
+OBS decision seconds: n 427 median 0.201 p95 0.203 max 0.204 over 0.25: 0
+THE CHAINS (printed by the tests, material judge, depth 2):
+OBS 78.25 mate:
+reason: if we pass they win the game by a8a1 (stake goal)
+reason: the threat's frame: (cell a 1 black rook), (cell a 8 black rook)
+reason: parries: f2f3 (net +0), g2g3 (net +0), h2h3 (net +0), f2f4 (net +0), g2g4 (net +0), h2h4 (net +0), and 1 more
+reason: 4 move(s) leave the threat (their net is no better than passing)
+reason: irrelevant to the threat: 2 units, 3 moves ((cell c 2 white pawn), (cell b 3 white pawn))
+OBS 78.25 fork:
+reason: if we pass they win r@a1 by f6a1 (stake 5)
+reason: the threat's frame: (cell a 1 black bishop), (cell a 1 white rook), (cell f 6 black bishop)
+reason: parries: a1b1 (net +0), a1d1 (net +0), a1e1 (net +0), a1f1 (net +0), a1a2 (net +0), a1a4 (net +0), and 2 more
+reason: counters (the threat stands and is outbid): e3d5 (net +0; if they carry it out: f6a1 d5c7, net +4)
+reason: moves that lessen it (the threat stands and costs less): e3c2 (net -3; if they carry it out: f6a1 c2a1, net -2)
+reason: 17 move(s) leave the threat (their net is no better than passing)
+reason: irrelevant to the threat: 4 units, 8 moves ((cell f 2 white pawn), (cell g 2 white pawn), (cell h 2 white pawn), (cell g 1 white king))
+IN PLAY (wake chess, 8 games, 60 plies, the published snapshot's mined material judge, 8 threads; logs local):
+  0.2 s a move, chain on:
+OBS reason log: decisions 427, with a reason step 427, status {'Read': 118, 'Gap': 309}
+OBS reason log: seconds median 20.6 ms, mean 19.0 ms, max 27.6 ms; share of the decision's clock mean 0.094; nodes median 5461
+OBS reason log: a threat against the mover 183 (the game's goal 1), no threat 227, GAP 309, an irrelevant set named 163
+OBS ledger depth mean 7.11 over 427 readings
+  0.2 s a move, chain off:
+OBS ledger depth mean 7.60 over 391 readings
+  0.5 s a move, chain on:
+OBS reason log: decisions 432, with a reason step 432, status {'Read': 305, 'Gap': 127}
+OBS reason log: seconds median 33.5 ms, mean 32.6 ms, max 57.1 ms; share of the decision's clock mean 0.065; nodes median 10711
+OBS reason log: a threat against the mover 213 (the game's goal 3), no threat 199, GAP 127, an irrelevant set named 212
+OBS reason log: decisions with shown candidates 414; the move played is the first candidate 297, among the shown candidates 375
+OBS decisions with covers 44 with counters 63
+OBS ledger depth mean 8.52 over 432 readings
+  0.5 s a move, chain off:
+OBS ledger depth mean 8.95 over 396 readings
+READING. (1) The chain is a tool beside the others and says why: the threat, what it is worth, the facts it runs through, which moves stop it, which outbid it, and which units have no
+part in it. (2) It is CUT OFTEN ON A SHORT CLOCK: at 0.2 s a move it is a GAP in 309 of 427 decisions, at
+0.5 s in 127 of 432. The cut readings are mostly our own census (one free move, then a gain: one reading per quiet move) and the readings after each answer. A GAP is said as a GAP. (3) Its
+share costs the ledger depth at both clocks (the means above). (4) NOT MEASURED: strength. No match was played with the chain on against the chain off; the order it gives the ledger and
+the move the ledger then plays agree often (first candidate 297 of 414 at 0.5 s), which says the two readings are consistent, not that play improved.
+OPEN: follow the chain DEEPER (their answer to our answer, the frame carried forward as in 72.10) with an ESTIMATE where the budget ends, which is what October lacked; the irrelevant
+set used to NARROW a reading and not only to explain it; our own census ordered by stake so a short clock reads the best first; targets compared by kind, not by place; the chain's
+facts (threat, frame, answer, irrelevant) as the vocabulary of lemmas; whether to switch the chain on by default (a match on against off decides).

@@ -19,7 +19,7 @@ use cs_game::Game;
 use cs_operator::{drive, Action, Context, Controller, Goal, Mode, Operator, Status};
 use cs_planning::operators::DensityOp;
 use cs_tactics::ledger::{Judge, WIN};
-use cs_tactics::operators::{ForcingOp, LedgerOp};
+use cs_tactics::operators::{ForcingOp, LedgerOp, ReasonOp};
 
 pub use cs_operator::Decision;
 
@@ -39,6 +39,7 @@ pub const LEDGER_DEPTH: i32 = 64;
 pub const LEDGER_SHARE: f64 = 0.6;
 pub const LEMMA_SHARE: f64 = 0.05;         // of the clock: what the lemma operator may take (it binds a few lemmas to one position)
 pub const LEMMA_FUSE: u64 = 1_000_000;
+pub const REASON_SHARE: f64 = 0.1;         // of the clock: what the reasoning chain may take (plan 78.25: threats, frame, answers; an order and an explanation, never a verdict)
 pub const TIE_SHARE: f64 = 0.3;            // of what is left: the share the tie reading may take (the rest is the prior's census)
 
 /// Everything the fixed controller and its operators are asked, with the defaults the engine plays by.
@@ -49,6 +50,9 @@ pub struct Params {
     /// Read the ledger's ties (the moves as good as the best) WITHOUT the prior: the ledger keeps `ledger_share` of the clock and the ties the rest; the candidates
     /// are reported, the move is the ledger's. The engine's own measure of how coarse its judge is (the tie rate), and a seam for another tie-breaker.
     pub ties: bool,
+    /// Plan 78.25: run the reasoning chain (operator "reason") after the proof did not decide, and let the ledger read its candidates after the lemmas' (an order; the
+    /// ledger's value decides). Off: the decision and its trace are exactly what they were.
+    pub reason: bool,
     /// The keys of the positions the game's record holds before this one (a position met again is the rules' draw).
     pub history: Vec<u64>,
     /// The census plies of the prior's readings (its node fuse grows with them).
@@ -66,13 +70,26 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Params {
-        Params { prior: false, ties: false, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true,
+        Params { prior: false, ties: false, reason: false, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true,
                  max_depth: MAX_DEPTH, ledger_depth: LEDGER_DEPTH }
     }
 }
 
 /// THE FIXED CONTROLLER: proof, then ledger, then (if asked) the density prior over the ledger's ties. Its choice at each step reads only the steps so far.
 pub struct Fixed<'p> { pub params: &'p Params, pub lemmas: bool }
+
+impl<'p> Fixed<'p> {
+    /// The ledger step: the lemmas' candidates are its root order, then the reasoning's (no repeats) -- an order, never a verdict.
+    fn ledger<G: Game>(&self, ctx: &Context<G>, me: cs_game::Role) -> Action<G::Move> {
+        let p = self.params;
+        let read_ties = p.prior || p.ties;
+        let left = (ctx.seconds * if read_ties { p.ledger_share } else { 1.0 } - ctx.elapsed()).max(0.01);
+        let mut prefer = ctx.steps.iter().find(|s| s.operator == "lemma").map(|s| s.outcome.candidates.clone()).unwrap_or_default();
+        for i in ctx.steps.iter().find(|s| s.operator == "reason").map(|s| s.outcome.candidates.clone()).unwrap_or_default() { if !prefer.contains(&i) { prefer.push(i); } }
+        Action::Run { operator: "ledger".into(), goal: Goal::Ledger { role: me, ties: if read_ties { Some(TIE_SHARE) } else { None }, prefer }, seconds: left,
+                      max_nodes: cs_tactics::ledger::NODE_FUSE, max_depth: Some(p.ledger_depth as u32) }
+    }
+}
 
 impl<'p, G: Game> Controller<G> for Fixed<'p> {
     fn choose(&self, ctx: &Context<G>) -> Action<G::Move> {
@@ -87,14 +104,10 @@ impl<'p, G: Game> Controller<G> for Fixed<'p> {
             "lemma" => proof(),
             "forcing" => match (last.outcome.status, &last.outcome.mv) {
                 (Status::Proved, Some(first)) => Action::Play { mv: first.clone(), proved: true },
-                _ => {
-                    let read_ties = p.prior || p.ties;
-                    let left = (ctx.seconds * if read_ties { p.ledger_share } else { 1.0 } - ctx.elapsed()).max(0.01);
-                    let prefer = ctx.steps.iter().find(|s| s.operator == "lemma").map(|s| s.outcome.candidates.clone()).unwrap_or_default();
-                    Action::Run { operator: "ledger".into(), goal: Goal::Ledger { role: me, ties: if read_ties { Some(TIE_SHARE) } else { None }, prefer }, seconds: left,
-                                  max_nodes: cs_tactics::ledger::NODE_FUSE, max_depth: Some(p.ledger_depth as u32) }
-                }
+                _ if p.reason => Action::Run { operator: "reason".into(), goal: Goal::Reason { role: me }, seconds: ctx.seconds * REASON_SHARE, max_nodes: cs_tactics::reason::REASON_FUSE, max_depth: None },
+                _ => self.ledger(ctx, me),
             },
+            "reason" => self.ledger(ctx, me),
             "ledger" => {
                 let Some(mv) = last.outcome.mv.clone() else {
                     return match ctx.g.moves(ctx.s).into_iter().next() { Some(m) => Action::Play { mv: m, proved: false }, None => Action::Stop };
@@ -152,7 +165,8 @@ pub fn decide_with_lemmas<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, 
     let forcing = ForcingOp;
     let ledger = LedgerOp { judge, history: params.history.clone(), ordering: params.ordering, prune: params.prune, extend: params.extend };
     let density = DensityOp { judge };
-    let mut ops: Vec<&dyn Operator<G>> = vec![&forcing, &ledger, &density];
+    let reason = ReasonOp { judge };
+    let mut ops: Vec<&dyn Operator<G>> = vec![&forcing, &ledger, &density, &reason];
     if let Some(l) = lemma { ops.push(l); }
     let d = drive(g, s, seconds, &ops, &Fixed { params, lemmas: lemma.is_some() }, trace);
     if d.mv.is_some() { Some(d) } else { None }

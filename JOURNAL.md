@@ -36430,3 +36430,20 @@ READING: the loop is closed for the first time on a filed lemma. One lemma reads
 counterexamples back to a filed lemma; that is the next stage. Written as 78.23 and 78.24 in ANALYST_PLAN; gate gains test_plan78_23, test_plan78_24, test_plan78_24_concepts,
 test_plan78_24_loop.
 OBS gate engine: files 65, passed 804, failed 0, xfailed 1, errors 0, wall 1202.4 s
+
+## 2026-11-10 13:15 -- plan 78.25: the reasoning chain as a tool (threats by stake, the frame, parry or counter, what is irrelevant)
+Kaveh asked to look back at October's tactical layer (plans 41 to 72: selfmine's diagnose / repair / drill and the stake-ordered agenda with frames; both still run) and to bring its
+logical chain in as one of the tools: do not get mated first; a threat is answered by stopping it or by a greater threat; a unit outside the threat's frame is irrelevant WITH A REASON,
+which a prior net cannot give. Built by a Sonnet subagent as a game-free operator on the Game trait (cs_tactics::reason, `ReasonOp`, `Goal::Reason`, `Params.reason` default off, wake
+`--reason`, py `reason`), refined at integration: the answer kinds now ask whether they can still carry the threat out (parry: no; counter: yes and they lose more than they win; cover:
+yes and they win nothing; lessen: yes, at a smaller cost); a threat's line ends at its last ledger event; one deadline holds for the whole chain (our own census had run 0.42 s inside a
+0.2 s decision under its node fuse alone).
+OBS 78.25 fork:
+reason: if we pass they win r@a1 by f6a1 (stake 5)
+reason: counters (the threat stands and is outbid): e3d5 (net +0; if they carry it out: f6a1 d5c7, net +4)
+reason: irrelevant to the threat: 4 units, 8 moves ((cell f 2 white pawn), (cell g 2 white pawn), (cell h 2 white pawn), (cell g 1 white king))
+OBS reason log: decisions 432, with a reason step 432, status {'Read': 305, 'Gap': 127}
+OBS reason log: decisions with shown candidates 414; the move played is the first candidate 297, among the shown candidates 375
+READING: the chain says why, as an order for the ledger and lines in the trace, never a verdict. On a short clock it is cut often and says so (a GAP). Strength with it on is NOT measured.
+Next, not started: follow the chain deeper with an estimate where the budget ends. Written as 78.25 in ANALYST_PLAN; gate gains test_plan78_25_reason.
+OBS gate engine: files 66, passed 814, failed 0, xfailed 1, errors 0, wall 1205.7 s

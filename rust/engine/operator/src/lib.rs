@@ -76,6 +76,9 @@ pub enum Goal {
     Estimate { role: Role },
     /// An outside source's ordering of the legal moves for `role`, with its scores (scale unknown): a label to learn from, so only a training-kit operator reads it.
     Advise { role: Role },
+    /// The reasoning chain for `role` (plan 78.25): the threats against it by stake, the frame of the top one, the moves that parry or counter it, the units that do not
+    /// matter -- or, with no threat, its own tactics. The candidates are an order and the evidence an explanation, never a verdict.
+    Reason { role: Role },
 }
 
 impl Goal {
@@ -89,6 +92,7 @@ impl Goal {
             Goal::Survey { max_defects } => format!("survey({max_defects})"),
             Goal::Estimate { role } => format!("estimate({role})"),
             Goal::Advise { role } => format!("advise({role})"),
+            Goal::Reason { role } => format!("reason({role})"),
         }
     }
 }

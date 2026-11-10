@@ -44,8 +44,13 @@ fn targets_of<G: Game>(g: &G, s: &G::State, line: &[String], me: cs_game::Role) 
 }
 
 /// The census of the side to move at `s`: its tactics with at most `max_defects` defects, each reading `depth` plies under `fuse` nodes.
-pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u32, depth: i32, fuse: u64) -> Report {
+pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u32, depth: i32, fuse: u64) -> Report { census_within(g, s, judge, max_defects, depth, fuse, None) }
+
+/// `census` under a clock as well: with `seconds` given, every reading also stops at that deadline, and a reading the clock left no time for is counted as cut
+/// (the census is then known to be incomplete: `cut` > 0).
+pub fn census_within<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u32, depth: i32, fuse: u64, seconds: Option<f64>) -> Report {
     let mut rep = Report::default();
+    let deadline = seconds.map(|x| std::time::Instant::now() + std::time::Duration::from_secs_f64(x.max(0.0)));
     let Some(me) = g.mover(s) else { return rep };
     let mut seen: HashSet<String> = HashSet::new();
     let mut frontier: Vec<(G::State, Vec<String>)> = vec![(s.clone(), vec![])];
@@ -56,6 +61,11 @@ pub fn census<G: Game, J: Judge>(g: &G, s: &G::State, judge: &J, max_defects: u3
         for (st, free) in &frontier {
             let n0 = se.nodes;
             se.rebudget(fuse);
+            if let Some(d) = deadline {
+                let left = d.saturating_duration_since(std::time::Instant::now()).as_secs_f64();
+                if left <= 0.0 { rep.readings += 1; rep.cut += 1; continue; }
+                se.resume(left);
+            }
             let vals = se.gainers(st, depth);
             rep.readings += 1;
             rep.nodes += se.nodes - n0;

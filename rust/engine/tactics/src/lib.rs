@@ -6,6 +6,7 @@
 pub mod census;
 pub mod ledger;
 pub mod operators;
+pub mod reason;
 
 use cs_game::{Game, Role};
 

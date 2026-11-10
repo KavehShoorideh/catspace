@@ -25,7 +25,7 @@ DRAW = [50, 50]
 
 
 def play_self(variant: str, games: int, *, seconds: float = 0.2, random_plies: int = 4, max_plies: int = 120, seed: int = 1, store: "str | None" = None,
-              specs: "dict | None" = None, threads: int = 0, log: "str | None" = None, run: str = "r0", prior: bool = False, ties: bool = False,
+              specs: "dict | None" = None, threads: int = 0, log: "str | None" = None, run: str = "r0", prior: bool = False, ties: bool = False, reason: bool = False,
               starts: "list | None" = None) -> list:
     """Play `games` self-play games of `variant`; -> [{run, game, variant, start, moves, outcome, unfinished, snapshot}]. Positions are decided `seconds` each. `starts`
     (plan 78.22): position strings the kernel accepts (a FEN for the chess family); game g starts from `starts[g % len(starts)]`, None / empty = the game's own start. The
@@ -63,7 +63,7 @@ def play_self(variant: str, games: int, *, seconds: float = 0.2, random_plies: i
             positions.append((variant, s["start"], list(s["moves"])))
             labels.append(f"{run}:{s['game']}:{len(s['moves'])}:{ROLES[mover]}")
         if positions:
-            rows = CE.solve_batch(positions, seconds, snapshot=run, trace_path=log, threads=threads, prior=prior, ties=ties, store=store, specs=specs or {}, labels=labels)
+            rows = CE.solve_batch(positions, seconds, snapshot=run, trace_path=log, threads=threads, prior=prior, ties=ties, reason=reason, store=store, specs=specs or {}, labels=labels)
             for s, (mv, _proved, _nodes, _secs, err) in zip(engine, rows):
                 if mv is None:
                     s["over"], s["unfinished"] = True, True
@@ -106,6 +106,7 @@ def main(argv: list) -> int:
     ap.add_argument("--starts", default=None, help="a file of start positions, one per line (blank lines and # comments ignored); game g starts from line g mod n")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--prior", action="store_true", help="read the ledger's TIES (the controller reads them only when the prior is on; it then also runs the density prior over them) so the log's `candidates` counts them")
+    ap.add_argument("--reason", action="store_true", help="plan 78.25: run the reasoning chain (threats by stake, the frame, parry or counter) before the ledger: its candidates are read first, its lines join the trace; the ledger's value still decides")
     ap.add_argument("--ties", action="store_true", help="read the ledger's ties without the prior (the ledger keeps its share of the clock): the tie rate becomes measurable")
     a = ap.parse_args(argv)
     variant = a.variant or a.game
@@ -118,7 +119,7 @@ def main(argv: list) -> int:
         store = None
     specs = GS.spec_texts(a.game) if store else None
     t0 = time.perf_counter()
-    games = play_self(variant, a.games, seconds=a.seconds, random_plies=a.random_plies, max_plies=a.max_plies, seed=a.seed, store=store, specs=specs, threads=a.threads, log=log, run=tag, prior=a.prior, ties=a.ties,
+    games = play_self(variant, a.games, seconds=a.seconds, random_plies=a.random_plies, max_plies=a.max_plies, seed=a.seed, store=store, specs=specs, threads=a.threads, log=log, run=tag, prior=a.prior, ties=a.ties, reason=a.reason,
                        starts=read_starts(a.starts) if a.starts else None)
     plies = sum(len(g["moves"]) for g in games)
     print(f"OBS wake {a.game}: {len(games)} games, {plies} plies, {sum(1 for g in games if g['unfinished'])} unfinished, snapshot {games[0]['snapshot'] if store else 'none'}, "

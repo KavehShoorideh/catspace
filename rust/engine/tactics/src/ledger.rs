@@ -195,7 +195,8 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         if v[self.me] > best_other { WIN - ply as i64 } else if v[self.me] < best_other { -WIN + ply as i64 } else { 0 }
     }
 
-    fn gain(&self, s: &G::State, m: &G::Move) -> i64 {
+    /// What one move adds to the ledger for `me`, by the judge (what it takes, what changes kind).
+    pub fn gain(&self, s: &G::State, m: &G::Move) -> i64 {
         let took: i64 = self.g.captured(s, m).iter().map(|(o, k)| self.judge.delta(self.me, *o, k)).sum();
         let mover = self.g.mover(s).unwrap_or(self.me);
         took + self.g.changed(s, m).iter().map(|(a, b)| self.judge.change(self.me, mover, a, b)).sum::<i64>()
