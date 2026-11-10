@@ -36447,3 +36447,38 @@ OBS reason log: decisions with shown candidates 414; the move played is the firs
 READING: the chain says why, as an order for the ledger and lines in the trace, never a verdict. On a short clock it is cut often and says so (a GAP). Strength with it on is NOT measured.
 Next, not started: follow the chain deeper with an estimate where the budget ends. Written as 78.25 in ANALYST_PLAN; gate gains test_plan78_25_reason.
 OBS gate engine: files 66, passed 814, failed 0, xfailed 1, errors 0, wall 1205.7 s
+
+## 2026-11-10 14:50 -- plan 78.26: win / draw / loss from any position, sharpness, and which path to take
+Kaveh: to get past where October stopped (a GAP where the budget ended, the unproved pick mostly wrong) the engine needs a probability of win, draw and loss from any position, from a
+database of positions like this one or from a Monte Carlo simulation; a sharp position (draw unlikely) keeps reasoning, a quiet one lets the probabilities pick a path. Built by a Sonnet
+subagent as a game-free operator on the Game trait (cs_planning::wdl: `Wdl` mass, a results `Table` keyed by the exact position then by the units standing, the operator `wdl` answering
+Estimate and Prefer; MCTS now tallies win / draw / loss per root and per move), the controller rule behind `Params.wdl` (default off; sharp or unknown: reason then ledger; quiet: ledger,
+then the probabilities pick among the moves it leaves equal), py `wdl`, wake `--wdl` / `--wdl-table`, and the table builder wdl_table.py (own finished games only; the human-games index
+is not read). Refined at integration against the training oracle (Stockfish 18 win / draw / loss at depth 12): the estimate as delivered (greedy playouts cut at 40 plies) tracked the
+oracle worse than the static balance, so a `Careful` playout policy was added (a move's gain less the best gain it leaves the reply; a move that ends the game counts by its outcome) and
+the cut set to 8 plies.
+OBS static balance, logistic scale 3.0: positions 404, score correlation 0.406, score mean abs error 0.265, decisive mass correlation 0.230, engine decisive mass mean 0.116, sharp or quiet call agrees 189 of 404
+OBS playouts 0.03 s, cut at 40 plies, all playouts: positions 404, score correlation 0.135, score mean abs error 0.289, decisive mass correlation 0.111, engine decisive mass mean 0.671, sharp or quiet call agrees 231 of 404
+OBS playouts 0.03 s, cut at 8 plies, all playouts: positions 404, score correlation 0.545, score mean abs error 0.255, decisive mass correlation 0.272, engine decisive mass mean 0.389, sharp or quiet call agrees 208 of 404
+(the second line is the greedy policy, the third the careful one; the labelled sweep is in ANALYST_PLAN 78.26). Held out, on positions of a fresh wake:
+OBS wdl calibration: judge material (mined), positions 248, engine seconds 0.03, oracle depth 12, engine mass median 236
+OBS expected score: mean abs error 0.290, correlation 0.666, same side of one half 204 of 248
+OBS decisive mass: engine mean 0.416, oracle mean 0.691, mean abs error 0.429, correlation 0.351
+OBS call engine quiet / oracle quiet: 66
+OBS call engine quiet / oracle sharp: 111
+OBS call engine sharp / oracle quiet: 13
+OBS call engine sharp / oracle sharp: 58
+In play, 8 games at 0.2 s a move, the chain alone against the chain with the estimate:
+OBS off: ledger readings 757, depth mean 8.24
+OBS wdl: decisions 846, seconds median 0.200 max 0.203 over 0.25: 0, games {'white wins': 1, 'draws': 1, 'black wins': 1, 'unfinished': 5}
+OBS wdl: ledger readings 837, depth mean 7.32
+OBS wdl: modes {'sharp': 263, 'quiet': 574, 'unknown': 0}, decisive mass median 0.383, estimate step seconds median 0.0301 max 0.0306, table hits 0
+OBS wdl: the probabilities picked among tied moves 422 times, a move other than the ledger's own 297 times
+OBS wdl_table chess: 48 games read, 28 skipped as unfinished, 847 positions, 393 exact rows dropped under 2 games
+OBS pick repeatability at 1 x the decision's own time for the pick (median 0.054 s): positions 141, tied moves median 4, two seeds pick the same move 86, chance would give about 33, best score less second best median 0.0167
+READING: the mechanism runs end to end inside the clock and says what it did in the trace. The expected score carries signal; the sharp call is one-sided (when it says sharp the oracle
+mostly agrees, and it misses most positions the oracle calls decided); the pick among equal moves is only partly repeatable; the own-games table is thin. Strength with it on is NOT
+measured. Left to Kaveh: which database fills the table (human games need his say under the 78.17 rule), and how much the probabilities may decide. Next, not started: a sharp signal
+from the chain's own threat counts, one search over the tied moves in place of the even split, the estimate where the chain's budget ends, a match on against off. Written as 78.26 in
+ANALYST_PLAN; gate gains test_plan78_26_wdl.
+OBS gate engine: files 67, passed 830, failed 0, xfailed 1, errors 0, wall 1202.5 s

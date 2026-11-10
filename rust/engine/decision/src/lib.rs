@@ -40,6 +40,9 @@ pub const LEDGER_SHARE: f64 = 0.6;
 pub const LEMMA_SHARE: f64 = 0.05;         // of the clock: what the lemma operator may take (it binds a few lemmas to one position)
 pub const LEMMA_FUSE: u64 = 1_000_000;
 pub const REASON_SHARE: f64 = 0.1;         // of the clock: what the reasoning chain may take (plan 78.25: threats, frame, answers; an order and an explanation, never a verdict)
+pub const WDL_SHARE: f64 = 0.15;           // of the clock: the first estimate of win / draw / loss (plan 78.26: playouts pooled with the results table)
+pub const WDL_EPS: f64 = 0.1;              // the playouts' policy plays a uniform move this often
+pub const WDL_SEED: u64 = 78;              // the playouts' seed (a decision is reproducible on its own)
 pub const TIE_SHARE: f64 = 0.3;            // of what is left: the share the tie reading may take (the rest is the prior's census)
 
 /// Everything the fixed controller and its operators are asked, with the defaults the engine plays by.
@@ -53,6 +56,12 @@ pub struct Params {
     /// Plan 78.25: run the reasoning chain (operator "reason") after the proof did not decide, and let the ledger read its candidates after the lemmas' (an order; the
     /// ledger's value decides). Off: the decision and its trace are exactly what they were.
     pub reason: bool,
+    /// Plan 78.26: the probability of win / draw / loss decides the PATH. After the proof did not decide, the operator "wdl" estimates the position; a sharp (or unknown)
+    /// reading keeps reasoning (the reasoning chain, then the ledger); a quiet one reads the ledger's ties and lets the probabilities pick among the moves it leaves
+    /// equal. Off: the decision and its trace are exactly what they were.
+    pub wdl: bool,
+    /// Plan 78.26: the results table the estimate pools with its playouts (shared across positions; None: playouts only).
+    pub wdl_table: Option<std::sync::Arc<cs_planning::wdl::Table>>,
     /// The keys of the positions the game's record holds before this one (a position met again is the rules' draw).
     pub history: Vec<u64>,
     /// The census plies of the prior's readings (its node fuse grows with them).
@@ -70,8 +79,34 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Params {
-        Params { prior: false, ties: false, reason: false, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true,
+        Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true,
                  max_depth: MAX_DEPTH, ledger_depth: LEDGER_DEPTH }
+    }
+}
+
+/// What the first win / draw / loss estimate says of the position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WdlMode { Sharp, Quiet, Unknown }
+
+/// The mode an estimate's outcome reads as (an estimate with no sharpness fact, or one that did not run, is unknown).
+pub fn wdl_mode<M>(o: &cs_operator::Outcome<M>) -> WdlMode {
+    match o.facts.iter().find(|f| f.relation == "sharpness").and_then(|f| f.args.get(1)).map(|w| w.as_str()) {
+        Some("sharp") => WdlMode::Sharp,
+        Some("quiet") => WdlMode::Quiet,
+        _ => WdlMode::Unknown,
+    }
+}
+
+/// The trace line that states the mode and why, from the first estimate's facts.
+fn wdl_mode_line<M>(o: &cs_operator::Outcome<M>) -> String {
+    use cs_planning::wdl::{MIN_MASS, SHARP};
+    let fact = |name: &str| o.facts.iter().find(|f| f.relation == name);
+    let sharpness: f64 = fact("sharpness").and_then(|f| f.args.first()).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    let mass: f64 = fact("wdl").and_then(|f| f.args.get(3)).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    match wdl_mode(o) {
+        WdlMode::Sharp => format!("wdl: sharp (decisive mass {sharpness:.2} >= {SHARP:.2}): keep reasoning"),
+        WdlMode::Quiet => format!("wdl: quiet (decisive mass {sharpness:.2} < {SHARP:.2}): the probabilities pick among the moves the reading leaves equal"),
+        WdlMode::Unknown => format!("wdl: unknown (mass {mass:.1} < {MIN_MASS:.1}): keep reasoning"),
     }
 }
 
@@ -80,9 +115,9 @@ pub struct Fixed<'p> { pub params: &'p Params, pub lemmas: bool }
 
 impl<'p> Fixed<'p> {
     /// The ledger step: the lemmas' candidates are its root order, then the reasoning's (no repeats) -- an order, never a verdict.
-    fn ledger<G: Game>(&self, ctx: &Context<G>, me: cs_game::Role) -> Action<G::Move> {
+    fn ledger<G: Game>(&self, ctx: &Context<G>, me: cs_game::Role, force_ties: bool) -> Action<G::Move> {
         let p = self.params;
-        let read_ties = p.prior || p.ties;
+        let read_ties = p.prior || p.ties || force_ties;
         let left = (ctx.seconds * if read_ties { p.ledger_share } else { 1.0 } - ctx.elapsed()).max(0.01);
         let mut prefer = ctx.steps.iter().find(|s| s.operator == "lemma").map(|s| s.outcome.candidates.clone()).unwrap_or_default();
         for i in ctx.steps.iter().find(|s| s.operator == "reason").map(|s| s.outcome.candidates.clone()).unwrap_or_default() { if !prefer.contains(&i) { prefer.push(i); } }
@@ -104,15 +139,31 @@ impl<'p, G: Game> Controller<G> for Fixed<'p> {
             "lemma" => proof(),
             "forcing" => match (last.outcome.status, &last.outcome.mv) {
                 (Status::Proved, Some(first)) => Action::Play { mv: first.clone(), proved: true },
+                _ if p.wdl => Action::Run { operator: "wdl".into(), goal: Goal::Estimate { role: me }, seconds: ctx.seconds * WDL_SHARE, max_nodes: NODE_FUSE, max_depth: None },
                 _ if p.reason => Action::Run { operator: "reason".into(), goal: Goal::Reason { role: me }, seconds: ctx.seconds * REASON_SHARE, max_nodes: cs_tactics::reason::REASON_FUSE, max_depth: None },
-                _ => self.ledger(ctx, me),
+                _ => self.ledger(ctx, me, false),
             },
-            "reason" => self.ledger(ctx, me),
+            "wdl" => match last.goal {
+                Goal::Prefer { .. } => {
+                    let ledger_mv = ctx.steps.iter().rev().find(|s| s.operator == "ledger").and_then(|s| s.outcome.mv.clone());
+                    match last.outcome.mv.clone().or(ledger_mv) { Some(mv) => Action::Play { mv, proved: false }, None => Action::Stop }
+                }
+                _ => match wdl_mode(&last.outcome) {
+                    // sharp or unknown: keep reasoning (the wdl candidates are not the ledger's prior here)
+                    WdlMode::Quiet => self.ledger(ctx, me, true),
+                    _ => Action::Run { operator: "reason".into(), goal: Goal::Reason { role: me }, seconds: ctx.seconds * REASON_SHARE, max_nodes: cs_tactics::reason::REASON_FUSE, max_depth: None },
+                },
+            },
+            "reason" => self.ledger(ctx, me, false),
             "ledger" => {
                 let Some(mv) = last.outcome.mv.clone() else {
                     return match ctx.g.moves(ctx.s).into_iter().next() { Some(m) => Action::Play { mv: m, proved: false }, None => Action::Stop };
                 };
                 let decided = last.outcome.value.map_or(true, |v| v.abs() >= WIN - 1000);
+                let quiet = p.wdl && ctx.steps.iter().find(|s| s.operator == "wdl").map_or(false, |s| wdl_mode(&s.outcome) == WdlMode::Quiet);
+                if quiet && !decided && last.outcome.candidates.len() > 1 {
+                    return Action::Run { operator: "wdl".into(), goal: Goal::Prefer { role: me, among: last.outcome.candidates.clone(), defects: 0 }, seconds: ctx.remaining(), max_nodes: NODE_FUSE, max_depth: None };
+                }
                 if p.prior && !decided && last.outcome.candidates.len() > 1 {
                     let fuse = cs_planning::density::FUSE * (1u64 << (2 * (p.prior_depth - cs_planning::density::DEPTH).max(0)));
                     return Action::Run { operator: "density".into(), goal: Goal::Prefer { role: me, among: last.outcome.candidates.clone(), defects: p.prior_defects },
@@ -167,7 +218,21 @@ pub fn decide_with_lemmas<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, 
     let density = DensityOp { judge };
     let reason = ReasonOp { judge };
     let mut ops: Vec<&dyn Operator<G>> = vec![&forcing, &ledger, &density, &reason];
+    // (plan 78.26: the win / draw / loss operator: the decision's judge plays the careful playouts (a move's gain less what it leaves to be taken) and values a cut one,
+    // at a scale in units of the smallest worth)
+    let mut wdl_op = cs_planning::wdl::WdlOp::new(cs_planning::mcts::EXPLORATION, cs_planning::wdl::WDL_PLAYOUT, cs_planning::rollout::Careful::new(judge, WDL_EPS, WDL_SEED),
+        cs_planning::rollout::Balance::new(judge, cs_planning::wdl::leaf_scale(g, s, judge)), params.wdl_table.clone());
+    wdl_op.leaf_note = format!("scale {} x the smallest positive worth at the root, so the squash does not depend on the judge's units", cs_planning::wdl::WDL_SCALE);
+    if params.wdl { ops.push(&wdl_op); }
     if let Some(l) = lemma { ops.push(l); }
-    let d = drive(g, s, seconds, &ops, &Fixed { params, lemmas: lemma.is_some() }, trace);
+    let mut d = drive(g, s, seconds, &ops, &Fixed { params, lemmas: lemma.is_some() }, trace);
+    if params.wdl {
+        // the mode line sits right after the first estimate's own lines
+        if let Some(k) = d.steps.iter().position(|st| st.operator == "wdl" && matches!(st.goal, Goal::Estimate { .. })) {
+            let at = 1 + d.steps[..=k].iter().map(|st| st.outcome.evidence.len()).sum::<usize>();
+            let line = wdl_mode_line(&d.steps[k].outcome);
+            d.trace.insert(at.min(d.trace.len()), line);
+        }
+    }
     if d.mv.is_some() { Some(d) } else { None }
 }

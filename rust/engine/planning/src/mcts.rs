@@ -6,6 +6,7 @@
 use cs_game::rng::Rng;
 use cs_game::{Fact, Game, Role};
 use crate::rollout::{Draw, Leaf};
+use crate::wdl::{split, Wdl};
 use cs_operator::{Budget, Goal, Operator, Outcome, Status};
 use std::time::Instant;
 
@@ -67,6 +68,10 @@ pub struct Search {
     pub nodes: u64,
     /// The roles' mean outcomes at the root over all playouts.
     pub root_mean: Vec<f64>,
+    /// Plan 78.26: per role, the win / draw / loss MASS of every playout (a cut playout's leaf value split by `wdl::split`); the mass is the playouts.
+    pub root_wdl: Vec<Wdl>,
+    /// Per root move (by index), per role: the mass of the playouts that went through that move.
+    pub move_wdl: Vec<Vec<Wdl>>,
 }
 
 /// UCT from `s` until the budget's fuse or clock says stop (an iteration it interrupts is dropped, not scored). Every step -- a selection, an expansion, a playout ply
@@ -81,6 +86,8 @@ pub fn search<G: Game, R: Rollout, L: Leaf>(g: &G, s: &G::State, budget: &mut Bu
     };
     let mut tree: Vec<Node<G>> = vec![make(s.clone(), 0)];
     let mut res = Search::default();
+    res.root_wdl = vec![Wdl::default(); n_roles];
+    res.move_wdl = vec![vec![Wdl::default(); n_roles]; tree[0].moves.len()];
     let (mut mark_nodes, mut mark_t) = (budget.nodes, Instant::now());
     while budget.left() {
         // selection and expansion
@@ -143,6 +150,13 @@ pub fn search<G: Game, R: Rollout, L: Leaf>(g: &G, s: &G::State, budget: &mut Bu
             let n = &mut tree[id];
             n.visits += 1;
             for r in 0..n_roles { n.sums[r] += value[r]; }
+        }
+        // (the win / draw / loss tallies: the root's, and the root move this playout went through)
+        let first = path.get(1).and_then(|id| tree[0].children.iter().position(|c| *c == Some(*id)));
+        for r in 0..n_roles {
+            let m = split(value[r]);
+            res.root_wdl[r].add_mass(m);
+            if let Some(i) = first { res.move_wdl[i][r].add_mass(m); }
         }
         res.playouts += 1;
         if res.playouts % BATCH == 0 {

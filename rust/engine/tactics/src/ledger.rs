@@ -22,6 +22,14 @@ pub trait Judge {
     fn worth(&self, kind: &str) -> i64;
 }
 
+/// A borrowed judge judges as the judge does (so an operator can hold a judge the decision only lends it).
+impl<J: Judge + ?Sized> Judge for &J {
+    fn delta(&self, me: Role, owner: Role, kind: &str) -> i64 { (**self).delta(me, owner, kind) }
+    fn change(&self, me: Role, owner: Role, from: &str, to: &str) -> i64 { (**self).change(me, owner, from, to) }
+    fn name(&self) -> String { (**self).name() }
+    fn worth(&self, kind: &str) -> i64 { (**self).worth(kind) }
+}
+
 /// The built-in fallback when no valuation record is given: each unit the same (+1 theirs lost, -LOSS ours lost); a change of kind is no gain.
 #[derive(Clone, Copy)]
 pub struct Count;

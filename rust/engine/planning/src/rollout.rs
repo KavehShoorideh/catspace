@@ -1,6 +1,7 @@
 //! THE STRONGER RANK SOURCE for MCTS, as small pluggable pieces (game-free: only the `Game` trait and the ledger's `Judge`). Two seams:
 //!   `Leaf`     the value per role of a NON-terminal state where a playout is cut (`Draw`: today's behaviour; `Balance`: the units standing, by the judge's worths);
-//!   `Rollout`  how a playout picks its moves (`Uniform` in mcts.rs; `Greedy`: take the best immediate gain; `Weighted<P>`: sample by a `Prior`'s weights).
+//!   `Rollout`  how a playout picks its moves (`Uniform` in mcts.rs; `Greedy`: take the best immediate gain; `Careful`: the best gain less what the move leaves the
+//!              next mover to take; `Weighted<P>`: sample by a `Prior`'s weights).
 //! `Greedy` and `Weighted<GainPrior>` are two policies over ONE notion of gain (`gain`): the units a move takes plus the worth its own units gain by changing kind.
 //! A learned prior or a shallow search plugs in by implementing `Prior` / `Rollout` / `Leaf`; nothing here is wired into `search`.
 use cs_game::rng::Rng;
@@ -72,6 +73,34 @@ impl<J: Judge> Rollout for Greedy<J> {
         ties[self.rng.below(ties.len())]
     }
     fn name(&self) -> String { "greedy".into() }
+}
+
+/// What a terminal state reached by a playout's own move counts for in `Careful` (above any gain the judge can give).
+pub const SURE: i64 = 1_000_000;
+
+/// A TWO-PLY (careful) look: with probability `eps` a uniform move; otherwise the move of best NET, uniformly among ties, where a move's net is its immediate `gain`
+/// less the best immediate gain it leaves the next mover (nothing when the next mover has no gaining move). A move that ends the game counts by its outcome for the
+/// mover (`SURE` times the distance from a draw). It gives nothing away for free, which the one-ply look does. Cloning restarts the stream from the seed.
+pub struct Careful<J: Judge> { pub judge: J, pub eps: f64, seed: u64, rng: Rng }
+impl<J: Judge> Careful<J> {
+    pub fn new(judge: J, eps: f64, seed: u64) -> Careful<J> { Careful { judge, eps, seed, rng: Rng::new(seed) } }
+}
+impl<J: Judge + Clone> Clone for Careful<J> { fn clone(&self) -> Careful<J> { Careful::new(self.judge.clone(), self.eps, self.seed) } }
+impl<J: Judge> Rollout for Careful<J> {
+    fn pick<G: Game>(&mut self, g: &G, s: &G::State, moves: &[G::Move]) -> usize {
+        if unit(&mut self.rng) < self.eps { return self.rng.below(moves.len()); }
+        let Some(me) = g.mover(s) else { return self.rng.below(moves.len()) };
+        let nets: Vec<i64> = moves.iter().map(|m| {
+            let q = g.apply(s, m);
+            if let Some(o) = g.outcome(&q) { return (o.get(me).copied().unwrap_or(DRAW as i64) - DRAW as i64) * SURE; }
+            let theirs = g.moves(&q).iter().map(|r| gain(g, &self.judge, &q, r)).max().unwrap_or(0).max(0);
+            gain(g, &self.judge, s, m) - theirs
+        }).collect();
+        let best = nets.iter().copied().max().unwrap_or(0);
+        let ties: Vec<usize> = (0..moves.len()).filter(|i| nets[*i] == best).collect();
+        ties[self.rng.below(ties.len())]
+    }
+    fn name(&self) -> String { "careful".into() }
 }
 
 /// A prior over the moves of a state: a non-negative weight per move (same length as `moves`).

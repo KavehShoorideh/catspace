@@ -6,6 +6,7 @@
 pub mod operators;
 pub mod mcts;
 pub mod rollout;
+pub mod wdl;
 
 use cs_game::{Game, Role};
 use std::collections::HashMap;

@@ -28,17 +28,18 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None))]
 #[allow(clippy::too_many_arguments)]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
-             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool)
+             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
     let (g, s, keys) = record_of(variant, fen, start960, &moves)?;
     let hist: Vec<u64> = if record { keys } else { vec![] };          // (record=False: the game's record not read -- the comparison)
     let f = g.fen(&s);
-    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, ..cs_decision::Params::default() };
-    let choice = if reason {
-        // (plan 78.25: the reasoning chain on: the same decision with the "reason" step; off, the call below is exactly what it was)
+    let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
+    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, wdl, wdl_table: table, ..cs_decision::Params::default() };
+    let choice = if reason || wdl {
+        // (plan 78.25 / 78.26: the reasoning chain or the win / draw / loss path on: the decision with its extra steps; both off, the call below is exactly what it was)
         (if worth.is_empty() { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Count, &params) }
          else { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, &params) })
             .map(|d| cs_decision::Choice { mv: d.mv.expect("a decision with a move"), proved: d.proved, trace: d.trace, nodes: d.cost.nodes })
@@ -48,6 +49,134 @@ fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64,
         Some(c) => (Some(g.move_name(&s, &c.mv)), c.proved, c.trace, c.nodes, f),
         None => (None, false, vec!["the game is over".into()], 0, f),
     })
+}
+
+/// The format string a results table file must carry.
+const WDL_TABLE_FORMAT: &str = "wdl-table-1";
+
+/// Load a results table file (JSON: {"format": "wdl-table-1", "game", "provenance", "rows": {key: [mover wins, draws, mover losses]}}), once; None when no path is given.
+fn load_wdl_table(path: Option<&str>) -> PyResult<Option<std::sync::Arc<cs_planning::wdl::Table>>> {
+    let Some(path) = path else { return Ok(None) };
+    let err = |m: String| pyo3::exceptions::PyValueError::new_err(format!("wdl table {path}: {m}"));
+    let text = std::fs::read_to_string(path).map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("wdl table {path}: {e}")))?;
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| err(e.to_string()))?;
+    match v.get("format").and_then(|f| f.as_str()) {
+        Some(WDL_TABLE_FORMAT) => {}
+        other => return Err(err(format!("format {other:?} is not \"{WDL_TABLE_FORMAT}\""))),
+    }
+    let rows = v.get("rows").and_then(|r| r.as_object()).ok_or_else(|| err("no rows".into()))?;
+    let mut t = cs_planning::wdl::Table { name: v.get("game").and_then(|g| g.as_str()).unwrap_or("").to_string(), rows: HashMap::new() };
+    for (k, row) in rows {
+        let a = row.as_array().filter(|a| a.len() == 3).ok_or_else(|| err(format!("row {k}: three counts expected")))?;
+        let f = |i: usize| a[i].as_f64().ok_or_else(|| err(format!("row {k}: counts must be numbers")));
+        t.rows.insert(k.clone(), [f(0)?, f(1)?, f(2)?]);
+    }
+    Ok(Some(std::sync::Arc::new(t)))
+}
+
+/// The win / draw / loss operator read at `s` under `judge`: the careful (or greedy) playouts, the balance leaf at the wdl scale, the table when given.
+fn wdl_read<G: Game, J: cs_tactics::ledger::Judge + Clone>(g: &G, s: &G::State, me: usize, judge: J, table: Option<std::sync::Arc<cs_planning::wdl::Table>>, among: Option<Vec<usize>>,
+                                                           seed: u64, max_playout: usize, careful: bool, budget: cs_operator::Budget) -> cs_operator::Outcome<G::Move> {
+    use cs_operator::Operator;
+    let scale = cs_planning::wdl::leaf_scale(g, s, &judge);
+    let goal = match among { Some(a) => cs_operator::Goal::Prefer { role: me, among: a, defects: 0 }, None => cs_operator::Goal::Estimate { role: me } };
+    if careful {
+        cs_planning::wdl::WdlOp::new(cs_planning::mcts::EXPLORATION, max_playout, cs_planning::rollout::Careful::new(judge.clone(), cs_decision::WDL_EPS, seed),
+                                     cs_planning::rollout::Balance::new(judge, scale), table).run(g, s, &goal, budget)
+    } else {
+        cs_planning::wdl::WdlOp::new(cs_planning::mcts::EXPLORATION, max_playout, cs_planning::rollout::Greedy::new(judge.clone(), cs_decision::WDL_EPS, seed),
+                                     cs_planning::rollout::Balance::new(judge, scale), table).run(g, s, &goal, budget)
+    }
+}
+
+/// wdl(variant, fen=None, moves=[], seconds=0.2, max_nodes=10_000_000, worth={}, ours_first=False, valuation="", table=None, among=None, seed=1, max_playout=8,
+/// rollout="careful") -> dict:
+/// plan 78.26 THE WIN / DRAW / LOSS of the position for the side to move (cs_planning::wdl): playouts (`rollout`: "careful", a move's gain less what it leaves the next
+/// mover to take, or "greedy", the gain alone; a cut one valued by the units' balance at 3
+/// times the smallest worth) pooled with the results table's row for the position when `table` (a file path) has one. {win, draw, loss, n (mass), score, sharpness (1 less
+/// the draw probability), sharp (True / False / None: unknown), table_key, table_counts, playouts, cut, nodes, seconds, evidence, moves: [{move, win, draw, loss, n, score,
+/// visits}]}. `among` (move names) asks the probabilities to pick among those moves instead: `moves` then holds them, best first, and the numbers are the best one's.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=0.2, max_nodes=10_000_000, worth=HashMap::new(), ours_first=false, valuation=String::new(), table=None, among=None, seed=1, max_playout=cs_planning::wdl::WDL_PLAYOUT, rollout="careful"))]
+#[allow(clippy::too_many_arguments)]
+fn wdl(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, max_nodes: u64, worth: HashMap<String, i64>, ours_first: bool, valuation: String,
+       table: Option<String>, among: Option<Vec<String>>, seed: u64, max_playout: usize, rollout: &str) -> PyResult<PyObject> {
+    let careful = match rollout { "careful" => true, "greedy" => false, other => return Err(pyo3::exceptions::PyValueError::new_err(format!("rollout: {other} is not careful or greedy"))) };
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    let Some(me) = g.mover(&s) else { return Err(pyo3::exceptions::PyValueError::new_err("the game is over")) };
+    let table = load_wdl_table(table.as_deref())?;
+    let legal = g.moves(&s);
+    let among_ix = match &among {
+        Some(names) => Some(names.iter().map(|n| legal.iter().position(|m| g.move_name(&s, m) == *n).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("among: {n} is not legal")))).collect::<PyResult<Vec<usize>>>()?),
+        None => None,
+    };
+    let o = py.allow_threads(|| {
+        let budget = cs_operator::Budget::new(seconds, max_nodes);
+        if worth.is_empty() { wdl_read(&g, &s, me, cs_tactics::ledger::Count, table, among_ix, seed, max_playout, careful, budget) }
+        else { wdl_read(&g, &s, me, cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, table, among_ix, seed, max_playout, careful, budget) }
+    });
+    let fact = |name: &str| o.facts.iter().find(|f| f.relation == name);
+    let num = |name: &str, i: usize| -> f64 { fact(name).and_then(|f| f.args.get(i)).and_then(|v| v.parse().ok()).unwrap_or(0.0) };
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("status", format!("{:?}", o.status))?;
+    d.set_item("win", num("wdl", 0))?;
+    d.set_item("draw", num("wdl", 1))?;
+    d.set_item("loss", num("wdl", 2))?;
+    d.set_item("n", num("wdl", 3))?;
+    d.set_item("sources", fact("wdl").and_then(|f| f.args.get(4)).cloned().unwrap_or_default())?;
+    d.set_item("score", o.value.map(|v| v as f64 / cs_planning::wdl::SCORE_SCALE))?;
+    d.set_item("sharpness", num("sharpness", 0))?;
+    let word = fact("sharpness").and_then(|f| f.args.get(1)).cloned().unwrap_or_default();
+    d.set_item("sharp", match word.as_str() { "sharp" => Some(true), "quiet" => Some(false), _ => None })?;
+    d.set_item("table_key", fact("table_hit").and_then(|f| f.args.first()).cloned())?;
+    d.set_item("table_counts", fact("table_hit").map(|f| (0..3).map(|i| f.args[i + 1].parse::<f64>().unwrap_or(0.0)).collect::<Vec<f64>>()))?;
+    d.set_item("playouts", num("playouts", 0) as u64)?;
+    d.set_item("cut", num("playouts", 1) as u64)?;
+    d.set_item("nodes", o.cost.nodes)?;
+    d.set_item("seconds", o.cost.seconds)?;
+    d.set_item("evidence", o.evidence.clone())?;
+    d.set_item("move", o.mv.as_ref().map(|m| g.move_name(&s, m)))?;
+    let rows = pyo3::types::PyList::empty(py);
+    for f in o.facts.iter().filter(|f| f.relation == "move_wdl") {
+        let m = pyo3::types::PyDict::new(py);
+        let p = |i: usize| f.args[i].parse::<f64>().unwrap_or(0.0);
+        m.set_item("move", f.args[0].clone())?;
+        m.set_item("win", p(1))?;
+        m.set_item("draw", p(2))?;
+        m.set_item("loss", p(3))?;
+        m.set_item("n", p(4))?;
+        m.set_item("score", p(1) + p(2) / 2.0)?;
+        m.set_item("visits", p(4).round() as u64)?;
+        rows.append(m)?;
+    }
+    d.set_item("moves", rows)?;
+    Ok(d.into())
+}
+
+/// The keys of a position in the results table, most specific first (cs_planning::wdl::Table::keys).
+fn keys_of(g: &kernel::KernelGame, s: &shakmaty_state::S) -> Vec<String> { cs_planning::wdl::Table::keys(g, s) }
+
+/// wdl_keys(variant, fen=None, moves=[]) -> [str]: the table keys of the position after `moves`, most specific first.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![]))]
+fn wdl_keys(variant: &str, fen: Option<&str>, moves: Vec<String>) -> PyResult<Vec<String>> {
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    Ok(keys_of(&g, &s))
+}
+
+/// wdl_keys_along(variant, fen=None, moves=[]) -> [[str]]: the keys of every position along the line, the start included (len(moves) + 1 lists), in one call.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![]))]
+fn wdl_keys_along(variant: &str, fen: Option<&str>, moves: Vec<String>) -> PyResult<Vec<Vec<String>>> {
+    let g = match fen { Some(f) => kernel::KernelGame::from_fen(variant, f), None => kernel::KernelGame::new(variant, 518) }.map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let mut s = g.initial();
+    let mut out = vec![keys_of(&g, &s)];
+    for u in &moves {
+        let m = g.parse(&s, u).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("illegal move {u}")))?;
+        s = g.apply(&s, &m);
+        out.push(keys_of(&g, &s));
+    }
+    Ok(out)
 }
 
 /// state(variant, fen=None, moves=[], start960=518) -> (fen, the mover's name or None, [legal moves], the outcome per role or None): the harness's view of a state.
@@ -256,7 +385,8 @@ fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
 }
 
 /// solve_batch(positions, seconds=1.0, worth={}, ours_first=False, valuation="", snapshot="", trace_path=None, threads=0, prior=False, record=True, prior_depth=2,
-/// ledger_share=0.6, prior_defects=1, ordering=True, prune=True, extend=True, store=None, specs={}, labels=None, ablate=[], ties=False, reason=False)
+/// ledger_share=0.6, prior_defects=1, ordering=True, prune=True, extend=True, store=None, specs={}, labels=None, ablate=[], ties=False, reason=False, wdl=False,
+/// wdl_table=None)
 /// -> [(move or None, proved, nodes, seconds, error or None)]: plan 78.12 / 78.14 THE BATCH SOLVER -- `positions` is [(variant, fen or None, moves)], all decided in ONE
 /// call on `threads` workers (0: one per core) with the Python lock released, one summary per position in order. `seconds` is each position's own clock (positions run
 /// side by side: keep `threads` within the cores, or the clocks measure the contention). `store` is a snapshot file (<id>.json, which must hash to its name): its id
@@ -264,12 +394,13 @@ fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
 /// the ledger search reads first (`ablate`: lemma names left out). `labels` names the positions in the log. With `trace_path` every decision's steps are appended to
 /// that JSON Lines log.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false))]
+#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false, wdl=false, wdl_table=None))]
 #[allow(clippy::too_many_arguments)]
 fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, snapshot: String,
                trace_path: Option<String>, threads: usize, prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool,
-               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool) -> PyResult<Vec<BatchRow>> {
-    let params = cs_decision::Params { prior, ties, reason, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
+               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool, wdl: bool, wdl_table: Option<String>) -> PyResult<Vec<BatchRow>> {
+    let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
+    let params = cs_decision::Params { prior, ties, reason, wdl, wdl_table: table, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let snapshot = store.as_ref().map(|s| s.snapshot.id.clone()).unwrap_or(snapshot);
     if let Some(l) = &labels { if l.len() != positions.len() { return Err(pyo3::exceptions::PyValueError::new_err("labels: one per position")); } }
@@ -725,6 +856,9 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(facts_audit, m)?)?;
     m.add_function(wrap_pyfunction!(build_cards, m)?)?;
     m.add_function(wrap_pyfunction!(estimate, m)?)?;
+    m.add_function(wrap_pyfunction!(wdl, m)?)?;
+    m.add_function(wrap_pyfunction!(wdl_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(wdl_keys_along, m)?)?;
     m.add_function(wrap_pyfunction!(snapshot_info, m)?)?;
     m.add_function(wrap_pyfunction!(content_id, m)?)?;
     m.add_function(wrap_pyfunction!(compose, m)?)?;

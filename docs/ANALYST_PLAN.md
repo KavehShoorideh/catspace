@@ -4926,3 +4926,92 @@ the move the ledger then plays agree often (first candidate 297 of 414 at 0.5 s)
 OPEN: follow the chain DEEPER (their answer to our answer, the frame carried forward as in 72.10) with an ESTIMATE where the budget ends, which is what October lacked; the irrelevant
 set used to NARROW a reading and not only to explain it; our own census ordered by stake so a short clock reads the best first; targets compared by kind, not by place; the chain's
 facts (threat, frame, answer, irrelevant) as the vocabulary of lemmas; whether to switch the chain on by default (a match on against off decides).
+
+#### 78.26 WIN / DRAW / LOSS FROM ANY POSITION, SHARPNESS, AND WHICH PATH TO TAKE (2026-11-10; Kaveh: "in order to be able to get past where we got stuck in October, we need to have a
+probability of win, draw, loss from any given position ... query the database for positions that are like this, or run a Monte Carlo simulation from that point on. And then once we know how
+sharp the position is ... if the chance of draw is low ... we should continue reasoning. And basically, if that's not true, we should probably rely on the probabilities to pick one path")
+WHERE OCTOBER STOPPED (78.25's look back): the chain had no answer past its budget; a GAP was a GAP and the unproved pick was a guess. This slice gives every position an ESTIMATE
+of win, draw and loss, a reading of how SHARP it is, and a rule in the controller that takes one of two paths by that reading.
+DEFINITIONS (cs_planning::wdl, no game named):
+  WDL: win / draw / loss MASS from one role's view (counts, possibly fractional). SCORE: (win + draw / 2) over the mass. SHARPNESS: (win + loss) over the mass, 1 less the draw probability.
+  SPLIT of one outcome v in 0..1: above one half it is win 2v - 1 and draw 2 - 2v; below it is loss 1 - 2v and draw 2v. The score is kept exactly; there is no band constant.
+  SOURCE 1, PLAYOUTS: the UCT search of 78.17 with a tally at the root and under each root move. A playout that reaches the game's end counts by the game's outcome; one cut after
+    WDL_PLAYOUT plies counts by the units standing (the `Balance` leaf, its scale WDL_SCALE times the smallest positive worth standing, so the judge's unit does not matter).
+  SOURCE 2, THE TABLE ("positions like this"): counts of results from the mover's view under keys, most specific first: `exact:<the position's key>`, then
+    `units:<each role's unit kinds>:<the mover>`. A lookup takes the first key holding TABLE_MIN mass. Pooled with the playouts, a hit brings at most TABLE_CAP mass.
+  SHARP: sharpness at or above SHARP. UNKNOWN: less than MIN_MASS mass. QUIET: the rest.
+  THE RULE (cs_decision, `Params.wdl`, default OFF): lemma and proof as before. If the proof does not decide, the operator "wdl" estimates the position on WDL_SHARE of the clock.
+    SHARP or UNKNOWN: keep reasoning. The chain of 78.25 runs, then the ledger with the rest of the clock; the ledger's move is played.
+    QUIET: the ledger reads with its ties; if its value does not decide and it leaves more than one move equal, "wdl" is asked to PREFER among those moves and its pick is played.
+    The exact reading stays the guard in both paths: the probabilities choose only among moves the ledger could not tell apart. One trace line says which path and why.
+BUILT (a Sonnet subagent, refined at integration): rust/engine/planning/src/wdl.rs (`Wdl`, `split`, `sharp`, `Table`, `leaf_scale`, `WdlOp` answering `Goal::Estimate` and
+`Goal::Prefer`), the tallies `root_wdl` and `move_wdl` in `mcts::Search` (every earlier result unchanged), `Careful` in rollout.rs, `Params.wdl` and `Params.wdl_table`, py `wdl(...)`,
+`wdl_keys`, `wdl_keys_along`, `wdl=` and `wdl_table=` on best_move and solve_batch, discovery/wdl_table.py (the table built from FINISHED games of wake logs, provenance "own games"),
+wake `--wdl` and `--wdl-table`. Tests: rust/engine/planning/tests/wdl.rs (8), one more in tests/rollout.rs, tests/test_plan78_26_wdl.py (16).
+INTEGRATION FINDING 1: THE FIRST PLAYOUTS CARRIED ALMOST NO SIGNAL. The judge of the estimate is the training oracle: Stockfish's own win / draw / loss at depth 12 on positions taken
+every third ply from three earlier wake logs (training side only; nothing of it enters a decision). The build as delivered was the one-ply `Greedy` playout cut at 40 plies.
+The static line is the units' balance of the position itself through the same squash, no playout at all.
+OBS oracle: decisive mass mean 0.568, sharp 231 of 404
+OBS static balance, logistic scale 3.0: positions 404, score correlation 0.406, score mean abs error 0.265, decisive mass correlation 0.230, engine decisive mass mean 0.116, sharp or quiet call agrees 189 of 404
+OBS rollout greedy cut 2: mass median 9216
+OBS playouts 0.03 s, cut at 2 plies, all playouts: positions 404, score correlation 0.450, score mean abs error 0.261, decisive mass correlation 0.182, engine decisive mass mean 0.399, sharp or quiet call agrees 197 of 404
+OBS rollout greedy cut 8: mass median 4007
+OBS playouts 0.03 s, cut at 8 plies, all playouts: positions 404, score correlation 0.215, score mean abs error 0.285, decisive mass correlation 0.240, engine decisive mass mean 0.615, sharp or quiet call agrees 233 of 404
+OBS rollout greedy cut 40: mass median 1127
+OBS playouts 0.03 s, cut at 40 plies, all playouts: positions 404, score correlation 0.135, score mean abs error 0.289, decisive mass correlation 0.111, engine decisive mass mean 0.671, sharp or quiet call agrees 231 of 404
+OBS rollout careful cut 2: mass median 811
+OBS playouts 0.03 s, cut at 2 plies, all playouts: positions 404, score correlation 0.486, score mean abs error 0.257, decisive mass correlation 0.285, engine decisive mass mean 0.261, sharp or quiet call agrees 195 of 404
+OBS rollout careful cut 8: mass median 209
+OBS playouts 0.03 s, cut at 8 plies, all playouts: positions 404, score correlation 0.545, score mean abs error 0.255, decisive mass correlation 0.272, engine decisive mass mean 0.389, sharp or quiet call agrees 208 of 404
+OBS rollout careful cut 40: mass median 49
+OBS playouts 0.03 s, cut at 40 plies, all playouts: positions 404, score correlation 0.514, score mean abs error 0.263, decisive mass correlation 0.219, engine decisive mass mean 0.775, sharp or quiet call agrees 233 of 404
+OBS rollout careful cut 8: mass median 1373
+OBS playouts 0.2 s, cut at 8 plies, all playouts: positions 404, score correlation 0.569, score mean abs error 0.253, decisive mass correlation 0.266, engine decisive mass mean 0.409, sharp or quiet call agrees 215 of 404
+  With the one-ply policy the score follows the oracle LESS the longer the playout runs, and at 40 plies less than the static balance does: a move that gains nothing is drawn at random,
+  a random move leaves a unit to be taken, and the leaf then counts the accident. `Careful` is the repair, still game-free: a move's gain LESS the best gain it leaves the next mover,
+  a move that ends the game counted by its outcome. It costs more a playout (the mass medians above) and tracks the oracle better at every length. Defaults after this: `Careful`, WDL_PLAYOUT 8.
+INTEGRATION FINDING 2, HELD OUT: the same check with the final defaults and the snapshot's mined judge, on positions of a NEW wake run that had no part in choosing the settings:
+OBS wdl calibration: judge material (mined), positions 248, engine seconds 0.03, oracle depth 12, engine mass median 236
+OBS expected score: mean abs error 0.290, correlation 0.666, same side of one half 204 of 248
+OBS decisive mass: engine mean 0.416, oracle mean 0.691, mean abs error 0.429, correlation 0.351
+OBS call engine quiet / oracle quiet: 66
+OBS call engine quiet / oracle sharp: 111
+OBS call engine sharp / oracle quiet: 13
+OBS call engine sharp / oracle sharp: 58
+OBS oracle decisive mass in [0, 0.2): positions 63, engine decisive mass mean 0.339
+OBS oracle decisive mass in [0.2, 0.5): positions 16, engine decisive mass mean 0.332
+OBS oracle decisive mass in [0.5, 0.8): positions 12, engine decisive mass mean 0.415
+OBS oracle decisive mass in [0.8, 1.01): positions 157, engine decisive mass mean 0.456
+  The score is a usable estimate at 0.03 s. The SHARPNESS IS ONE-SIDED: where the engine says sharp the oracle agrees in 58 of 71; where it says quiet the oracle says decided in 111
+  of 177. A position the oracle calls decided is mostly decided by something a short material playout does not reach.
+THE TABLE from the six wake logs at hand (the engine's own finished games):
+OBS wdl_table chess: 48 games read, 28 skipped as unfinished, 847 positions, 393 exact rows dropped under 2 games
+OBS wdl_table chess: rows kept exact 201, units 81
+IN PLAY (wake chess, 8 games, 0.2 s a move, seed 1, the published snapshot; logs local). `off` is the chain of 78.25 alone, `wdl` the rule, `wdltab` the rule with the table:
+OBS off: decisions 765, seconds median 0.201 max 0.204 over 0.25: 0, games {'white wins': 1, 'draws': 2, 'black wins': 2, 'unfinished': 3}
+OBS off: ledger readings 757, depth mean 8.24
+OBS wdl: decisions 846, seconds median 0.200 max 0.203 over 0.25: 0, games {'white wins': 1, 'draws': 1, 'black wins': 1, 'unfinished': 5}
+OBS wdl: ledger readings 837, depth mean 7.32
+OBS wdl: modes {'sharp': 263, 'quiet': 574, 'unknown': 0}, decisive mass median 0.383, estimate step seconds median 0.0301 max 0.0306, table hits 0
+OBS wdl: the probabilities picked among tied moves 422 times, a move other than the ledger's own 297 times
+OBS wdltab: decisions 859, seconds median 0.200 max 0.203 over 0.25: 0, games {'white wins': 0, 'draws': 2, 'black wins': 3, 'unfinished': 3}
+OBS wdltab: ledger readings 851, depth mean 7.28
+OBS wdltab: modes {'sharp': 211, 'quiet': 640, 'unknown': 0}, decisive mass median 0.391, estimate step seconds median 0.0301 max 0.0324, table hits 127
+OBS wdltab: the probabilities picked among tied moves 519 times, a move other than the ledger's own 362 times
+  The clock holds. The estimate's share costs the ledger depth (the means above). The rule sent 574 of 837 decisions down the quiet path, and where the probabilities picked, the
+  pick differed from the ledger's own first move in 297 of 422.
+HOW REPEATABLE IS THE PICK (the same question asked twice with two playout seeds, every third quiet pick of the `wdl` run):
+OBS pick repeatability at 1 x the decision's own time for the pick (median 0.054 s): positions 141, tied moves median 4, two seeds pick the same move 86, chance would give about 33, best score less second best median 0.0167
+OBS pick repeatability at 10 x the decision's own time for the pick (median 0.542 s): positions 141, tied moves median 4, two seeds pick the same move 102, chance would give about 33, best score less second best median 0.0124
+  More than chance and far from settled: at the decision's own time the two seeds agree in 86 of 141 picks, at ten times the time in 102. The best and the second best scores are
+  close (the medians above).
+READING. (1) THE MECHANISM WORKS END TO END: any position gets win / draw / loss from playouts, from a table of similar positions, or both pooled; sharpness is read from it; the
+controller takes the reasoning path or the probability path by it, and says so in the trace. (2) THE ESTIMATE IS THE WEAK PART, in this order: the sharp call misses most positions
+the oracle calls decided; the pick among tied moves is only partly repeatable; the own-games table is thin, and unfinished games are skipped (28 of 48 here), so it holds only what this
+engine could play to an end. (3) NOT MEASURED: strength. No match was played with the rule on against off.
+DECISIONS LEFT TO KAVEH: (a) WHICH DATABASE. The table is filled from the engine's own results. Human games would fill it far better and the builder takes any list of finished games,
+but human frequencies entering a decision crosses the rule of 78.17 (teachers and human games are training tools). (b) HOW MUCH THE PROBABILITIES DECIDE. Here they pick only among moves
+the exact reading leaves equal. Picking outright in a quiet position would drop that guard.
+OPEN: a better sharp call (the count of threats and forcing lines from 78.25's chain as a second sign of sharpness; a leaf that reads the exchanges out before it counts); one search
+over the tied moves in place of an even split, so the playouts go where the scores are close; the estimate where the chain's budget ends (78.25's open item) and not only at the
+root; the scale of the squash fitted against the oracle at sleep; the table keyed by more than the units standing; a match on against off.

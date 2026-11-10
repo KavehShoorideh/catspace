@@ -4,7 +4,7 @@
 use cs_game::{Game, Role};
 use cs_operator::{Budget, Goal, Operator};
 use cs_planning::mcts::{MctsOp, Rollout, Uniform};
-use cs_planning::rollout::{gain, Balance, Draw, GainPrior, Greedy, Leaf, Prior, Weighted};
+use cs_planning::rollout::{gain, Balance, Careful, Draw, GainPrior, Greedy, Leaf, Prior, Weighted};
 use cs_tactics::ledger::{Count, Judge, Worth};
 use std::collections::HashMap;
 
@@ -149,6 +149,34 @@ fn greedy_is_uniform_when_nothing_gains() {
     let mut counts = [0usize; 3];
     for _ in 0..3000 { counts[p.pick(&g, &s, &ms)] += 1; }
     for c in counts { assert!((c as f64 / 3000.0 - 1.0 / 3.0).abs() < 0.04, "{counts:?}"); }
+}
+
+#[test]
+fn careful_nets_out_the_reply_and_takes_a_move_that_ends_the_game_in_its_favour() {
+    // the net of a move is its gain less the best gain it leaves the next mover: here every move leaves the same reply, so the best gain is the best net
+    let g = toy();
+    let s = g.initial();
+    let ms = g.moves(&s);
+    let mut careful = Careful::new(worths(), 0.0, 5);
+    for _ in 0..200 { assert_eq!(ms[careful.pick(&g, &s, &ms)], Mv::TakeA); }
+    // a judge that values nothing cannot tell the moves apart by gain, yet the move that ends the game as a win is taken every time (the one-ply look is uniform here)
+    let zero = Worth { name: "zero".into(), table: HashMap::new(), ours_first: false };
+    let last: St = [2, 2, 0, 1, 0];
+    let ms = g.moves(&last);
+    assert_eq!(ms, vec![Mv::TakeB, Mv::Pass]);
+    let mut careful = Careful::new(zero.clone(), 0.0, 3);
+    for _ in 0..200 { assert_eq!(ms[careful.pick(&g, &last, &ms)], Mv::TakeB); }
+    let mut greedy = Greedy::new(zero, 0.0, 3);
+    let passes = (0..400).filter(|_| ms[greedy.pick(&g, &last, &ms)] == Mv::Pass).count();
+    assert!(passes > 100, "{passes}");
+    // clones restart from the seed
+    let mut a = Careful::new(worths(), 0.5, 9);
+    let mut b = a.clone();
+    let ms = g.moves(&s);
+    let xs: Vec<usize> = (0..50).map(|_| a.pick(&g, &s, &ms)).collect();
+    let ys: Vec<usize> = (0..50).map(|_| b.pick(&g, &s, &ms)).collect();
+    assert_eq!(xs, ys);
+    assert_eq!(Rollout::name(&a), "careful");
 }
 
 #[derive(Clone)]
