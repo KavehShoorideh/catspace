@@ -462,6 +462,23 @@ impl CardSet {
         }).collect::<Result<Vec<_>, String>>().map_err(pyo3::exceptions::PyValueError::new_err)?;
         Ok(CardSet { inner: std::sync::Arc::new(cs_memory::cards::CardSet::new(cards)) })
     }
+    /// revalued(values) -> CardSet: the same cards in the same order; for card i with Some({move name: value}) every move's value is replaced by the map's (a move the map
+    /// lacks makes the card unusable, so it is marked `cut` rather than given a guessed value); None keeps the card. The list must have one entry per card.
+    fn revalued(&self, values: Vec<Option<HashMap<String, i64>>>) -> PyResult<CardSet> {
+        if values.len() != self.inner.len() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!("revalued: {} value maps for {} cards", values.len(), self.inner.len())));
+        }
+        let cards = self.inner.cards.iter().zip(values.iter()).map(|(c, v)| {
+            let mut c = c.clone();
+            if let Some(map) = v {
+                for m in c.moves.iter_mut() {
+                    match map.get(&m.name) { Some(x) => m.value = *x, None => c.cut = true }
+                }
+            }
+            c
+        }).collect();
+        Ok(CardSet { inner: std::sync::Arc::new(cs_memory::cards::CardSet::new(cards)) })
+    }
     /// The cards of several sets, in order, as one.
     #[staticmethod]
     fn merge(sets: Vec<PyRef<CardSet>>) -> CardSet {

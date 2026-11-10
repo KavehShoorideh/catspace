@@ -35,6 +35,7 @@ class Context:
     positions: dict = field(default_factory=dict)
     played: dict = field(default_factory=dict)
     rankings: dict = field(default_factory=dict)
+    continuations: dict = field(default_factory=dict)       # plan 78.23 D: {(id(source), card id): {move: principal line}} from a source's optional `lines`
     spec: str = ""
     vocab: str = ""
     judge: dict = field(default_factory=dict)
@@ -52,9 +53,12 @@ class Context:
         return self.rankings[key]
 
 
-def ask(source, variant: str, moves: list, start: "str | None" = None) -> list:
-    """`source.rank(...)`, with `start=` only when it is not None (a source without the keyword keeps working on ordinary games)."""
-    return source.rank(variant, list(moves)) if start is None else source.rank(variant, list(moves), start=start)
+def ask(source, variant: str, moves: list, start: "str | None" = None, cap: "int | None" = None) -> list:
+    """`source.rank(...)`, with `start=` only when it is not None and `cap=` only when given (a source without the keywords keeps working on ordinary games)."""
+    kw = {} if start is None else {"start": start}
+    if cap is not None:
+        kw["cap"] = cap
+    return source.rank(variant, list(moves), **kw)
 
 
 def _sampled(ctx: Context):

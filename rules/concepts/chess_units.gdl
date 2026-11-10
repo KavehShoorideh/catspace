@@ -1,0 +1,96 @@
+;;; rules/concepts/chess_units.gdl -- RELATIONS BETWEEN UNITS as rules (plan 78.24 B): distances, king flight squares, the opposition, pawn races. A DELTA composed AFTER
+;;; rules/concepts/chess.gdl (it uses that file's `ahead` and `near_file`) onto rules/chess.gdl (cs_gdl::compose), ADDITIVE ONLY (no retract): it changes NO rule of the
+;;; game; role, init, legal, next, terminal, goal are untouched. Written so that a lemma learned on positions of a few units can say "the move brings our king closer
+;;; to theirs", "takes a flight square from their king", "the kings stand in opposition", "the pawn is n steps from promoting". Each definition is tested against an
+;;; independent python-chess oracle (tests/test_plan78_24_concepts.py). Squares are always the adjacent pair (file rank); ?s is white / black; "opponent" its other side.
+;;;
+;;; DISTANCES (static). The sort `distance` has its own constants d0 .. d7, never the rank numerals (a lemma lifts a constant everywhere it occurs).
+;;;   (distance ?d)                the eight constants
+;;;   (file_gap ?f1 ?f2 ?d)        the files ?f1 and ?f2 are ?d apart (64 facts);  (rank_gap ?r1 ?r2 ?d)  the same for ranks (64 facts)
+;;;   (dist_max ?d1 ?d2 ?d)        ?d is the larger of ?d1 and ?d2 (64 facts): with the two gaps it is the king-step (Chebyshev) distance of two squares
+;;;   (closer ?d1 ?d2)             ?d1 is strictly smaller than ?d2 (28 facts): a lemma says "the distance shrank" as closer new old
+;;;   (reach ?d1 ?d2)              ?d1 is smaller than or equal to ?d2 (36 facts)
+;;; RELATIONS BETWEEN UNITS (derived from the state)
+;;;   (apart ?s1 ?f1 ?r1 ?s2 ?f2 ?r2 ?d)  a unit of ?s1 stands on (?f1 ?r1), a DIFFERENT unit of ?s2 stands on (?f2 ?r2), the king-step distance of the two squares is ?d.
+;;;                                Only pairs in which at least one of the two units is a KING are facts (so 2 x (n - 1) at most for n units, never n squared);
+;;;                                both orders of a pair are facts (king and king: both orders, once each)
+;;;   (flight ?s ?f ?r)            the king of ?s could step to (?f ?r) by the geometry: one king step from the king, no unit of ?s on it, and no `attack` by the opponent on it
+;;;                                (chess.gdl's attack: a pinned unit attacks, a unit of the opponent on the square counts as attacked by whatever defends it). Present for BOTH
+;;;                                sides whoever is to move. CAVEAT: attack has no x-ray through the king itself, so a square behind the king on the line of a checking slider
+;;;                                counts as a flight although the king would still be attacked there after stepping (legal move generation excludes it); it also ignores
+;;;                                whether the king's own step is a legal move at all (pins cannot matter for a king, but whose move it is does not either)
+;;;   (opposition)                 the two kings stand on the same file or the same rank with exactly one square between them
+;;;   (diagonal_opposition)        the two kings stand on the same diagonal with exactly one square between them
+;;;   (to_promote ?s ?f ?r ?d)     the pawn of ?s on (?f ?r) is ?d forward steps from its last rank (a white pawn on rank 7: d1); the double step is ignored
+;;;   (king_ahead ?s ?f ?r)        the pawn of ?s on (?f ?r) has the king of ?s on a rank ahead of it (for ?s) on its file or an adjacent one
+;;;   (in_square ?s ?f ?r)         the king of the opponent of ?s is inside the square of the pawn of ?s on (?f ?r): its king-step distance to the pawn's promotion square
+;;;                                is at most the pawn's to_promote distance. Whose move it is, the double step and any unit in the way are ignored (the textbook rule of the
+;;;                                square, exact only as that geometric statement)
+;;; Negation is stratified: attack < flight; occupied_by is a helper (a unit of ?s on the square).
+
+(sort distance d0 d1 d2 d3 d4 d5 d6 d7)
+(signature distance distance) (signature file_gap file file distance) (signature rank_gap rank rank distance) (signature dist_max distance distance distance)
+(signature closer distance distance) (signature reach distance distance)
+(signature apart side file rank side file rank distance) (signature occupied_by side file rank) (signature flight side file rank)
+(signature opposition) (signature diagonal_opposition) (signature to_promote side file rank distance) (signature king_ahead side file rank) (signature in_square side file rank)
+
+(distance d0 ) (distance d1 ) (distance d2 ) (distance d3 ) (distance d4 ) (distance d5 ) (distance d6 ) (distance d7)
+
+(file_gap a a d0) (file_gap a b d1) (file_gap a c d2) (file_gap a d d3) (file_gap a e d4) (file_gap a f d5) (file_gap a g d6) (file_gap a h d7)
+(file_gap b a d1) (file_gap b b d0) (file_gap b c d1) (file_gap b d d2) (file_gap b e d3) (file_gap b f d4) (file_gap b g d5) (file_gap b h d6)
+(file_gap c a d2) (file_gap c b d1) (file_gap c c d0) (file_gap c d d1) (file_gap c e d2) (file_gap c f d3) (file_gap c g d4) (file_gap c h d5)
+(file_gap d a d3) (file_gap d b d2) (file_gap d c d1) (file_gap d d d0) (file_gap d e d1) (file_gap d f d2) (file_gap d g d3) (file_gap d h d4)
+(file_gap e a d4) (file_gap e b d3) (file_gap e c d2) (file_gap e d d1) (file_gap e e d0) (file_gap e f d1) (file_gap e g d2) (file_gap e h d3)
+(file_gap f a d5) (file_gap f b d4) (file_gap f c d3) (file_gap f d d2) (file_gap f e d1) (file_gap f f d0) (file_gap f g d1) (file_gap f h d2)
+(file_gap g a d6) (file_gap g b d5) (file_gap g c d4) (file_gap g d d3) (file_gap g e d2) (file_gap g f d1) (file_gap g g d0) (file_gap g h d1)
+(file_gap h a d7) (file_gap h b d6) (file_gap h c d5) (file_gap h d d4) (file_gap h e d3) (file_gap h f d2) (file_gap h g d1) (file_gap h h d0)
+
+(rank_gap 1 1 d0) (rank_gap 1 2 d1) (rank_gap 1 3 d2) (rank_gap 1 4 d3) (rank_gap 1 5 d4) (rank_gap 1 6 d5) (rank_gap 1 7 d6) (rank_gap 1 8 d7)
+(rank_gap 2 1 d1) (rank_gap 2 2 d0) (rank_gap 2 3 d1) (rank_gap 2 4 d2) (rank_gap 2 5 d3) (rank_gap 2 6 d4) (rank_gap 2 7 d5) (rank_gap 2 8 d6)
+(rank_gap 3 1 d2) (rank_gap 3 2 d1) (rank_gap 3 3 d0) (rank_gap 3 4 d1) (rank_gap 3 5 d2) (rank_gap 3 6 d3) (rank_gap 3 7 d4) (rank_gap 3 8 d5)
+(rank_gap 4 1 d3) (rank_gap 4 2 d2) (rank_gap 4 3 d1) (rank_gap 4 4 d0) (rank_gap 4 5 d1) (rank_gap 4 6 d2) (rank_gap 4 7 d3) (rank_gap 4 8 d4)
+(rank_gap 5 1 d4) (rank_gap 5 2 d3) (rank_gap 5 3 d2) (rank_gap 5 4 d1) (rank_gap 5 5 d0) (rank_gap 5 6 d1) (rank_gap 5 7 d2) (rank_gap 5 8 d3)
+(rank_gap 6 1 d5) (rank_gap 6 2 d4) (rank_gap 6 3 d3) (rank_gap 6 4 d2) (rank_gap 6 5 d1) (rank_gap 6 6 d0) (rank_gap 6 7 d1) (rank_gap 6 8 d2)
+(rank_gap 7 1 d6) (rank_gap 7 2 d5) (rank_gap 7 3 d4) (rank_gap 7 4 d3) (rank_gap 7 5 d2) (rank_gap 7 6 d1) (rank_gap 7 7 d0) (rank_gap 7 8 d1)
+(rank_gap 8 1 d7) (rank_gap 8 2 d6) (rank_gap 8 3 d5) (rank_gap 8 4 d4) (rank_gap 8 5 d3) (rank_gap 8 6 d2) (rank_gap 8 7 d1) (rank_gap 8 8 d0)
+
+(dist_max d0 d0 d0) (dist_max d0 d1 d1) (dist_max d0 d2 d2) (dist_max d0 d3 d3) (dist_max d0 d4 d4) (dist_max d0 d5 d5) (dist_max d0 d6 d6) (dist_max d0 d7 d7)
+(dist_max d1 d0 d1) (dist_max d1 d1 d1) (dist_max d1 d2 d2) (dist_max d1 d3 d3) (dist_max d1 d4 d4) (dist_max d1 d5 d5) (dist_max d1 d6 d6) (dist_max d1 d7 d7)
+(dist_max d2 d0 d2) (dist_max d2 d1 d2) (dist_max d2 d2 d2) (dist_max d2 d3 d3) (dist_max d2 d4 d4) (dist_max d2 d5 d5) (dist_max d2 d6 d6) (dist_max d2 d7 d7)
+(dist_max d3 d0 d3) (dist_max d3 d1 d3) (dist_max d3 d2 d3) (dist_max d3 d3 d3) (dist_max d3 d4 d4) (dist_max d3 d5 d5) (dist_max d3 d6 d6) (dist_max d3 d7 d7)
+(dist_max d4 d0 d4) (dist_max d4 d1 d4) (dist_max d4 d2 d4) (dist_max d4 d3 d4) (dist_max d4 d4 d4) (dist_max d4 d5 d5) (dist_max d4 d6 d6) (dist_max d4 d7 d7)
+(dist_max d5 d0 d5) (dist_max d5 d1 d5) (dist_max d5 d2 d5) (dist_max d5 d3 d5) (dist_max d5 d4 d5) (dist_max d5 d5 d5) (dist_max d5 d6 d6) (dist_max d5 d7 d7)
+(dist_max d6 d0 d6) (dist_max d6 d1 d6) (dist_max d6 d2 d6) (dist_max d6 d3 d6) (dist_max d6 d4 d6) (dist_max d6 d5 d6) (dist_max d6 d6 d6) (dist_max d6 d7 d7)
+(dist_max d7 d0 d7) (dist_max d7 d1 d7) (dist_max d7 d2 d7) (dist_max d7 d3 d7) (dist_max d7 d4 d7) (dist_max d7 d5 d7) (dist_max d7 d6 d7) (dist_max d7 d7 d7)
+
+(closer d0 d1) (closer d0 d2) (closer d0 d3) (closer d0 d4) (closer d0 d5) (closer d0 d6) (closer d0 d7)
+(closer d1 d2) (closer d1 d3) (closer d1 d4) (closer d1 d5) (closer d1 d6) (closer d1 d7)
+(closer d2 d3) (closer d2 d4) (closer d2 d5) (closer d2 d6) (closer d2 d7)
+(closer d3 d4) (closer d3 d5) (closer d3 d6) (closer d3 d7)
+(closer d4 d5) (closer d4 d6) (closer d4 d7)
+(closer d5 d6) (closer d5 d7)
+(closer d6 d7)
+
+(<= (reach ?d ?d) (distance ?d))
+(<= (reach ?d1 ?d2) (closer ?d1 ?d2))
+
+;;; apart: a king and any other unit (different square), both orders
+(<= (apart ?s1 ?f1 ?r1 ?s2 ?f2 ?r2 ?d) (true (cell ?f1 ?r1 ?s1 king)) (true (cell ?f2 ?r2 ?s2 ?k)) (distinct ?f1 ?f2) (file_gap ?f1 ?f2 ?a) (rank_gap ?r1 ?r2 ?b) (dist_max ?a ?b ?d))
+(<= (apart ?s1 ?f1 ?r1 ?s2 ?f2 ?r2 ?d) (true (cell ?f1 ?r1 ?s1 king)) (true (cell ?f2 ?r2 ?s2 ?k)) (distinct ?r1 ?r2) (file_gap ?f1 ?f2 ?a) (rank_gap ?r1 ?r2 ?b) (dist_max ?a ?b ?d))
+(<= (apart ?s2 ?f2 ?r2 ?s1 ?f1 ?r1 ?d) (true (cell ?f1 ?r1 ?s1 king)) (true (cell ?f2 ?r2 ?s2 ?k)) (distinct ?f1 ?f2) (file_gap ?f1 ?f2 ?a) (rank_gap ?r1 ?r2 ?b) (dist_max ?a ?b ?d))
+(<= (apart ?s2 ?f2 ?r2 ?s1 ?f1 ?r1 ?d) (true (cell ?f1 ?r1 ?s1 king)) (true (cell ?f2 ?r2 ?s2 ?k)) (distinct ?r1 ?r2) (file_gap ?f1 ?f2 ?a) (rank_gap ?r1 ?r2 ?b) (dist_max ?a ?b ?d))
+
+;;; flight
+(<= (occupied_by ?s ?f ?r) (true (cell ?f ?r ?s ?k)))
+(<= (flight ?s ?f ?r) (true (cell ?kf ?kr ?s king)) (king_step ?kf ?kr ?f ?r) (not (occupied_by ?s ?f ?r)) (opponent ?s ?o) (not (attacked ?o ?f ?r)))
+
+;;; the kings' opposition
+(<= opposition (true (cell ?f ?r1 white king)) (true (cell ?f ?r2 black king)) (rank_gap ?r1 ?r2 d2))
+(<= opposition (true (cell ?f1 ?r white king)) (true (cell ?f2 ?r black king)) (file_gap ?f1 ?f2 d2))
+(<= diagonal_opposition (true (cell ?f1 ?r1 white king)) (true (cell ?f2 ?r2 black king)) (file_gap ?f1 ?f2 d2) (rank_gap ?r1 ?r2 d2))
+
+;;; pawn races
+(<= (to_promote ?s ?f ?r ?d) (true (cell ?f ?r ?s pawn)) (last_rank ?s ?lr) (rank_gap ?r ?lr ?d))
+(<= (king_ahead ?s ?f ?r) (true (cell ?f ?r ?s pawn)) (true (cell ?kf ?kr ?s king)) (near_file ?f ?kf) (ahead ?s ?r ?kr))
+(<= (in_square ?s ?f ?r) (to_promote ?s ?f ?r ?dp) (last_rank ?s ?lr) (opponent ?s ?o) (true (cell ?kf ?kr ?o king))
+    (file_gap ?kf ?f ?a) (rank_gap ?kr ?lr ?b) (dist_max ?a ?b ?dk) (reach ?dk ?dp))

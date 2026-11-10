@@ -37,6 +37,7 @@ import cs_engine as CE
 from catspace.incubator.analyst.discovery import abstraction as AB
 from catspace.incubator.analyst.discovery import detectors as D
 from catspace.incubator.analyst.discovery import game_store as GS
+from catspace.incubator.analyst.discovery import judges as JG
 
 
 # ---------------------------------------------------------------------------------------------------------------- the log
@@ -110,6 +111,23 @@ def parse_multipv(text: str) -> list:
         j = t.index("pv")
         if j + 1 < len(t):
             best[k] = (t[j + 1], score)
+    return [best[k] for k in sorted(best)]
+
+
+def parse_multipv_lines(text: str) -> list:
+    """-> [(move, score, line)] best first: `parse_multipv` with each rank's whole principal line (`line[0]` is the move). Pure; the later `info` line for a rank wins."""
+    best: dict = {}
+    for row in text.splitlines():
+        t = row.split()
+        if not t or t[0] != "info" or "pv" not in t or "score" not in t:
+            continue
+        k = int(t[t.index("multipv") + 1]) if "multipv" in t else 1
+        i = t.index("score")
+        kind, val = t[i + 1], int(t[i + 2])
+        score = val if kind == "cp" else (MATE_SCORE - abs(val)) * (1 if val > 0 else -1)
+        line = t[t.index("pv") + 1:]
+        if line:
+            best[k] = (line[0], score, line)
     return [best[k] for k in sorted(best)]
 
 
@@ -244,6 +262,9 @@ class Settings:
     tie_threshold: float = 0.2       # the tie rate (decisions with more than one move as good as the best) above which the judge is called too coarse
     teacher_top_k: int = 3
     regret: bool = True              # plan 78.22: whenever a rank source is given, the move PLAYED is read against its ranking (detectors.Regret), whatever the tie diagnosis says
+    judge_by: str = "store"          # plan 78.23: "store" (the cards are valued by the store's record) | "source" (the rank source given is the judge: judges.revalue)
+    judge_positions: "int | None" = None   # with judge_by == "source": at most this many cards (the first ones) are revalued by the source (None: all); the rest are left out
+    vocabulary: "str | None" = None  # plan 78.24: the NAME of the lemma vocabulary (rules/learned/<game>/vocabulary.<name>.json); None is the default one
     judge: "str | None" = None       # the store's VALUATION record the cards are valued by (None: the record in use); never values written in code
     gates: AB.Gates = field(default_factory=AB.Gates)
     held: AB.Gates = field(default_factory=lambda: AB.Gates(min_fires=3, min_groups=2))
@@ -288,7 +309,11 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     variant = variant or game
     t0 = time.perf_counter()
     decisions, games = read_log(log)
-    spec, vocab = GS.spec_texts(game), json.dumps(GS.vocabulary(game))
+    spec, vocab = GS.spec_texts(game, s.vocabulary), json.dumps(GS.vocabulary(game, s.vocabulary))
+    if s.judge_by not in ("store", "source"):
+        raise ValueError(f"judge_by is 'store' or 'source', not {s.judge_by!r}")
+    if s.judge_by == "source" and teacher is None:
+        raise ValueError("judge_by='source' needs a rank source (a teacher or --source): it is the judge")
     judge = GS.judge_of(game, s.judge) or {}
     rep = {"game": game, "log": log, "settings": {**s.__dict__, "gates": s.gates.as_dict(), "held": s.held.as_dict()}, "judge": judge.get("name", "count"), "funnel": {}, "lemmas": [], "rejected": []}
     # the sleep reads the engine's own account of the wake and chooses its tools by it (plan 78.17); what the caller set explicitly stands
@@ -297,6 +322,8 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     rep["tools"] = plan_tools(diag, teacher, s)
     if s.auto_tools and teacher is not None and s.teacher_mode == "off" and not s.teacher_surprises:
         s = Settings(**{**s.__dict__, **rep["tools"]["chosen"]})
+    if s.judge_by == "source":
+        rep["judge"] = "source:" + getattr(teacher, "source", "teacher")
     rep["tools"]["applied"] = {"teacher_mode": s.teacher_mode, "teacher_surprises": s.teacher_surprises}
     f = rep["funnel"]
     f["games"], f["decisions"] = len(games), len(decisions)
@@ -331,8 +358,18 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     groups = [json.loads(cards.card(i))["group"] for i in range(len(cards))]
     index = {cid: i for i, cid in enumerate(ids)}
     dev_idx = [i for i, g in enumerate(groups) if is_dev(g, s)]
-    ctx.cards, ctx.dev_idx, ctx.index, ctx.positions, ctx.played = cards, dev_idx, index, positions, played_of
     held_idx = [i for i, g in enumerate(groups) if not is_dev(g, s)]
+    by_source = s.judge_by == "source"
+    if by_source:
+        # plan 78.23: the source is the judge. The cards keep the effects of each move on the facts; every move's value is the source's grade, dev and held alike
+        scope = list(range(len(cards)))[:s.judge_positions]
+        cards, jrep = JG.revalue(cards, positions, teacher, variant, scope, context=ctx, say=say)
+        jrep["disagreement"] = "skipped: the source is the judge, so it cannot disagree with itself"
+        jrep["describe"] = JG.describe(teacher)
+        rep["judge_report"] = jrep
+        keep = set(scope)
+        dev_idx, held_idx = [i for i in dev_idx if i in keep], [i for i in held_idx if i in keep]
+    ctx.cards, ctx.dev_idx, ctx.index, ctx.positions, ctx.played = cards, dev_idx, index, positions, played_of
     f["cards_dev"], f["cards_held"] = len(dev_idx), len(held_idx)
     # replay: confirm the surprises on the development games and find the saving moves
     seeds, confirmed, with_saving = [], 0, 0
@@ -372,10 +409,19 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     f["regret_surprises"] = f["regret_confirmed"] = f["regret_tied"] = f["regret_unconfirmed"] = 0
     deep_cards, cards_all = None, cards
     dets = []
-    if teacher is not None and s.teacher_surprises:
+    if teacher is not None and s.teacher_surprises and not by_source:
         dets.append(D.detector_of("disagreement", teacher))
-    if teacher is not None and s.regret:
+    if teacher is not None and s.regret and not by_source:
         dets.append(D.detector_of("regret", teacher))
+    if by_source and s.regret:
+        # the source is the judge: the regret is confirmed directly on the revalued card, no deeper card (judges.regret_seeds)
+        seeds += JG.regret_seeds(ctx, teacher, rep)
+        r = rep["regret"]
+        f["regret_surprises"], f["regret_confirmed"], f["regret_tied"], f["regret_unconfirmed"] = r["surprises"], len(r["confirmed"]), len(r["tied"]), len(r["unconfirmed"])
+        f["seeds"] = len(seeds)
+        for w in r.get("confirmed_rows", [])[:5]:
+            say(f"OBS sleep why {w['id']}: played {w['played']} leads to {' '.join(w['refutation'][:6])} ({JG.say_consequence(w['refutation_end'])}); "
+                f"best {w['best']} leads to {' '.join(w['best_line'][:6])} ({JG.say_consequence(w['best_end'])})")
     if dets:
         tseeds, deep_cards = D.run(ctx, dets)
         seeds += tseeds
@@ -389,7 +435,7 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
             cards_all = CE.CardSet.merge([cards, deep_cards])
     seeds = spread(seeds, lambda t: t[0]["group"])[:s.max_seeds]
     # abstract on the development cards, verify on the held-out cards
-    known = {AB.canonical(l) for l in GS.read_lemmas(game)}
+    known = {AB.canonical(l) for l in GS.read_lemmas(game, s.vocabulary)}
     admitted, climbed, dev_ok = {}, 0, 0
     for x, card, m, tm, played, dev_override in seeds:
         seed = AB.seed_from(card, m, s.gates, played)
@@ -424,8 +470,9 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
         lemma = {**c.lemma, "name": name,
                  "stats": {"status": "SAMPLED", "dev": summary(c.ev, s.gates), "held": summary(h, s.held), "depth": s.depth, "judge": rep["judge"]},
                  "meta": {"origin": "sleep", "plan": "78.14", "game": variant, "surprise": {k: x[k] for k in ("id", "played", "reply", "predicted", "seen")} | {"kind": x.get("kind", "loss")},
-                          "seed_move": m["name"], "steps": c.steps, "teacher": bool(tm) and bool(getattr(teacher, "training_only", True)),
-                          "source": getattr(teacher, "source", "teacher") if tm else None, "gates": s.gates.as_dict(), "held_gates": s.held.as_dict()}}
+                          "seed_move": m["name"], "steps": c.steps, "teacher": (bool(tm) or by_source) and bool(getattr(teacher, "training_only", True)),
+                          "source": getattr(teacher, "source", "teacher") if (tm or by_source) else None, "gates": s.gates.as_dict(), "held_gates": s.held.as_dict(), **({"vocabulary": s.vocabulary} if s.vocabulary else {}),
+                          **({"judge_source": JG.describe(teacher)} if by_source else {}), **({"why": x["why"]} if x.get("why") else {})}}
         GS.check_lemma(lemma)
         admitted[canon] = lemma
     f["climbed"], f["supported_dev"], f["verified_held"] = climbed, dev_ok, len(admitted)
@@ -433,7 +480,7 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     if write and admitted:
         for l in admitted.values():
             GS.write_lemma(game, l)
-        rep["snapshot"] = GS.publish(game, teacher_used=any(l["meta"]["teacher"] for l in admitted.values()))
+        rep["snapshot"] = GS.publish(game, teacher_used=any(l["meta"]["teacher"] for l in admitted.values()), vocabulary=s.vocabulary)
     rep["seconds"] = round(time.perf_counter() - t0, 2)
     rep["timing"] = {k: round(v, 2) for k, v in timing.items()}
     say("OBS sleep time " + game + ": " + ", ".join(f"{k} {v} s" for k, v in rep["timing"].items()) + f", total {rep['seconds']} s")
@@ -497,14 +544,42 @@ class UciTeacher:
     training_only = True
     source = "uci"
     MULTIPV_CAP = 64
+    mate_bucket = 1                   # plan 78.24: plies; a mate's distance is floored to a multiple of this, so mates within one bucket tie (1: exact)
     gap = 100                         # the regret detector's threshold, in THIS source's units (centipawns: a pawn); a mate is +-MATE_SCORE so a missed win always counts
 
+    def grade(self, score: int) -> int:
+        """Plan 78.23: how a score becomes a card value when this source is the judge. A mate keeps its exact value (a faster win is strictly better, a slower loss strictly better);
+        any other score is `score // gap`, so moves within a gap share a value (and the optimal moves are those within the gap of the best bucket)."""
+        if abs(score) > MATE_SCORE - 1000:
+            b = max(1, int(self.mate_bucket))
+            d = (MATE_SCORE - abs(int(score))) // b * b          # (flooring is monotone: a faster win is never below a slower one, a slower loss never below a faster one)
+            return (MATE_SCORE - d) * (1 if score > 0 else -1)
+        return int(score) // self.gap
+
     def rank(self, variant: str, moves: list, cap: "int | None" = None, start: "str | None" = None) -> list:
-        """-> [(move, score)] best first for EVERY legal move (MultiPV up to `cap`, default MULTIPV_CAP), scores from the mover's view; a mate is +-MATE_SCORE less its
+        """-> [(move, score)] best first for EVERY legal move (see `_analyse`, which does the one engine call `lines` shares)."""
+        return [(m, sc) for m, sc, _ in self._analyse(variant, moves, cap, start)]
+
+    def lines(self, variant: str, moves: list, cap: "int | None" = None, start: "str | None" = None) -> dict:
+        """Plan 78.23 D: -> {move: [move, m2, m3, ...]}: the engine's own principal line after each legal move (starting with it), from the SAME analysis `rank` ran
+        (the last analysis is kept on the instance, `_last`, keyed by position, cap and start: one engine call serves both)."""
+        return {m: line for m, _sc, line in self._analyse(variant, moves, cap, start)}
+
+    def _analyse(self, variant: str, moves: list, cap: "int | None" = None, start: "str | None" = None) -> list:
+        """-> [(move, score, principal line)] best first for EVERY legal move (MultiPV up to `cap`, default MULTIPV_CAP), scores from the mover's view; a mate is +-MATE_SCORE less its
         distance. Through python-chess's engine wrapper when it imports and knows the variant (the one place chess appears: the boundary returns the generic shape);
         else through the raw UCI pipe and `parse_multipv`. `start` (plan 78.22) is a position (a FEN) the moves are played from, None for the game's own start. Only the order
         is used by the callers, except the regret detector's `gap`."""
         cap = cap or self.MULTIPV_CAP
+        key = (variant, tuple(moves), start, cap)
+        last = getattr(self, "_last", None)
+        if last is not None and last[0] == key:
+            return last[1]
+        out = self._analyse_uncached(variant, moves, cap, start)
+        self._last = (key, out)
+        return out
+
+    def _analyse_uncached(self, variant: str, moves: list, cap: int, start: "str | None") -> list:
         try:
             import chess
             import chess.engine
@@ -528,7 +603,7 @@ class UciTeacher:
         for info in infos if isinstance(infos, list) else [infos]:
             pv = info.get("pv")
             if pv:
-                out.append((pv[0].uci(), info["score"].relative.score(mate_score=MATE_SCORE)))
+                out.append((pv[0].uci(), info["score"].relative.score(mate_score=MATE_SCORE), [x.uci() for x in pv]))
         return out
 
     def _rank_raw(self, variant: str, moves: list, cap: int, start: "str | None" = None) -> list:
@@ -542,11 +617,12 @@ class UciTeacher:
             if line.startswith("bestmove"):
                 break
         self._send("setoption name MultiPV value 1")
-        return parse_multipv("".join(lines))
+        return parse_multipv_lines("".join(lines))
 
-    def __init__(self, path: str, movetime_ms: int = 100, options: "dict | None" = None):
+    def __init__(self, path: str, movetime_ms: int = 100, options: "dict | None" = None, mate_bucket: int = 1):
         import subprocess
         self.movetime = movetime_ms
+        self.mate_bucket = mate_bucket
         self.path = path
         self._engine = None
         self.p = subprocess.Popen([path], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -612,20 +688,30 @@ def main(argv: list) -> int:
     ap.add_argument("--teacher-ms", type=int, default=100, help="the UCI teacher's time per position, in milliseconds")
     ap.add_argument("--teacher-option", action="append", default=[], metavar="NAME=VALUE", help="a UCI option for the teacher (repeatable), e.g. SyzygyPath=/path")
     ap.add_argument("--source-seconds", type=float, default=0.2)
+    ap.add_argument("--judge-by", default="store", choices=["store", "source"], help="plan 78.23: `store` values the cards by the store's record; `source` revalues them by the rank source given "
+                    "(--teacher or --source), which is then the judge of the lemmas (training only, recorded as teacher-judged)")
+    ap.add_argument("--judge-positions", type=int, default=None, help="with --judge-by source: revalue at most this many cards")
+    ap.add_argument("--vocabulary", default=None, help="plan 78.24: the lemma vocabulary's name (rules/learned/<game>/vocabulary.<name>.json); default: the game's own")
+    ap.add_argument("--gate", action="append", default=[], metavar="NAME=VALUE", help="override a field of BOTH the development and the held-out gates (repeatable), e.g. min_fires=2")
+    ap.add_argument("--held-gate", action="append", default=[], metavar="NAME=VALUE", help="override a field of the held-out gates only (repeatable)")
+    ap.add_argument("--teacher-mate-bucket", type=int, default=1, help="plies: the UCI teacher's mate distances are floored to a multiple of this, so mates within a bucket tie (1: exact)")
     ap.add_argument("--no-auto", action="store_true", help="do not let the diagnosis choose the tools")
     ap.add_argument("--ties", action="store_true", help="the wake reads the ledger's ties (so the sleep can measure the tie rate)")
     ap.add_argument("--write", action="store_true", help="file the lemmas and publish the next snapshot")
     ap.add_argument("--tag", default=None)
     a = ap.parse_args(argv)
     variant = a.variant or a.game
+    if a.judge_by == "source" and not (a.teacher or a.source):
+        ap.error("--judge-by source needs a rank source: --teacher or --source")
     explicit = a.teacher_mode != "label" or a.teacher_surprises                      # (the CLI's default mode is the chooser's to override)
     st = Settings(depth=a.depth, stride=a.stride, seed=a.seed, teacher_mode=a.teacher_mode if (a.teacher or a.source) and explicit else "off",
-                  teacher_surprises=bool((a.teacher or a.source) and a.teacher_surprises), judge=a.judge, auto_tools=not a.no_auto)
-    if a.judge and not a.log:
+                  teacher_surprises=bool((a.teacher or a.source) and a.teacher_surprises), judge=a.judge, auto_tools=not a.no_auto, judge_by=a.judge_by, judge_positions=a.judge_positions,
+                  vocabulary=a.vocabulary, gates=AB.Gates().override(a.gate), held=AB.Gates(min_fires=3, min_groups=2).override(a.gate).override(a.held_gate))
+    if (a.judge or a.vocabulary) and not a.log:
         # the wake must play by the judge the sleep learns by: publish the store state with that judge (the same content is the same snapshot; nothing is written twice)
-        print(f"OBS snapshot {a.game} {GS.publish(a.game, judge=GS.judge_of(a.game, a.judge))}: judge {a.judge}")
+        print(f"OBS snapshot {a.game} {GS.publish(a.game, judge=GS.judge_of(a.game, a.judge) if a.judge else 'store', vocabulary=a.vocabulary)}: judge {a.judge}, vocabulary {a.vocabulary}")
     options = dict(o.partition("=")[::2] for o in a.teacher_option)
-    teacher = UciTeacher(a.teacher, a.teacher_ms, options) if a.teacher else (source_of(a.source, a.source_seconds, a.seed, GS.path_of(a.game, GS.head(a.game)) if GS.head(a.game) else None) if a.source else None)
+    teacher = UciTeacher(a.teacher, a.teacher_ms, options, a.teacher_mate_bucket) if a.teacher else (source_of(a.source, a.source_seconds, a.seed, GS.path_of(a.game, GS.head(a.game)) if GS.head(a.game) else None) if a.source else None)
     try:
         for c in range(a.cycles if not a.log else 1):
             log = a.log
@@ -634,7 +720,7 @@ def main(argv: list) -> int:
                 log = paths.experiment(f"wake_{a.game}_{tag}.jsonl")
                 head = GS.head(a.game)
                 store = str(GS.path_of(a.game, head)) if head else None
-                wake.play_self(variant, a.games, seconds=a.seconds, seed=a.seed + c, store=store, specs=GS.spec_texts(a.game) if store else None, log=log, run=tag, ties=a.ties)
+                wake.play_self(variant, a.games, seconds=a.seconds, seed=a.seed + c, store=store, specs=GS.spec_texts(a.game, a.vocabulary) if store else None, log=log, run=tag, ties=a.ties)
             rep = sleep(a.game, log, variant=variant, settings=st, teacher=teacher, write=a.write)
             out = paths.experiment(f"sleep_{a.game}_{time.strftime('%Y%m%d-%H%M%S')}_{c}.json")
             json.dump(rep, open(out, "w"), indent=1, default=str)

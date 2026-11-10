@@ -1,0 +1,9 @@
+{
+ "spec": "chess.gdl",
+ "variants": {"chess": null, "kingofthehill": "variants/kingofthehill.gdl", "3check": "variants/3check.gdl"},
+ "concepts": ["concepts/chess.gdl", "concepts/chess_units.gdl"],
+ "derived": ["attack", "check", "defended", "hanging", "passed_pawn", "apart", "closer", "flight", "opposition", "diagonal_opposition", "to_promote", "king_ahead", "in_square"],
+ "delta": ["cell", "apart", "flight", "opposition", "diagonal_opposition", "hanging", "to_promote", "king_ahead", "in_square", "check"],
+ "units": null,
+ "note": "The relational fact vocabulary of chess (plan 78.24): the lemma vocabulary of vocabulary.json plus the human concepts of rules/concepts/chess.gdl and the relations between units of rules/concepts/chess_units.gdl (composed in that order onto the description): distances between a king and another unit (apart, with the static closer to say a distance shrank), the king's flight squares, the opposition, a pawn's steps to promotion, its king ahead of it, the square of the pawn. A move's effect is read on cell and on these relations; attack is not in delta (a single move changes dozens of its facts)."
+}

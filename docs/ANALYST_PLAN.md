@@ -4790,3 +4790,71 @@ READING: (1) the engine cannot play these positions: 82 of 88 games drawn, king 
   far), since in these positions nothing material changes until the end. Small material is where that is affordable exactly: the 3- and 4-unit positions can be solved by our own backward search
   over the kernel (generic, no teacher), with the tablebase as the check. No lemma was learned (verified_held 0). NEXT: the result judge for small material (cards valued by the solved result),
   then stage 3 (bindings, counter-positions) and stage 4 (the driver). Not done here: play_match from starts, a codec for another game, a list of sources inside one sleep.
+
+#### 78.23 THE ORACLE AS THE JUDGE OF THE CARDS, and its lines as the WHY (2026-11-10; Kaveh: "even under 5 units, it should be stockfish"; "it can say this is why it's bad because it
+leads to this and this and this")
+WHY: 78.22 ended with 58 regrets the oracle saw and none confirmable, because the material judge ties every quiet move. The own-solver idea is DROPPED: Stockfish (with the Syzygy tables)
+  is the oracle and the judge at every size. A lemma claims "an optimal move of this kind exists"; optimal is by a judge, and the judge is PART OF THE CLAIM (recorded on the lemma).
+BUILT (discovery/judges.py, generic over rank sources): `Settings.judge_by = "source"`: the cards are built as before, then every move is revalued by the source's graded score
+  (`CardSet.revalued`, Rust; a move the source does not rank cuts the card). A source may declare `grade(score) -> int` (UciTeacher: a mate keeps its exact distance, anything else is
+  score // gap, so moves within a gap tie) and `lines(...)` (its own principal line after each move, from the same analysis). Regret is then confirmed DIRECTLY on the revalued card (the
+  played move strictly worse than the best); Disagreement is skipped (the source would disagree with itself). `consequence(...)` replays a line through the kernel: plies, outcome, where
+  the units first change. Every teacher-judged lemma carries meta.judge_source (the source's parameters), meta.teacher = true and meta.why (the line after the played move, the line after
+  the best move, and where each ends). The source stays in the training kit: nothing of a decision calls it. Tests: tests/test_plan78_23.py (12).
+THE FIRST SOURCE-JUDGED SLEEP, the 78.22 log (88 games, 22 three-unit starts), Stockfish 100 ms with SyzygyPath, depth 3, default vocabulary:
+OBS sleep judge uci: asked 1218, revalued 1218, cut 0, skipped (already cut) 0, optimal share of the moves 0.5584 (chance), moves per card 10.06, 122.666 s
+OBS sleep funnel chess (judge source:uci, depth 3): games 88, decisions 2398, surprises 24, replayable 6, cards 1218, cards_dev 556, cards_held 662, confirmed 0, with_saving 0, seeds 89,
+  teacher_surprises 0, teacher_confirmed 0, regret_surprises 57, regret_confirmed 57, regret_tied 0, regret_unconfirmed 0, climbed 16, supported_dev 4, verified_held 0, 123.66 s
+OBS sleep why i3:0:18: played d1c1 leads to d1c1 a2b3 e1d2 b3a3 c1c8 a3b4 (19 plies); best d1d3 leads to d1d3 a2b2 e1d1 b2b1 d3d2 b1a1 (13 plies, game over [100, 0])
+READING: every regret is now confirmed (57 of 57, none tied), so the judge was the block. No lemma was admitted, and rightly: the candidates were things like
+  `IF cell(f,1,us,rook) THEN remove cell(f,1,us,rook) add cell(f,4,us,rook)`. The lemma LANGUAGE (absolute squares; a move's effect on `cell` only) cannot say why a move is good in an
+  endgame. Stockfish at 100 ms is also not repeatable run to run (57 regrets in one run, 66 in another on the same log).
+
+#### 78.24 THE LEMMA LANGUAGE, THE LOOP ON A SANDBOX STORE, AND THE AUDIT OF APPLICATION (2026-11-10; Kaveh: "I want to see what lemmas are mined and whether they're mined correctly and
+whether they're applied correctly ... one lemma is not going to win the game. But the machinery is working, and that's the key point")
+THE GOAL IS THE MECHANISM, NOT STRENGTH: starts -> wake -> sleep (oracle judges) -> lemmas filed -> next snapshot -> wake with them -> audit. Built by three Sonnet subagents, integrated here.
+A. NAMED VOCABULARIES AND EFFECTS ON DERIVED RELATIONS. rules/learned/<game>/vocabulary.<name>.json (optional `concepts`: rules deltas composed onto the description); game_store
+  vocabulary(game, name) / spec_texts(game, name) / read_lemmas(game, vocabulary) / build and publish(vocabulary=); the default vocabulary's snapshot bytes are unchanged. A vocabulary's
+  `delta` may now name DERIVED relations: cs_memory op.rs `Effects` (the derived facts before and after a move, one helper for cards, the lemma prior and the lemma op). The climb gains
+  "drop a response literal" (the response keeps at least one); `Gates.override`; sleep CLI --vocabulary, --gate NAME=VALUE, --held-gate, --teacher-mate-bucket. Tests: tests/test_plan78_24.py.
+  Cost, printed by the build's check on 200 cards at depth 2, 1 thread: base-only delta 0.192 s, derived delta 2.505 s.
+B. RELATIONAL UNIT CONCEPTS, as rules (rules/concepts/chess_units.gdl): distance, apart (king to unit distance), closer, flight, opposition, diagonal_opposition, to_promote, king_ahead,
+  in_square; rules/learned/chess/vocabulary.relational.json names them as derived and as delta. Tests: tests/test_plan78_24_concepts.py.
+  OBS units vocabulary: 72 positions, 53 facts a position (small) / 157 (full board), 0.8 ms a position (small) / 0.7 (full board)
+C. THE LOOP AND THE AUDIT. discovery/initialize.py `run_size(game, size, source=...)`: the loop for one size on a SANDBOX store (paths.derived("init_store"); the real rules/learned is
+  never written). discovery/apply_audit.py: `render` / `mined` (a lemma read as IF body THEN a best move removes / adds, with its stats, judge and why) and `audit(game, log, source=...)`:
+  for every decision where a lemma fired, the moves it proposed (recovered with the ENGINE's own matcher, checked against the engine's count), whether the engine played one, and whether
+  the claim held by the source. judges.Cached(source, file): a rank source remembered on disk, so the sleep, the audit and a re-run read one verdict per position.
+  Tests: tests/test_plan78_24_loop.py. Integration fixes here: the vocabulary name reaches mined / audit / spec_texts; initialize gains --gate, --held-gate, --teacher-mate-bucket,
+  --teacher-cache.
+THE RUN (size 3, 22 starts, 12 games a start, 0.05 s a move, Stockfish 100 ms with SyzygyPath cached, vocabulary relational, depth 3, DEFAULT gates, mate bucket 1):
+OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 264, plies 6929, outcomes {'[50, 50]': 257, '[100, 0]': 7}, 21 s
+OBS sleep judge uci: asked 3007, revalued 3007, cut 0, skipped (already cut) 0, optimal share of the moves 0.6961 (chance), moves per card 7.41, 276.006 s
+OBS sleep time chess: cards 4.52 s, climb 294.87 s, verify 0.17 s, total 577.52 s
+OBS sleep funnel chess (judge source:uci, depth 3): games 264, decisions 6401, surprises 27, replayable 7, cards 3007, cards_dev 1508, cards_held 1499, confirmed 0, with_saving 0, seeds 60,
+  teacher_surprises 0, teacher_confirmed 0, regret_surprises 38, regret_confirmed 38, regret_tied 0, regret_unconfirmed 0, climbed 44, supported_dev 9, verified_held 2, 577.52 s
+OBS lemma flight-response-e214254e: dev 8 fires / precision 1.0 (lower 0.7473); held 10 fires in 10 games / precision 1.0 (lower 0.7871) excess 0.7194
+OBS lemma cell-response-0cea0039: dev 126 fires / precision 1.0 (lower 0.979); held 102 fires in 40 games / precision 1.0 (lower 0.9742) excess 0.4429
+OBS init wake b chess: snapshot fb24a6ebc3514be7 (2 lemma(s)), games 264, plies 6524, outcomes {'[50, 50]': 256, '[100, 0]': 8}, 19 s
+OBS mined cell-response-0cea0039: IF apart(us, ?v2, ?v3, them, ?v0, ?v1, ?v4) AND attack(them, ?v6, ?v5, ?v6, ?v1) AND cell(?v2, ?v3, us, ?v8) AND cell(?v6, ?v5, them, ?v8) AND
+  flight(us, ?v2, ?v7) AND flight(us, ?v0, ?v7) THEN a best move removes [] adds [cell(?v2, ?v7, us, ?v8)]
+OBS mined flight-response-e214254e: IF cell(d, ?v4, them, ?v6) AND flight(us, ?v2, 3) AND flight(us, h, ?v1) THEN a best move removes [] adds [flight(us, h, ?v4)]
+OBS audit chess: 5996 decisions, 545 with a lemma firing, 177 of 264 games touched (0.6705), recomputed proposal counts differing from the engine's 0, rank source uci
+OBS audit lemma cell-response-0cea0039: fired 523 in 177 games, proposed 532 moves, followed 482, claim held 483 of 523 by uci, played optimal 473/482 when followed vs 35/41 when not
+OBS audit lemma flight-response-e214254e: fired 22 in 21 games, proposed 45 moves, followed 21, claim held 21 of 22 by uci, played optimal 16/21 when followed vs 1/1 when not
+OBS init compare chess size 3: wake a outcomes {'[50, 50]': 257, '[100, 0]': 7}, regret 33/200 (0.165); wake b outcomes {'[50, 50]': 256, '[100, 0]': 8}, regret 33/200 (0.165)
+The audit's decisions by the start's extra unit, the side to move and the claim (printed from artifacts/experiments/init_chess_3_rel12.json): cell-response: pawn, lone king to move,
+  held and followed 482; held, not followed 1; REFUTED, not followed 33; queen, no move proposed 3; rook, no move proposed 4. flight-response: pawn, strong side to move, held and
+  followed 20; no move proposed 1; queen, held and followed 1.
+READING. (1) THE MACHINERY IS WHOLE: two lemmas were mined, filed in the sandbox, published in the next snapshot, fired in the next wake at 545 decisions, and the moves they proposed are
+  the ones the engine's matcher counts (0 mismatches). (2) cell-response-0cea0039 READS AS CHESS: our unit and theirs of the same kind (the kings), their king beside their other unit,
+  our king within a file of that unit with a square straight along its own file free: a best move steps the king straight along its file. Of its 532 proposals in wake b (classified by a script over the report), 343 are the lone king directly in front of the
+  pawn stepping straight back, the textbook defence, all optimal; 75 more with the king on the pawn's file 2 to 5 ranks ahead stepping toward it, all optimal. It is OVER-GENERAL by one
+  condition: it lets the king stand on the file NEXT to the pawn, and one rank ahead of the pawn there it is wrong 33 times of 33 (king e7 against pawn f6 and king g5: it proposes
+  e7e8, the oracle says e7f7 or e7f8). The mining cards (126 and 102 firings) held no refutation; the next wake reached these 33, and the search overrode the lemma in all 33 (it is a
+  prior, not a value). (3) flight-response-e214254e DOES NOT MAKE SENSE: it names the d file, the h file and rank 3; 18 firings passed the gates by accident. The gates let a
+  lemma with board constants and thin support through. (4) Nothing yet carries the next wake's counterexamples back to a filed lemma: that is the counter-position stage of the flow
+  (78.22 stage 3) and it now has a concrete first case. NOT a strength claim: the two wakes are equal within chance.
+OPEN: counterexamples back to a filed lemma (refine or retire); counter-positions aimed at a lemma; the gates against constants on thin support; the facts at the end of the refutation
+  line against the best line as the shape of the lemma; `source_of` and `credit` still read the default vocabulary; default and named vocabularies share one HEAD; UCI sources cut cards
+  with more than 64 legal moves; derived-delta cards cost about 13 times the base ones; sizes 4 to 7 and the budget driver.

@@ -34,6 +34,10 @@ class PositionCodec(Protocol):
     def keep(self, position: str, units: list) -> str:
         """The same position with only `units` left, everything that depended on a removed unit made consistent."""
 
+    # optional: `kinds(position) -> list`, the kind of each unit (hashable), so a change of the kinds' multiset (a capture, a promotion) can be told from a move
+
+
+
 
 class ChessCodec:
     """The chess family over python-chess FENs: a unit is a square holding a piece (handle: the square's name). `keep` clears the other squares, keeps the side to move, drops
@@ -42,6 +46,10 @@ class ChessCodec:
     def units(self, position: str) -> list:
         import chess
         return [chess.square_name(sq) for sq in sorted(chess.Board(position).piece_map())]
+
+    def kinds(self, position: str) -> list:
+        import chess
+        return sorted(p.symbol() for p in chess.Board(position).piece_map().values())
 
     def keep(self, position: str, units: list) -> str:
         import chess

@@ -183,3 +183,53 @@ fn the_whole_lemma_stack_runs_on_another_game_that_declares_its_units() {
     let names: Vec<String> = o.candidates.iter().map(|i| g.move_name(&g.initial(), &g.moves(&g.initial())[*i])).collect();
     assert_eq!(names, vec!["(take 1 2)".to_string(), "(take 4 5)".to_string()], "both of red's pieces threaten one of blue's");
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------- plan 78.24: a move's effect on a DERIVED relation
+
+#[test]
+fn a_derived_delta_relation_shows_in_the_cards_and_a_lemma_over_it_fires_on_the_moves_whose_effect_matches() {
+    use cs_game::gdl_game::GdlGame;
+    use cs_game::Fact;
+    let derived = Vocabulary { derived: vec!["threat".into()], delta: vec!["threat".into()], units: None };
+    let g = GdlGame::load("row", ROW).unwrap().with_vocabulary(Vocabulary { derived: vec!["threat".into()], delta: vec!["piece".into()], units: None }).unwrap();
+    let view = FactView::new(ROW, derived.clone()).unwrap();
+    let card = card_of(&g, &view, &Count, &g.initial(), 2, 1_000_000, "c", "g").unwrap().unwrap();
+    let t = |a: &str, b: &str| Fact::new("threat", &["us", a, b]);
+    let m12 = card.moves.iter().find(|m| m.name == "(take 1 2)").unwrap();
+    let m45 = card.moves.iter().find(|m| m.name == "(take 4 5)").unwrap();
+    assert_eq!((m12.removed.clone(), m12.added.clone()), (vec![t("1", "2")], vec![]), "taking 1 2 removes the threat 1->2 (4->5 stays)");
+    assert_eq!((m45.removed.clone(), m45.added.clone()), (vec![t("4", "5")], vec![]));
+    // the same position with a base-only delta: the cards are the ones of old (piece facts, no derived relation)
+    let base_view = FactView::new(ROW, Vocabulary { derived: vec!["threat".into()], delta: vec!["piece".into()], units: None }).unwrap();
+    let bc = card_of(&g, &base_view, &Count, &g.initial(), 2, 1_000_000, "c", "g").unwrap().unwrap();
+    let b12 = bc.moves.iter().find(|m| m.name == "(take 1 2)").unwrap();
+    assert!(b12.removed.iter().all(|f| f.relation == "piece") && b12.removed.len() == 2 && b12.added == vec![Fact::new("piece", &["2", "us"])]);
+    // a lemma whose response is over the derived relation proposes exactly the moves whose effect matches
+    let text = r#"{"format":1,"game":"row","parent":null,"vocabulary":{"derived":["threat"],"delta":["threat"],"units":null},"judge":null,"teacher_used":false,"lemmas":[
+      {"name":"lift-threat-12","body":[{"relation":"threat","args":["us","?x","?y"],"neg":false}],
+       "response":{"removed":[{"relation":"threat","args":["us","1","2"],"neg":false}],"added":[]},"stats":{},"meta":{}}]}"#;
+    let snap = Snapshot::parse(text.as_bytes()).unwrap();
+    let op = LemmaOp::new(&snap, &view);
+    let s = g.initial();
+    let o = op.run(&g, &s, &Goal::Respond { role: 0 }, Budget::new(5.0, 1_000_000));
+    let names: Vec<String> = o.candidates.iter().map(|i| g.move_name(&s, &g.moves(&s)[*i])).collect();
+    assert_eq!(names, vec!["(take 1 2)".to_string()]);
+}
+
+#[test]
+fn the_effects_reader_reads_base_facts_only_unless_a_delta_relation_is_derived() {
+    use cs_memory::op::Effects;
+    let g = cs_game::gdl_game::GdlGame::load("row", ROW).unwrap();
+    let view = FactView::new(ROW, Vocabulary { derived: vec!["threat".into()], delta: vec![], units: None }).unwrap();
+    let (base_rel, derived_rel) = (vec!["piece".to_string()], vec!["piece".to_string(), "threat".to_string()]);
+    let s = g.initial();
+    let base = g.base_facts(&s);
+    let (a, b) = (Effects::at(&view, &base_rel, &base).unwrap(), Effects::at(&view, &derived_rel, &base).unwrap());
+    assert!(!a.on_full_views() && b.on_full_views());
+    let m = g.moves(&s).into_iter().find(|m| g.move_name(&s, m) == "(take 1 2)").unwrap();
+    let after = g.base_facts(&g.apply(&s, &m));
+    let (ra, aa) = a.of(&after).unwrap();
+    let (rb, ab) = b.of(&after).unwrap();
+    assert_eq!((ra.len(), aa.len()), (2, 1), "base only: two pieces leave their squares, one arrives");
+    assert!(rb.iter().any(|f| f.relation == "threat") && rb.iter().filter(|f| f.relation == "piece").count() == 2 && ab.len() == 1);
+}

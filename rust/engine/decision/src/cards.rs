@@ -5,7 +5,7 @@
 use cs_game::gdl_game::FactView;
 use cs_game::Game;
 use cs_memory::cards::{Card, CardMove};
-use cs_memory::op::delta;
+use cs_memory::op::Effects;
 use cs_memory::perspective;
 use cs_tactics::ledger::{Judge, Search};
 
@@ -17,6 +17,7 @@ pub fn card_of<G: Game, J: Judge>(g: &G, view: &FactView, judge: &J, s: &G::Stat
     let roles = g.roles();
     let facts = perspective(&view.facts(&base)?, &roles, me);
     let moves = g.moves(s);
+    let effects = Effects::at(view, &view.vocabulary().delta, &base)?;
     if moves.is_empty() { return Ok(None); }
     let mut se = Search::with_fuse(g, judge, me, fuse);
     se.prune = false;
@@ -27,7 +28,7 @@ pub fn card_of<G: Game, J: Judge>(g: &G, view: &FactView, judge: &J, s: &G::Stat
     for (i, v) in &vals {
         let (_line, ev) = se.line_from(s, *i, depth as usize + 6);
         let (lost, gained) = ev.iter().fold((0u32, 0u32), |(l, w), (o, e)| if !e.starts_with("lose ") { (l, w) } else if *o == me { (l + 1, w) } else { (l, w + 1) });
-        let (r, a) = delta(&base, &g.base_facts(&g.apply(s, &moves[*i])), &view.vocabulary().delta);
+        let (r, a) = effects.of(&g.base_facts(&g.apply(s, &moves[*i])))?;
         // where the loss happens: the effect of the first move of the best line that takes one of ours
         let (mut lr, mut la) = (vec![], vec![]);
         let mut cur = s.clone();
@@ -35,7 +36,7 @@ pub fn card_of<G: Game, J: Judge>(g: &G, view: &FactView, judge: &J, s: &G::Stat
             let Some(m) = g.find_move(&cur, name) else { break };
             let next = g.apply(&cur, &m);
             if g.captured(&cur, &m).iter().any(|(o, _)| *o == me) {
-                let (x, y) = delta(&g.base_facts(&cur), &g.base_facts(&next), &view.vocabulary().delta);
+                let (x, y) = Effects::at(view, &view.vocabulary().delta, &g.base_facts(&cur))?.of(&g.base_facts(&next))?;
                 lr = perspective(&x, &roles, me);
                 la = perspective(&y, &roles, me);
                 break;

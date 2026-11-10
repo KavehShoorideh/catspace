@@ -7,7 +7,7 @@ use cs_game::gdl_game::FactView;
 use cs_game::Game;
 use cs_memory::cards::{response_matches, STEP_FUSE};
 use cs_memory::matcher::{bindings_fused, Binding, FactIndex};
-use cs_memory::op::{delta, MAX_BINDINGS};
+use cs_memory::op::{Effects, MAX_BINDINGS};
 use cs_memory::perspective;
 use cs_memory::snapshot::Snapshot;
 use cs_planning::rollout::Prior;
@@ -39,11 +39,15 @@ impl<'a> Prior for LemmaPrior<'a> {
         for lemma in &self.snapshot.lemmas {
             let (bs, _cut) = bindings_fused(&lemma.body, &Binding::new(), &idx, MAX_BINDINGS, &mut steps, STEP_FUSE);
             if bs.is_empty() { continue; }
-            let ds = deltas.get_or_insert_with(|| moves.iter().map(|m| {
-                let after = g.base_facts(&g.apply(s, m));
-                let (r, a) = delta(&base, &after, &self.snapshot.vocabulary.delta);
-                (FactIndex::new(&perspective(&r, &roles, mover)), FactIndex::new(&perspective(&a, &roles, mover)))
-            }).collect());
+            if deltas.is_none() {
+                let built = Effects::at(self.view, &self.snapshot.vocabulary.delta, &base).and_then(|ef| moves.iter().map(|m| {
+                    let (r, a) = ef.of(&g.base_facts(&g.apply(s, m)))?;
+                    Ok((FactIndex::new(&perspective(&r, &roles, mover)), FactIndex::new(&perspective(&a, &roles, mover))))
+                }).collect::<Result<Vec<_>, String>>());
+                let Ok(d) = built else { return out };          // (a failing fact view gives uniform weights, as above)
+                deltas = Some(d);
+            }
+            let ds = deltas.as_ref().unwrap();
             for (i, (r, a)) in ds.iter().enumerate() {
                 if out[i] != self.boost && bs.iter().any(|b| response_matches(lemma, b, r, a, &mut steps)) { out[i] = self.boost; }
             }

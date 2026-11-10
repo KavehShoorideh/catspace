@@ -2,6 +2,8 @@
 
   rules/learned/<game>/vocabulary.json      the game's FACT VOCABULARY (rules ingestion's second half): its description (and, per variant, the delta that composes it),
                                             the derived relations that belong to the fact layer, the relations a move's effect is read in, how a state holds its units.
+  rules/learned/<game>/vocabulary.<name>.json  (plan 78.24) a NAMED vocabulary: the same keys plus `concepts` (rules-delta path(s) composed onto the description); a lemma records
+                                            the vocabulary it was written in (`meta.vocabulary`) and a snapshot of that vocabulary holds only those.
   rules/learned/<game>/lemmas/<name>.json   one learned lemma per file (the source of truth, committed): its body and response in the lemma language
                                             (rust/engine/memory/src/lemma.rs), what verification measured, where it came from.
   data/derived/snapshots/<game>/<id>.json   a SNAPSHOT: vocabulary + judge + lemmas + parent, immutable, named by the first 16 hex digits of the SHA-256 of its bytes
@@ -42,26 +44,41 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "-", name.lower()).strip("-")
 
 
-def vocabulary_file(game: str) -> dict:
-    p = learned_dir(game) / "vocabulary.json"
+def vocabulary_file(game: str, name: "str | None" = None) -> dict:
+    """The vocabulary file of the game: `vocabulary.json` (name None, the default) or `vocabulary.<name>.json` (plan 78.24: a NAMED lemma vocabulary, the same keys plus an optional
+    `concepts`: a rules-delta path, or a list of them, relative to rules/, composed in order onto the description)."""
+    p = learned_dir(game) / ("vocabulary.json" if name is None else f"vocabulary.{name}.json")
     if not p.is_file():
-        raise FileNotFoundError(f"{p}: the game {game} has no fact vocabulary (rules/learned/<game>/vocabulary.json)")
+        raise FileNotFoundError(f"{p}: the game {game} has no fact vocabulary" + ("" if name is None else f" named {name}") + f" ({p.name} under rules/learned/<game>/)")
     return json.loads(p.read_text())
 
 
-def vocabulary(game: str) -> dict:
+def vocabulary(game: str, name: "str | None" = None) -> dict:
     """The vocabulary as the Rust core reads it: {derived, delta, units}."""
-    v = vocabulary_file(game)
+    v = vocabulary_file(game, name)
     return {"derived": list(v.get("derived", [])), "delta": list(v.get("delta", [])), "units": v.get("units")}
 
 
-def spec_texts(game: str) -> dict:
-    """{variant: description text} for the variants of the game that have a description: the base text, composed with the variant's delta where it has one."""
-    v = vocabulary_file(game)
+_vocabulary = vocabulary          # (`build` has a parameter of the same name)
+
+
+def concept_deltas(v: dict) -> list:
+    """The rules-delta paths a vocabulary's `concepts` names, in order (none, one path, or a list)."""
+    c = v.get("concepts")
+    return [] if not c else ([c] if isinstance(c, str) else list(c))
+
+
+def spec_texts(game: str, name: "str | None" = None) -> dict:
+    """{variant: description text} for the variants of the game that have a description: the base text, composed with the variant's delta where it has one, then with the
+    named vocabulary's concept deltas in order (none for the default vocabulary unless its file says so)."""
+    v = vocabulary_file(game, name)
     base = (RULES / v["spec"]).read_text()
     out = {}
     for variant, delta in v["variants"].items():
-        out[variant] = base if delta is None else CE.compose(base, (RULES / delta).read_text())
+        text = base if delta is None else CE.compose(base, (RULES / delta).read_text())
+        for c in concept_deltas(v):
+            text = CE.compose(text, (RULES / c).read_text())
+        out[variant] = text
     return out
 
 
@@ -104,7 +121,12 @@ def write_lemma(game: str, lemma: dict) -> Path:
     return p
 
 
-def read_lemmas(game: str) -> list:
+ANY = object()          # `read_lemmas(vocabulary=ANY)`: every lemma of the game, whatever vocabulary it was written in
+
+
+def read_lemmas(game: str, vocabulary: "str | None | object" = None) -> list:
+    """The game's lemma sources. `vocabulary` selects the vocabulary they were written in (`meta.vocabulary`; absent or None = the default one): None (the default argument)
+    returns the lemmas of the DEFAULT vocabulary, which for a store with only default lemmas is all of them, as before; a name returns that vocabulary's; `ANY` returns all."""
     d = lemma_dir(game)
     out = []
     for p in sorted(d.glob("*.json")) if d.is_dir() else []:
@@ -112,7 +134,8 @@ def read_lemmas(game: str) -> list:
         if p.stem != slug(e["name"]):
             raise ValueError(f"{p.name}: the file is named {slug(e['name'])}.json by the lemma's name")
         check_lemma(e)
-        out.append(e)
+        if vocabulary is ANY or (e.get("meta") or {}).get("vocabulary") == vocabulary:
+            out.append(e)
     return out
 
 
@@ -134,11 +157,12 @@ def judge_of(game: str, name: "str | None" = None) -> "dict | None":
     return None if not j else {"name": j["valuation"], "worth": {k: int(v) for k, v in j["worth"].items()}, "ours_first": bool(j["ours_first"])}
 
 
-def build(game: str, *, parent: "str | None" = None, teacher_used: bool = False, judge: "dict | None | str" = "store") -> bytes:
+def build(game: str, *, parent: "str | None" = None, teacher_used: bool = False, judge: "dict | None | str" = "store", vocabulary: "str | None" = None) -> bytes:
     """The canonical bytes of the game's next snapshot: its vocabulary, judge and lemma sources. Canonical: sorted keys, no spaces, so the same content is the same
-    bytes and the same id."""
-    lemmas = read_lemmas(game)
-    snap = {"format": 1, "game": game, "parent": parent, "vocabulary": vocabulary(game),
+    bytes and the same id. `vocabulary` (plan 78.24) names the lemma vocabulary: the snapshot carries it and only the lemmas written in it (a lemma of another vocabulary would
+    never fire); None is the default vocabulary, byte for byte as before."""
+    lemmas = read_lemmas(game, vocabulary)
+    snap = {"format": 1, "game": game, "parent": parent, "vocabulary": _vocabulary(game, vocabulary),
             "judge": judge_of(game) if judge == "store" else judge, "teacher_used": bool(teacher_used) or any((l.get("meta") or {}).get("teacher") for l in lemmas),
             "lemmas": lemmas}
     return json.dumps(snap, sort_keys=True, separators=(",", ":")).encode()

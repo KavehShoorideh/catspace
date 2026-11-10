@@ -36414,3 +36414,19 @@ OBS size 3: 22 starts of 30 (8 over: lone knight or bishop), 88 games, 82 drawn 
 confirmed, 58 tied under the material judge at depth 7; verified_held 0. READING: the oracle sees what our judge cannot; the missing piece is a judge that reads the game's result, exact on
 small material by our own backward search. Written as 78.22 in ANALYST_PLAN; gate gains test_plan78_22.
 OBS gate engine: files 61, passed 759, failed 0, xfailed 1, errors 0, wall 1420.8 s
+
+## 2026-11-10 08:50 -- plans 78.23 and 78.24: Stockfish as the judge of the cards, a relational lemma language, and the loop closed on a sandbox store
+Kaveh: Stockfish is the oracle and the judge at every size (the own-solver idea is dropped); its lines are the reason a move is bad; and the goal now is the MECHANISM end to end: see
+what lemmas are mined, whether they are mined correctly and applied correctly; strength comes later. 78.23 (judges.py): the cards revalued by a rank source's graded scores, regret
+confirmed directly, the source's lines kept as meta.why. First source-judged sleep on the 78.22 log: 57 of 57 regrets confirmed, 0 lemmas, because the lemma language (absolute squares,
+effects on `cell` only) could not say anything true. 78.24, three Sonnet subagents: named vocabularies with effects on derived relations (cs_memory `Effects`), relational unit concepts
+as rules (apart, closer, flight, opposition, to_promote, king_ahead, in_square), the loop driver on a sandbox store (initialize.py) and the audit of application (apply_audit.py);
+integrated here with a disk-remembered rank source (judges.Cached) since Stockfish on a clock is not repeatable.
+OBS size 3, 264 games a wake, default gates: verified_held 2. Wake b: 545 of 5996 decisions with a lemma firing, proposal counts differing from the engine's 0.
+OBS audit lemma cell-response-0cea0039: fired 523 in 177 games, proposed 532 moves, followed 482, claim held 483 of 523 by uci, played optimal 473/482 when followed vs 35/41 when not
+OBS audit lemma flight-response-e214254e: fired 22 in 21 games, proposed 45 moves, followed 21, claim held 21 of 22 by uci, played optimal 16/21 when followed vs 1/1 when not
+READING: the loop is closed for the first time on a filed lemma. One lemma reads as chess (the lone king in front of a pawn steps straight back) and is over-general by one condition
+(king beside the pawn, 33 refutations in the next wake, all overridden by the search); the other is an accident with board constants on 18 firings. Nothing yet carries a wake's
+counterexamples back to a filed lemma; that is the next stage. Written as 78.23 and 78.24 in ANALYST_PLAN; gate gains test_plan78_23, test_plan78_24, test_plan78_24_concepts,
+test_plan78_24_loop.
+OBS gate engine: files 65, passed 804, failed 0, xfailed 1, errors 0, wall 1202.4 s

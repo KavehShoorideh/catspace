@@ -34,6 +34,37 @@ pub fn delta(before: &[Fact], after: &[Fact], relations: &[String]) -> (Vec<Fact
     (b.difference(&a).map(|f| (*f).clone()).collect(), a.difference(&b).map(|f| (*f).clone()).collect())
 }
 
+/// THE EFFECT OF A MOVE, read one way everywhere (the cards, the lemma operator, the prior, the graph). `relations` are the vocabulary's delta relations. When all of them
+/// are state relations the effect is the delta of the BASE facts (cost and behaviour as ever); when at least one is a derived relation of the view's vocabulary it is the delta of
+/// the FULL fact views (state + derived, `FactView::facts`) before and after, restricted to the delta relations. Not in a perspective: the caller applies `perspective` with the
+/// mover BEFORE the move. A fact view failing after the move is an error, never an empty delta.
+pub struct Effects<'a> {
+    view: &'a FactView,
+    relations: &'a [String],
+    full: bool,
+    before: Vec<Fact>,
+}
+
+impl<'a> Effects<'a> {
+    /// The reader of the effects of moves from the position whose base facts are `base`.
+    pub fn at(view: &'a FactView, relations: &'a [String], base: &[Fact]) -> Result<Effects<'a>, String> {
+        let full = relations.iter().any(|r| view.vocabulary().derived.contains(r));
+        let before = if full { view.facts(base)? } else { base.to_vec() };
+        Ok(Effects { view, relations, full, before })
+    }
+    /// Whether the effect is read on the full fact views (a delta relation is derived).
+    pub fn on_full_views(&self) -> bool { self.full }
+    /// (removed, added) of the move that leads to the position whose base facts are `after_base`.
+    pub fn of(&self, after_base: &[Fact]) -> Result<(Vec<Fact>, Vec<Fact>), String> {
+        if self.full {
+            let after = self.view.facts(after_base)?;
+            Ok(delta(&self.before, &after, self.relations))
+        } else {
+            Ok(delta(&self.before, after_base, self.relations))
+        }
+    }
+}
+
 impl<'a, G: Game> Operator<G> for LemmaOp<'a> {
     fn name(&self) -> String { "lemma".into() }
     fn accepts(&self, goal: &Goal) -> bool { matches!(goal, Goal::Respond { .. }) }
@@ -64,11 +95,17 @@ impl<'a, G: Game> Operator<G> for LemmaOp<'a> {
             let (bs, cut) = bindings_fused(&lemma.body, &Binding::new(), &idx, MAX_BINDINGS, &mut steps, crate::cards::STEP_FUSE);
             if cut { o.evidence.push(format!("lemma {}: the match was cut by the step fuse", lemma.name)); }
             if !bs.is_empty() {
-                let ds = deltas.get_or_insert_with(|| moves.iter().map(|m| {
-                    let after = g.base_facts(&g.apply(s, m));
-                    let (r, a) = delta(&base, &after, &self.snapshot.vocabulary.delta);
-                    (FactIndex::new(&perspective(&r, &roles, mover)), FactIndex::new(&perspective(&a, &roles, mover)))
-                }).collect());
+                if deltas.is_none() {
+                    let built = Effects::at(self.view, &self.snapshot.vocabulary.delta, &base).and_then(|ef| moves.iter().map(|m| {
+                        let (r, a) = ef.of(&g.base_facts(&g.apply(s, m)))?;
+                        Ok((FactIndex::new(&perspective(&r, &roles, mover)), FactIndex::new(&perspective(&a, &roles, mover))))
+                    }).collect::<Result<Vec<_>, String>>());
+                    match built {
+                        Ok(d) => deltas = Some(d),
+                        Err(e) => { o.status = Status::Gap; o.evidence.push(format!("lemma: the fact view failed on a move's effect: {e}")); return o; }
+                    }
+                }
+                let ds = deltas.as_ref().unwrap();
                 let mut mine: BTreeSet<usize> = BTreeSet::new();
                 for (i, (r, a)) in ds.iter().enumerate() {
                     if bs.iter().any(|b| response_matches(lemma, b, r, a, &mut steps)) { mine.insert(i); }

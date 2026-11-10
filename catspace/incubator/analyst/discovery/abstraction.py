@@ -4,7 +4,8 @@ main research risk"). Symbolic generalization pruned by search, as the document'
   SEED        the example as a GROUND lemma: the response is the saving move's effect on the facts; the body is the facts about what the move touches -- the facts that
               share a constant with the response, ignoring constants that appear in a large share of the position's facts (a side, a common kind), plus the facts
               made only of the response's own constants.
-  GENERALIZE  hill-climb over single steps: LIFT a constant to a variable everywhere it occurs, or DROP a body literal. A step is taken only if the lemma it gives is
+  GENERALIZE  hill-climb over single steps: LIFT a constant to a variable everywhere it occurs, DROP a body literal, or (plan 78.24) DROP A RESPONSE LITERAL (while the response
+              keeps at least one: a response over derived relations says several things about a move, and the claim may hold with fewer). A step is taken only if the lemma it gives is
               still ADMISSIBLE on the development cards -- precision at the gate, an excess over chance, a response that does not match most of the legal moves -- and
               it fires on at least as many cards. The first rank among admissible steps is the one that fires most, then the fewer constants (lifting generalizes: it comes before
               dropping, so the body keeps the literals that exclude the cases the claim is false on), then the fewer literals.
@@ -19,7 +20,7 @@ import hashlib
 import json
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 PROTECTED = re.compile(r"^(us|them|r\d+)$")
 
@@ -91,6 +92,20 @@ class Gates:
     def as_dict(self) -> dict:
         return dict(self.__dict__)
 
+    def override(self, items: "list | None") -> "Gates":
+        """These gates with the fields named by `items` ("NAME=VALUE" texts) replaced, each value typed by the field (int or float). An unknown name or an untypable value is a ValueError."""
+        kinds = {f.name: (int if str(f.type) == "int" else float) for f in fields(self)}
+        out = dict(self.__dict__)
+        for item in items or []:
+            name, eq, value = item.partition("=")
+            if not eq or name not in kinds:
+                raise ValueError(f"gate {item!r}: want NAME=VALUE with NAME one of {sorted(kinds)}")
+            try:
+                out[name] = kinds[name](value)
+            except ValueError:
+                raise ValueError(f"gate {item!r}: {value!r} is not a {kinds[name].__name__}") from None
+        return Gates(**out)
+
 
 # ---------------------------------------------------------------------------------------------------------------- the lemma as a dict
 
@@ -132,6 +147,12 @@ def drop(lemma: dict, i: int) -> dict:
     return {**lemma, "body": lemma["body"][:i] + lemma["body"][i + 1:]}
 
 
+def drop_response(lemma: dict, side: str, i: int) -> dict:
+    """The lemma without the i-th literal of its response's `side` ("removed" or "added")."""
+    r = lemma["response"]
+    return {**lemma, "response": {**r, side: r[side][:i] + r[side][i + 1:]}}
+
+
 def canonical(lemma: dict) -> str:
     """The lemma with its variables numbered by first appearance in a sorted body: two lemmas that differ in variable names only have the same text."""
     def key(l):
@@ -155,7 +176,9 @@ def name_of(lemma: dict) -> str:
 
 
 def size(lemma: dict) -> tuple:
-    return (len(lemma["body"]), len(constants(lemma)))
+    """(literals of the body and of the response, constants): a dropped literal on either side makes a lemma smaller."""
+    r = lemma["response"]
+    return (len(lemma["body"]) + len(r["removed"]) + len(r["added"]), len(constants(lemma)))
 
 
 # ---------------------------------------------------------------------------------------------------------------- the seed
@@ -207,7 +230,7 @@ def evaluate(cards, lemma: dict, idx, gates: Gates, early: bool = False) -> dict
 
 
 def generalize(seed: dict, cards, idx, gates: Gates, max_steps: int = 400) -> "Climb | None":
-    """Hill-climb from the ground seed by single lifts and drops, each step exact-checked on the cards at `idx`. None if the seed itself is not admissible (it is
+    """Hill-climb from the ground seed by single lifts and drops (of body or response literals), each step exact-checked on the cards at `idx`. None if the seed itself is not admissible (it is
     the example's own card and must hold there)."""
     cur = seed
     ev = evaluate(cards, cur, idx, gates)
@@ -219,6 +242,9 @@ def generalize(seed: dict, cards, idx, gates: Gates, max_steps: int = 400) -> "C
         order = sorted(idx, key=lambda i: -hard.get(i, 0)) if hard else list(idx)          # (the order of reading changes the cost of a verdict, never the verdict)
         cands = [("lift " + k, lift(c.lemma, k)) for k in constants(c.lemma)]
         cands += [(f"drop {l['relation']}({', '.join(l['args'])})", drop(c.lemma, i)) for i, l in enumerate(c.lemma["body"]) if len(c.lemma["body"]) > 1 and not l["neg"]]
+        for side in ("removed", "added"):
+            if len(c.lemma["response"]["removed"]) + len(c.lemma["response"]["added"]) > 1:
+                cands += [(f"drop response {side} {l['relation']}({', '.join(l['args'])})", drop_response(c.lemma, side, i)) for i, l in enumerate(c.lemma["response"][side])]
         best = None
         evs = cards.eval_many([json.dumps(cand) for _, cand in cands], order, gates.max_bindings, allowed_refutations(gates)) if cands else []       # every step read side by side, on the cores
         c.evals += len(cands)

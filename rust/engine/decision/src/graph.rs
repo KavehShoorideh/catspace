@@ -17,7 +17,7 @@
 use cs_game::gdl_game::{render_term, row_args, FactView};
 use cs_game::{Game, Vocabulary};
 use cs_gdl::{Program, SortMember};
-use cs_memory::op::delta;
+use cs_memory::op::Effects;
 use cs_memory::perspective;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -247,9 +247,10 @@ impl GraphSpec {
         let moves = g.moves(s);
         let mut names = Vec::with_capacity(moves.len());
         let base_after = |m: &G::Move| g.base_facts(&g.apply(s, m));
+        let effects = Effects::at(&self.view, &self.vocab.delta, &base)?;
         for (mi, m) in moves.iter().enumerate() {
             names.push(g.move_name(s, m));
-            let (r, a) = delta(&base, &base_after(m), &self.vocab.delta);
+            let (r, a) = effects.of(&base_after(m))?;
             for (kind, rows) in [("removes", perspective(&r, &roles, me)), ("adds", perspective(&a, &roles, me))] {
                 for f in rows {
                     let fi = b.fact(&f.relation, &f.args, 0)?;
