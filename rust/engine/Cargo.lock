@@ -59,6 +59,7 @@ name = "cs_decision"
 version = "0.1.0"
 dependencies = [
  "cs_game",
+ "cs_gdl",
  "cs_memory",
  "cs_operator",
  "cs_planning",

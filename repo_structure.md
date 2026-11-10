@@ -50,8 +50,8 @@ consumes an end-to-end approach and never reaches into a component itself. Every
         diagnose.py              game-free diagnostics over a wake log (ties, surprises by kind, cost, depth, gap share); tests/test_plan78_17.py
         rank_bench.py            plan 78.18: a rank source's agreement with a reference on logged positions, and a match of two rank sources; tests/test_plan78_18.py
         human_index.py           plan 78.19 stage E, TRAINING ONLY: the human-games index (sqlite: position key -> move n, mover's points; build, lichess_records_iter, kernel_key, signed, points_of, default_path, main CLI)
-        fact_graph.py          plan 78.20, generic: the typed fact graph (graph_of(facts, moves, vocabulary, bindings) -> HeteroData: term / fact / move / claim nodes, arg<i> / removes / adds / binds edges + reverses; Vocab (UNK = 0), encode, edge_types) and graph_hash (Weisfeiler-Lehman abstraction key of 78.19 reading ii); the claim type is built but nothing supplies bindings yet
-        graph_prior.py         plan 78.20: GraphNet (HeteroConv SAGE, scores the move nodes), train (cross-entropy against the optimal set, dev/held by group, OBS gnn lines and the uniform / fewest-lost baselines), GraphSource (rank source `gnn`, inference kit: facts + each move's delta-relation removed/added in the parent's perspective), build-cards / train CLI; tests/test_plan78_20.py
+        fact_graph.py          plan 78.20, generic: the typed fact graph (graph_of(facts, moves, vocabulary, bindings) -> HeteroData: term / fact / move / claim nodes, arg<i> / removes / adds / binds edges + reverses; Vocab (UNK = 0), encode, edge_types(max_arity, max_parts)) and graph_hash (Weisfeiler-Lehman abstraction key of 78.19 reading ii); the claim type is built but nothing supplies bindings yet. Plan 78.21: from_engine(CE.graph dict, values, lost) -> HeteroData, the graphs the net trains on are BUILT IN RUST (decision/src/graph.rs); tests/test_plan78_21.py
+        graph_prior.py         plan 78.20 / 78.21: GraphNet (torch; HeteroConv SAGE over arg<i>/part<i>/removes/adds/binds edges, scores the move nodes), train(cards, out, log=...) (graphs built by CE.graph from the card's position, cross-entropy against the optimal set, dev/held by group, OBS gnn lines incl. the torch-vs-Rust parity line), export(checkpoint, weights.json) (the Rust weights file), GraphSource(weights_path, specs=, vocabulary=, game=) (rank source `gnn`, inference kit, ALL IN RUST through CE.GraphModel, no torch needed; .ms, .timing()), build-cards / train CLI; tests/test_plan78_20.py, tests/test_plan78_21.py
                                  and HumanSource (rank/detail/__call__/close; source "human"); read by sleep's training kit only; tests/test_plan78_19e.py
     approaches.md                registry of end-to-end approaches
     approaches/<name>/           config.py + src/ + experiments/
@@ -276,11 +276,22 @@ rust/engine/
   decision/                      cs_decision: Params, the Fixed controller (lemma, proof, ledger, prior), batch (JSON Lines log), cards (the card builder)
     src/lemma_prior.rs             LemmaPrior: a snapshot's bound lemmas as a playout Prior (cs_planning::rollout), matched as LemmaOp does
     tests/lemma_prior.rs           the lemma prior on a small GDL game; an empty snapshot gives uniform weights
+    src/graph.rs                   plan 78.21: GraphSpec::new(description text, graph vocabulary JSON), .graph(g, s) -> Graph: the typed fact graph of a position, generic (terms typed by sort,
+                                   product sorts fused into objects with part<i> edges, always-present constants, static / state / derived fact nodes, move nodes with removes / adds, an empty claim type, reverses;
+                                   constant term / relation vocabularies read from the description's sorts and signatures)
+    src/graph_net.rs               plan 78.21: GraphNet::load / from_json / validate(spec) / forward(&Graph) -> one score a move: the torch GraphNet's forward (SAGEConv per edge type, sum, residual LayerNorm, MLP head) from the JSON weights file, plain-loop matrix products
+    src/graph_prior.rs             plan 78.21: GraphPrior {spec, net}: scores(g, s) -> (move names, scores), a cs_planning Prior (softmax x n; uniform on error), timing counters (facts / graph / forward)
+    tests/graph.rs                 graph.rs on a made-up GDL game (sorts, an object, a scale, a static / state / derived relation): typing, fusion, constants, identical statics, edgeless constants, move effects; the forward pass on a hand-computed 1-layer dim-2 net; the prior
   learn/                         cs_learn: THE TRAINING KIT -- watching a teacher (src/watch.rs; Teacher is training-only in the type), the valuation miner,
     src/advice.rs                  Advisor (an outside source's ordering of the legal moves), TeacherOp (Kit::Training), ScriptedAdvisor for tests.
                                  No decision-path crate depends on cs_learn (tests/test_plan78_14.py reads the manifests)
-  py/src/lib.rs                  cs_engine: the one Python entry (best_move, solve_batch, build_cards, estimate, facts, snapshots, certify, watch, mine)
+  py/src/lib.rs                  cs_engine: the one Python entry (best_move, solve_batch, build_cards, estimate, facts, snapshots, certify, watch, mine, plan 78.21: graph, graph_vocab, GraphModel (rank / scores / timing))
 ```
 
 The Python side of the loop is `catspace/incubator/analyst/discovery/` (wake, sleep, diagnose, abstraction, game_store); the learned knowledge is
 `rules/learned/<game>/` (vocabulary, lemmas) and its immutable snapshots under `data/derived/snapshots/<game>/`.
+
+Plan 78.21, the human concept vocabulary as rules: `rules/concepts/chess.gdl` is a DELTA (additive only) on `rules/chess.gdl` holding the concepts (defended, hanging,
+pinned, fork, open_file, half_open_file, passed_pawn, isolated_pawn, doubled_pawn, absent, bishop_pair) and the static `diagonal_of` (26 named diagonals);
+`rules/learned/chess/graph_vocabulary.json` names what a graph reader sees (state, derived, static relations, `objects`, `scales`, the `concepts` delta), read by
+`game_store.graph_vocabulary(game)` / `graph_spec_texts(game)`; each concept is tested against a python-chess oracle in `tests/test_plan78_21_concepts.py`.

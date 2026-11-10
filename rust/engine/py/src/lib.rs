@@ -529,6 +529,116 @@ fn check_lemma(lemma: &str) -> PyResult<()> {
     cs_memory::lemma::Lemma::from_json(&v).map(|_| ()).map_err(pyo3::exceptions::PyValueError::new_err)
 }
 
+// ---------------------------------------------------------------------------------------------------------------- plan 78.21: the typed fact graph and the graph prior, in Rust
+
+thread_local! {
+    /// One graph spec per (description, graph vocabulary): loading the description (statics, fact view) and prebuilding the static graph costs far more than a position.
+    static GRAPH_SPECS: std::cell::RefCell<HashMap<String, std::rc::Rc<cs_decision::graph::GraphSpec>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn graph_spec_for(spec: &str, graph_vocabulary: &str) -> PyResult<std::rc::Rc<cs_decision::graph::GraphSpec>> {
+    let key = format!("{}|{graph_vocabulary}", cs_memory::sha::sha256_hex(spec.as_bytes()));
+    GRAPH_SPECS.with(|v| {
+        if let Some(x) = v.borrow().get(&key) { return Ok(x.clone()); }
+        let gs = std::rc::Rc::new(cs_decision::graph::GraphSpec::new(spec, graph_vocabulary).map_err(pyo3::exceptions::PyValueError::new_err)?);
+        v.borrow_mut().insert(key, gs.clone());
+        Ok(gs)
+    })
+}
+
+/// graph_vocab(spec, graph_vocabulary) -> {"term": [token ...], "rel": [name ...], "max_parts", "max_arity"}: the CONSTANT vocabularies of the description's graph
+/// (UNK = id 0 is implicit: an id is the index + 1).
+#[pyfunction]
+fn graph_vocab<'py>(py: Python<'py>, spec: &str, graph_vocabulary: &str) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+    let gs = graph_spec_for(spec, graph_vocabulary)?;
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("term", gs.term_vocab().to_vec())?;
+    d.set_item("rel", gs.rel_vocab().to_vec())?;
+    d.set_item("max_parts", gs.max_parts())?;
+    d.set_item("max_arity", cs_decision::graph::MAX_ARITY)?;
+    Ok(d)
+}
+
+/// graph(variant, spec, graph_vocabulary, fen=None, moves=[]) -> dict: the typed fact graph of the position after `moves`, built in Rust: {"terms": [token], "term_ids",
+/// "facts": [[relation, kind, present]], "rel_ids" (per fact), "moves": [name] (the kernel's order), "edges": {"arg0": [[src], [dst]], ... "part<i>", "removes", "adds",
+/// "binds"}, "n_static_terms", "n_static_facts", "move_rel_id", "claim_rel_id"} (forward edge types; the reverses are the swapped lists).
+#[pyfunction]
+#[pyo3(signature = (variant, spec, graph_vocabulary, fen=None, moves=vec![]))]
+fn graph<'py>(py: Python<'py>, variant: &str, spec: &str, graph_vocabulary: &str, fen: Option<&str>, moves: Vec<String>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    let gs = graph_spec_for(spec, graph_vocabulary)?;
+    let gr = gs.graph(&g, &s).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let d = pyo3::types::PyDict::new(py);
+    let rels = gs.rel_vocab();
+    d.set_item("terms", &gr.terms)?;
+    d.set_item("term_ids", &gr.term_ids)?;
+    d.set_item("facts", gr.facts.iter().map(|f| (rels[f[0] as usize - 1].clone(), f[1], f[2])).collect::<Vec<_>>())?;
+    d.set_item("rel_ids", gr.facts.iter().map(|f| f[0]).collect::<Vec<_>>())?;
+    d.set_item("moves", &gr.moves)?;
+    let e = pyo3::types::PyDict::new(py);
+    for (n, a, b) in &gr.edges { e.set_item(n, vec![a.clone(), b.clone()])?; }
+    d.set_item("edges", e)?;
+    d.set_item("n_static_terms", gr.n_static_terms)?;
+    d.set_item("n_static_facts", gr.n_static_facts)?;
+    d.set_item("move_rel_id", gs.move_rel_id())?;
+    d.set_item("claim_rel_id", gs.claim_rel_id())?;
+    Ok(d)
+}
+
+/// GraphModel(weights_path, specs, graph_vocabulary): THE GRAPH PRIOR ENTIRELY IN RUST (plan 78.21): the exported graph net over the typed fact graph of each variant's
+/// description. `rank(variant, moves, fen=None)` -> [(move, score)] best first (ties by name); `scores` -> (names in the kernel's move order, scores); `timing()` ->
+/// mean milliseconds a position: facts, graph building, forward pass, total (replaying the moves included).
+#[pyclass(unsendable)]
+struct GraphModel {
+    priors: HashMap<String, cs_decision::GraphPrior>,
+    total: std::cell::Cell<f64>,
+    positions: std::cell::Cell<u64>,
+}
+
+#[pymethods]
+impl GraphModel {
+    #[new]
+    fn new(weights_path: &str, specs: HashMap<String, String>, graph_vocabulary: &str) -> PyResult<GraphModel> {
+        let net = std::rc::Rc::new(cs_decision::graph_net::GraphNet::load(weights_path).map_err(pyo3::exceptions::PyValueError::new_err)?);
+        let mut priors = HashMap::new();
+        for (variant, text) in &specs {
+            let gs = graph_spec_for(text, graph_vocabulary)?;
+            let p = cs_decision::GraphPrior::new(gs, net.clone()).map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("{variant}: {e}")))?;
+            priors.insert(variant.clone(), p);
+        }
+        Ok(GraphModel { priors, total: std::cell::Cell::new(0.0), positions: std::cell::Cell::new(0) })
+    }
+
+    #[pyo3(signature = (variant, moves=vec![], fen=None))]
+    fn scores(&self, variant: &str, moves: Vec<String>, fen: Option<&str>) -> PyResult<(Vec<String>, Vec<f32>)> {
+        let t0 = std::time::Instant::now();
+        let p = self.priors.get(variant).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("no description for variant {variant}")))?;
+        let (g, s) = state_of(variant, fen, 518, &moves)?;
+        if g.moves(&s).is_empty() { return Ok((vec![], vec![])); }
+        let r = p.scores(&g, &s).map_err(pyo3::exceptions::PyValueError::new_err)?;
+        self.total.set(self.total.get() + t0.elapsed().as_secs_f64());
+        self.positions.set(self.positions.get() + 1);
+        Ok(r)
+    }
+
+    #[pyo3(signature = (variant, moves=vec![], fen=None))]
+    fn rank(&self, variant: &str, moves: Vec<String>, fen: Option<&str>) -> PyResult<Vec<(String, f32)>> {
+        let (names, scores) = self.scores(variant, moves, fen)?;
+        let mut out: Vec<(String, f32)> = names.into_iter().zip(scores).collect();
+        out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
+        Ok(out)
+    }
+
+    fn timing(&self) -> HashMap<String, f64> {
+        let n = self.positions.get().max(1) as f64;
+        let (mut f, mut g, mut w) = (0.0, 0.0, 0.0);
+        for p in self.priors.values() { let t = p.timing(); f += t.1; g += t.2; w += t.3; }
+        HashMap::from([("positions".to_string(), self.positions.get() as f64), ("ms_facts".to_string(), 1000.0 * f / n), ("ms_graph".to_string(), 1000.0 * g / n),
+                       ("ms_forward".to_string(), 1000.0 * w / n), ("ms_total".to_string(), 1000.0 * self.total.get() / n)])
+    }
+}
+
+
 #[pymodule]
 fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(variants, m)?)?;
@@ -544,6 +654,9 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compose, m)?)?;
     m.add_function(wrap_pyfunction!(check_lemma, m)?)?;
     m.add_class::<CardSet>()?;
+    m.add_class::<GraphModel>()?;
+    m.add_function(wrap_pyfunction!(graph, m)?)?;
+    m.add_function(wrap_pyfunction!(graph_vocab, m)?)?;
     m.add_function(wrap_pyfunction!(state, m)?)?;
     m.add_function(wrap_pyfunction!(watch, m)?)?;
     m.add_function(wrap_pyfunction!(census, m)?)?;

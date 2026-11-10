@@ -13,6 +13,10 @@ and constants are TOKENS, nothing here knows a game.
   tokens      `Vocab` (built from the training corpus, saved with the model; an unknown token maps to UNK = id 0). `graph_of(..., vocabs=None)` keeps the strings in
               `data.tokens`; with `vocabs` it also fills the integer features.
 
+PLAN 78.21: the graph of a position is BUILT IN RUST (`CE.graph`, generic: terms typed by sort, product sorts fused into objects with `part<i>` edges, static facts, constant
+vocabularies) and `from_engine(d, values, lost)` turns its dict into the HeteroData the torch net trains on, so there is ONE graph builder. `graph_of` (strings in, no engine)
+stays for the abstraction hash's older callers and the tests of the toy graph. The fact feature's kind is 0 state, 1 derived, 2 static.
+
 `graph_hash(facts, vocabulary)` is the abstraction key of plan 78.19 reading (ii): a Weisfeiler-Lehman hash of the term/fact graph, invariant to the order of the facts.
 """
 from __future__ import annotations
@@ -54,9 +58,10 @@ class Vocab:
         return cls(tokens)
 
 
-def edge_types(max_arity: int = MAX_ARITY) -> list:
-    """Every edge type of the graph, forward then reverse."""
-    fwd = [("fact", f"arg{i}", "term") for i in range(max_arity)] + [("move", "removes", "fact"), ("move", "adds", "fact"), ("claim", "binds", "fact")]
+def edge_types(max_arity: int = MAX_ARITY, max_parts: int = 0) -> list:
+    """Every edge type of the graph, forward then reverse (`max_parts` > 0: the (term, part<i>, term) edges of fused objects, after the argument edges)."""
+    fwd = ([("fact", f"arg{i}", "term") for i in range(max_arity)] + [("term", f"part{i}", "term") for i in range(max_parts)]
+           + [("move", "removes", "fact"), ("move", "adds", "fact"), ("claim", "binds", "fact")])
     return fwd + [(d, f"rev_{r}", s) for s, r, d in fwd]
 
 
@@ -131,6 +136,37 @@ def graph_of(facts: list, moves: list, vocabulary: dict, bindings: "list | None"
     put(("claim", "binds", "fact"), claim_edges)
     d.n_present = n_pos
     return encode(d, vocabs) if vocabs else d
+
+
+def from_engine(d: dict, values: "dict | None" = None, lost: "dict | None" = None) -> HeteroData:
+    """The HeteroData of an engine graph (`CE.graph`'s dict: integer features already filled from the engine's constant vocabularies). `values` {move name: value} fills
+    `y` / `opt` / `has_target` as `graph_of` does (targets only when EVERY move has a value), `lost` {move name: units lost} fills `lost` / `has_lost`. Every forward edge type
+    is present (empty ones included) with its reverse. The strings stay in `data.tokens`."""
+    nm = len(d["moves"])
+    data = HeteroData()
+    data.tokens = {"term": list(d["terms"]), "fact": [f[0] for f in d["facts"]], "move": [MOVE] * nm, "claim": []}
+    data["term"].x = torch.tensor(d["term_ids"], dtype=torch.long).reshape(-1, 1)
+    data["fact"].x = torch.tensor([[r, f[1], f[2]] for r, f in zip(d["rel_ids"], d["facts"])], dtype=torch.long).reshape(len(d["facts"]), 3)
+    data["move"].x = torch.full((nm, 1), d["move_rel_id"], dtype=torch.long)
+    data["claim"].x = torch.zeros((0, 1), dtype=torch.long)
+    data["claim"].prob = torch.zeros((0, 1), dtype=torch.float)
+    vals = [None if values is None else values.get(m) for m in d["moves"]]
+    has = bool(nm) and all(v is not None for v in vals)
+    top = max(vals) if has else None
+    data["move"].y = torch.tensor([float(v) if has else 0.0 for v in vals], dtype=torch.float)
+    data["move"].opt = torch.tensor([1.0 if has and v == top else 0.0 for v in vals], dtype=torch.float)
+    data["move"].has_target = torch.full((nm,), has, dtype=torch.bool)
+    ls = [None if lost is None else lost.get(m) for m in d["moves"]]
+    data["move"].lost = torch.tensor([float(v) if v is not None else 0.0 for v in ls], dtype=torch.float)
+    data["move"].has_lost = torch.full((nm,), bool(nm) and all(v is not None for v in ls), dtype=torch.bool)
+    ends = {"removes": ("move", "fact"), "adds": ("move", "fact"), "binds": ("claim", "fact")}
+    for name, (src, dst) in d["edges"].items():
+        s, t = ends.get(name, ("fact", "term") if name.startswith("arg") else ("term", "term"))
+        ei = torch.tensor([src, dst], dtype=torch.long).reshape(2, -1)
+        data[(s, name, t)].edge_index = ei
+        data[(t, f"rev_{name}", s)].edge_index = ei.flip(0)
+    data.n_present = sum(1 for f in d["facts"] if f[2] == 1)
+    return data
 
 
 def encode(d: HeteroData, vocabs: dict) -> HeteroData:

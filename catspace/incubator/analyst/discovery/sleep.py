@@ -196,10 +196,10 @@ class EstimateSource:
 
 
 def source_of(name: str, seconds: float = 0.2, seed: int = 1, store: "str | None" = None):
-    """`gnn` or `gnn:<model path>`: the GraphSource (graph_prior.py; inference kit; default model paths.derived("graph_prior_chess.pt")). `human` or `human:<path>`: the HumanSource over the human-games index (human_index.py; training only; default path human_index.default_path("chess")). Else an EstimateSource from a name: `mcts` (uniform playouts scored at the game's end: the plain search) or `mcts:<rollout>/<leaf>` (plan 78.18); `store` (a snapshot
+    """`gnn` or `gnn:<model path>`: the GraphSource (graph_prior.py; inference kit, all in Rust; default weights file paths.derived("graph_prior_chess.json")). `human` or `human:<path>`: the HumanSource over the human-games index (human_index.py; training only; default path human_index.default_path("chess")). Else an EstimateSource from a name: `mcts` (uniform playouts scored at the game's end: the plain search) or `mcts:<rollout>/<leaf>` (plan 78.18); `store` (a snapshot
     path) gives the balance leaf its judge and the lemma prior its lemmas."""
     if name == "gnn" or name.startswith("gnn:"):
-        # plan 78.20: the graph net over the typed fact graph (a PRIOR of the inference kit); default model paths.derived("graph_prior_chess.pt")
+        # plan 78.20: the graph net over the typed fact graph (a PRIOR of the inference kit); default weights file paths.derived("graph_prior_chess.json")
         from catspace.incubator.analyst.discovery import graph_prior as GP
         return GP.GraphSource(name.partition(":")[2] or GP.default_path("chess"))
     if name == "human" or name.startswith("human:"):

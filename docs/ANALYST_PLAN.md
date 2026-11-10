@@ -4713,3 +4713,46 @@ READING: the net learned from 2139 cards of 24 games and, with no search at all,
   layer again (one facts call per child): the event stream (78.19 C) or a kernel delta (`Game::changed`) cuts it to one call. DONE as the cheap test; its two uses now: (1) `--source gnn` is a
   rank source for sleep's tie-breaking and surprises like any other, (2) a per-expansion PUCT prior in the tree (78.19 D) once the per-position cost is a millisecond. Not done: claim nodes
   (lemma bindings need a bindings API out of cs_memory), the margin term on values, ONNX export for the Rust tree (onnxruntime is not in the venv; onnx is).
+
+#### 78.21 THE CONCEPT VOCABULARY AND THE GRAPH PRIOR IN RUST -- one test (2026-11-09; Kaveh: "the constants are the constants"; a dedicated chess wrapper is fine "so that vocabulary stays constant
+and truly interpretable"; "the richer vocabulary will help. Take it to Rust and then test it in Rust. Let's do one test only."; and "there's a lot of this built from before, so be sure to take a look")
+WHAT THE SURVEY OF PRIOR WORK CHANGED: the ontology shelf already names the sorts and the `square` product sort [file, rank]; the GDL Program already carries sorts and signatures; the S0 analyst
+  (relations.py / structure.py / geometry.py / concepts.py) already defines the human concepts and serves as an oracle; rust/analyst_core/src/threat.rs `Policy` is the house way to carry a small net
+  into Rust (JSON weights, hand-written forward); earlier graph nets measured that attack and move-mutation edges pay and that concept tokens did not on 5-man endgames. So: sorts and objects are read
+  from the description (not learned from the corpus), concepts are RULES (data), weights travel as JSON, no ONNX runtime.
+THE CONCEPTS (rules/concepts/chess.gdl, an additive delta composed onto each variant's description; the only chess-specific piece, and it is data): sort `diagonal` (26 constants named by their end
+  squares) with `diagonal_of file rank diagonal`; `defended`, `hanging`, `pinned`, `fork`, `open_file`, `half_open_file`, `passed_pawn`, `isolated_pawn`, `doubled_pawn`, `absent side kind` ("there are
+  no bishops on the board" as a fact row), `bishop_pair`. Not built: battery, xray, discovered attack, skewer. rules/learned/chess/graph_vocabulary.json names what a graph reader sees (state / derived
+  / static relations, `objects` {square: [file, rank]}, `scales` [clock], the `concepts` delta, the variants); game_store.graph_vocabulary / graph_spec_texts read it. The lemma vocabulary
+  (vocabulary.json) is unchanged: the lemma language does not see the concepts yet.
+THE GRAPH v2 (rust/engine/decision/src/graph.rs, generic: it names no game object and is tested on a made-up game): `GraphSpec::new(description, graph vocabulary)`, `.graph(g, s)`. Term nodes are
+  TYPED BY SORT (`square:e4`, `kind:bishop`, `diagonal:a1h8`) and ALWAYS PRESENT (every member of every sort in use, except the `scales` sorts); product sorts are fused from consecutive signature
+  slots into one object node with `part<i>` edges to its components; fact nodes for state / derived / static rows (kind 0 / 1 / 2; statics built once and shared); move nodes with removes / adds
+  edges; the claim type stays empty. The vocabularies are constant for a description, saved in the weights file and validated at load.
+THE NET IN RUST (graph_net.rs, graph_prior.rs): `GraphNet::load / validate / forward` is the torch GraphNet's forward in plain loops over row-major f32 from a JSON weights file;
+  `GraphPrior` implements the cs_planning `Prior` trait (softmax x n; uniform on error) with timing counters. cs_engine: `graph`, `graph_vocab`, `GraphModel(weights, specs, graph vocabulary)` with
+  `rank / scores / timing`. Training stays in Python (graph_prior.py: graphs built by `CE.graph`, so training and inference read the same builder; `export` writes the weights JSON; the `gnn` rank
+  source now runs entirely in Rust, torch is not imported to rank). Default weights paths.derived("graph_prior_<game>.json") (local).
+OBS concept oracle (tests/test_plan78_21_concepts.py, 20 tests): each concept equals an independent python-chess oracle on 1189 positions of 30 seeded random games plus hand-made positions.
+OBS facts_audit chess with the composed description and the graph vocabulary: positions 610, unequal 0, 0.525 ms a position on demand (1.73 ms full), cone 47 relations / 129 clauses of 119 / 523
+  (plain chess.gdl reading `attack` only: 0.382 ms, cone 18 / 73 of 99 / 368).
+OBS kernel certificates re-run after the Cargo.lock change: 0 disagreements (chess 6431 positions, kingofthehill 4014, 3check 1833).
+OBS gnn corpus: cards 3714, dev 2139, held 1575, skipped 0, terms 228, relations 23, graph seconds 6.7 (graph_prior_chess_v2_train.out; same cards, split, epochs and seed as 78.20).
+OBS gnn baselines held (1575 cards, 1535 contested): uniform 0.4213, fewest lost 0.6810.
+OBS gnn epoch 30 loss 2.7946 held top1 0.6711 (contested 0.6625) elapsed 280s (78.20 at epoch 30: loss 2.9604, held top1 0.4876).
+OBS gnn parity: max abs difference torch vs Rust scores 2.86e-06 over 50 held positions (1586 moves).
+OBS timing (GraphModel.timing over 50 positions, the smoke model): ms_total 5.939, ms_facts 0.692, ms_graph 0.263, ms_forward 4.974.
+THE ONE TEST, rank agreement with Stockfish (300 ms) on the same 60 positions of the d1 log as 78.20 (rank_bench_chess_d1_gnn_rust_agree.out):
+OBS rank agreement chess gnn: 60 positions, top1 0.183, top3 0.367, mean rank 9.50 (median 7), 0.006 s a position (reference 300 ms)
+  source                      top1   top3   mean rank  median   s a position
+  gnn 78.20 (Python path)     0.133  0.383  10.75       8       0.022
+  gnn 78.21 (Rust path)       0.183  0.367   9.50       7       0.006
+  uniform MCTS                0.100  0.217  11.72      10       0.200
+  gain+balance MCTS           0.067  0.233  13.02      11       0.200
+READING: (1) on the judge's own labels the net went from 0.4876 to 0.6711 held top1, next to the fewest-lost oracle's 0.6810: with sorts, objects, statics and concepts in the graph it has learned
+  about what the depth-5 material judge knows. (2) Agreement with Stockfish moved little (top1 and mean rank better, top3 a hair worse; on 60 positions this is inside the noise): the limit is now
+  the LABELS, not the representation. A prior trained to the material judge agrees with Stockfish as far as material at depth 5 does. (3) The Rust path is exact against torch and costs 6 ms a
+  position, most of it the forward pass in plain loops; the facts are 0.7 ms. (4) One test, so no attribution: the change from 78.20 is sort-typed always-present terms, object nodes, static
+  relations and the concepts together. Next levers, in order of expected yield: better labels (a teacher or the human games label the cards in the training kit; the net stays an inference-kit
+  prior), move-mutation edges (what a move newly attacks; the edges that paid in the earlier graph nets), the forward pass (cache the static layer; a tuned matrix kernel), then the PUCT prior
+  at expansions (78.19 D) and the claim nodes. DONE as specified: built, ported, one test.

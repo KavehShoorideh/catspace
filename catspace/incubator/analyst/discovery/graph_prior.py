@@ -1,15 +1,21 @@
-"""PLAN 78.20 THE GRAPH PRIOR: a small relational graph network over the typed fact graph (fact_graph.py) that SCORES THE LEGAL MOVES, trained in the training kit on the engine's
-exact cards, used in the inference kit as a rank source (`GraphSource`: it ranks, it claims nothing). Generic: tokens, not a game.
+"""PLAN 78.20 / 78.21 THE GRAPH PRIOR: a small relational graph network over the typed fact graph that SCORES THE LEGAL MOVES. TRAINING (torch) is the training kit; INFERENCE is
+entirely in Rust (rust/engine/decision: graph.rs builds the graph, graph_net.rs runs the forward pass from the exported weights file, graph_prior.rs is the prior;
+`CE.GraphModel` is its binding), so there is ONE graph builder (the engine's) and the rank source `gnn` needs no torch. Generic: tokens, not a game.
 
-  net      GraphNet: token embeddings (term, relation + kind + present), `layers` HeteroConv(SAGEConv per edge type) layers with a residual, an MLP on the move nodes -> one score a move.
+  net      GraphNet: token embeddings (term; relation + kind (state / derived / static) + present), `layers` HeteroConv(SAGEConv per edge type) layers with a residual, an MLP on the
+           move nodes -> one score a move. Edge types: arg<i>, part<i> (the fused objects' components), removes, adds, binds, and the reverses.
   loss     cross-entropy of the softmax over a position's moves against the uniform distribution over the OPTIMAL set (value == the card's best).
-  train    `train(cards_path, out_path, epochs=, seed=, dev_fn=, vocabulary=)`: dev groups train, held groups evaluate; prints `OBS gnn epoch ...` and the baselines on the held cards
-           (uniform random: the mean of |optimal| / |moves|; fewest units lost, when the cards carry `lost`).
-  source   `GraphSource(model_path)`: `rank(variant, moves) -> [(move, score)]` best first; the position's facts and each move's removed / added rows (the child's facts in the
-           PARENT's perspective, restricted to the vocabulary's `delta` relations) come from the engine's fact layer. `source = "gnn"`, `training_only = False`.
+  train    `train(cards_path, out_path, log=, epochs=, seed=, dev_fn=, vocabulary=, specs=)`: each training graph is built by `CE.graph` from the card's POSITION (the card's id
+           "<run>:<game>:<ply>" joins the wake `log` to the moves; the card gives each move's value and units lost by name); the graph vocabulary and description come from
+           game_store.graph_vocabulary / graph_spec_texts (parameters override); vocabularies are the engine's constant ones (`CE.graph_vocab`). Dev groups train, held groups
+           evaluate; prints `OBS gnn epoch ...`, the baselines on the held cards, and `OBS gnn parity` (max abs difference between torch and Rust scores). Writes the torch
+           checkpoint AND the Rust weights file (`export`).
+  weights  the Rust weights file is JSON (analyst_core's threat Policy convention): flat row-major float lists, the vocabularies, one conv block per layer keyed
+           "<src>__<relation>__<dst>"; the Rust side refuses a file whose vocabularies are not the description's.
+  source   `GraphSource(weights_path)`: `rank(variant, moves) -> [(move, score)]` best first, entirely in Rust. `source = "gnn"`, `training_only = False`.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.graph_prior build-cards chess --log <wake.jsonl> --depth 5 --stride 1 --max-cards 4000 --judge "material (mined)" --out <cards>
-  .venv/bin/python -m catspace.incubator.analyst.discovery.graph_prior train --cards <cards> --out <model.pt> --epochs 30 --seed 1
+  .venv/bin/python -m catspace.incubator.analyst.discovery.graph_prior train --cards <cards> --log <wake.jsonl> --out <model.pt> --epochs 30 --seed 1
 """
 from __future__ import annotations
 
@@ -18,17 +24,22 @@ import json
 import sys
 import time
 
-import torch
-from torch import nn
-from torch_geometric.data import HeteroData
-from torch_geometric.loader import DataLoader
-from torch_geometric.nn import HeteroConv, SAGEConv
-from torch_geometric.utils import softmax as seg_softmax
-
 import cs_engine as CE
 
-from catspace.incubator.analyst.discovery import fact_graph as FG
 from catspace.io import paths
+
+try:                                   # the training kit; the inference kit (GraphSource) runs without it
+    import torch
+    from torch import nn
+    from torch_geometric.data import HeteroData
+    from torch_geometric.loader import DataLoader
+    from torch_geometric.nn import HeteroConv, SAGEConv
+    from torch_geometric.utils import softmax as seg_softmax
+
+    from catspace.incubator.analyst.discovery import fact_graph as FG
+except ImportError:                    # pragma: no cover
+    torch = None
+    nn = type("nn", (), {"Module": object})
 
 DIM, LAYERS = 64, 3
 
@@ -36,14 +47,14 @@ DIM, LAYERS = 64, 3
 # ---------------------------------------------------------------------------------------------------------------- the net
 
 class GraphNet(nn.Module):
-    """Scores every `move` node of a (batched) HeteroData from `fact_graph.graph_of`."""
+    """Scores every `move` node of a (batched) HeteroData from `fact_graph.from_engine` (or `graph_of`)."""
 
-    def __init__(self, n_term: int, n_rel: int, dim: int = DIM, layers: int = LAYERS, max_arity: int = FG.MAX_ARITY):
+    def __init__(self, n_term: int, n_rel: int, dim: int = DIM, layers: int = LAYERS, max_arity: int = 6, max_parts: int = 0):
         super().__init__()
         self.term, self.rel = nn.Embedding(n_term, dim), nn.Embedding(n_rel, dim)
-        self.kind, self.present = nn.Embedding(2, dim), nn.Embedding(2, dim)
+        self.kind, self.present = nn.Embedding(3, dim), nn.Embedding(2, dim)
         self.prob = nn.Linear(1, dim)
-        ets = FG.edge_types(max_arity)
+        ets = FG.edge_types(max_arity, max_parts)
         self.convs = nn.ModuleList([HeteroConv({et: SAGEConv(dim, dim) for et in ets}, aggr="sum") for _ in range(layers)])
         self.norms = nn.ModuleList([nn.ModuleDict({t: nn.LayerNorm(dim) for t in ("term", "fact", "move", "claim")}) for _ in range(layers)])
         self.head = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, 1))
@@ -60,27 +71,31 @@ class GraphNet(nn.Module):
 
 # ---------------------------------------------------------------------------------------------------------------- the corpus
 
-def graphs_of_cards(cards, vocabulary: dict, dev_fn, max_arity: int = FG.MAX_ARITY) -> tuple:
-    """-> (dev graphs, held graphs) with token strings (no ids yet), one per card with at least one move; `dev_fn(group) -> bool`."""
-    dev, held = [], []
+def graphs_of_cards(cards, items: dict, spec: str, vocabulary_json: str, dev_fn) -> tuple:
+    """-> (dev graphs, held graphs, history, skipped): one engine-built graph per card whose id is in `items` ({id: (variant, None, moves, id, group)}, `corpus_items`) and whose
+    legal moves ALL carry a value; the move values / units lost come from the card by move name. `history` {id: (variant, moves)} lets a graph be rebuilt or scored in Rust;
+    `skipped` counts the cards left out. `dev_fn(group) -> bool`."""
+    dev, held, history = [], [], {}
+    skipped = {"no_moves": 0, "unknown_id": 0, "partial": 0}
     for i in range(len(cards)):
         c = json.loads(cards.card(i))
         if not c["moves"]:
+            skipped["no_moves"] += 1
             continue
-        g = FG.graph_of(c["facts"], c["moves"], vocabulary, max_arity=max_arity)
+        it = items.get(c["id"])
+        if it is None:
+            skipped["unknown_id"] += 1
+            continue
+        d = CE.graph(it[0], spec, vocabulary_json, None, it[2])
+        g = FG.from_engine(d, {m["name"]: m["value"] for m in c["moves"]}, {m["name"]: m.get("lost", 0) for m in c["moves"]})
+        if not bool(g["move"].has_target.all()):
+            skipped["partial"] += 1
+            continue
+        del g.tokens
         g.cid = c["id"]
+        history[c["id"]] = (it[0], it[2])
         (dev if dev_fn(c["group"]) else held).append(g)
-    return dev, held
-
-
-def build_vocabs(graphs: list) -> dict:
-    tc, rc = {}, {}
-    for g in graphs:
-        for t in g.tokens["term"]:
-            tc[t] = tc.get(t, 0) + 1
-        for r in g.tokens["fact"]:
-            rc[r] = rc.get(r, 0) + 1
-    return {"term": FG.Vocab.build(tc), "rel": FG.Vocab.build(rc, always=(FG.MOVE, FG.CLAIM))}
+    return dev, held, history, skipped
 
 
 def baselines(graphs: list) -> dict:
@@ -136,28 +151,33 @@ def top1(net: GraphNet, graphs: list, batch_size: int = 128) -> dict:
     return {"top1": hit / max(len(graphs), 1), "contested_top1": chit / nc if nc else float("nan")}
 
 
-def train(cards_path: str, out_path: str, *, epochs: int = 30, seed: int = 1, dev_fn=None, vocabulary: "dict | None" = None, game: str = "chess", dim: int = DIM,
-          layers: int = LAYERS, lr: float = 2e-3, batch_size: int = 32, say=print) -> dict:
-    """Train on the dev cards of a saved CardSet, evaluate on the held; save {state, vocabs, config, vocabulary, game} to `out_path` (torch.save) -> the report."""
+def train(cards_path: str, out_path: str, *, log: str, epochs: int = 30, seed: int = 1, dev_fn=None, vocabulary: "dict | None" = None, specs: "dict | None" = None,
+          game: str = "chess", variant: "str | None" = None, dim: int = DIM, layers: int = LAYERS, lr: float = 2e-3, batch_size: int = 32, weights_path: "str | None" = None,
+          parity_n: int = 50, say=print) -> dict:
+    """Train on the dev cards of a saved CardSet (built from `log`'s positions), evaluate on the held; save the torch checkpoint to `out_path` and the Rust weights file to
+    `weights_path` (default paths.derived("graph_prior_<game>.json")) -> the report."""
     from catspace.incubator.analyst.discovery import game_store as GS
     from catspace.incubator.analyst.discovery import sleep as SL
     torch.manual_seed(seed)
     torch.set_num_threads(max(1, min(8, torch.get_num_threads())))
-    vocabulary = vocabulary if vocabulary is not None else GS.vocabulary(game)
+    vocabulary = vocabulary if vocabulary is not None else GS.graph_vocabulary(game)
+    specs = specs if specs is not None else GS.graph_spec_texts(game)
+    variant = variant or game
+    vj, spec = json.dumps(vocabulary), specs[variant]
     dev_fn = dev_fn or (lambda g: SL.is_dev(g, SL.Settings(seed=seed)))
     t0 = time.perf_counter()
+    voc = CE.graph_vocab(spec, vj)
+    vocabs = {"term": FG.Vocab(voc["term"]), "rel": FG.Vocab(voc["rel"])}
+    items = {it[3]: it for it in corpus_items(log, variant, 1, 1 << 40)}
     cards = CE.CardSet.load(cards_path)
-    dev, held = graphs_of_cards(cards, vocabulary, dev_fn)
-    vocabs = build_vocabs(dev)
-    for g in dev + held:
-        FG.encode(g, vocabs)
-        del g.tokens
-    say(f"OBS gnn corpus: cards {len(cards)}, dev {len(dev)}, held {len(held)}, terms {len(vocabs['term'])}, relations {len(vocabs['rel'])}, graph seconds {time.perf_counter() - t0:.1f}")
+    dev, held, history, skipped = graphs_of_cards(cards, items, spec, vj, dev_fn)
+    say(f"OBS gnn corpus: cards {len(cards)}, dev {len(dev)}, held {len(held)}, skipped {sum(skipped.values())} {skipped}, terms {len(vocabs['term'])}, relations {len(vocabs['rel'])}, "
+        f"graph seconds {time.perf_counter() - t0:.1f}")
     base = baselines(held)
     say(f"OBS gnn baselines held ({base['n']} cards, {base['contested']} contested): uniform {base['uniform']:.4f}, fewest lost "
         f"{'-' if base['fewest_lost'] is None else format(base['fewest_lost'], '.4f')}; contested only: uniform {base['contested_uniform']:.4f}, fewest lost "
         f"{'-' if base['contested_fewest_lost'] is None else format(base['contested_fewest_lost'], '.4f')}")
-    net = GraphNet(len(vocabs["term"]), len(vocabs["rel"]), dim, layers)
+    net = GraphNet(len(vocabs["term"]), len(vocabs["rel"]), dim, layers, voc["max_arity"], voc["max_parts"])
     opt = torch.optim.Adam(net.parameters(), lr=lr)
     gen = torch.Generator().manual_seed(seed)
     loader = DataLoader(dev, batch_size=batch_size, shuffle=True, generator=gen)
@@ -175,70 +195,89 @@ def train(cards_path: str, out_path: str, *, epochs: int = 30, seed: int = 1, de
         r = top1(net, held)
         hist.append({"epoch": ep, "loss": tot / max(n, 1), **r})
         say(f"OBS gnn epoch {ep} loss {tot / max(n, 1):.4f} held top1 {r['top1']:.4f} (contested {r['contested_top1']:.4f}) elapsed {time.perf_counter() - t1:.0f}s")
-    config = {"dim": dim, "layers": layers, "max_arity": FG.MAX_ARITY, "seed": seed, "epochs": epochs}
-    torch.save({"state": net.state_dict(), "vocabs": {k: v.to_json() for k, v in vocabs.items()}, "config": config, "vocabulary": vocabulary, "game": game}, out_path)
-    return {"history": hist, "baselines": base, "seconds": time.perf_counter() - t1, "out": out_path}
+    config = {"dim": dim, "layers": layers, "max_arity": voc["max_arity"], "max_parts": voc["max_parts"], "seed": seed, "epochs": epochs}
+    torch.save({"state": net.state_dict(), "vocabs": {k: v.to_json() for k, v in vocabs.items()}, "config": config, "vocabulary": vocabulary, "game": game, "variant": variant},
+               out_path)
+    weights_path = weights_path or default_path(game)
+    export(out_path, weights_path)
+    parity = parity_of(net, weights_path, {variant: spec}, vj, (held or dev)[:parity_n], history)
+    say(f"OBS gnn parity: max abs difference torch vs Rust scores {parity['max_abs_diff']:.2e} over {parity['n']} {'held' if held else 'dev'} positions ({parity['moves']} moves)")
+    return {"history": hist, "baselines": base, "seconds": time.perf_counter() - t1, "out": out_path, "weights": weights_path, "parity": parity, "skipped": skipped}
+
+
+@torch.no_grad() if torch is not None else (lambda f: f)
+def parity_of(net: "GraphNet", weights_path: str, specs: dict, vocabulary_json: str, graphs: list, history: dict) -> dict:
+    """The largest absolute difference between the torch net's scores on the training graphs and `CE.GraphModel`'s scores of the same positions (built and run in Rust)."""
+    net.eval()
+    model = CE.GraphModel(weights_path, specs, vocabulary_json)
+    worst, moves = 0.0, 0
+    for g in graphs:
+        variant, hist = history[g.cid]
+        names, rust = model.scores(variant, list(hist))
+        ts = net(g).tolist()
+        assert len(names) == len(ts), (g.cid, len(names), len(ts))
+        worst = max([worst] + [abs(a - b) for a, b in zip(ts, rust)])
+        moves += len(ts)
+    return {"max_abs_diff": worst, "n": len(graphs), "moves": moves, "timing": model.timing()}
+
+
+# ---------------------------------------------------------------------------------------------------------------- the Rust weights file
+
+def export(checkpoint_path: str, weights_path: str) -> str:
+    """Write the Rust weights file (JSON; flat row-major lists; a torch Linear weight is [out, in]) of a torch checkpoint saved by `train`."""
+    ck = torch.load(checkpoint_path, weights_only=False)
+    st, cfg = ck["state"], ck["config"]
+
+    def flat(t) -> list:
+        return [float(f"{v:.9g}") for v in t.detach().float().reshape(-1).tolist()]    # 9 significant digits round-trip a float32
+
+    conv, norm = [], []
+    for l in range(cfg["layers"]):
+        pre = f"convs.{l}.convs."
+        keys = sorted({k[len(pre):].split(".lin_")[0] for k in st if k.startswith(pre)})
+        # (this PyG names a block `<src___relation___dst>`; the file's key is `src__relation__dst`)
+        conv.append({k.strip("<>").replace("___", "__"): {"lin_l_w": flat(st[f"{pre}{k}.lin_l.weight"]), "lin_l_b": flat(st[f"{pre}{k}.lin_l.bias"]),
+                                                          "lin_r_w": flat(st[f"{pre}{k}.lin_r.weight"])} for k in keys})
+        norm.append({t: {"w": flat(st[f"norms.{l}.{t}.weight"]), "b": flat(st[f"norms.{l}.{t}.bias"])} for t in ("term", "fact", "move", "claim")})
+    out = {"format": "graph_net", "version": 1, "dim": cfg["dim"], "layers": cfg["layers"], "max_arity": cfg["max_arity"], "max_parts": cfg["max_parts"],
+           "game": ck.get("game"), "vocab": ck["vocabs"],
+           "emb": {"term": flat(st["term.weight"]), "rel": flat(st["rel.weight"]), "kind": flat(st["kind.weight"]), "present": flat(st["present.weight"]),
+                   "prob_w": flat(st["prob.weight"]), "prob_b": flat(st["prob.bias"])},
+           "conv": conv, "norm": norm,
+           "head": {"w0": flat(st["head.0.weight"]), "b0": flat(st["head.0.bias"]), "w1": flat(st["head.2.weight"]), "head_bias": flat(st["head.2.bias"])}}
+    with open(weights_path, "w") as f:
+        json.dump(out, f, separators=(",", ":"))
+    return weights_path
 
 
 # ---------------------------------------------------------------------------------------------------------------- the rank source
 
-def swap_perspective(rows: list) -> list:
-    """A child's fact rows (the CHILD mover's us / them) in the PARENT's perspective: us <-> them in every argument."""
-    sw = {"us": "them", "them": "us"}
-    return [[r[0]] + [sw.get(a, a) for a in r[1:]] for r in rows]
-
-
-def move_effects(variant: str, spec: str, vocab_json: str, vocabulary: dict, moves: list, parent: list, legal: list) -> list:
-    """-> [{name, removed, added}] for every legal move: the difference of the child's and the parent's facts over the vocabulary's `delta` relations, in the parent's perspective."""
-    delta = set(vocabulary.get("delta", []))
-    base = {FG.row_key(r) for r in parent if r[0] in delta}
-    out = []
-    for m in legal:
-        child = {FG.row_key(r) for r in swap_perspective(CE.facts(variant, spec, vocab_json, None, list(moves) + [m], True)) if r[0] in delta}
-        out.append({"name": m, "removed": [list(r) for r in sorted(base - child)], "added": [list(r) for r in sorted(child - base)]})
-    return out
-
-
 class GraphSource:
-    """A RANK SOURCE over the trained graph net: INFERENCE kit (it ranks from the rules' fact layer alone, no teacher, no search). `rank(variant, moves)` -> [(move, score)] best
-    first. `specs` {variant: description text} defaults to the game store's for the model's game. `ms` is the mean milliseconds a ranked position so far."""
+    """A RANK SOURCE over the trained graph net: INFERENCE kit, ENTIRELY IN RUST (`CE.GraphModel`: the typed fact graph and the forward pass; no torch, no teacher, no search).
+    `rank(variant, moves)` -> [(move, score)] best first. `specs` {variant: description text} and `vocabulary` (the graph vocabulary) default to the game store's for `game`.
+    `ms` is the mean milliseconds a ranked position so far; `timing()` the Rust model's means (facts, graph, forward, total)."""
     source = "gnn"
     training_only = False
 
-    def __init__(self, model_path: str, specs: "dict | None" = None):
+    def __init__(self, model_path: str, specs: "dict | None" = None, vocabulary: "dict | None" = None, game: str = "chess"):
         from catspace.incubator.analyst.discovery import game_store as GS
-        ck = torch.load(model_path, weights_only=False)
-        self.game, self.vocabulary, self.config = ck["game"], ck["vocabulary"], ck["config"]
-        self.vocabs = {k: FG.Vocab.from_json(v) for k, v in ck["vocabs"].items()}
-        self.net = GraphNet(len(self.vocabs["term"]), len(self.vocabs["rel"]), self.config["dim"], self.config["layers"], self.config["max_arity"])
-        self.net.load_state_dict(ck["state"])
-        self.net.eval()
-        self.specs = specs if specs is not None else GS.spec_texts(self.game)
-        self.vocab_json = json.dumps(self.vocabulary)
-        self.seconds, self.positions = 0.0, 0
+        if str(model_path).endswith(".pt"):
+            raise ValueError(f"{model_path}: a torch checkpoint; the rank source reads the Rust weights file (`export`, default {default_path(game)})")
+        self.game = game
+        self.vocabulary = vocabulary if vocabulary is not None else GS.graph_vocabulary(game)
+        self.specs = specs if specs is not None else GS.graph_spec_texts(game)
+        self.model = CE.GraphModel(model_path, self.specs, json.dumps(self.vocabulary))
+
+    def timing(self) -> dict:
+        return self.model.timing()
 
     @property
     def ms(self) -> float:
-        return 1000.0 * self.seconds / self.positions if self.positions else float("nan")
-
-    def graph(self, variant: str, moves: list) -> tuple:
-        """-> (graph, legal moves) of the position after `moves`."""
-        spec = self.specs[variant]
-        legal = sorted(CE.state(variant, None, list(moves))[2])
-        facts = CE.facts(variant, spec, self.vocab_json, None, list(moves), True)
-        effects = move_effects(variant, spec, self.vocab_json, self.vocabulary, moves, facts, legal)
-        return FG.graph_of(facts, effects, self.vocabulary, vocabs=self.vocabs, max_arity=self.config["max_arity"]), legal
+        t = self.model.timing()
+        return t["ms_total"] if t["positions"] else float("nan")
 
     def rank(self, variant: str, moves: list, cap: "int | None" = None) -> list:
-        t0 = time.perf_counter()
-        g, legal = self.graph(variant, moves)
-        if not legal:
-            return []
-        with torch.no_grad():
-            s = self.net(g).tolist()
-        self.seconds += time.perf_counter() - t0
-        self.positions += 1
-        out = sorted(zip(legal, s), key=lambda x: (-x[1], x[0]))
+        out = self.model.rank(variant, list(moves))
         return out[:cap] if cap else out
 
     def __call__(self, variant: str, moves: list) -> "str | None":
@@ -250,7 +289,7 @@ class GraphSource:
 
 
 def default_path(game: str = "chess") -> str:
-    return paths.derived(f"graph_prior_{game}.pt")
+    return paths.derived(f"graph_prior_{game}.json")
 
 
 # ---------------------------------------------------------------------------------------------------------------- the CLI
@@ -297,7 +336,9 @@ def main(argv: list) -> int:
     t = sub.add_parser("train")
     t.add_argument("--game", default="chess")
     t.add_argument("--cards", required=True)
+    t.add_argument("--log", required=True, help="the wake log the cards were built from (the ids join the cards to their positions)")
     t.add_argument("--out", default=None)
+    t.add_argument("--weights", default=None, help="the Rust weights file (default paths.derived(graph_prior_<game>.json))")
     t.add_argument("--epochs", type=int, default=30)
     t.add_argument("--seed", type=int, default=1)
     a = ap.parse_args(argv)
@@ -305,8 +346,8 @@ def main(argv: list) -> int:
         build_cards(a.game, a.log, depth=a.depth, stride=a.stride, max_cards=a.max_cards, judge=a.judge, variant=a.variant, threads=a.threads,
                     out=a.out or paths.derived(f"graph_cards_{a.game}.cards"))
     else:
-        r = train(a.cards, a.out or default_path(a.game), epochs=a.epochs, seed=a.seed, game=a.game)
-        print(f"OBS gnn trained: {r['seconds']:.0f} s, model {r['out']}")
+        r = train(a.cards, a.out or paths.derived(f"graph_prior_{a.game}.pt"), log=a.log, epochs=a.epochs, seed=a.seed, game=a.game, weights_path=a.weights)
+        print(f"OBS gnn trained: {r['seconds']:.0f} s, model {r['out']}, rust weights {r['weights']}")
     return 0
 
 

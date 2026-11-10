@@ -65,6 +65,25 @@ def spec_texts(game: str) -> dict:
     return out
 
 
+def graph_vocabulary(game: str) -> dict:
+    """The game's GRAPH VOCABULARY (plan 78.21; rules/learned/<game>/graph_vocabulary.json): what a graph reader sees -- state, derived and static relations, the
+    product sorts it fuses into objects, the numeric scales -- and the concepts delta that carries the human vocabulary."""
+    p = learned_dir(game) / "graph_vocabulary.json"
+    if not p.is_file():
+        raise FileNotFoundError(f"{p}: the game {game} has no graph vocabulary (rules/learned/<game>/graph_vocabulary.json)")
+    return json.loads(p.read_text())
+
+
+def graph_spec_texts(game: str) -> dict:
+    """{variant: description text} as `spec_texts`, each then composed with the graph vocabulary's `concepts` delta when it names one."""
+    texts = spec_texts(game)
+    concepts = graph_vocabulary(game).get("concepts")
+    if not concepts:
+        return texts
+    delta = (RULES / concepts).read_text()
+    return {variant: CE.compose(text, delta) for variant, text in texts.items()}
+
+
 # ---------------------------------------------------------------------------------------------------------------- lemma sources
 
 def lemma_dir(game: str) -> Path:

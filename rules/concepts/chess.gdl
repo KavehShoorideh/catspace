@@ -1,0 +1,106 @@
+;;; rules/concepts/chess.gdl -- THE HUMAN CHESS CONCEPT VOCABULARY as rules (plan 78.21): the words a player uses (defended, hanging, pinned, fork, open file,
+;;; passed pawn, ...), each an exact Datalog definition over the state and over chess.gdl's `attack`. A DELTA on rules/chess.gdl (cs_gdl::compose), ADDITIVE ONLY
+;;; (no retract). It changes NO rule of the game: it adds derived relations and static tables only; role, init, legal, next, terminal, goal are untouched.
+;;; Chess knowledge of the concepts lives in this file and nowhere in code; each definition is tested against an independent python-chess oracle
+;;; (tests/test_plan78_21_concepts.py). Squares are always the adjacent argument pair (file rank). ?side is white / black; "opponent" is its other side.
+;;; Attack is chess.gdl's: the geometry alone (a pinned unit attacks; a unit "attacks" a square of its own side's unit = defends it; no x-ray).
+;;;
+;;; GEOMETRY (static, position-independent)
+;;;   (diagonal_of ?f ?r ?d)     square (?f ?r) lies on the diagonal ?d. The 26 diagonals of length >= 2 are the constants of the sort `diagonal`, named by their
+;;;                              two END SQUARES, the end with the LOWER FILE first: rising ones a7b8 .. a1h8 .. g1h2 (a1h8 the long one), falling ones a2b1 .. a8h1 .. g8h7
+;;;                              (a8h1 the other long one). Written out as FACTS (124 of them; exact, loads in no time); a square is on one or two diagonals.
+;;;   (piece_kind ?k)            the six kinds (a table, so that "no unit of kind k" can be asked)
+;;;   (ahead ?side ?r1 ?r2)      rank ?r2 is further forward than ?r1 for ?side (white: higher, black: lower)
+;;;   (adjacent_file ?f1 ?f2)    the files next to each other;  (near_file ?f1 ?f2)  the same file or an adjacent one
+;;; POSITIONAL CONCEPTS (derived from the state)
+;;;   (defended ?s ?f ?r)        a unit of ?s on (?f ?r) is attacked by another unit of ?s (the shelf's `defended`: same meaning; any kind, the king included)
+;;;   (hanging ?s ?f ?r)         a unit of ?s on (?f ?r), not its king, is attacked by the opponent and is not defended (as relations.py `hanging`)
+;;;   (pinned ?s ?f ?r)          a unit of ?s on (?f ?r), not its king, is ABSOLUTELY pinned: on a line from its own king, nothing between, and behind it on that
+;;;                              line (nothing between) an opponent unit that slides along that line (python-chess is_pinned)
+;;;   (fork ?s ?f ?r)            the unit of ?s on (?f ?r) attacks two or more opponent units, each the opponent's KING or HANGING. Narrower than relations.py's
+;;;                              `forks` (which also counts a target worth more than the forker: needs piece values, which the rules do not use); every fork here is one there
+;;;   (open_file ?file)          no pawn of either side on the file
+;;;   (half_open_file ?s ?file)  no pawn of ?s on the file and at least one pawn of the opponent on it
+;;;   (passed_pawn ?s ?f ?r)     a pawn of ?s with no opponent pawn on its own or an adjacent file on a rank ahead of it (structure.py pawn_facts)
+;;;   (isolated_pawn ?s ?f ?r)   a pawn of ?s with no pawn of ?s on an adjacent file (structure.py)
+;;;   (doubled_pawn ?s ?f ?r)    a pawn of ?s with another pawn of ?s on its file (every pawn of the doubled pair; structure.py's doubled_pawns is the file as one fact)
+;;;   (absent ?s ?k)             ?s has no unit of kind ?k ("there are no bishops on the board" for both sides: absent white bishop, absent black bishop)
+;;;   (bishop_pair ?s)           ?s has a bishop on a dark square and a bishop on a light one (structure.py)
+;;; Negation is stratified: defended < hanging; pawn_file < open_file, half_open_file, ...; has_kind < absent.
+
+
+(signature diagonal_of file rank diagonal) (signature piece_kind kind) (signature ahead side rank rank)
+(signature adjacent_file file file) (signature near_file file file) (signature pawn_file side file)
+(signature defended side file rank) (signature hanging side file rank) (signature pinned side file rank)
+(signature fork_target side file rank file rank) (signature fork side file rank)
+(signature open_file file) (signature half_open_file side file) (signature blocked_pawn side file rank)
+(signature passed_pawn side file rank) (signature isolated_pawn side file rank) (signature doubled_pawn side file rank)
+(signature absent side kind) (signature bishop_pair side) (signature neighbour_pawn side file)
+
+(piece_kind king) (piece_kind queen) (piece_kind rook) (piece_kind bishop) (piece_kind knight) (piece_kind pawn)
+
+(<= (adjacent_file ?f1 ?f2) (file_succ ?f1 ?f2))
+(<= (adjacent_file ?f1 ?f2) (file_succ ?f2 ?f1))
+(<= (near_file ?f ?f) (file ?f))
+(<= (near_file ?f1 ?f2) (adjacent_file ?f1 ?f2))
+(<= (ahead white ?r1 ?r2) (rank_succ ?r1 ?r2))
+(<= (ahead white ?r1 ?r3) (ahead white ?r1 ?r2) (rank_succ ?r2 ?r3))
+(<= (ahead black ?r1 ?r2) (rank_succ ?r2 ?r1))
+(<= (ahead black ?r1 ?r3) (ahead black ?r1 ?r2) (rank_succ ?r3 ?r2))
+
+;;; defended, hanging
+(<= (defended ?s ?f ?r) (true (cell ?f ?r ?s ?k)) (attack ?s ?f1 ?r1 ?f ?r))
+(<= (hanging ?s ?f ?r) (true (cell ?f ?r ?s ?k)) (distinct ?k king) (opponent ?s ?o) (attacked ?o ?f ?r) (not (defended ?s ?f ?r)))
+
+;;; pinned: from the king along ?d to the unit (nothing between), on past it (nothing between) to an opponent unit that slides along ?d
+(<= (pinned ?s ?f ?r) (true (cell ?f ?r ?s ?k)) (distinct ?k king) (true (cell ?kf ?kr ?s king)) (slide ?d ?kf ?kr ?f ?r)
+    (slide ?d ?f ?r ?f2 ?r2) (true (cell ?f2 ?r2 ?o ?j)) (opponent ?s ?o) (line_of ?j ?d))
+
+;;; fork: two attacked opponent units that are the king or hanging
+(<= (fork_target ?s ?f ?r ?f2 ?r2) (attack ?s ?f ?r ?f2 ?r2) (opponent ?s ?o) (hanging ?o ?f2 ?r2))
+(<= (fork_target ?s ?f ?r ?f2 ?r2) (attack ?s ?f ?r ?f2 ?r2) (opponent ?s ?o) (true (cell ?f2 ?r2 ?o king)))
+(<= (fork ?s ?f ?r) (fork_target ?s ?f ?r ?f1 ?r1) (fork_target ?s ?f ?r ?f2 ?r2) (distinct ?f1 ?f2))
+(<= (fork ?s ?f ?r) (fork_target ?s ?f ?r ?f1 ?r1) (fork_target ?s ?f ?r ?f2 ?r2) (distinct ?r1 ?r2))
+
+;;; files and pawns
+(<= (pawn_file ?s ?f) (true (cell ?f ?r ?s pawn)))
+(<= (open_file ?f) (file ?f) (not (pawn_file white ?f)) (not (pawn_file black ?f)))
+(<= (half_open_file ?s ?f) (file ?f) (not (pawn_file ?s ?f)) (opponent ?s ?o) (pawn_file ?o ?f))
+(<= (blocked_pawn ?s ?f ?r) (true (cell ?f ?r ?s pawn)) (opponent ?s ?o) (true (cell ?f2 ?r2 ?o pawn)) (near_file ?f ?f2) (ahead ?s ?r ?r2))
+(<= (passed_pawn ?s ?f ?r) (true (cell ?f ?r ?s pawn)) (not (blocked_pawn ?s ?f ?r)))
+(<= (neighbour_pawn ?s ?f) (adjacent_file ?f ?f2) (pawn_file ?s ?f2))
+(<= (isolated_pawn ?s ?f ?r) (true (cell ?f ?r ?s pawn)) (not (neighbour_pawn ?s ?f)))
+(<= (doubled_pawn ?s ?f ?r) (true (cell ?f ?r ?s pawn)) (true (cell ?f ?r2 ?s pawn)) (distinct ?r ?r2))
+
+;;; the material read
+(<= (absent ?s ?k) (role ?s) (piece_kind ?k) (not (has_kind ?s ?k)))
+(<= (bishop_pair ?s) (true (cell ?f1 ?r1 ?s bishop)) (dark ?f1 ?r1) (true (cell ?f2 ?r2 ?s bishop)) (light ?f2 ?r2))
+
+;;; the 26 diagonals, named by their two end squares, the end with the LOWER FILE first (rising: a1h8 .. ; falling: a8h1 ..); every square with its diagonals
+(sort diagonal a7b8 a6c8 a5d8 a4e8 a3f8 a2g8 a1h8 b1h7 c1h6 d1h5 e1h4 f1h3 g1h2 a2b1 a3c1 a4d1 a5e1 a6f1 a7g1 a8h1 b8h2 c8h3 d8h4 e8h5 f8h6 g8h7)
+(diagonal_of a 7 a7b8) (diagonal_of b 8 a7b8)
+(diagonal_of a 6 a6c8) (diagonal_of b 7 a6c8) (diagonal_of c 8 a6c8)
+(diagonal_of a 5 a5d8) (diagonal_of b 6 a5d8) (diagonal_of c 7 a5d8) (diagonal_of d 8 a5d8)
+(diagonal_of a 4 a4e8) (diagonal_of b 5 a4e8) (diagonal_of c 6 a4e8) (diagonal_of d 7 a4e8) (diagonal_of e 8 a4e8)
+(diagonal_of a 3 a3f8) (diagonal_of b 4 a3f8) (diagonal_of c 5 a3f8) (diagonal_of d 6 a3f8) (diagonal_of e 7 a3f8) (diagonal_of f 8 a3f8)
+(diagonal_of a 2 a2g8) (diagonal_of b 3 a2g8) (diagonal_of c 4 a2g8) (diagonal_of d 5 a2g8) (diagonal_of e 6 a2g8) (diagonal_of f 7 a2g8) (diagonal_of g 8 a2g8)
+(diagonal_of a 1 a1h8) (diagonal_of b 2 a1h8) (diagonal_of c 3 a1h8) (diagonal_of d 4 a1h8) (diagonal_of e 5 a1h8) (diagonal_of f 6 a1h8) (diagonal_of g 7 a1h8) (diagonal_of h 8 a1h8)
+(diagonal_of b 1 b1h7) (diagonal_of c 2 b1h7) (diagonal_of d 3 b1h7) (diagonal_of e 4 b1h7) (diagonal_of f 5 b1h7) (diagonal_of g 6 b1h7) (diagonal_of h 7 b1h7)
+(diagonal_of c 1 c1h6) (diagonal_of d 2 c1h6) (diagonal_of e 3 c1h6) (diagonal_of f 4 c1h6) (diagonal_of g 5 c1h6) (diagonal_of h 6 c1h6)
+(diagonal_of d 1 d1h5) (diagonal_of e 2 d1h5) (diagonal_of f 3 d1h5) (diagonal_of g 4 d1h5) (diagonal_of h 5 d1h5)
+(diagonal_of e 1 e1h4) (diagonal_of f 2 e1h4) (diagonal_of g 3 e1h4) (diagonal_of h 4 e1h4)
+(diagonal_of f 1 f1h3) (diagonal_of g 2 f1h3) (diagonal_of h 3 f1h3)
+(diagonal_of g 1 g1h2) (diagonal_of h 2 g1h2)
+(diagonal_of a 2 a2b1) (diagonal_of b 1 a2b1)
+(diagonal_of a 3 a3c1) (diagonal_of b 2 a3c1) (diagonal_of c 1 a3c1)
+(diagonal_of a 4 a4d1) (diagonal_of b 3 a4d1) (diagonal_of c 2 a4d1) (diagonal_of d 1 a4d1)
+(diagonal_of a 5 a5e1) (diagonal_of b 4 a5e1) (diagonal_of c 3 a5e1) (diagonal_of d 2 a5e1) (diagonal_of e 1 a5e1)
+(diagonal_of a 6 a6f1) (diagonal_of b 5 a6f1) (diagonal_of c 4 a6f1) (diagonal_of d 3 a6f1) (diagonal_of e 2 a6f1) (diagonal_of f 1 a6f1)
+(diagonal_of a 7 a7g1) (diagonal_of b 6 a7g1) (diagonal_of c 5 a7g1) (diagonal_of d 4 a7g1) (diagonal_of e 3 a7g1) (diagonal_of f 2 a7g1) (diagonal_of g 1 a7g1)
+(diagonal_of a 8 a8h1) (diagonal_of b 7 a8h1) (diagonal_of c 6 a8h1) (diagonal_of d 5 a8h1) (diagonal_of e 4 a8h1) (diagonal_of f 3 a8h1) (diagonal_of g 2 a8h1) (diagonal_of h 1 a8h1)
+(diagonal_of b 8 b8h2) (diagonal_of c 7 b8h2) (diagonal_of d 6 b8h2) (diagonal_of e 5 b8h2) (diagonal_of f 4 b8h2) (diagonal_of g 3 b8h2) (diagonal_of h 2 b8h2)
+(diagonal_of c 8 c8h3) (diagonal_of d 7 c8h3) (diagonal_of e 6 c8h3) (diagonal_of f 5 c8h3) (diagonal_of g 4 c8h3) (diagonal_of h 3 c8h3)
+(diagonal_of d 8 d8h4) (diagonal_of e 7 d8h4) (diagonal_of f 6 d8h4) (diagonal_of g 5 d8h4) (diagonal_of h 4 d8h4)
+(diagonal_of e 8 e8h5) (diagonal_of f 7 e8h5) (diagonal_of g 6 e8h5) (diagonal_of h 5 e8h5)
+(diagonal_of f 8 f8h6) (diagonal_of g 7 f8h6) (diagonal_of h 6 f8h6)
+(diagonal_of g 8 g8h7) (diagonal_of h 7 g8h7)

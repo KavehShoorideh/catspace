@@ -36392,3 +36392,15 @@ instances yes, new kinds need retraining; speed ~ms a graph; the lemmas stay the
 graph_prior.py (HeteroConv SAGE net, train on cards, GraphSource "gnn"), source_of wiring, tests/test_plan78_20.py (7). OBS: 3714 cards from the m48 log in 215 s; held top1 0.4876 at 30 epochs
 (uniform 0.4213, fewest-lost oracle 0.6810); agreement with Stockfish on 60 d1 positions: gnn top1 0.133 top3 0.383 median rank 8 at 22 ms, against uniform 0.100/0.217/10 and gain+balance
 0.067/0.233/11 at 200 ms; the exact-key human index 0.000/0.033. Written as 78.20 in ANALYST_PLAN; gate gains test_plan78_20.
+
+## 2026-11-09 16:55 -- plan 78.21: the concept vocabulary as rules, the typed graph and the graph prior in Rust, one test
+Kaveh: the constants are the constants (terms always present, typed by sort); human chess vocabulary is welcome behind a dedicated wrapper so it stays constant and interpretable; take it to Rust,
+one test only; look at what was built before. A read-only survey found the ontology shelf's sorts and `square` object, the Program's signatures, the S0 detectors (used as oracles), threat.rs's
+JSON-weights convention and the earlier graph-net evidence. Built by two Sonnet subagents: rules/concepts/chess.gdl (diagonal sort + defended, hanging, pinned, fork, open / half-open file, passed /
+isolated / doubled pawn, absent, bishop_pair; 20 oracle tests on 1189 positions), rules/learned/chess/graph_vocabulary.json, cs_decision graph.rs / graph_net.rs / graph_prior.rs (generic, 7 Rust
+tests on a made-up game), cs_engine graph / graph_vocab / GraphModel, graph_prior.py training through CE.graph with export and parity, the `gnn` source all in Rust. Kernel certificates re-run for
+the Cargo.lock change (0 disagreements). OBS: facts_audit 610 positions unequal 0, 0.525 ms a position; held top1 0.6711 at 30 epochs (78.20: 0.4876; fewest-lost oracle 0.6810); torch vs Rust
+2.86e-06; the one test, agreement with Stockfish on the 60 d1 positions: top1 0.183, top3 0.367, mean rank 9.50 (median 7), 0.006 s a position (78.20: 0.133 / 0.383 / 10.75 / 8 at 0.022 s).
+READING: the representation now learns the judge's labels nearly to the oracle; agreement with Stockfish is label-limited. Written as 78.21 in ANALYST_PLAN; gate gains test_plan78_21 and
+test_plan78_21_concepts.
+OBS gate engine: files 60, passed 744, failed 0, xfailed 1, errors 0, wall 1181.3 s
