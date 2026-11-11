@@ -36482,3 +36482,21 @@ measured. Left to Kaveh: which database fills the table (human games need his sa
 from the chain's own threat counts, one search over the tied moves in place of the even split, the estimate where the chain's budget ends, a match on against off. Written as 78.26 in
 ANALYST_PLAN; gate gains test_plan78_26_wdl.
 OBS gate engine: files 67, passed 830, failed 0, xfailed 1, errors 0, wall 1202.5 s
+
+## 2026-11-10 17:10 -- plan 78.27: the sleep cycle of the estimate
+
+Kaveh: where the wake lacks the data or the lemma it goes back to a sleep; the sleep may look at the games, find rules, improve the prior and the win / draw / loss numbers
+from playouts; the wake uses only those. The outside engine is used at sleep only.
+
+Built: `catspace/incubator/analyst/discovery/wdl_sleep.py` (gaps of a wake log, a menu of the engine's own reading settings chosen against a training-only judge, settle unfinished
+games, deepen gap positions, calibrate before and after), `wdl_table.build` takes settled games, deep rows and the prior table, `initialize.run_size(wdl=True, cycles=N)` runs
+wake, gaps, lemma sleep, estimate's sleep, next wake on a sandbox. Tests `tests/test_plan78_27_wdl_sleep.py`, in the engine gate.
+
+Ran: full games (two sleeps, three wakes) and three units with the lemma sleep (two cycles, a fresh sandbox), then two control wakes. The lines are in docs/ANALYST_PLAN.md 78.27.
+
+Reading: the cycle runs end to end and nothing of the outside engine reaches the wake. The estimate does not get better from more of its own playouts (the long readings are
+no closer to the judge than the quick one), fresh full-game wakes never hit an exact row, and at three units the coarse row pooled into sibling moves makes play worse (more
+unfinished games; the control with the table and no lemmas shows it). Left to Kaveh: stop pooling the coarse row into sibling comparison, fit the estimate's parameters at sleep
+against the outside engine (his call under the leak rule), the human table, richer keys, a sharp signal from the chain.
+
+OBS gate engine: files 68, passed 852, failed 0, xfailed 1, errors 0, wall 1245.7 s

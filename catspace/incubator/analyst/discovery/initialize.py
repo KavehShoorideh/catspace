@@ -8,7 +8,7 @@ THIS IS A MECHANISM CHECK, NOT A STRENGTH CLAIM: one size, a few dozen games, a 
 
   python -m catspace.incubator.analyst.discovery.initialize chess --size 3 --teacher <uci> [--teacher-ms 100] [--teacher-option NAME=VALUE ...] [--store-root <dir>] [--judge <record>]
          [--games-per-start 4] [--limit N] [--set NAME=VALUE ...] [--vocabulary NAME] [--gate NAME=VALUE ...] [--held-gate NAME=VALUE ...]
-         [--teacher-mate-bucket N] [--teacher-cache FILE] [--tag T]
+         [--teacher-mate-bucket N] [--teacher-cache FILE] [--tag T] [--wdl [--cycles K] [--wdl-judge-depth D] [--wdl-judge-cache FILE] [--wdl-set NAME=VALUE ...]]
 """
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ from catspace.incubator.analyst.discovery import game_store as GS
 from catspace.incubator.analyst.discovery import judges as JG
 from catspace.incubator.analyst.discovery import sleep as SL
 from catspace.incubator.analyst.discovery import wake as WK
+from catspace.incubator.analyst.discovery import wdl_sleep as WS
 from catspace.io import paths
 
 
@@ -123,8 +124,15 @@ def regret_rate(game: str, log: str, source, *, sample: int = 200, seed: int = 1
 
 def run_size(game: str, size: int, *, source, store_root=None, variant: "str | None" = None, judge: "str | None" = None, games_per_start: int = 4, seconds: float = 0.2,
              random_plies: int = 2, max_plies: int = 80, limit: "int | None" = None, seed: int = 1, sleep_settings: "dict | None" = None, vocabulary: "str | None" = None,
-             tag: "str | None" = None, sample: int = 200, say=print) -> dict:
-    """The loop for one size: starts -> publish -> wake a -> sleep (source as judge) -> wake b -> audit -> compare. Returns everything and writes it as JSON next to the logs."""
+             tag: "str | None" = None, sample: int = 200, wdl: bool = False, cycles: int = 1, wdl_judge=None, wdl_settings: "dict | None" = None, say=print) -> dict:
+    """The loop for one size: starts -> publish -> wake a -> sleep (source as judge) -> wake b -> audit -> compare. Returns everything and writes it as JSON next to the logs.
+
+    Plan 78.27: `wdl=True` plays every wake with the win / draw / loss estimate and the sandbox's table (`<root>/learned/<game>/wdl_table.json`, none until a sleep writes it), prints the
+    wake's gaps, and after the lemma sleep runs `wdl_sleep.sleep_wdl` (`wdl_judge`: a judge of readings, training only, or None; `wdl_settings`: its keyword arguments, e.g. deep_seconds,
+    max_deep, sample, max_settle) which carries the previous table forward; the next wake uses the new snapshot and table. `cycles=k` repeats sleep then wake k times and adds a `cycles`
+    list to the report. With wdl=False and cycles=1 nothing changes."""
+    if cycles < 1 or (cycles > 1 and not wdl):
+        raise ValueError("cycles must be at least 1, and more than one needs wdl=True")
     variant = variant or game
     tag = tag or time.strftime("%Y%m%d-%H%M%S")
     root = prepare_sandbox(game, store_root if store_root is not None else paths.derived("init_store"))
@@ -141,6 +149,8 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
         say(f"OBS init starts {game}: size {size}, {len(starts)} start positions")
         specs = GS.spec_texts(game, vocabulary)
 
+        table_path = inside(root / "learned" / game / "wdl_table.json", root)
+
         def wake(label: str, run: str) -> tuple:
             sid = GS.publish(game, **({"judge": GS.judge_of(game, judge)} if judge else {}), **vkw)
             log = paths.experiment(f"wake_{game}_init{size}_{tag}_{label}.jsonl")
@@ -148,17 +158,43 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
                 Path(log).unlink()
             t0 = time.perf_counter()
             out = WK.play_self(variant, games_per_start * len(starts), seconds=seconds, random_plies=random_plies, max_plies=max_plies, seed=seed,
-                               store=str(GS.path_of(game, sid)), specs=specs, log=log, run=run, ties=True, starts=starts)
+                               store=str(GS.path_of(game, sid)), specs=specs, log=log, run=run, ties=True, starts=starts,
+                               **({"wdl": True, "wdl_table": str(table_path) if table_path.exists() else None} if wdl else {}))
             res = outcomes(out)
             say(f"OBS init wake {label} {game}: snapshot {sid} ({len(GS.info(game, sid)['lemmas'])} lemma(s)), games {len(out)}, plies {sum(len(g['moves']) for g in out)}, "
                 f"outcomes {res}, {time.perf_counter() - t0:.0f} s -> {log}")
-            return {"snapshot": sid, "log": log, "games": len(out), "plies": sum(len(g['moves']) for g in out), "outcomes": res}, log
+            return {"snapshot": sid, "log": log, "games": len(out), "plies": sum(len(g['moves']) for g in out), "outcomes": res, **({"wdl_table": str(table_path) if table_path.exists() else None} if wdl else {})}, log
+
+        def gaps_of(label: str, log: str) -> dict:
+            g = WS.gaps(log)
+            say(f"OBS init gaps {game} wake {label}: decisions {g['decisions']}, " + ", ".join(f"{k} {v}" for k, v in g["counts"].items()) + f", modes {g['modes']}, table {g['table']}, worklist {len(g['worklist'])}")
+            return {k: v for k, v in g.items() if k != "worklist"} | {"worklist": len(g["worklist"])}
 
         rep["wake_a"], log_a = wake("a", f"i{size}{tag}a")
-        sl = SL.sleep(game, log_a, variant=variant, settings=settings, teacher=source, write=True, say=say)
-        rep["sleep"] = {"funnel": sl["funnel"], "lemmas": [l["name"] for l in sl["lemmas"]], "rejected": len(sl["rejected"]), "snapshot": sl.get("snapshot"), "judge": sl["judge"]}
-        say(f"OBS init sleep {game}: lemmas admitted {len(sl['lemmas'])} {rep['sleep']['lemmas']}, rejected {len(sl['rejected'])}, funnel {sl['funnel']}")
-        rep["wake_b"], log_b = wake("b", f"i{size}{tag}b")
+        log_b = log_a
+        rep["cycles"] = []
+        for c in range(cycles):
+            log_prev, wake_prev = log_b, rep["wake_b"] if c else rep["wake_a"]
+            cyc: dict = {"cycle": c + 1}
+            if wdl:
+                cyc["gaps_before"] = gaps_of("a" if c == 0 else f"w{c}", log_prev)
+            sl = SL.sleep(game, log_prev, variant=variant, settings=settings, teacher=source, write=True, say=say)
+            rep["sleep"] = {"funnel": sl["funnel"], "lemmas": [l["name"] for l in sl["lemmas"]], "rejected": len(sl["rejected"]), "snapshot": sl.get("snapshot"), "judge": sl["judge"]}
+            say(f"OBS init sleep {game}: lemmas admitted {len(sl['lemmas'])} {rep['sleep']['lemmas']}, rejected {len(sl['rejected'])}, funnel {sl['funnel']}")
+            cyc["sleep"] = rep["sleep"]
+            if wdl:
+                kw = WS.judge_kw_of_snapshot(str(GS.path_of(game, wake_prev["snapshot"])))
+                opts = {"deep_seconds": 0.2, "max_deep": 20, "sample": 10, "max_settle": 10, **(wdl_settings or {})}
+                cyc["wdl_sleep"] = WS.sleep_wdl(game, [log_prev], variant=variant, prior_table=str(table_path) if table_path.exists() else None, judge=wdl_judge, judge_kw=kw,
+                                                out=str(table_path), seed=seed, say=say, **opts)
+            label = "b" if c == 0 else f"w{c + 1}"
+            rep["wake_b"], log_b = wake(label, f"i{size}{tag}{label}")
+            if wdl:
+                cyc["gaps_after"] = gaps_of(label, log_b)
+            cyc["wake"] = rep["wake_b"]
+            rep["cycles"].append(cyc)
+        if not wdl:
+            del rep["cycles"]
         rep["mined"] = AU.mined(game, vocabulary)
         for line in rep["mined"]:
             say("OBS mined " + line)
@@ -201,6 +237,11 @@ def main(argv: list) -> int:
     ap.add_argument("--teacher-mate-bucket", type=int, default=1, help="plies: mates within one bucket tie under the source's grade (1: exact)")
     ap.add_argument("--teacher-cache", default=None, help="a file that remembers the source's answers (judges.Cached): one verdict per position across the sleep, the audit and re-runs")
     ap.add_argument("--tag", default=None)
+    ap.add_argument("--wdl", action="store_true", help="plan 78.27: play the wakes with the win / draw / loss estimate and its results table, and sleep the table between wakes")
+    ap.add_argument("--cycles", type=int, default=1, help="plan 78.27 (with --wdl): how many times to sleep then wake")
+    ap.add_argument("--wdl-judge-depth", type=int, default=None, help="plan 78.27: the --teacher engine also judges the estimate's readings at this depth (training only; its numbers never enter the table)")
+    ap.add_argument("--wdl-judge-cache", default=None, help="plan 78.27: a file that remembers the judge's readings by position, so a re-run repeats")
+    ap.add_argument("--wdl-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.27: a keyword of the estimate's sleep (deep_seconds, max_deep, sample, max_settle), repeatable")
     a = ap.parse_args(argv)
     overrides = settings_pairs(a.set)
     if a.gate or a.held_gate:
@@ -209,11 +250,21 @@ def main(argv: list) -> int:
     teacher = SL.UciTeacher(a.teacher, a.teacher_ms, dict(o.partition("=")[::2] for o in a.teacher_option), mate_bucket=a.teacher_mate_bucket)
     if a.teacher_cache:
         teacher = JG.Cached(teacher, a.teacher_cache)
+    wj = WS.UciWdlJudge(a.teacher, a.wdl_judge_depth, a.wdl_judge_cache) if a.wdl and a.wdl_judge_depth else None
+    kinds = {"deep_seconds": float, "max_deep": int, "sample": int, "max_settle": int}
+    wdl_settings = {}
+    for pair in a.wdl_set:
+        k, _, v = pair.partition("=")
+        if k not in kinds:
+            raise ValueError(f"unknown --wdl-set name {k!r}; the names are {sorted(kinds)}")
+        wdl_settings[k] = kinds[k](v)
     try:
         run_size(a.game, a.size, source=teacher, store_root=a.store_root, variant=a.variant, judge=a.judge, games_per_start=a.games_per_start, seconds=a.seconds, limit=a.limit, seed=a.seed,
-                 sleep_settings=overrides, vocabulary=a.vocabulary, tag=a.tag, sample=a.sample)
+                 sleep_settings=overrides, vocabulary=a.vocabulary, tag=a.tag, sample=a.sample, wdl=a.wdl, cycles=a.cycles, wdl_judge=wj, wdl_settings=wdl_settings or None)
     finally:
         teacher.close()
+        if wj is not None:
+            wj.close()
     return 0
 
 

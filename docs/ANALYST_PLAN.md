@@ -5015,3 +5015,148 @@ the exact reading leaves equal. Picking outright in a quiet position would drop 
 OPEN: a better sharp call (the count of threats and forcing lines from 78.25's chain as a second sign of sharpness; a leaf that reads the exchanges out before it counts); one search
 over the tied moves in place of an even split, so the playouts go where the scores are close; the estimate where the chain's budget ends (78.25's open item) and not only at the
 root; the scale of the squash fitted against the oracle at sleep; the table keyed by more than the units standing; a match on against off.
+
+#### 78.27 THE SLEEP CYCLE OF THE ESTIMATE: WHERE THE WAKE LACKED THE DATA OR THE LEMMA, THE SLEEP WORKS THERE (2026-11-10; Kaveh: "if you find that you don't have the data or the lemma,
+then you go back to a sleep cycle, and in the sleep cycle, the training, you are allowed to look at the games, find new rules, improve your prior, improve the WDL probabilities from the
+playouts, and then at the wake time, we use those lemmas again, or our priors. So we don't leak the engine information into the inference time, into the wake time. We only do it in the
+sleep time. And then there is a human database on this, if we need to, but I want to see how the sleep cycle works with this.")
+
+THE RULE, RESTATED. The wake decides with what the last sleep left it and nothing else: the store (lemmas, judge), the prior, the results table, its own search and playouts. Where it lacks
+the data or the lemma it says so in its log. The sleep reads that log and works exactly there with the training kit: the games, deeper playouts, the lemma miner, and the outside engine as
+JUDGE. No number of the outside engine is written into anything the wake reads. The human games stay unread until Kaveh asks.
+
+DESIGN (answers 78.26's first open decision: the table is filled by the engine's own games and the sleep's own playouts).
+  1 THE GAPS  a reading of a wake log played with `--wdl`, decision by decision: no table row; only a coarse row (not the exact position); the estimate unknown (too little mass); a
+              quiet pick whose two best moves are closer than a margin; no lemma fired; and, in a finished game, the estimate on the wrong side of the game's own result. Counted,
+              and listed as the sleep's worklist. Own data only.
+  2 THE READING THE SLEEP USES  a small menu of the engine's own estimate settings (the wake's own, the same with a long clock, a far cut, playouts to the end). When a judge is given
+              the sleep measures each on a sample of the wake's positions against the judge's win / draw / loss and takes the closest; without one it takes the long clock and says
+              so. The judge chooses a TOOL; its numbers go nowhere.
+  3 SETTLE    an unfinished game's last position is read with that setting and the game counts with that reading as its result (marked as settled, not played).
+  4 DEEPEN    the gap positions (capped, spread over the games) are read with that setting and the readings filed under the position's keys: on the exact key at the table's
+              full weight, on the coarser keys as one position's vote.
+  5 THE TABLE the finished games, the settled games and the deep readings, each source counted in the file's stats. The next wake pools it with its playouts as 78.26 does.
+  6 MEASURE   the wake's own estimate (its clock, with the old table and with the new one) against the judge on positions of the log the deep readings did not touch, and
+              separately on the ones they did (said so). Then the next wake's gaps against this wake's.
+  7 THE CYCLE the loop driver of 78.24 (initialize.py, a sandbox store) with the estimate on: wake, gaps, the lemma sleep, the estimate's sleep, the next wake with the new snapshot
+              and the new table, for a number of cycles; the table lives in the sandbox next to the lemmas.
+
+  RESULTS (2026-11-10). Every number below is a line a program printed.
+
+  A. FULL GAMES, THE ESTIMATE'S SLEEP ALONE (store fc078d2ea37ad758, 8 games a wake at 0.2 s, seeds 1, 2, 3; `python -m catspace.incubator.analyst.discovery.wdl_sleep chess --log <wake log>
+     [--prior-table <table>] --judge-engine stockfish --judge-depth 12 --deep-seconds 1 --max-deep 200 --sample 60`, then the next wake with `--wdl --wdl-table`):
+    OBS wdl_sleep gaps chess: decisions 837, no_table 837, coarse_table 0, unknown 0, thin_pick 206, no_lemma 837, outcome_surprise 45, worklist 837
+    OBS wdl_sleep reading chess: far (1.0 s, cut 40), reason: far has the smallest mean absolute error of the expected score against the judge (0.223) among long, far, end on 60 positions; the wake's own reading has 0.216
+    OBS wdl_sleep reading chess: wake positions 60, mean abs error 0.21601083333333332, correlation 0.7143288948710118, seconds a reading 0.030107327049999997
+    OBS wdl_sleep reading chess: long positions 60, mean abs error 0.22583, correlation 0.6759293781834914, seconds a reading 1.0006089312833333
+    OBS wdl_sleep reading chess: far positions 60, mean abs error 0.22258583333333334, correlation 0.6728838011200664, seconds a reading 1.0004131611499996
+    OBS wdl_sleep reading chess: end positions 60, mean abs error 0.22449083333333333, correlation 0.6880130605350414, seconds a reading 1.000628147916667
+    OBS wdl_sleep settle: 5 of 5 unfinished games read with far (1.0 s, cut 40)
+    OBS wdl_sleep deepen: 200 positions read with far of 837 gap positions, 265 rows touched, mass 40200.1
+    OBS wdl_sleep table chess: games 8, finished positions 278, settled games 5 (605 positions), deep rows 265 (mass 40200.1), rows carried 0, rows kept {'exact': 213, 'units': 237}, provenance own games + own settled games + own deep playouts -> <scratch>/table1.json
+    OBS wdl_sleep calibrate chess held_out before: positions 60, mean abs error 0.2359725, correlation 0.7589500575795611, calls {'engine_quiet_judge_quiet': 19, 'engine_quiet_judge_sharp': 20, 'engine_sharp_judge_quiet': 4, 'engine_sharp_judge_sharp': 17}, table hits 0
+    OBS wdl_sleep calibrate chess held_out after: positions 60, mean abs error 0.23581, correlation 0.7630888572708413, calls {'engine_quiet_judge_quiet': 18, 'engine_quiet_judge_sharp': 20, 'engine_sharp_judge_quiet': 5, 'engine_sharp_judge_sharp': 17}, table hits 6
+    OBS wdl_sleep calibrate chess touched before: positions 60, mean abs error 0.19198083333333335, correlation 0.4576104807847662, calls {'engine_quiet_judge_quiet': 36, 'engine_quiet_judge_sharp': 23, 'engine_sharp_judge_quiet': 1, 'engine_sharp_judge_sharp': 0}, table hits 0
+    OBS wdl_sleep calibrate chess touched after: positions 60, mean abs error 0.18975166666666665, correlation 0.5224891364251916, calls {'engine_quiet_judge_quiet': 26, 'engine_quiet_judge_sharp': 15, 'engine_sharp_judge_quiet': 11, 'engine_sharp_judge_sharp': 8}, table hits 60
+    OBS wdl_sleep table written: <scratch>/table1.json
+    OBS gaps wake 1 (no table): decisions 837, no_table 837, coarse_table 0, unknown 0, thin_pick 206, no_lemma 837, outcome_surprise 45, modes {'sharp': 263, 'quiet': 574, 'unknown': 0}, table {'none': 837, 'exact': 0, 'coarse': 0}, mass median 176.0, picked 422
+    OBS wake chess: 8 games, 756 plies, 2 unfinished, snapshot fc078d2ea37ad758, 23.5 s -> <scratch>/wake2.jsonl
+    OBS wdl_sleep gaps chess: decisions 714, no_table 619, coarse_table 95, unknown 0, thin_pick 266, no_lemma 714, outcome_surprise 92, worklist 714
+    OBS wdl_sleep reading chess: long (1.0 s, cut 8), reason: long has the smallest mean absolute error of the expected score against the judge (0.267) among long, far, end on 60 positions; the wake's own reading has 0.264
+    OBS wdl_sleep reading chess: wake positions 60, mean abs error 0.2635708333333333, correlation 0.6340198448508325, seconds a reading 0.030106994483333337
+    OBS wdl_sleep reading chess: long positions 60, mean abs error 0.2668408333333333, correlation 0.6231053607727395, seconds a reading 1.000573957016667
+    OBS wdl_sleep reading chess: far positions 60, mean abs error 0.27192750000000004, correlation 0.5999620359961957, seconds a reading 1.0004128778499999
+    OBS wdl_sleep reading chess: end positions 60, mean abs error 0.2697366666666667, correlation 0.5973282690238845, seconds a reading 1.0006374423666669
+    OBS wdl_sleep settle: 2 of 2 unfinished games read with long (1.0 s, cut 8)
+    OBS wdl_sleep deepen: 200 positions read with long of 714 gap positions, 278 rows touched, mass 40200.2
+    OBS wdl_sleep table chess: games 8, finished positions 516, settled games 2 (242 positions), deep rows 278 (mass 40200.2), rows carried 450, rows kept {'exact': 427, 'units': 427}, provenance own games + own settled games + own deep playouts + prior own table -> <scratch>/table2.json
+    OBS wdl_sleep calibrate chess held_out before: positions 60, mean abs error 0.23497916666666668, correlation 0.6184443737872419, calls {'engine_quiet_judge_quiet': 29, 'engine_quiet_judge_sharp': 20, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 11}, table hits 5
+    OBS wdl_sleep calibrate chess held_out after: positions 60, mean abs error 0.2356791666666667, correlation 0.6148435906693901, calls {'engine_quiet_judge_quiet': 29, 'engine_quiet_judge_sharp': 20, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 11}, table hits 6
+    OBS wdl_sleep calibrate chess touched before: positions 60, mean abs error 0.28232166666666664, correlation 0.3618509464824181, calls {'engine_quiet_judge_quiet': 23, 'engine_quiet_judge_sharp': 36, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 1}, table hits 22
+    OBS wdl_sleep calibrate chess touched after: positions 60, mean abs error 0.28217666666666663, correlation 0.4418788567164511, calls {'engine_quiet_judge_quiet': 23, 'engine_quiet_judge_sharp': 35, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 2}, table hits 60
+    OBS wdl_sleep table written: <scratch>/table2.json
+    OBS wake chess: 8 games, 768 plies, 3 unfinished, snapshot fc078d2ea37ad758, 23.5 s -> <scratch>/wake3.jsonl
+    OBS gaps wake 2 (table of sleep 1): decisions 714, no_table 619, coarse_table 95, unknown 0, thin_pick 266, no_lemma 714, outcome_surprise 92, modes {'sharp': 139, 'quiet': 575, 'unknown': 0}, table {'none': 619, 'exact': 0, 'coarse': 95}, mass median 196.0, picked 460
+    OBS gaps wake 3 (table of sleep 2): decisions 734, no_table 621, coarse_table 113, unknown 0, thin_pick 240, no_lemma 734, outcome_surprise 7, modes {'sharp': 188, 'quiet': 546, 'unknown': 0}, table {'none': 621, 'exact': 0, 'coarse': 113}, mass median 208.0, picked 411
+
+  B. THREE UNITS, THE WHOLE CYCLE WITH THE LEMMA SLEEP (a fresh sandbox data/derived/init_store_w27; `python -m catspace.incubator.analyst.discovery.initialize chess --size 3 --teacher stockfish
+     --teacher-ms 100 --judge "material (mined)" --games-per-start 12 --seconds 0.2 --set depth=3 --vocabulary relational --tag w27c --wdl --cycles 2 --wdl-judge-depth 12
+     --wdl-set deep_seconds=0.5 --wdl-set max_deep=200 --wdl-set sample=60 --wdl-set max_settle=20`; the line `init compare` says "wake b" for the last wake, here w2):
+    OBS init sandbox chess: store data/derived/init_store_w27, lemmas already there 0
+    OBS init starts chess: size 3, 22 start positions
+    OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 264, plies 9062, outcomes {'[100, 0]': 37, '[50, 50]': 185, '[0, 100]': 38, 'unfinished': 4}, 146 s -> artifacts/experiments/wake_chess_init3_w27c_a.jsonl
+    OBS init gaps chess wake a: decisions 8257, no_table 8257, coarse_table 0, unknown 0, thin_pick 5734, no_lemma 8257, outcome_surprise 0, modes {'sharp': 157, 'quiet': 8100, 'unknown': 0}, table {'none': 8257, 'exact': 0, 'coarse': 0}, worklist 8257
+    OBS sleep judge uci: asked 3050, revalued 3050, cut 0, skipped (already cut) 0, optimal share of the moves 0.6264 (chance), moves per card 9.36, 277.889 s
+    OBS sleep time chess: cards 5.06 s, climb 341.48 s, verify 0.17 s, total 628.17 s
+    OBS sleep funnel chess (judge source:uci, depth 3): games 264, decisions 8534, surprises 300, replayable 75, cards 3050, cards_dev 1577, cards_held 1473, confirmed 0, with_saving 0, seeds 53, teacher_surprises 0, teacher_confirmed 0, regret_surprises 38, regret_confirmed 38, regret_tied 0, regret_unconfirmed 0, climbed 44, supported_dev 4, verified_held 3, 628.17 s
+    OBS lemma opposition-response-481f958a: dev 71 fires / precision 1.0 (lower 0.9633); held 45 fires in 18 games / precision 1.0 (lower 0.9433) excess 0.3378
+    OBS lemma flight-response-0851b23c: dev 13 fires / precision 1.0 (lower 0.8277); held 21 fires in 17 games / precision 1.0 (lower 0.8859) excess 0.2249
+    OBS lemma opposition-response-47e4c3b0: dev 71 fires / precision 1.0 (lower 0.9633); held 45 fires in 18 games / precision 1.0 (lower 0.9433) excess 0.3378
+    OBS init sleep chess: lemmas admitted 3 ['opposition-response-481f958a', 'flight-response-0851b23c', 'opposition-response-47e4c3b0'], rejected 50
+    OBS wdl_sleep gaps chess: decisions 8257, no_table 8257, coarse_table 0, unknown 0, thin_pick 5734, no_lemma 8257, outcome_surprise 0, worklist 8257
+    OBS wdl_sleep reading chess: long (0.5 s, cut 8), reason: long has the smallest mean absolute error of the expected score against the judge (0.233) among long, far, end on 60 positions; the wake's own reading has 0.236
+    OBS wdl_sleep reading chess: wake positions 60, mean abs error 0.23568083333333334, correlation 0.6709848608797369, seconds a reading 0.030068899316666665
+    OBS wdl_sleep reading chess: long positions 60, mean abs error 0.23295166666666667, correlation 0.6805466407156318, seconds a reading 0.5008175250166668
+    OBS wdl_sleep reading chess: far positions 60, mean abs error 0.27156583333333334, correlation 0.5050355864992424, seconds a reading 0.5002658201499999
+    OBS wdl_sleep reading chess: end positions 60, mean abs error 0.23499666666666666, correlation 0.6443060558353467, seconds a reading 0.5002671714499999
+    OBS wdl_sleep settle: 4 of 4 unfinished games read with long (0.5 s, cut 8)
+    OBS wdl_sleep deepen: 200 positions read with long of 8257 gap positions, 209 rows touched, mass 40200.0
+    OBS wdl_sleep table chess: games 264, finished positions 8742, settled games 4 (324 positions), deep rows 209 (mass 40200.0), rows carried 0, rows kept {'exact': 1762, 'units': 12}, provenance own games + own settled games + own deep playouts -> data/derived/init_store_w27/learned/chess/wdl_table.json
+    OBS wdl_sleep calibrate chess held_out before: positions 60, mean abs error 0.2551116666666667, correlation 0.7310403257244296, calls {'engine_quiet_judge_quiet': 28, 'engine_quiet_judge_sharp': 32, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 0}, table hits 0
+    OBS wdl_sleep calibrate chess held_out after: positions 60, mean abs error 0.23090666666666668, correlation 0.8495434485656288, calls {'engine_quiet_judge_quiet': 28, 'engine_quiet_judge_sharp': 32, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 0}, table hits 60
+    OBS wdl_sleep calibrate chess touched before: positions 60, mean abs error 0.21417833333333333, correlation 0.6305852860386502, calls {'engine_quiet_judge_quiet': 36, 'engine_quiet_judge_sharp': 24, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 0}, table hits 0
+    OBS wdl_sleep calibrate chess touched after: positions 60, mean abs error 0.21453, correlation 0.6272040261562943, calls {'engine_quiet_judge_quiet': 36, 'engine_quiet_judge_sharp': 24, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 0}, table hits 60
+    OBS init wake b chess: snapshot 6d926f1d52d5bda0 (3 lemma(s)), games 264, plies 11504, outcomes {'unfinished': 55, '[100, 0]': 25, '[50, 50]': 173, '[0, 100]': 11}, 196 s -> artifacts/experiments/wake_chess_init3_w27c_b.jsonl
+    OBS init gaps chess wake b: decisions 10839, no_table 0, coarse_table 10590, unknown 0, thin_pick 8615, no_lemma 10464, outcome_surprise 0, modes {'sharp': 52, 'quiet': 10787, 'unknown': 0}, table {'none': 0, 'exact': 249, 'coarse': 10590}, worklist 10839
+    OBS sleep judge uci: asked 3029, revalued 3029, cut 0, skipped (already cut) 0, optimal share of the moves 0.5574 (chance), moves per card 10.06, 279.944 s
+    OBS sleep time chess: cards 5.2 s, climb 393.7 s, verify 0.0 s, total 683.65 s
+    OBS sleep funnel chess (judge source:uci, depth 3): games 264, decisions 10976, surprises 177, replayable 36, cards 3029, cards_dev 1405, cards_held 1624, confirmed 0, with_saving 0, seeds 63, teacher_surprises 0, teacher_confirmed 0, regret_surprises 44, regret_confirmed 44, regret_tied 0, regret_unconfirmed 0, climbed 57, supported_dev 0, verified_held 0, 683.65 s
+    OBS init sleep chess: lemmas admitted 0 [], rejected 60
+    OBS wdl_sleep gaps chess: decisions 10839, no_table 0, coarse_table 10590, unknown 0, thin_pick 8615, no_lemma 10464, outcome_surprise 0, worklist 10839
+    OBS wdl_sleep reading chess: long (0.5 s, cut 8), reason: long has the smallest mean absolute error of the expected score against the judge (0.261) among long, far, end on 60 positions; the wake's own reading has 0.263
+    OBS wdl_sleep reading chess: wake positions 60, mean abs error 0.262585, correlation 0.7034231876555493, seconds a reading 0.03006815625
+    OBS wdl_sleep reading chess: long positions 60, mean abs error 0.26111083333333335, correlation 0.7099234953227266, seconds a reading 0.5007731201666665
+    OBS wdl_sleep reading chess: far positions 60, mean abs error 0.31007083333333335, correlation 0.4007202404366362, seconds a reading 0.5002475770166667
+    OBS wdl_sleep reading chess: end positions 60, mean abs error 0.26998333333333335, correlation 0.569663233636204, seconds a reading 0.5003047444166666
+    OBS wdl_sleep settle: 20 of 20 unfinished games read with long (0.5 s, cut 8)
+    OBS wdl_sleep deepen: 200 positions read with long of 10839 gap positions, 212 rows touched, mass 40200.0
+    OBS wdl_sleep table chess: games 264, finished positions 7104, settled games 20 (1620 positions), deep rows 212 (mass 40200.0), rows carried 1774, rows kept {'exact': 2410, 'units': 12}, provenance own games + own settled games + own deep playouts + prior own table -> data/derived/init_store_w27/learned/chess/wdl_table.json
+    OBS wdl_sleep calibrate chess held_out before: positions 60, mean abs error 0.26442166666666667, correlation 0.8794856424635983, calls {'engine_quiet_judge_quiet': 21, 'engine_quiet_judge_sharp': 38, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 1}, table hits 60
+    OBS wdl_sleep calibrate chess held_out after: positions 60, mean abs error 0.2683741666666667, correlation 0.87036868446194, calls {'engine_quiet_judge_quiet': 21, 'engine_quiet_judge_sharp': 38, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 1}, table hits 60
+    OBS wdl_sleep calibrate chess touched before: positions 60, mean abs error 0.22347666666666666, correlation 0.8133863013242927, calls {'engine_quiet_judge_quiet': 32, 'engine_quiet_judge_sharp': 28, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 0}, table hits 60
+    OBS wdl_sleep calibrate chess touched after: positions 60, mean abs error 0.24247583333333333, correlation 0.6877779902116335, calls {'engine_quiet_judge_quiet': 32, 'engine_quiet_judge_sharp': 28, 'engine_sharp_judge_quiet': 0, 'engine_sharp_judge_sharp': 0}, table hits 60
+    OBS init wake w2 chess: snapshot 6d926f1d52d5bda0 (3 lemma(s)), games 264, plies 11620, outcomes {'unfinished': 41, '[100, 0]': 22, '[50, 50]': 170, '[0, 100]': 31}, 196 s -> artifacts/experiments/wake_chess_init3_w27c_w2.jsonl
+    OBS init gaps chess wake w2: decisions 10894, no_table 0, coarse_table 10126, unknown 0, thin_pick 8617, no_lemma 10523, outcome_surprise 0, modes {'sharp': 65, 'quiet': 10829, 'unknown': 0}, table {'none': 0, 'exact': 768, 'coarse': 10126}, worklist 10866
+    OBS mined flight-response-0851b23c: IF flight(them, ?v8, ?v1) AND flight(us, ?v5, ?v3) AND flight(us, ?v8, ?v6) AND halfmove(?v6) AND passed_pawn(us, ?v5, ?v6) THEN a best move removes [] adds [flight(us, ?v10, ?v6), flight(us, ?v2, ?v3)]
+    OBS mined opposition-response-47e4c3b0: IF attack(them, ?v0, ?v1, ?v4, ?v5) AND attack(us, ?v0, ?v2, ?v10, ?v5) AND cell(?v0, ?v2, us, ?v8) AND cell(?v4, ?v1, them, ?v8) AND flight(them, ?v9, ?v5) THEN a best move removes [] adds [opposition()]
+    OBS mined opposition-response-481f958a: IF attack(them, ?v2, ?v1, ?v3, ?v6) AND attack(us, ?v2, ?v4, ?v3, ?v6) AND cell(?v0, ?v1, them, ?v9) AND cell(?v2, ?v4, us, ?v9) AND flight(them, ?v10, ?v6) AND flight(us, ?v0, ?v8) THEN a best move removes [] adds [opposition()]
+    OBS audit chess: 11092 decisions, 371 with a lemma firing, 115 of 264 games touched (0.4356), recomputed proposal counts differing from the engine's 0, rank source uci
+    OBS audit lemma flight-response-0851b23c: fired 97 in 82 games, proposed 238 moves, followed 26, claim held 95 of 97 by uci, played optimal 25/26 when followed vs 63/71 when not
+    OBS audit lemma opposition-response-47e4c3b0: fired 274 in 94 games, proposed 274 moves, followed 216, claim held 274 of 274 by uci, played optimal 216/216 when followed vs 39/58 when not
+    OBS audit lemma opposition-response-481f958a: fired 274 in 94 games, proposed 274 moves, followed 216, claim held 274 of 274 by uci, played optimal 216/216 when followed vs 39/58 when not
+    OBS init compare chess size 3: wake a outcomes {'[100, 0]': 37, '[50, 50]': 185, '[0, 100]': 38, 'unfinished': 4}, regret 46/200 (0.23); wake b outcomes {'unfinished': 41, '[100, 0]': 22, '[50, 50]': 170, '[0, 100]': 31}, regret 63/200 (0.315); a mechanism check on 22 starts, not a strength claim
+  C. TWO CONTROL WAKES ON B's STARTS (same settings; run side by side, so the clock was shared; the table is the one of the second sleep):
+    OBS control lemmas_no_table: snapshot 6d926f1d52d5bda0 (3 lemma(s)), table no, games 264, plies 10503, outcomes {'[50, 50]': 189, '[100, 0]': 29, 'unfinished': 20, '[0, 100]': 26}
+    OBS control table_no_lemmas: snapshot a12c8e72629284f1 (0 lemma(s)), table yes, games 264, plies 12063, outcomes {'unfinished': 51, '[100, 0]': 19, '[50, 50]': 169, '[0, 100]': 25}
+
+  READING
+  1 THE CYCLE RUNS END TO END. The wake's log gives the gaps, the lemma sleep mines and admits (B: three lemmas from no lemmas), the estimate's sleep settles, deepens and writes the table,
+    the next wake reads the new snapshot and the new table, and the table is carried into the following sleep. In B the lemmas fire in the later wake and the audit finds their claims
+    held by the outside engine where they fired. Nothing of the outside engine is in the snapshot or the table (the test builds the table with and without a judge and compares).
+  2 MORE OF THE SAME PLAYOUTS IS NOT A BETTER ESTIMATE. In all four sleeps the readings with thirty times the clock, or cut far later, or played to the end, are within noise of the
+    wake's own quick reading against the judge, and twice worse. The error is in what a playout plays and how its leaf is valued, not in how many are played. So the table filled from
+    deep playouts repeats the wake's own opinion with more mass; held-out accuracy does not move in A. In B it moves once (first sleep) and not the second time.
+  3 THE KEYS DO NOT GENERALISE WHERE THEY SHOULD AND GENERALISE TOO MUCH WHERE THEY SHOULD NOT. In full games a fresh wake never met an exact row; only the coarse row answered.
+    At three units the coarse row answers almost every position, with one opinion for every position of the same units.
+  4 THE TABLE AS BUILT HURTS PLAY AT THREE UNITS. Unfinished games rise from wake a to the wakes with the table, and the controls in C separate the causes: the table without the
+    lemmas has more unfinished games than the lemmas without the table. A coarse row pooled into every child of a position pulls the moves' estimates together, so the
+    pick among them is thinner (the thin_pick count rises with the table). The regret of the last wake against the outside engine is higher than wake a's. A mechanism check, as the line says.
+  5 THE LEMMA SLEEP'S SECOND PASS ADMITTED NOTHING NEW (rejected 60): the candidates it climbed did not survive the held-out check.
+
+  LEFT TO KAVEH (none started)
+  a the coarse row should not be pooled into the comparison of sibling moves, only into the estimate of the position (a change in cs_planning::wdl);
+  b whether the sleep may FIT the estimate's own few parameters (the leaf's scale, the cut, the playout's choice) against the outside engine, the way the prior is fitted: the fitted
+    numbers would be the engine's own parameters, yet they are learned from the outside engine's verdicts, so this is his call under the leak rule;
+  c the human table;
+  d richer keys than the units (facts the lemmas already name), so that "positions like this" means something between exact and units;
+  e a sharp signal from the reasoning chain (in B the wake called almost nothing sharp while the judge called about half of the sampled positions decided).
