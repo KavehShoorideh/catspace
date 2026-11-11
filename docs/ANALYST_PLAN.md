@@ -5327,3 +5327,109 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
     The rules the sleep did admit hold in the audit.
   5 So the open piece is EVIDENCE ON DEMAND: for a candidate that is right on the few positions it has, find more positions where its body binds (the playouts of the sleep
     visit tens of thousands) and ask the rank source there, then apply the same bar.
+
+#### 78.30 EVIDENCE ON DEMAND and 78.31 THE RESULT STANDARD (2026-11-11)
+
+  78.30 BUILT  catspace/incubator/analyst/discovery/evidence.py and its use in sleep.sleep: a forced seed's candidate with no refutation that fails only on support is given
+          more positions where its body binds (the cycle's wake logs and the sleep's playout positions), the rank source is asked there (bounded), the same gates re-applied.
+  RUN (three cycles, fresh sandbox init_store_w30, the old standard; lines cut at 330 characters where marked " ..."):
+    OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3912, outcomes {'[50, 50]': 120, '[100, 0]': 12}, 45 s
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 295, capped 105, matched 144, worse 88, better 63, match share 0.4881, rules spoke in 0 playouts (0 plies)
+    OBS sleep evidence total: candidates 8, asked 457, admitted 0, refuted 81
+    OBS sleep forced seeds: given 7, confirmed 7, climbed 5, supported on dev 5, verified held 1
+    OBS init sleep chess: lemmas admitted 3 ['flight-response-065c7827', 'flight-response-38e43fbe', 'king_ahead-response-308e5151'], rejected 72
+    OBS playout_sleep problems: total 7, new 7, solved before 0, solved after 1, still open 6, came back 0
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 337, capped 63, matched 185, worse 89, better 63, match share 0.549, rules spoke in 140 playouts (268 plies)
+    OBS init wake b chess: snapshot 320c27c2bf2e4702 (3 lemma(s)), games 132, plies 3891, outcomes {'[50, 50]': 116, '[100, 0]': 12, '[0, 100]': 4}, 46 s
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 281, capped 119, matched 129, worse 87, better 65, match share 0.4591, rules spoke in 171 playouts (337 plies)
+    OBS sleep evidence total: candidates 13, asked 600, admitted 0, refuted 118
+    OBS sleep forced seeds: given 14, confirmed 12, climbed 10, supported on dev 10, verified held 0
+    OBS init sleep chess: lemmas admitted 0 [], rejected 81
+    OBS playout_sleep problems: total 15, new 8, solved before 1, solved after 1, still open 13, came back 0
+    OBS init wake w2 chess: snapshot 320c27c2bf2e4702 (3 lemma(s)), games 132, plies 3943, outcomes {'[50, 50]': 111, '[100, 0]': 16, '[0, 100]': 5}, 47 s
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 303, capped 97, matched 137, worse 94, better 72, match share 0.4521, rules spoke in 159 playouts (312 plies)
+    OBS sleep evidence total: candidates 22, asked 600, admitted 0, refuted 132
+    OBS sleep forced seeds: given 19, confirmed 17, climbed 16, supported on dev 16, verified held 2
+    OBS init sleep chess: lemmas admitted 2 ['opposition-response-957d3c3f', 'king_ahead-response-a6fde209'], rejected 86
+    OBS playout_sleep problems: total 20, new 5, solved before 1, solved after 2, still open 17, came back 1
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 339, capped 61, matched 176, worse 96, better 67, match share 0.5192, rules spoke in 168 playouts (361 plies)
+    OBS init wake w3 chess: snapshot 9ee6d9aea5c1a9d0 (5 lemma(s)), games 132, plies 3955, outcomes {'[50, 50]': 113, '[100, 0]': 14, '[0, 100]': 5}, 47 s
+    OBS audit lemma flight-response-065c7827: fired 21 in 13 games, proposed 69 moves, followed 13, claim held 15 of 21 by uci, played optimal 5/13 when followed vs 6/8 when not
+    OBS audit lemma flight-response-38e43fbe: fired 28 in 27 games, proposed 104 moves, followed 26, claim held 24 of 28 by uci, played optimal 4/26 when followed vs 2/2 when not
+    OBS audit lemma king_ahead-response-308e5151: fired 32 in 31 games, proposed 35 moves, followed 29, claim held 28 of 32 by uci, played optimal 26/29 when followed vs 0/3 when not
+    OBS audit lemma king_ahead-response-a6fde209: fired 36 in 33 games, proposed 26 moves, followed 26, claim held 26 of 36 by uci, played optimal 26/26 when followed vs 10/10 when not
+    OBS audit lemma opposition-response-957d3c3f: fired 81 in 49 games, proposed 69 moves, followed 32, claim held 69 of 81 by uci, played optimal 32/32 when followed vs 49/49 when not
+    OBS init compare chess size 3: wake a outcomes {'[50, 50]': 120, '[100, 0]': 12}, regret 48/200 (0.24); wake b outcomes {'[50, 50]': 113, '[100, 0]': 14, '[0, 100]': 5}, regret 60/200 (0.3); a mechanism check on 22 starts, not a strength claim
+  READING 78.30  The extra positions refuted the candidates at about one asked position in five and admitted none. Before reading that as "the candidates are wrong": the
+          standard was not the owner's. The rank source graded a faster mate above a slower one (a slower win counted as a refutation), and a firing held if ANY named move
+          was best (a rule could name a losing move beside a good one; the decision plays the first named).
+
+  78.31 BUILT  one switch, `initialize --standard result`: the rank source grades by RESULT CLASS for the mover (`UciTeacher(grade_mode="result")`: a mate or a score beyond
+          the decisive threshold is a win or a loss, all winning moves tie); the gates count a firing as held only if EVERY named move is in the best class, refuted if any is
+          below, trivial if every legal move is best (`Gates.all_named`, `cards.eval(all_named=)` in rust/engine/memory/src/cards.rs); the same in the forced seeds, the
+          evidence, the audit and the regret of `init compare`. Default unchanged. tests/test_plan78_31_result_standard.py.
+  THE TWO STANDARDS ON THE SAME DATA (the five rules of the 78.30 run and its last wake, from the cached answers):
+    OBS audit standard: SCORE: the rank source grades by score (mate_bucket 1, gap 100), a firing holds when ANY move the rule names is best; the claim holds when ANY proposed move is best
+    OBS compare audit [score standard] flight-response-065c7827: fired 21, scored 21, held 15, refuted 6, trivial 0
+    OBS compare audit [score standard] flight-response-38e43fbe: fired 28, scored 28, held 24, refuted 4, trivial 0
+    OBS compare audit [score standard] king_ahead-response-308e5151: fired 32, scored 32, held 28, refuted 4, trivial 0
+    OBS compare audit [score standard] king_ahead-response-a6fde209: fired 36, scored 36, held 26, refuted 10, trivial 0
+    OBS compare audit [score standard] opposition-response-957d3c3f: fired 81, scored 81, held 69, refuted 12, trivial 0
+    OBS compare regret [score standard]: wake a 48/200 (0.24), final wake w3 60/200 (0.3); source asked 569, answered from the cache 569
+    OBS audit standard: RESULT: the rank source grades by result class (win / draw / loss; decisive at 300 cp or a mate), every move the rule names must be in the best class, a card where every move is in it is trivial; the claim holds when EVERY proposed move is best, a decision where every legal move is best is trivial
+    OBS compare audit [result standard] flight-response-065c7827: fired 21, scored 18, held 3, refuted 15, trivial 3
+    OBS compare audit [result standard] flight-response-38e43fbe: fired 28, scored 28, held 9, refuted 19, trivial 0
+    OBS compare audit [result standard] king_ahead-response-308e5151: fired 32, scored 32, held 29, refuted 3, trivial 0
+    OBS compare audit [result standard] king_ahead-response-a6fde209: fired 36, scored 27, held 26, refuted 1, trivial 9
+    OBS compare audit [result standard] opposition-response-957d3c3f: fired 81, scored 22, held 22, refuted 0, trivial 59
+    OBS compare regret [result standard]: wake a 10/200 (0.05), final wake w3 20/200 (0.1); source asked 569, answered from the cache 569
+  RUN UNDER THE RESULT STANDARD (three cycles, fresh sandbox init_store_w31):
+    OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 4020, outcomes {'[50, 50]': 120, '[100, 0]': 11, '[0, 100]': 1}, 47 s
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 303, capped 97, matched 121, worse 104, better 78, match share 0.3993, rules spoke in 0 playouts (0 plies)
+    OBS sleep evidence total: candidates 20, asked 518, admitted 1, refuted 26
+    OBS sleep forced seeds: given 10, confirmed 10, climbed 9, supported on dev 9, verified held 2
+    OBS init sleep chess: lemmas admitted 8 ['flight-response-ff9e9dbe', 'flight-response-07dfa91d', 'flight-response-e4efd88d', 'cell-response-1e25b7eb', 'apart-response-fd68f920', 'apart-response-60bf2cfd', 'flight-response-21cc32f6', 'opposition-response-036402bc'], rejected 58
+    OBS playout_sleep problems: total 10, new 10, solved before 0, solved after 3, still open 7, came back 0
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 348, capped 52, matched 186, worse 91, better 71, match share 0.5345, rules spoke in 266 playouts (643 plies)
+    OBS init wake b chess: snapshot 68a9bf373dd23b84 (8 lemma(s)), games 132, plies 3750, outcomes {'[50, 50]': 116, '[100, 0]': 15, '[0, 100]': 1}, 45 s
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 311, capped 89, matched 170, worse 82, better 59, match share 0.5466, rules spoke in 282 playouts (719 plies)
+    OBS sleep evidence total: candidates 33, asked 600, admitted 1, refuted 30
+    OBS sleep forced seeds: given 18, confirmed 18, climbed 14, supported on dev 14, verified held 3
+    OBS init sleep chess: lemmas admitted 4 ['flight-response-8a53b59e', 'flight-response-0336956f', 'cell-response-165fe3e2', 'flight-response-dbe4b8a9'], rejected 69
+    OBS playout_sleep problems: total 21, new 11, solved before 3, solved after 3, still open 15, came back 0
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 338, capped 62, matched 198, worse 82, better 58, match share 0.5858, rules spoke in 322 playouts (1459 plies)
+    OBS init wake w2 chess: snapshot c3c543ee62c8016c (12 lemma(s)), games 132, plies 3959, outcomes {'[50, 50]': 114, '[100, 0]': 15, '[0, 100]': 3}, 46 s
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 298, capped 102, matched 134, worse 98, better 66, match share 0.4497, rules spoke in 334 playouts (1922 plies)
+    OBS sleep evidence total: candidates 40, asked 600, admitted 1, refuted 26
+    OBS sleep forced seeds: given 21, confirmed 21, climbed 16, supported on dev 16, verified held 2
+    OBS init sleep chess: lemmas admitted 2 ['flight-response-b2f440ba', 'apart-response-30192aa3'], rejected 89
+    OBS playout_sleep problems: total 27, new 6, solved before 6, solved after 2, still open 19, came back 0
+    OBS playout_sleep match chess rollout rules: positions 200, playouts 400, finished 331, capped 69, matched 167, worse 96, better 68, match share 0.5045, rules spoke in 337 playouts (1832 plies)
+    OBS init wake w3 chess: snapshot c6a7f46963d3a809 (14 lemma(s)), games 132, plies 3998, outcomes {'[50, 50]': 112, '[100, 0]': 16, '[0, 100]': 4}, 47 s
+    OBS audit lemma apart-response-30192aa3: fired 65 in 37 games, proposed 92 moves, followed 12, claim held 16 of 17 by uci (refuted 1, trivial 48), played optimal 11/12 when followed vs 5/5 when not
+    OBS audit lemma apart-response-60bf2cfd: fired 75 in 49 games, proposed 75 moves, followed 55, claim held 24 of 26 by uci (refuted 2, trivial 49), played optimal 19/19 when followed vs 7/7 when not
+    OBS audit lemma apart-response-fd68f920: fired 64 in 34 games, proposed 50 moves, followed 10, claim held 10 of 12 by uci (refuted 2, trivial 52), played optimal 10/10 when followed vs 2/2 when not
+    OBS audit lemma cell-response-165fe3e2: fired 175 in 25 games, proposed 209 moves, followed 83, claim held 85 of 149 by uci (refuted 64, trivial 26), played optimal 73/80 when followed vs 60/69 when not
+    OBS audit lemma cell-response-1e25b7eb: fired 1 in 1 games, proposed 0 moves, followed 0, claim held 0 of 0 by uci (refuted 0, trivial 1), played optimal 0/0 when followed vs 0/0 when not
+    OBS audit lemma flight-response-0336956f: fired 39 in 16 games, proposed 64 moves, followed 6, claim held 10 of 18 by uci (refuted 8, trivial 21), played optimal 6/6 when followed vs 12/12 when not
+    OBS audit lemma flight-response-07dfa91d: fired 30 in 12 games, proposed 222 moves, followed 12, claim held 18 of 21 by uci (refuted 3, trivial 9), played optimal 9/9 when followed vs 12/12 when not
+    OBS audit lemma flight-response-21cc32f6: fired 45 in 30 games, proposed 39 moves, followed 20, claim held 5 of 5 by uci (refuted 0, trivial 40), played optimal 5/5 when followed vs 0/0 when not
+    OBS audit lemma flight-response-8a53b59e: fired 102 in 42 games, proposed 74 moves, followed 23, claim held 24 of 78 by uci (refuted 54, trivial 24), played optimal 17/17 when followed vs 52/61 when not
+    OBS audit lemma flight-response-b2f440ba: fired 39 in 28 games, proposed 149 moves, followed 18, claim held 13 of 14 by uci (refuted 1, trivial 25), played optimal 12/12 when followed vs 2/2 when not
+    OBS audit lemma flight-response-dbe4b8a9: fired 1 in 1 games, proposed 8 moves, followed 1, claim held 1 of 1 by uci (refuted 0, trivial 0), played optimal 1/1 when followed vs 0/0 when not
+    OBS audit lemma flight-response-e4efd88d: fired 72 in 30 games, proposed 56 moves, followed 41, claim held 15 of 15 by uci (refuted 0, trivial 57), played optimal 15/15 when followed vs 0/0 when not
+    OBS audit lemma flight-response-ff9e9dbe: fired 72 in 30 games, proposed 56 moves, followed 41, claim held 15 of 15 by uci (refuted 0, trivial 57), played optimal 15/15 when followed vs 0/0 when not
+    OBS audit lemma opposition-response-036402bc: fired 104 in 57 games, proposed 76 moves, followed 33, claim held 18 of 19 by uci (refuted 1, trivial 85), played optimal 18/18 when followed vs 1/1 when not
+    OBS init compare chess size 3: wake a outcomes {'[50, 50]': 120, '[100, 0]': 11, '[0, 100]': 1}, regret 7/200 (0.035); wake b outcomes {'[50, 50]': 112, '[100, 0]': 16, '[0, 100]': 4}, regret 14/200 (0.07) under the result standard; a mechanism check on 22 starts, not a strength claim
+
+  READING 78.31
+  1 The standard matters: of the 78.30 run's five rules, two fail once every named move must keep the result, and many firings are trivial (every move keeps it).
+    The regret count under the result standard is a quarter of the old one on the same games.
+  2 Under the result standard the sleep admits more (fourteen rules in three cycles), the evidence step admits one rule a cycle, and problems are solved: three, three and two
+    in the three cycles, none came back; nineteen of twenty-seven still open.
+  3 Most admitted rules hold in the last wake's audit on few non-trivial firings; two do not (cell-response-165fe3e2 and flight-response-8a53b59e are refuted at many
+    firings although they passed the held-out gates). Not explained yet.
+  4 The share of the sleep's playouts that end as the outside engine says their start should rises within every cycle after that cycle's rules are added (the pairs of
+    `match` lines), and it does not carry over to the next cycle's fresh playouts as a trend. The regret of the last wake is not below wake a's (two samples of 200).
+  OPEN  why two rules pass the gates and fail in the games; why most problems stay open (the per-seed lines say where each candidate died); the spread of the regret count
+        between runs, which is not measured, so no claim about play is made.

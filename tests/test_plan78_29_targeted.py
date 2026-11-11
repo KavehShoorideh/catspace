@@ -348,3 +348,71 @@ def test_a_move_counter_fact_is_never_a_body_literal():
     facts = [["halfmove", "21"], ["cell", "f", "5", "us", "pawn"]]
     assert TG.is_counter(facts[0]) and not TG.is_counter(facts[1])
     assert all(not l["relation"] == "halfmove" for l, _d in TG.body_candidates(facts, {}, set()))
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------- plan 78.30: evidence on demand
+
+def test_corpus_has_every_position_of_the_logs_games_and_of_the_playouts():
+    with tempfile.TemporaryDirectory() as tmp:
+        log = fake_log(tmp, games=3, plies=4)
+        games = [{"start": FEN, "prefix": [], "moves": ["e2f3", "c4c3"]}, {"start": FEN, "prefix": ["e2f3"], "moves": ["c4d3"]}]
+        corpus = IN.corpus_positions([log], games)
+        wake = [p for p in corpus if not p["group"].startswith("playout:")]
+        assert len(wake) == 3 * 4 - 2 and {p["group"] for p in wake} == {"r:0", "r:1", "r:2"}          # (the shared initial position once)
+        play = [p for p in corpus if p["group"].startswith("playout:")]
+        assert [len(p["moves"]) for p in play if p["group"] == "playout:0"] == [0, 1, 2] and [len(p["moves"]) for p in play if p["group"] == "playout:1"] == [2]          # (the position after e2f3 was already visited by playout 0)
+
+
+def test_evidence_is_bounded_spread_over_groups_split_like_the_games_and_never_repeats_known_positions():
+    from catspace.incubator.analyst.discovery import evidence as EV
+    from catspace.incubator.analyst.discovery import sleep as SL
+    spec, vocab = GS.spec_texts("chess", VOCAB), json.dumps(GS.vocabulary("chess", VOCAB))
+    with tempfile.TemporaryDirectory() as tmp:
+        corpus = IN.corpus_positions([fake_log(tmp, games=10, plies=5)], [])
+    st = SL.Settings()
+    known = {(corpus[0].get("start"), tuple(corpus[0]["moves"]))}
+    ev = EV.Evidence(corpus, variant="chess", spec=spec, vocab=vocab, teacher=FakeRank(), is_dev=lambda g: SL.is_dev(g, st), per_candidate=12, total=15, known=known)
+    assert all((p.get("start"), tuple(p["moves"])) not in known for p in ev.rows)
+    everything = TG.lemma_of([{"relation": "control", "args": ["us"], "neg": False}], {"removed": [], "added": [("cell", ["?a", "?b", "us", "?c"])]})
+    g = ev.gather(everything)
+    assert g is not None and g.asked == 12 and g.new_asks == 12 and g.binds >= 12
+    groups = {json.loads(g.cards.card(i))["group"] for i in range(len(g.cards))}
+    assert len(groups) > 5                                                    # spread over the games, not the first game's positions
+    assert sorted(g.dev + g.held) == list(range(len(g.cards))) and not set(g.dev) & set(g.held)
+    g2 = ev.gather(everything)                                                # the total bound (15) leaves 3 new questions; positions already asked are free
+    assert g2.new_asks <= 3 and g2.asked == 12
+    nothing = TG.lemma_of([{"relation": "control", "args": ["us"], "neg": False}], {"removed": [("cell", ["z", "9", "us", "king"])], "added": []})
+    assert ev.gather(nothing) is None
+
+
+def test_keep_at_problem_names_the_moves_a_rule_gives_and_says_which_lose_the_verdict():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = sandbox_with_head(tmp)
+        with TG.sandbox(root):
+            spec, vocab = GS.spec_texts("chess", VOCAB), json.dumps(GS.vocabulary("chess", VOCAB))
+            f = TG.keep_at_problem("chess", spec, vocab, judge_where_only("f4f5"), {"p": (FEN, [])})
+            ctl = {"relation": "control", "args": ["us"], "neg": False}
+            pawn = f(TG.lemma_of([ctl], {"removed": [("cell", ["f", "4", "us", "pawn"])], "added": []}), {"id": "p"})
+            king = f(TG.lemma_of([ctl], {"removed": [("cell", ["e", "2", "us", "king"])], "added": []}), {"id": "p"})
+            none = f(TG.lemma_of([ctl], {"removed": [("cell", ["z", "9", "us", "king"])], "added": []}), {"id": "p"})
+            assert pawn["lose"] == ["f4f5"] and not pawn["ok"] and king["ok"] and king["named"] and not none["fires"] and not none["ok"]
+
+
+def test_sleep_with_a_corpus_gathers_evidence_for_a_forced_seed_and_prints_the_totals():
+    from catspace.incubator.analyst.discovery import sleep as SL
+    with tempfile.TemporaryDirectory() as tmp:
+        root = sandbox_with_head(tmp)
+        log = fake_log(tmp, games=10, plies=6)
+        legal = sorted(CE.state("chess", None, ["e2e4"])[2])
+        extra = [{"id": "problem:0:1", "start": None, "moves": ["e2e4"], "played": legal[1], "group": "problem:0", "force": True}]
+        out = []
+        st = SL.Settings(judge_by="source", vocabulary=VOCAB, depth=1, max_cards=24, max_seeds=1, max_saving=1, evidence_per_candidate=10, evidence_total=30)
+        with TG.sandbox(root):
+            plain = SL.sleep("chess", log, settings=st, teacher=FakeRank(), write=False, say=lambda *_a, **_k: None, extra_positions=extra)
+            rep = SL.sleep("chess", log, settings=st, teacher=FakeRank(), write=False, say=out.append, extra_positions=extra, corpus=IN.corpus_positions([log], []))
+        assert "evidence" not in plain                                          # (no corpus: behaviour unchanged)
+        text = "\n".join(out)
+        assert "OBS sleep evidence bounds:" in text and "at most 10 asked per candidate and 30 new questions" in text
+        if rep.get("evidence"):                                                  # (a candidate that needed evidence: the lines say what was asked and how it ended)
+            assert "OBS sleep evidence total: candidates" in text and re.search(r"OBS sleep evidence .*: corpus \d+, body binds at \d+, asked \d+, holds \d+, refuted \d+; after: dev", text)
+            assert all(e["asked"] <= 10 for e in rep["evidence"])

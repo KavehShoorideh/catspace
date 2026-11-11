@@ -36517,3 +36517,12 @@ games; with the lemma sleep's bar on held-out log positions it admits nothing. P
 few firings with a perfect record. Next: evidence on demand for a candidate (more positions where it speaks, from the sleep's playouts). Lines in docs/ANALYST_PLAN.md 78.29.
 
 OBS gate engine: files 70, passed 890, failed 0, xfailed 1, errors 0, wall 1303.1 s
+
+## 2026-11-11 02:30 -- plans 78.30 and 78.31: evidence on demand, the result standard
+
+Evidence on demand (evidence.py): more positions for a candidate that is right on few; under the old standard it refuted and admitted none. The old standard was not Kaveh's:
+a slower win counted as wrong and a rule could name a losing move beside a good one. `--standard result` switches the rank source to result classes and the gates to every
+named move. Under it: fourteen rules in three cycles, eight of twenty-seven problems solved, none came back, two admitted rules fail in the games (not explained). Lines in
+docs/ANALYST_PLAN.md 78.30 / 78.31.
+
+OBS gate engine: files 71, passed 902, failed 0, xfailed 1, errors 0, wall 1335.3 s

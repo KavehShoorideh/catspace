@@ -155,6 +155,11 @@ class Regret:
         score = dict(order)
         gap = getattr(self.source, "gap", None)
         ev = {"source_top": order[0][0], "top_score": order[0][1], "played_score": score.get(played), "gap": gap}
+        if getattr(self.source, "regret_by_grade", False):
+            # plan 78.31, the result standard: a regret is a move whose RESULT class is below the best class
+            if played not in score or int(self.source.grade(score[played])) >= int(self.source.grade(order[0][1])):
+                return None
+            return {**ev, "rule": "result"}
         if gap is not None:
             if played not in score or order[0][1] - score[played] < gap:
                 return None                                               # (a move the source did not score cannot be measured in its units)

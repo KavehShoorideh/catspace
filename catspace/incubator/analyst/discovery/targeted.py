@@ -481,7 +481,7 @@ class Wild:
             f"{rep['optimal_share']}; gates (the lemma sleep's held gates): {self.gates.as_dict()}")
 
     def read_many(self, lemmas: list, idx: "list | None" = None) -> list:
-        evs = self.cards.eval_many([json.dumps(l) for l in lemmas], idx, self.gates.max_bindings, None) if lemmas else []
+        evs = self.cards.eval_many([json.dumps(l) for l in lemmas], idx, self.gates.max_bindings, None, self.gates.all_named) if lemmas else []
         return [{**e, "named": sum(1 for _c, _h, k in e["cases"] if k > 0)} for e in evs]
 
     def held(self, lemma: dict) -> dict:
@@ -987,3 +987,44 @@ def main(argv: list) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------ plan 78.30: what an admitted rule does at its own problem
+
+def keep_at_problem(variant: str, spec: dict, vocab_json: str, judge, positions: dict, *, verdicts: "PS.Verdicts | None" = None):
+    """A `prefer` callable for sleep.sleep: (lemma, x) -> {fires, named, keep, lose, ok} at the problem position of the seed `x["id"]` (`positions`: {id: (start, moves)}). `named` are the moves
+    the lemma's response matches there (the engine's matcher, apply_audit.proposals), `lose` those that drop the judge's verdict class, `ok` when it names something and all of it keeps."""
+    v = verdicts or PS.Verdicts(judge, variant)
+    reader = Reader(variant, spec, vocab_json, v)
+
+    def f(lemma: dict, x: dict) -> dict:
+        start, moves = positions[x["id"]]
+        cs = CE.build_cards([(variant, start, list(moves), "p", "g")], spec, vocab_json, 1, 2_000_000, 0, {}, False)
+        named = AU.proposals(cs, lemma) if len(cs) else []
+        rd = reader.read({"start": start, "moves": list(moves)})
+        keep = rd.keep if rd else {}
+        lose = [m for m in named if not keep.get(m, True)]
+        return {"fires": bool(named), "named": named, "keep": rd.good if rd else [], "lose": lose, "ok": bool(named) and not lose}
+    return f
+
+
+def say_forced_rules(game: str, lemmas: list, rows: list, snapshot: str, *, variant: str, spec: dict, judge, seconds: float, vocab_json: str, wake_kw: "dict | None" = None, say=print) -> list:
+    """For each admitted lemma that came from a forced seed (meta.surprise.id `problem:<k>:<n>`): does it fire at its own seed problem, which moves does it name, and what does the decision
+    (the wake's, with `snapshot`) play there? Prints `OBS sleep forced rule check ...`. -> [{name, problem, fires, named, lose, move, keeps}]."""
+    out = []
+    v = PS.Verdicts(judge, variant)
+    for l in lemmas:
+        sid = ((l.get("meta") or {}).get("surprise") or {}).get("id", "")
+        if not sid.startswith("problem:"):
+            continue
+        k = int(sid.split(":")[1])
+        if k >= len(rows):
+            continue
+        r = rows[k]
+        pos = {"start": r.get("start"), "moves": list(r["moves"])}
+        chk = keep_at_problem(variant, spec, vocab_json, judge, {sid: (pos["start"], pos["moves"])}, verdicts=v)(l, {"id": sid})
+        dec = PS.check([pos], variant=variant, store=snapshot, spec=spec, judge=judge, seconds=seconds, wake_kw=wake_kw, verdicts=v)[0]
+        say(f"OBS sleep forced rule check {l['name']}: seed problem {k + 1}: fires at it {chk['fires']}, names {chk['named']} (keeping {chk['keep']}), of which lose the verdict {chk['lose']}; the decision plays "
+            f"{dec['move']} (keeps the verdict: {dec['keeps']})" + ("; it names a losing move beside others: the decision takes the first named by move index" if chk["lose"] and len(chk["named"]) > 1 else ""))
+        out.append({"name": l["name"], "problem": k, **chk, "move": dec["move"], "keeps": dec["keeps"]})
+    return out

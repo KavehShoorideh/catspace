@@ -126,6 +126,28 @@ def regret_rate(game: str, log: str, source, *, sample: int = 200, seed: int = 1
     return {"sampled": len(pick), "ranked": ranked, "regret": regret, "rate": round(regret / ranked, 4) if ranked else None}
 
 
+def corpus_positions(logs: list, playout_games: list) -> list:
+    """Plan 78.30: the corpus the sleep may look for evidence in: EVERY position of the wake log(s)' games (group `run:game`, as the sleep's own split reads them) and every position the
+    playout games visited (group `playout:<k>`, one group per playout). -> [{start, moves, group}], deduplicated by position within a group."""
+    out, seen = [], set()
+    for lg in logs:
+        _decisions, games = SL.read_log(lg)
+        for (run, g), row in sorted(games.items()):
+            for ply in range(len(row["moves"])):
+                k = (row.get("start"), tuple(row["moves"][:ply]))
+                if k not in seen:
+                    seen.add(k)
+                    out.append({"start": row.get("start"), "moves": list(row["moves"][:ply]), "group": f"{run}:{g}"})
+    for k, pg in enumerate(playout_games):
+        full = list(pg["prefix"]) + list(pg["moves"])
+        for i in range(len(pg["prefix"]), len(full) + 1):
+            key = (pg.get("start"), tuple(full[:i]))
+            if key not in seen:
+                seen.add(key)
+                out.append({"start": pg.get("start"), "moves": full[:i], "group": f"playout:{k}"})
+    return out
+
+
 def forced_positions(rows: list, turning_extras: list) -> list:
     """Plan 78.29: every OPEN problem of the problem file (the carried ones too) as a forced seed of the lemma sleep ({id, start, moves, played, group, force}); the move played is the
     decision's last (the move that loses the verdict now), else the playout's. The turning positions equal to one of them are left out of `turning_extras` (no duplicate card).
@@ -161,7 +183,7 @@ def playout_before(game: str, log: str, snapshot: str, cycle: int, *, variant: s
     rows = [x for x in rows if PS.key_of(x) not in gone]
     say(f"OBS playout_sleep candidates {game}: turning positions {len(r['turnings'])}, new problems {len(new) - len(dropped)}, candidates the engine's own decision already keeps (dropped) {len(dropped)}, "
         f"problems carried {len(rows) - len(new) + len(dropped)}")
-    return {"extra_positions": r["extra_positions"], "match": r["match"], "turnings": r["turnings"], "problems": rows, "new": len(new) - len(dropped), "path": problems_file, "store": store,
+    return {"games": r["games"], "extra_positions": r["extra_positions"], "match": r["match"], "turnings": r["turnings"], "problems": rows, "new": len(new) - len(dropped), "path": problems_file, "store": store,
             "positions": r["positions"], "dropped": len(dropped), "cycle": cycle}
 
 
@@ -188,7 +210,7 @@ def playout_after(game: str, log: str, snapshot: str, pre: dict, *, variant: str
 def run_size(game: str, size: int, *, source, store_root=None, variant: "str | None" = None, judge: "str | None" = None, games_per_start: int = 4, seconds: float = 0.2,
              random_plies: int = 2, max_plies: int = 80, limit: "int | None" = None, seed: int = 1, sleep_settings: "dict | None" = None, vocabulary: "str | None" = None,
              tag: "str | None" = None, sample: int = 200, wdl: bool = False, cycles: int = 1, wdl_judge=None, wdl_settings: "dict | None" = None, playouts: bool = False, playout_judge=None, playout_settings: "dict | None" = None, targeted: bool = False, targeted_settings: "dict | None" = None,
-             force_problems: bool = True, say=print) -> dict:
+             force_problems: bool = True, standard: str = "score", say=print) -> dict:
     """The loop for one size: starts -> publish -> wake a -> sleep (source as judge) -> wake b -> audit -> compare. Returns everything and writes it as JSON next to the logs.
 
     Plan 78.27: `wdl=True` plays every wake with the win / draw / loss estimate and the sandbox's table (`<root>/learned/<game>/wdl_table.json`, none until a sleep writes it), prints the
@@ -209,11 +231,17 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
 
     Plan 78.29 (second route): `force_problems=True` (the default with playouts on) hands EVERY open problem of the problem file, the carried ones too, to each lemma sleep as a forced seed
     (`sleep.sleep(extra_positions=[... "force": True])`: always in the development half, always shown to the rank source, regret raised when the move played is not best, climbed first; the
-    admission gates are unchanged). `--no-force-problems` turns it off."""
+    admission gates are unchanged). `--no-force-problems` turns it off.
+
+    Plan 78.31: `standard="result"` (CLI `--standard result`, with the rank source built with grade_mode "result") switches EVERYTHING together to the owner's definition of a mistake -- a change of
+    RESULT: the rank source grades by win / draw / loss class, the lemma sleep's gates, the forced seeds, the evidence, the audit's claim-held / played-optimal and the regret count of `OBS init compare`
+    all read it, and every named move must be in the best class. The first OBS line of each tool prints the standard. Default "score": nothing changes."""
     if cycles < 1 or (cycles > 1 and not (wdl or playouts)):
         raise ValueError("cycles must be at least 1, and more than one needs wdl=True or playouts=True")
     if targeted and not playouts:
         raise ValueError("targeted=True needs playouts=True: the problems it solves are the playout sleep's")
+    if getattr(source, "grade_mode", "score") != standard:
+        raise ValueError(f"standard {standard!r} but the rank source grades by {getattr(source, 'grade_mode', 'score')!r}: build the source with grade_mode={standard!r}")
     pjudge = playout_judge or wdl_judge
     if playouts and pjudge is None:
         raise ValueError("playouts=True needs a judge of verdicts (playout_judge or wdl_judge): the outside engine, at sleep only")
@@ -221,7 +249,9 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
     tag = tag or time.strftime("%Y%m%d-%H%M%S")
     root = prepare_sandbox(game, store_root if store_root is not None else paths.derived("init_store"))
     vkw = {} if vocabulary is None else {"vocabulary": vocabulary}
-    settings = settings_from({"judge_by": "source", **({} if judge is None else {"judge": judge}), **({} if vocabulary is None else {"vocabulary": vocabulary}), **(sleep_settings or {})})
+    say("OBS init standard: " + SL.standard_text(SL.Settings(standard=standard), source))
+    settings = settings_from({"standard": standard, "judge_by": "source", **({} if judge is None else {"judge": judge}), **({} if vocabulary is None else {"vocabulary": vocabulary}), **(sleep_settings or {})})
+    settings = SL.apply_standard(settings, source)
     old = GS.LEARNED_ROOT, GS.SNAPSHOT_ROOT
     GS.LEARNED_ROOT, GS.SNAPSHOT_ROOT = inside(root / "learned", root), inside(root / "snapshots", root)
     rep: dict = {"game": game, "size": size, "tag": tag, "store_root": str(root), "settings": {"games_per_start": games_per_start, "seconds": seconds, "random_plies": random_plies,
@@ -271,7 +301,15 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
             if pre and force_problems:
                 forced, rest = forced_positions(pre["problems"], pre["extra_positions"])
                 extras = forced + rest
-            sl = SL.sleep(game, log_prev, variant=variant, settings=settings, teacher=source, write=True, say=say, **({"extra_positions": extras} if pre else {}))
+            kw: dict = {}
+            if pre and force_problems:
+                kw["corpus"] = corpus_positions([log_prev], pre.get("games", []))
+                seed_pos = {e["id"]: (e["start"], e["moves"]) for e in extras if e.get("force")}
+                kw["prefer"] = TG.keep_at_problem(variant, specs, json.dumps(GS.vocabulary(game, vocabulary)), pjudge, seed_pos)
+            sl = SL.sleep(game, log_prev, variant=variant, settings=settings, teacher=source, write=True, say=say, **({"extra_positions": extras} if pre else {}), **kw)
+            if pre and force_problems and sl.get("snapshot"):
+                TG.say_forced_rules(game, sl["lemmas"], pre["problems"], str(GS.path_of(game, sl["snapshot"])), variant=variant, spec=specs, judge=pjudge, seconds=seconds,
+                                    vocab_json=json.dumps(GS.vocabulary(game, vocabulary)), say=say)
             rep["sleep"] = {"funnel": sl["funnel"], "lemmas": [l["name"] for l in sl["lemmas"]], "rejected": len(sl["rejected"]), "snapshot": sl.get("snapshot"), "judge": sl["judge"]}
             say(f"OBS init sleep {game}: lemmas admitted {len(sl['lemmas'])} {rep['sleep']['lemmas']}, rejected {len(sl['rejected'])}, funnel {sl['funnel']}")
             cyc["sleep"] = rep["sleep"]
@@ -303,12 +341,12 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
             say("OBS mined " + line)
         if not rep["mined"]:
             say(f"OBS mined {game}: no lemma in the store")
-        rep["audit"] = AU.audit(game, log_b, variant=variant, source=source, vocabulary=vocabulary, say=say)
+        rep["audit"] = AU.audit(game, log_b, variant=variant, source=source, vocabulary=vocabulary, say=say, all_named=(standard == "result"))
         rep["compare"] = {"wake_a": {"outcomes": rep["wake_a"]["outcomes"], **regret_rate(game, log_a, source, sample=sample, seed=seed, variant=variant)},
                           "wake_b": {"outcomes": rep["wake_b"]["outcomes"], **regret_rate(game, log_b, source, sample=sample, seed=seed, variant=variant)}}
         a, b = rep["compare"]["wake_a"], rep["compare"]["wake_b"]
         say(f"OBS init compare {game} size {size}: wake a outcomes {a['outcomes']}, regret {a['regret']}/{a['ranked']} ({a['rate']}); wake b outcomes {b['outcomes']}, regret {b['regret']}/{b['ranked']} "
-            f"({b['rate']}); a mechanism check on {len(starts)} starts, not a strength claim")
+            f"({b['rate']}) under the {standard} standard; a mechanism check on {len(starts)} starts, not a strength claim")
     finally:
         GS.LEARNED_ROOT, GS.SNAPSHOT_ROOT = old
     out = paths.experiment(f"init_{game}_{size}_{tag}.json")
@@ -346,6 +384,8 @@ def main(argv: list) -> int:
     ap.add_argument("--wdl-judge-cache", default=None, help="plan 78.27: a file that remembers the judge's readings by position, so a re-run repeats")
     ap.add_argument("--playouts", action="store_true", help="plan 78.28: per cycle, playouts to a real result diagnosed by the --teacher engine as judge (sleep only): turning moves seed the lemma sleep, problems are checked before and after it")
     ap.add_argument("--playout-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.28: positions, per_position, max_plies, max_turning, max_scan, check_seconds (repeatable)")
+    ap.add_argument("--standard", default="score", choices=["score", "result"], help="plan 78.31: what a mistake is: 'score' (the rank source's graded score, any named move best) or 'result' (a change of win / draw / loss, every named move best); switches the sleep, forced seeds, evidence, audit and regret together")
+    ap.add_argument("--decisive", type=int, default=None, help="plan 78.31 (--standard result): a score of at least this many centipawns is a win for the mover (default 300, read off Stockfish with SyzygyPath at three units)")
     ap.add_argument("--no-force-problems", action="store_true", help="plan 78.29: do not hand the open problems to the lemma sleep as forced seeds (with --playouts they are by default)")
     ap.add_argument("--targeted", action="store_true", help="plan 78.29 (with --playouts): after the lemma sleep, a targeted rule for each open problem, admitted only when the problem's own check passes")
     ap.add_argument("--targeted-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.29: a targeted setting (repeatable): " + ", ".join(TG.SETTINGS))
@@ -355,7 +395,7 @@ def main(argv: list) -> int:
     if a.gate or a.held_gate:
         overrides["gates"] = AB.Gates().override(a.gate)
         overrides["held"] = AB.Gates(min_fires=3, min_groups=2).override(a.gate).override(a.held_gate)
-    teacher = SL.UciTeacher(a.teacher, a.teacher_ms, dict(o.partition("=")[::2] for o in a.teacher_option), mate_bucket=a.teacher_mate_bucket)
+    teacher = SL.UciTeacher(a.teacher, a.teacher_ms, dict(o.partition("=")[::2] for o in a.teacher_option), mate_bucket=a.teacher_mate_bucket, grade_mode=a.standard, decisive=a.decisive)
     if a.teacher_cache:
         teacher = JG.Cached(teacher, a.teacher_cache)
     wj = WS.UciWdlJudge(a.teacher, a.wdl_judge_depth or 12, a.wdl_judge_cache) if (a.wdl and a.wdl_judge_depth) or a.playouts else None
@@ -381,7 +421,7 @@ def main(argv: list) -> int:
     try:
         run_size(a.game, a.size, source=teacher, store_root=a.store_root, variant=a.variant, judge=a.judge, games_per_start=a.games_per_start, seconds=a.seconds, limit=a.limit, seed=a.seed,
                  sleep_settings=overrides, vocabulary=a.vocabulary, tag=a.tag, sample=a.sample, wdl=a.wdl, cycles=a.cycles, wdl_judge=wj if a.wdl_judge_depth or not a.wdl else None, wdl_settings=wdl_settings or None,
-                 playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None, targeted=a.targeted, targeted_settings=tsets or None, force_problems=not a.no_force_problems)
+                 playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None, targeted=a.targeted, targeted_settings=tsets or None, force_problems=not a.no_force_problems, standard=a.standard)
     finally:
         teacher.close()
         if wj is not None:

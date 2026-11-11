@@ -35,7 +35,7 @@ def grader(source):
 def describe(source) -> dict:
     """What of the source matters to the claim it judged: its name, whether it is training-only, and the parameters it declares (movetime, gap, options, path)."""
     out = {"source": getattr(source, "source", "teacher"), "training_only": bool(getattr(source, "training_only", True))}
-    for k in ("movetime", "gap", "mate_bucket", "options", "seconds", "path"):
+    for k in ("movetime", "gap", "mate_bucket", "grade_mode", "decisive", "options", "seconds", "path"):
         v = getattr(source, k, None)
         if v is not None:
             out[k] = v

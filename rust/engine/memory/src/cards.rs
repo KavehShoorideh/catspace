@@ -99,6 +99,8 @@ pub struct Eval {
     pub steps: u64,
     /// Per firing card: (card index, holds, moves matched). Unknown cards are not listed.
     pub cases: Vec<(usize, bool, usize)>,
+    /// With `all_named` (plan 78.31): firing cards where every legal move is optimal (the rule cannot be wrong there): not counted as firings, holds or refutations.
+    pub trivial: usize,
 }
 
 impl CardSet {
@@ -116,7 +118,12 @@ impl CardSet {
 
     /// `eval` that stops reading as soon as a matching is cut, or as soon as more cards than `max_refuted` have refuted the lemma (a gate that allows none stops at the
     /// first): the verdict "not admissible" is then certain and the rest of the corpus need not be read.
-    pub fn eval_bounded(&self, lemma: &Lemma, indices: Option<&[usize]>, max_bindings: usize, max_refuted: Option<usize>) -> Eval {
+    pub fn eval_bounded(&self, lemma: &Lemma, indices: Option<&[usize]>, max_bindings: usize, max_refuted: Option<usize>) -> Eval { self.eval_with(lemma, indices, max_bindings, max_refuted, false) }
+
+    /// `eval_bounded` with the quantifier chosen. `all_named` false: a firing HOLDS when some move the response names is optimal (as ever). `all_named` true (plan 78.31): it HOLDS only when EVERY move
+    /// it names is optimal, is REFUTED when one is not (or none is named), and a card where every legal move is optimal is TRIVIAL (counted in `trivial`, not as a firing); the chance level is then
+    /// that of all `k` moves drawn at random being optimal.
+    pub fn eval_with(&self, lemma: &Lemma, indices: Option<&[usize]>, max_bindings: usize, max_refuted: Option<usize>, all_named: bool) -> Eval {
         let all: Vec<usize> = (0..self.cards.len()).collect();
         let mut ev = Eval::default();
         let mut groups = std::collections::BTreeSet::new();
@@ -129,6 +136,10 @@ impl CardSet {
             ev.truncated |= cut;
             if cut { break; }
             if bs.is_empty() { continue; }
+            if all_named && !card.cut {
+                let b = card.moves.iter().map(|m| m.value).max().expect("a card has moves");
+                if card.moves.iter().all(|m| m.value == b) { ev.trivial += 1; continue; }
+            }
             ev.fires += 1;
             groups.insert(card.group.clone());
             if card.cut { ev.unknown += 1; continue; }
@@ -142,11 +153,11 @@ impl CardSet {
                 }
             }
             let k = matched.iter().filter(|x| **x).count();
-            let holds = card.moves.iter().zip(&matched).any(|(m, hit)| *hit && m.value == best);
+            let holds = if all_named { k > 0 && card.moves.iter().zip(&matched).all(|(m, hit)| !*hit || m.value == best) } else { card.moves.iter().zip(&matched).any(|(m, hit)| *hit && m.value == best) };
             if holds { ev.holds += 1; groups_held.insert(card.group.clone()); } else { ev.refuted += 1; }
             if max_refuted.is_some_and(|m| ev.refuted > m) { ev.stopped = true; judged += 1; ev.cases.push((ci, holds, matched.iter().filter(|x| **x).count())); exp_sum += 0.0; break; }
             ev.cases.push((ci, holds, k));
-            exp_sum += chance(card.moves.len(), optimal, k);
+            exp_sum += if all_named { chance_all(card.moves.len(), optimal, k) } else { chance(card.moves.len(), optimal, k) };
             sel_sum += k as f64 / card.moves.len() as f64;
             judged += 1;
         }
@@ -169,6 +180,15 @@ fn chance(n: usize, o: usize, k: usize) -> f64 {
     let mut miss = 1.0f64;
     for i in 0..k { miss *= (n - o - i) as f64 / (n - i) as f64; }
     1.0 - miss
+}
+
+/// The chance that all `k` moves drawn at random from `n`, of which `o` are optimal, are optimal.
+fn chance_all(n: usize, o: usize, k: usize) -> f64 {
+    if k == 0 { return 0.0; }
+    if k > o { return 0.0; }
+    let mut p = 1.0f64;
+    for i in 0..k { p *= (o - i) as f64 / (n - i) as f64; }
+    p
 }
 
 /// Does the move (its removed and added facts, indexed) satisfy the lemma's response under the body's binding? Every removed literal matches a removed fact and

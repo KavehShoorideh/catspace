@@ -78,6 +78,7 @@ class Gates:
     max_bindings: int = 64
     strict_frac: float = 0.10
     max_body: int = 24
+    all_named: bool = False          # plan 78.31: a firing holds only if EVERY move the rule names is in the best class (cards.eval all_named); default: any named move
 
     def admissible(self, ev: dict) -> bool:
         return (ev["fires"] > 0 and ev["precision"] >= self.min_precision and ev["excess"] >= self.min_excess
@@ -226,7 +227,7 @@ def allowed_refutations(gates: Gates) -> "int | None":
 def evaluate(cards, lemma: dict, idx, gates: Gates, early: bool = False) -> dict:
     """The engine's reading of the lemma on the cards at `idx`. With `early`, it stops at the first cut matching or past the refutations the gate allows (the verdict
     'not admissible' is certain; the counts are partial) -- for choosing between candidates, never for the figures a lemma is stored with."""
-    return cards.eval(json.dumps(lemma), idx, gates.max_bindings, allowed_refutations(gates) if early else None)
+    return cards.eval(json.dumps(lemma), idx, gates.max_bindings, allowed_refutations(gates) if early else None, gates.all_named)
 
 
 def generalize(seed: dict, cards, idx, gates: Gates, max_steps: int = 400) -> "Climb | None":
@@ -246,7 +247,7 @@ def generalize(seed: dict, cards, idx, gates: Gates, max_steps: int = 400) -> "C
             if len(c.lemma["response"]["removed"]) + len(c.lemma["response"]["added"]) > 1:
                 cands += [(f"drop response {side} {l['relation']}({', '.join(l['args'])})", drop_response(c.lemma, side, i)) for i, l in enumerate(c.lemma["response"][side])]
         best = None
-        evs = cards.eval_many([json.dumps(cand) for _, cand in cands], order, gates.max_bindings, allowed_refutations(gates)) if cands else []       # every step read side by side, on the cores
+        evs = cards.eval_many([json.dumps(cand) for _, cand in cands], order, gates.max_bindings, allowed_refutations(gates), gates.all_named) if cands else []       # every step read side by side, on the cores
         c.evals += len(cands)
         for (what, cand), e in zip(cands, evs):
             for ci, held, _k in e["cases"]:

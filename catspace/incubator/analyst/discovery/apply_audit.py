@@ -94,9 +94,13 @@ def optimal_of(source, variant: str, start, moves: list) -> "tuple | None":
 
 
 def audit(game: str, log: str, *, snapshot: "str | None" = None, variant: "str | None" = None, source=None, vocabulary: "str | None" = None, limit: "int | None" = None,
-          say=print) -> dict:
+          say=print, all_named: "bool | None" = None) -> dict:
     """The audit of a wake log played with a snapshot that holds lemmas -> {overall, lemmas {name: summary}, decisions [..], examples}. See the module."""
     variant = variant or game
+    if all_named is None:
+        all_named = getattr(source, "grade_mode", "score") == "result"          # (plan 78.31: the result standard asks every named move to be best)
+    say(f"OBS audit standard: " + (SL.standard_text(SL.Settings(standard="result" if getattr(source, "grade_mode", "score") == "result" else "score"), source) if source is not None else "no rank source")
+        + ("; the claim holds when EVERY proposed move is best, a decision where every legal move is best is trivial" if all_named else "; the claim holds when ANY proposed move is best"))
     decisions, games = SL.read_log(log)
     specs = GS.spec_texts(game, vocabulary)
     cache: dict = {}
@@ -127,16 +131,20 @@ def audit(game: str, log: str, *, snapshot: "str | None" = None, variant: "str |
             prop = proposals(cs, by_name[name])
             if len(prop) != count:
                 mismatch += 1
-            item = {"name": name, "bindings": bindings, "engine_count": count, "proposed": prop, "followed": played in prop,
-                    "proposal_optimal": (bool(set(prop) & opt[0]) if opt else None), "proposed_optimal": ([m for m in prop if m in opt[0]] if opt else None)}
+            trivial = bool(opt) and all_named and set(opt[1]) <= opt[0]                # (every legal move is best: the rule cannot be wrong here)
+            held_here = (bool(prop) and all(m in opt[0] for m in prop)) if (opt and all_named) else (bool(set(prop) & opt[0]) if opt else None)
+            item = {"name": name, "bindings": bindings, "engine_count": count, "proposed": prop, "followed": played in prop, "trivial": trivial,
+                    "proposal_optimal": held_here, "proposed_optimal": ([m for m in prop if m in opt[0]] if opt else None)}
             entry["lemmas"].append(item)
             s = per.setdefault(name, {"fired": 0, "games": set(), "proposed": 0, "followed": 0, "scored": 0, "proposal_optimal": 0, "followed_n": 0, "followed_optimal": 0,
-                                      "not_followed_n": 0, "not_followed_optimal": 0})
+                                      "not_followed_n": 0, "not_followed_optimal": 0, "trivial": 0})
             s["fired"] += 1
             s["games"].add((run, g))
             s["proposed"] += len(prop)
             s["followed"] += item["followed"]
-            if opt:
+            if opt and item["trivial"]:
+                s["trivial"] += 1
+            if opt and not item["trivial"]:
                 s["scored"] += 1
                 s["proposal_optimal"] += bool(item["proposal_optimal"])
                 k = "followed" if item["followed"] else "not_followed"
@@ -164,7 +172,7 @@ def audit(game: str, log: str, *, snapshot: "str | None" = None, variant: "str |
     say(f"OBS audit {game}: {len(decisions)} decisions, {len(rows)} with a lemma firing, {len(touched)} of {len(games)} games touched ({overall['share_games']}), "
         f"recomputed proposal counts differing from the engine's {mismatch}, rank source {src_name}")
     for n, s in lemmas.items():
-        claim = f", claim held {s['proposal_optimal']} of {s['scored']} by {src_name}, played optimal {s['followed_optimal']}/{s['followed_n']} when followed vs {s['not_followed_optimal']}/{s['not_followed_n']} when not" \
+        claim = f", claim held {s['proposal_optimal']} of {s['scored']} by {src_name}" + (f" (refuted {s['scored'] - s['proposal_optimal']}, trivial {s['trivial']})" if all_named else "") + f", played optimal {s['followed_optimal']}/{s['followed_n']} when followed vs {s['not_followed_optimal']}/{s['not_followed_n']} when not" \
             if source is not None else ""
         say(f"OBS audit lemma {n}: fired {s['fired']} in {s['games']} games, proposed {s['proposed']} moves, followed {s['followed']}{claim}")
         for ex in examples[n]:

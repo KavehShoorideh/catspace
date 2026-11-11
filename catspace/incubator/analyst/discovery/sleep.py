@@ -38,6 +38,7 @@ from catspace.incubator.analyst.discovery import abstraction as AB
 from catspace.incubator.analyst.discovery import detectors as D
 from catspace.incubator.analyst.discovery import game_store as GS
 from catspace.incubator.analyst.discovery import judges as JG
+from catspace.incubator.analyst.discovery import evidence as EV
 
 
 # ---------------------------------------------------------------------------------------------------------------- the log
@@ -266,8 +267,33 @@ class Settings:
     judge_positions: "int | None" = None   # with judge_by == "source": at most this many cards (the first ones) are revalued by the source (None: all); the rest are left out
     vocabulary: "str | None" = None  # plan 78.24: the NAME of the lemma vocabulary (rules/learned/<game>/vocabulary.<name>.json); None is the default one
     judge: "str | None" = None       # the store's VALUATION record the cards are valued by (None: the record in use); never values written in code
+    standard: str = "score"          # plan 78.31: "score" (a faster mate is better, any named move best counts) | "result" (the rank source grades by RESULT class, every named move must be best)
+    evidence_per_candidate: int = 60     # plan 78.30: positions of a corpus the rank source is asked about per candidate (only with a corpus, only for forced seeds)
+    evidence_total: int = 600            # ... and in all (new questions) per sleep
+    evidence_corpus_cap: int = 30000     # ... corpus positions read into cards (a stride beyond it)
     gates: AB.Gates = field(default_factory=AB.Gates)
     held: AB.Gates = field(default_factory=lambda: AB.Gates(min_fires=3, min_groups=2))
+
+
+def apply_standard(s: Settings, teacher=None) -> Settings:
+    """The settings with the gates' quantifier of the standard (result: every move the rule names must be in the best class). A rank source that grades by score under the result standard (or the
+    other way round) is refused: results would be mixed."""
+    if s.standard not in ("score", "result"):
+        raise ValueError(f"standard is 'score' or 'result', not {s.standard!r}")
+    if teacher is not None and getattr(teacher, "grade_mode", "score") != s.standard:
+        raise ValueError(f"standard {s.standard!r} but the rank source grades by {getattr(teacher, 'grade_mode', 'score')!r}: the two must agree")
+    import dataclasses
+    on = s.standard == "result"
+    return Settings(**{**s.__dict__, "gates": dataclasses.replace(s.gates, all_named=on), "held": dataclasses.replace(s.held, all_named=on)})
+
+
+def standard_text(s: Settings, teacher=None) -> str:
+    g = teacher
+    mode = getattr(g, "grade_mode", "score") if g is not None else s.standard
+    if mode == "result":
+        return (f"RESULT: the rank source grades by result class (win / draw / loss; decisive at {getattr(g, 'decisive', None)} cp or a mate), every move the rule names must be in the best class, "
+                f"a card where every move is in it is trivial")
+    return "SCORE: the rank source grades by score (mate_bucket " + str(getattr(g, 'mate_bucket', 1)) + ", gap " + str(getattr(g, 'gap', None)) + "), a firing holds when ANY move the rule names is best"
 
 
 def is_dev(group: str, s: Settings) -> bool:
@@ -302,17 +328,23 @@ def teacher_seeds(cards, dev_idx: list, positions: dict, teacher, variant: str, 
     return D.run(ctx, [D.detector_of(detector, teacher)])
 
 
-def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Settings | None" = None, teacher=None, write: bool = False, say=print, extra_positions: "list | None" = None) -> dict:
+def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Settings | None" = None, teacher=None, write: bool = False, say=print, extra_positions: "list | None" = None, corpus: "list | None" = None, prefer=None) -> dict:
     """One sleep over a wake log -> the report (the funnel, the lemmas admitted, what was rejected and why). `teacher(variant, moves) -> uci or None` is optional
     and training-only; `write` files the lemmas and publishes the next snapshot. `extra_positions` (plan 78.28): positions beside the log's, each {id, start, moves (the prefix),
     played (the move made there), group}; they join the corpus as cards (and so the rank source's regret read) exactly like a logged decision; absent, the sleep is unchanged.
     Plan 78.29: an entry with `"force": True` is a FORCED SEED (an open problem): its group is always in the DEVELOPMENT half (never held out), the rank source is always asked about it (not
     only one development card in `stride`), a regret is raised whenever the source grades the move played below its best (no gap or top-k), and its seeds are climbed FIRST (not cut by
     `max_seeds`). Admission is unchanged: the same gates on the held-out cards. Prints `OBS sleep forced seeds: ...` and, per forced seed that does not end as a lemma, the stage where it
-    died and the best candidate's development / held figures; the report gains `forced`."""
-    s = settings or Settings()
+    died and the best candidate's development / held figures; the report gains `forced`.
+    Plan 78.30: `corpus` ([{start, moves, group}], default None: nothing changes) lets a FORCED seed's candidate that has no refutation but too little support (development or held-out) gather
+    EVIDENCE (evidence.py): corpus positions where its body binds and the rule names a move, the rank source asked at up to `evidence_per_candidate` of them (`evidence_total` in all, spread over
+    groups), split dev / held by group as the games are, added to the candidate's cards; the SAME gates are re-applied. A refutation there is a counter-example (the climb is tried once more on
+    the extended development cards, else the candidate dies). Prints `OBS sleep evidence <seed>: ...` and `OBS sleep evidence total: ...`. `prefer(lemma, x) -> {ok, named, lose, ...}` (optional):
+    among the candidates of one forced seed that pass the gates, those whose named moves at the seed problem all keep the verdict are admitted; when none does, all are, and it says so."""
+    s = apply_standard(settings or Settings(), teacher)
     variant = variant or game
     t0 = time.perf_counter()
+    say(f"OBS sleep standard: {standard_text(s, teacher)}")
     decisions, games = read_log(log)
     spec, vocab = GS.spec_texts(game, s.vocabulary), json.dumps(GS.vocabulary(game, s.vocabulary))
     if s.judge_by not in ("store", "source"):
@@ -453,34 +485,93 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     # abstract on the development cards, verify on the held-out cards
     known = {AB.canonical(l) for l in GS.read_lemmas(game, s.vocabulary)}
     admitted, climbed, dev_ok = {}, 0, 0
+    evid = None
+    if corpus and teacher is not None and forced_ids:
+        known_keys = {(st, tuple(mv)) for st, mv in positions.values()}
+        evid = EV.Evidence(corpus, variant=variant, spec=spec, vocab=vocab, teacher=teacher, is_dev=lambda g: is_dev(g, s) or g in forced_groups, per_candidate=s.evidence_per_candidate,
+                           total=s.evidence_total, cap=s.evidence_corpus_cap, known=known_keys)
+        say(f"OBS sleep evidence bounds: corpus {len(corpus)} positions ({len(evid.rows)} read into cards after the cap {s.evidence_corpus_cap}, the sleep's own cards left out), at most "
+            f"{s.evidence_per_candidate} asked per candidate and {s.evidence_total} new questions in all, spread over groups")
+    ev_log = []
+    pending: dict = {}
     for x, card, m, tm, played, dev_override in seeds:
         seed = AB.seed_from(card, m, s.gates, played)
         t1 = time.perf_counter()
         dev_here = dev_idx if dev_override is None else dev_override          # (a teacher seed's own position is read at the deeper depth that confirmed it)
         c = AB.generalize(seed, cards_all, dev_here, s.gates)
         timing["climb"] += time.perf_counter() - t1
+        tag = f"{x['id']} {m['name']}"
         if c is None:
             ev0 = AB.evaluate(cards_all, seed, dev_here, s.gates)
-            rep["rejected"].append({"seed": f"{x['id']} {m['name']}", "why": "the ground seed is not admissible on the development cards", "dev": summary(ev0, s.gates),
+            rep["rejected"].append({"seed": tag, "why": "the ground seed is not admissible on the development cards", "dev": summary(ev0, s.gates),
                                     "truncated": ev0["truncated"], "body": len(seed["body"])})
             continue
         climbed += 1
-        if not s.gates.supported(c.ev):
-            rep["rejected"].append({"seed": f"{x['id']} {m['name']}", "why": "too little support on the development cards", "dev": summary(c.ev, s.gates)})
+        want = evid is not None and bool(x.get("forced"))
+        dev_sup = s.gates.supported(c.ev)
+        if not dev_sup and not (want and c.ev["refuted"] == 0):
+            rep["rejected"].append({"seed": tag, "why": "too little support on the development cards", "dev": summary(c.ev, s.gates)})
             continue
+        h, info, died = None, None, None
+        if dev_sup:
+            canon = AB.canonical(c.lemma)
+            if canon in admitted or canon in known:
+                rep["rejected"].append({"seed": tag, "why": "already known" if canon in known else "the same lemma as another seed's"})
+                continue
+            t2 = time.perf_counter()
+            h = AB.evaluate(cards, c.lemma, held_idx, s.held)          # exact, by our judge, on cards the teacher never touched
+            timing["verify"] += time.perf_counter() - t2
+            if not s.held.admissible(h) and not (want and h["refuted"] == 0 and not h["truncated"] and (h["fires"] == 0 or h["excess"] >= s.held.min_excess)):
+                rep["rejected"].append({"seed": tag, "why": "refuted or trivial on the held-out games", "dev": summary(c.ev, s.gates), "held": summary(h, s.held)})
+                continue
+        if want and (not dev_sup or not s.held.supported(h)):
+            # EVIDENCE ON DEMAND: no refutation, too little support: look in the corpus (the same gates, afterwards)
+            for rnd in range(2):
+                g = evid.gather(c.lemma)
+                if g is None:
+                    died = "no corpus position where the body binds and the rule names a move, or the bounds are spent"
+                    info = {"corpus": len(evid.rows), "binds": 0, "asked": 0, "holds": 0, "refuted": 0}
+                    break
+                nd, nh = len(cards_all), len(cards)
+                big = CE.CardSet.merge([cards_all, g.cards])
+                ev_d = AB.evaluate(big, c.lemma, list(dev_here) + [nd + j for j in g.dev], s.gates)
+                bigh = CE.CardSet.merge([cards, g.cards])
+                h = AB.evaluate(bigh, c.lemma, list(held_idx) + [nh + j for j in g.held], s.held)
+                new_ev = AB.evaluate(g.cards, c.lemma, None, s.gates)
+                info = {"corpus": len(evid.rows), "binds": g.binds, "asked": g.asked, "holds": new_ev["holds"], "refuted": new_ev["refuted"]}
+                if ev_d["refuted"] > 0 and rnd == 0:
+                    c2 = AB.generalize(seed, big, list(dev_here) + [nd + j for j in g.dev], s.gates)          # the counter-example joins the development cards: the climb again
+                    if c2 is not None:
+                        c = c2
+                        continue
+                c.ev = ev_d
+                if ev_d["refuted"] > 0 or h["refuted"] > 0:
+                    died = f"a counter-example: {new_ev['refuted']} refutation(s) among the {g.asked} positions asked"
+                elif not s.gates.admissible(ev_d):
+                    died = "not admissible on the extended development cards"
+                elif not s.gates.supported(ev_d):
+                    died = "still too little support on the development cards"
+                elif not s.held.admissible(h):
+                    died = "refuted or trivial on the extended held-out cards"
+                elif not s.held.supported(h):
+                    died = "still too little support on the held-out cards"
+                break
+            ev_log.append({"seed": tag, "died": died, **(info or {})})
+            say(f"OBS sleep evidence {tag}: corpus {info['corpus']}, body binds at {info['binds']}, asked {info['asked']}, holds {info['holds']}, refuted {info['refuted']}; after: dev "
+                f"{summary(c.ev, s.gates)}, held {summary(h, s.held) if h is not None else None}; " + (f"died: {died}" if died else "admitted"))
+            if died:
+                rep["rejected"].append({"seed": tag, "why": "died after evidence: " + died, "dev": summary(c.ev, s.gates), **({"held": summary(h, s.held)} if h is not None else {})})
+                continue
+            canon = AB.canonical(c.lemma)
+            if canon in admitted or canon in known:
+                rep["rejected"].append({"seed": tag, "why": "already known" if canon in known else "the same lemma as another seed's"})
+                continue
         dev_ok += 1
-        canon = AB.canonical(c.lemma)
-        if canon in admitted or canon in known:
-            rep["rejected"].append({"seed": f"{x['id']} {m['name']}", "why": "already known" if canon in known else "the same lemma as another seed's"})
-            continue
-        t2 = time.perf_counter()
-        h = AB.evaluate(cards, c.lemma, held_idx, s.held)          # exact, by our judge, on cards the teacher never touched
-        timing["verify"] += time.perf_counter() - t2
         if not s.held.admissible(h):
-            rep["rejected"].append({"seed": f"{x['id']} {m['name']}", "why": "refuted or trivial on the held-out games", "dev": summary(c.ev, s.gates), "held": summary(h, s.held)})
+            rep["rejected"].append({"seed": tag, "why": "refuted or trivial on the held-out games", "dev": summary(c.ev, s.gates), "held": summary(h, s.held)})
             continue
         if not s.held.supported(h):
-            rep["rejected"].append({"seed": f"{x['id']} {m['name']}", "why": "too little support on the held-out games", "dev": summary(c.ev, s.gates), "held": summary(h, s.held)})
+            rep["rejected"].append({"seed": tag, "why": "too little support on the held-out games", "dev": summary(c.ev, s.gates), "held": summary(h, s.held)})
             continue
         name = AB.name_of(c.lemma)
         lemma = {**c.lemma, "name": name,
@@ -488,9 +579,29 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
                  "meta": {"origin": "sleep", "plan": "78.14", "game": variant, "surprise": {k: x[k] for k in ("id", "played", "reply", "predicted", "seen")} | {"kind": x.get("kind", "loss")},
                           "seed_move": m["name"], "steps": c.steps, "teacher": (bool(tm) or by_source) and bool(getattr(teacher, "training_only", True)),
                           "source": getattr(teacher, "source", "teacher") if (tm or by_source) else None, "gates": s.gates.as_dict(), "held_gates": s.held.as_dict(), **({"vocabulary": s.vocabulary} if s.vocabulary else {}),
-                          **({"judge_source": JG.describe(teacher)} if by_source else {}), **({"why": x["why"]} if x.get("why") else {})}}
+                          **({"judge_source": JG.describe(teacher)} if by_source else {}), **({"why": x["why"]} if x.get("why") else {}), **({"evidence": {"asked": info["asked"]}} if info else {})}}
         GS.check_lemma(lemma)
-        admitted[canon] = lemma
+        canon = AB.canonical(c.lemma)
+        if prefer is not None and x.get("forced"):
+            pending.setdefault(x["id"], []).append((canon, lemma, x, tag))
+        else:
+            admitted[canon] = lemma
+    for fid, lst in pending.items():
+        verdicts = [prefer(l, x) for _c, l, x, _t in lst]
+        good = [i for i, v in enumerate(verdicts) if v["ok"]]
+        for i, ((canon, l, x, tag), v) in enumerate(zip(lst, verdicts)):
+            say(f"OBS sleep forced rule {l['name']} (seed {tag}): fires at its seed problem {v['fires']}, names {v['named']}, of which lose the verdict {v['lose']}")
+        if good:
+            say(f"OBS sleep forced rule choice {fid}: {len(lst)} candidate(s) pass the gates, {len(good)} name only moves that keep the verdict at the problem: admitted those only")
+            keep_i = good
+        else:
+            say(f"OBS sleep forced rule choice {fid}: {len(lst)} candidate(s) pass the gates and NONE names only moves that keep the verdict at the problem: all admitted")
+            keep_i = range(len(lst))
+        for i in keep_i:
+            admitted[lst[i][0]] = lst[i][1]
+    if ev_log:
+        say(f"OBS sleep evidence total: candidates {len(ev_log)}, asked {evid.new_asks}, admitted {sum(1 for e in ev_log if not e['died'])}, refuted {sum(e['refuted'] for e in ev_log)}")
+        rep["evidence"] = ev_log
     f["climbed"], f["supported_dev"], f["verified_held"] = climbed, dev_ok, len(admitted)
     rep["lemmas"] = list(admitted.values())
     if forced_ids:
@@ -597,9 +708,21 @@ class UciTeacher:
     mate_bucket = 1                   # plan 78.24: plies; a mate's distance is floored to a multiple of this, so mates within one bucket tie (1: exact)
     gap = 100                         # the regret detector's threshold, in THIS source's units (centipawns: a pawn); a mate is +-MATE_SCORE so a missed win always counts
 
+    grade_mode = "score"              # plan 78.31: "score" (below) or "result": a score is a RESULT class for the mover, 1 win / 0 draw / -1 loss
+    decisive = 300                    # (result mode) a score of at least this many centipawns is a win, at most minus this a loss; a mate is one too. 300 is read off Stockfish with SyzygyPath at
+                                      # three units (a tablebase win comes back as ~+500 for its best move, drawn moves 0, a lost one -300 or less; a mate as +-99990): stated, not fitted to outcomes
+
+    @property
+    def regret_by_grade(self) -> bool:
+        """In result mode a regret is a move whose class is below the best class (detectors.Regret), not a score gap."""
+        return self.grade_mode == "result"
+
     def grade(self, score: int) -> int:
-        """Plan 78.23: how a score becomes a card value when this source is the judge. A mate keeps its exact value (a faster win is strictly better, a slower loss strictly better);
+        """Plan 78.23: how a score becomes a card value when this source is the judge. In result mode (plan 78.31) the class of the result: 1, 0 or -1 (a mate, or a score beyond `decisive`,
+        is a win or a loss; every other move is a draw), so all winning moves tie as best and all drawing moves tie. Otherwise: a mate keeps its exact value (a faster win is strictly better, a slower loss strictly better);
         any other score is `score // gap`, so moves within a gap share a value (and the optimal moves are those within the gap of the best bucket)."""
+        if self.grade_mode == "result":
+            return 1 if score >= self.decisive or score > MATE_SCORE - 1000 else -1 if score <= -self.decisive or score < -(MATE_SCORE - 1000) else 0
         if abs(score) > MATE_SCORE - 1000:
             b = max(1, int(self.mate_bucket))
             d = (MATE_SCORE - abs(int(score))) // b * b          # (flooring is monotone: a faster win is never below a slower one, a slower loss never below a faster one)
@@ -669,8 +792,13 @@ class UciTeacher:
         self._send("setoption name MultiPV value 1")
         return parse_multipv_lines("".join(lines))
 
-    def __init__(self, path: str, movetime_ms: int = 100, options: "dict | None" = None, mate_bucket: int = 1):
+    def __init__(self, path: str, movetime_ms: int = 100, options: "dict | None" = None, mate_bucket: int = 1, grade_mode: str = "score", decisive: "int | None" = None):
         import subprocess
+        if grade_mode not in ("score", "result"):
+            raise ValueError(f"grade_mode is 'score' or 'result', not {grade_mode!r}")
+        self.grade_mode = grade_mode
+        if decisive is not None:
+            self.decisive = int(decisive)
         self.movetime = movetime_ms
         self.mate_bucket = mate_bucket
         self.path = path

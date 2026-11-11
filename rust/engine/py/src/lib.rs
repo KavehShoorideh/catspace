@@ -657,7 +657,7 @@ fn eval_dict(py: Python<'_>, ev: &cs_memory::cards::Eval) -> PyResult<PyObject> 
     d.set_item("fires", ev.fires)?; d.set_item("holds", ev.holds)?; d.set_item("refuted", ev.refuted)?; d.set_item("unknown", ev.unknown)?;
     d.set_item("groups", ev.groups)?; d.set_item("groups_held", ev.groups_held)?; d.set_item("precision", ev.precision)?; d.set_item("expected", ev.expected)?;
     d.set_item("excess", ev.excess)?; d.set_item("selectivity", ev.selectivity)?; d.set_item("truncated", ev.truncated)?; d.set_item("stopped", ev.stopped)?; d.set_item("steps", ev.steps)?;
-    d.set_item("cases", ev.cases.clone())?;
+    d.set_item("cases", ev.cases.clone())?; d.set_item("trivial", ev.trivial)?;
     Ok(d.into())
 }
 
@@ -676,24 +676,24 @@ impl CardSet {
         self.inner.cards.get(i).map(|c| c.to_json().to_string()).ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("no such card"))
     }
     /// eval(lemma_json, indices=None, max_bindings=64, max_refuted=None) -> {fires, holds, refuted, unknown, groups, groups_held, precision, expected, excess, selectivity, truncated, stopped, steps, cases}; with `max_refuted` it stops at the first card past that many refutations (partial counts, `stopped`).
-    #[pyo3(signature = (lemma, indices=None, max_bindings=64, max_refuted=None))]
-    fn eval(&self, py: Python<'_>, lemma: &str, indices: Option<Vec<usize>>, max_bindings: usize, max_refuted: Option<usize>) -> PyResult<PyObject> {
+    #[pyo3(signature = (lemma, indices=None, max_bindings=64, max_refuted=None, all_named=false))]
+    fn eval(&self, py: Python<'_>, lemma: &str, indices: Option<Vec<usize>>, max_bindings: usize, max_refuted: Option<usize>, all_named: bool) -> PyResult<PyObject> {
         let l = lemma_of(lemma)?;
         self.check_indices(&indices)?;
         let set = self.inner.clone();
-        let ev = py.allow_threads(|| set.eval_bounded(&l, indices.as_deref(), max_bindings, max_refuted));
+        let ev = py.allow_threads(|| set.eval_with(&l, indices.as_deref(), max_bindings, max_refuted, all_named));
         eval_dict(py, &ev)
     }
     /// eval_many([lemma_json], indices=None, max_bindings=64) -> [the eval dict of each]: the lemmas read side by side on the cores, in one call (the climb reads every
     /// candidate step at once). A lemma that is not well formed is an error for the whole call.
-    #[pyo3(signature = (lemmas, indices=None, max_bindings=64, max_refuted=None))]
-    fn eval_many(&self, py: Python<'_>, lemmas: Vec<String>, indices: Option<Vec<usize>>, max_bindings: usize, max_refuted: Option<usize>) -> PyResult<Vec<PyObject>> {
+    #[pyo3(signature = (lemmas, indices=None, max_bindings=64, max_refuted=None, all_named=false))]
+    fn eval_many(&self, py: Python<'_>, lemmas: Vec<String>, indices: Option<Vec<usize>>, max_bindings: usize, max_refuted: Option<usize>, all_named: bool) -> PyResult<Vec<PyObject>> {
         let ls = lemmas.iter().map(|l| lemma_of(l)).collect::<PyResult<Vec<_>>>()?;
         self.check_indices(&indices)?;
         let set = self.inner.clone();
         let evs: Vec<cs_memory::cards::Eval> = py.allow_threads(|| {
             use rayon::prelude::*;
-            ls.par_iter().map(|l| set.eval_bounded(l, indices.as_deref(), max_bindings, max_refuted)).collect()
+            ls.par_iter().map(|l| set.eval_with(l, indices.as_deref(), max_bindings, max_refuted, all_named)).collect()
         });
         evs.iter().map(|e| eval_dict(py, e)).collect()
     }
