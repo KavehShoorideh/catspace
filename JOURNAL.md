@@ -36500,3 +36500,12 @@ unfinished games; the control with the table and no lemmas shows it). Left to Ka
 against the outside engine (his call under the leak rule), the human table, richer keys, a sharp signal from the chain.
 
 OBS gate engine: files 68, passed 852, failed 0, xfailed 1, errors 0, wall 1245.7 s
+
+## 2026-11-10 19:30 -- plan 78.28: playouts to a real result, turning moves, problems that must go away
+
+Kaveh: a playout ends in a win, draw or loss; at sleep the outside engine says what the start was worth, the sleep finds the move where it turned and makes a rule; the engine
+reasons at sleep too, and the sleep must leave the problem solved. Built by a subagent, integrated here (files in docs/ANALYST_PLAN.md 78.28 RESULTS and repo_structure.md).
+Three cycles at three units on a fresh sandbox: the loop runs and files ten real problems, the lemma sleep solved none of them (one rule admitted, silent at all ten).
+Next: a targeted miner aimed at one problem at a time, admitted only when that problem's check passes.
+
+OBS gate engine: files 69, passed 869, failed 0, xfailed 1, errors 0, wall 1254.4 s

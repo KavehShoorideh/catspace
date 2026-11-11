@@ -12,7 +12,7 @@ pub mod graph_net;
 pub mod graph_prior;
 pub mod lemma_prior;
 
-pub use lemma_prior::LemmaPrior;
+pub use lemma_prior::{LemmaPrior, RulesFirst};
 pub use graph_prior::GraphPrior;
 
 use cs_game::Game;

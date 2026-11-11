@@ -5160,3 +5160,71 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
   c the human table;
   d richer keys than the units (facts the lemmas already name), so that "positions like this" means something between exact and units;
   e a sharp signal from the reasoning chain (in B the wake called almost nothing sharp while the judge called about half of the sampled positions decided).
+
+#### 78.28 PLAYOUTS TO A REAL RESULT, DIAGNOSED AT SLEEP: WHERE A PLAYOUT THREW THE RESULT AWAY, FIND THE MOVE AND MINE THE RULE (2026-11-10; Kaveh: "a play out, if it's a Monte Carlo
+     play out, should go into a win, draw, or loss ... ask Stockfish, what was this position? ... you started with a winning position and you went into a draw ... find the point at which
+     you went to the draw ... why does this move go into a draw and why does that move not ... then there's a rule"; "And all of this should happen in sleep.")
+
+  THE RULE, RESTATED  A playout ends in a win, a draw or a loss, not in a material count. At SLEEP the outside engine says what the start of the playout was worth; where the result is
+            worse, the sleep walks the playout to the move where the verdict turned, compares that move with one that keeps the verdict, and mines a rule from the difference with the
+            lemma machinery that exists (cards, climb, held-out check). The next playouts follow the stored rules, so they stop making that mistake, and the win / draw / loss numbers
+            improve because the playouts play better. Nothing is fitted to the outside engine's numbers; the wake carries only rules.
+  DESIGN
+  1 THE PLAYOUT GAME  one playout from a position to a real result (a cap in plies only as a guard, said when hit), its moves kept. Its policy: the stored rules first (the lemma
+            prior that exists, rust/engine/decision/src/lemma_prior.rs), the careful capture test where no rule speaks.
+  2 THE TURNING MOVE  the outside engine's verdict (win / draw / loss class for the mover) along the playout; the first ply where the class drops for the side that moved is the
+            turning move; the keeping move is one of the outside engine's best there. Training only.
+  3 THE RULE  the turning positions enter the lemma sleep as its seeds, beside the ones from the real games; admission is unchanged.
+  4 THE NEXT PLAYOUTS  read the new snapshot. Measured per cycle: the share of playouts whose result matches the outside engine's verdict of their start, and the turning moves found.
+  5 WHERE   all of it in the sleep. The wake is not changed by this plan.
+  6 THE PROBLEM MUST GO AWAY (Kaveh, same day: "in the sleep period, we should also be able to reason ... the shortcomings of our reasoning in the sleep is what gives us the
+            dilemma ... at the end of the sleep period, after the new lemma, the reasoning now works ... you add something during the sleep that makes it better and makes the problem
+            go away. And then in the wake, now the problem doesn't exist anymore until you hit a new problem")
+            A PROBLEM is a position where the engine's own decision (its full reasoning, as the wake runs it) loses the outside engine's verdict. The sleep runs that same reasoning
+            on the problem BEFORE it adds anything (it fails, and how it fails is the diagnosis), adds (a rule, or the statistics), then runs it AGAIN with the new snapshot. Solved
+            means the decision now keeps the verdict. The sleep reports problems, solved, still open; the problems are kept in the sandbox and re-checked every later sleep, so a
+            solved problem that comes back is seen. The wake meets only what the sleep left open or has not met yet.
+
+  RESULTS (2026-11-10). Built: `RulesFirst` playout policy (rust/engine/decision/src/lemma_prior.rs), py `playout_game`, catspace/incubator/analyst/discovery/playout_sleep.py (playout
+  games, the turning move, the problem file and its check with the wake's own decision), `sleep.sleep(extra_positions=)`, `initialize.run_size(playouts=True)`. Run: three units, a
+  fresh sandbox data/derived/init_store_w28, three cycles (`initialize chess --size 3 --games-per-start 6 --seconds 0.2 --set depth=3 --vocabulary relational --tag w28 --cycles 3
+  --playouts --playout-set positions=60 --playout-set per_position=2 --playout-set max_turning=40`, the outside engine at 100 ms for the ranking and depth 12 for the verdict):
+    OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3890, outcomes {'[50, 50]': 117, '[100, 0]': 14, '[0, 100]': 1}, 45 s -> artifacts/experiments/wake_chess_init3_w28_a.jsonl
+    OBS playout_sleep match chess rollout rules: positions 60, playouts 120, finished 94, capped 26, matched 47, worse 27, better 20, match share 0.5, rules spoke in 0 playouts (0 plies)
+    OBS playout_sleep candidates chess: turning positions 15, new problems 3, candidates the engine's own decision already keeps (dropped) 11, problems carried 0
+    OBS sleep funnel chess (judge source:uci, depth 3): games 132, decisions 3626, surprises 62, replayable 15, extra_positions 15, cards 1867, cards_dev 945, cards_held 922, confirmed 0, with_saving 0, seeds 46, teacher_surprises 0, teacher_confirmed 0, regret_surprises 33, regret_confirmed 33, regret_tied 0, regret_unconfirmed 0, climbed 25, supported_dev 1, verified_held 0, 261.57 s
+    OBS init sleep chess: lemmas admitted 0 [], rejected 46
+    OBS playout_sleep problems: total 3, new 3, solved before 0, solved after 0, still open 3, came back 0
+    OBS playout_sleep match chess rollout rules: positions 60, playouts 120, finished 94, capped 26, matched 47, worse 27, better 20, match share 0.5, rules spoke in 0 playouts (0 plies)
+    OBS init wake b chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3928, outcomes {'[50, 50]': 120, '[100, 0]': 10, '[0, 100]': 2}, 46 s -> artifacts/experiments/wake_chess_init3_w28_b.jsonl
+    OBS playout_sleep match chess rollout rules: positions 60, playouts 120, finished 90, capped 30, matched 40, worse 36, better 14, match share 0.4444, rules spoke in 0 playouts (0 plies)
+    OBS playout_sleep candidates chess: turning positions 16, new problems 4, candidates the engine's own decision already keeps (dropped) 11, problems carried 3
+    OBS sleep funnel chess (judge source:uci, depth 3): games 132, decisions 3664, surprises 53, replayable 12, extra_positions 16, cards 1880, cards_dev 1074, cards_held 806, confirmed 0, with_saving 0, seeds 61, teacher_surprises 0, teacher_confirmed 0, regret_surprises 40, regret_confirmed 40, regret_tied 0, regret_unconfirmed 0, climbed 22, supported_dev 2, verified_held 1, 132.88 s
+    OBS lemma cell-response-74fc2fcd: dev 13 fires / precision 1.0 (lower 0.8277); held 10 fires in 5 games / precision 1.0 (lower 0.7871) excess 0.3023
+    OBS init sleep chess: lemmas admitted 1 ['cell-response-74fc2fcd'], rejected 59
+    OBS playout_sleep problems: total 7, new 4, solved before 0, solved after 0, still open 7, came back 0
+    OBS playout_sleep match chess rollout rules: positions 60, playouts 120, finished 105, capped 15, matched 47, worse 42, better 16, match share 0.4476, rules spoke in 23 playouts (30 plies)
+    OBS init wake w2 chess: snapshot e1759786f1507b4e (1 lemma(s)), games 132, plies 3863, outcomes {'[100, 0]': 16, '[50, 50]': 113, '[0, 100]': 3}, 44 s -> artifacts/experiments/wake_chess_init3_w28_w2.jsonl
+    OBS playout_sleep match chess rollout rules: positions 60, playouts 120, finished 91, capped 29, matched 47, worse 22, better 22, match share 0.5165, rules spoke in 40 playouts (56 plies)
+    OBS playout_sleep candidates chess: turning positions 16, new problems 3, candidates the engine's own decision already keeps (dropped) 12, problems carried 7
+    OBS sleep funnel chess (judge source:uci, depth 3): games 132, decisions 3599, surprises 79, replayable 19, extra_positions 16, cards 1854, cards_dev 847, cards_held 1007, confirmed 0, with_saving 0, seeds 60, teacher_surprises 0, teacher_confirmed 0, regret_surprises 42, regret_confirmed 42, regret_tied 0, regret_unconfirmed 0, climbed 26, supported_dev 2, verified_held 0, 145.72 s
+    OBS init sleep chess: lemmas admitted 0 [], rejected 60
+    OBS playout_sleep problems: total 10, new 3, solved before 0, solved after 0, still open 10, came back 0
+    OBS playout_sleep match chess rollout rules: positions 60, playouts 120, finished 91, capped 29, matched 47, worse 22, better 22, match share 0.5165, rules spoke in 40 playouts (56 plies)
+    OBS init wake w3 chess: snapshot e1759786f1507b4e (1 lemma(s)), games 132, plies 3926, outcomes {'[100, 0]': 16, '[50, 50]': 114, '[0, 100]': 2}, 46 s -> artifacts/experiments/wake_chess_init3_w28_w3.jsonl
+    OBS mined cell-response-74fc2fcd: IF apart(us, ?v2, ?v3, them, ?v0, ?v1, ?v4) AND apart(us, ?v5, ?v3, us, ?v2, ?v3, ?v6) AND attack(us, ?v5, ?v3, ?v2, ?v1) AND closer(?v6, ?v4) THEN a best move removes [] adds [cell(?v2, ?v7, us, ?v9), flight(us, ?v2, ?v3)]
+    OBS audit lemma cell-response-74fc2fcd: fired 21 in 15 games, proposed 110 moves, followed 19, claim held 21 of 21 by uci, played optimal 18/19 when followed vs 2/2 when not
+    OBS init compare chess size 3: wake a outcomes {'[50, 50]': 117, '[100, 0]': 14, '[0, 100]': 1}, regret 57/200 (0.285); wake b outcomes {'[100, 0]': 16, '[50, 50]': 114, '[0, 100]': 2}, regret 39/200 (0.195); a mechanism check on 22 starts, not a strength claim
+
+  READING
+  1 THE LOOP RUNS: playouts end in a real result, the sleep finds turning moves, drops the ones the engine's own decision already gets right, keeps the rest as problems, hands them
+    to the lemma sleep, and checks every problem again after it. The problem file carries over the cycles.
+  2 NO PROBLEM WAS SOLVED. Ten problems after three cycles, all open. The lemma sleep admitted one rule in three cycles and it does not speak at any of the ten. Most of the ten
+    are of one family (the unit that should wait is advanced before the one that should lead), read off the problem file by hand; two look like noise of the verdict at depth 12
+    late in a long game and should be re-judged deeper before they count.
+  3 WHY (to be shown, not yet shown): the lemma sleep is a statistical miner over many cards; a turning position enters as one seed among dozens and its candidate must then pass a
+    held-out precision bar. Nothing in it is aimed at ONE problem until that problem is solved. October's way was (seed from one position, simplest rule, diagnose the failing
+    condition, repair, drill with counter-positions). That targeted miner is the piece the cycle lacks.
+  4 The playouts follow the one rule where it speaks (56 plies of 120 playouts); the share of playouts matching the verdict of their start did not move beyond noise.
+  NEXT (not started): aim a targeted miner at each open problem (the played move against the keeping move, the smallest condition that separates them, drilled against
+  counter-positions), admit only if the problem's check passes; re-judge problems deeper before filing them.

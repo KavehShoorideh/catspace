@@ -584,6 +584,65 @@ fn estimate(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>
     Ok(d.into())
 }
 
+/// One playout from `s` to a terminal state (or `max_plies`) under `policy`: the move names played, the outcome per role, whether the cap was hit.
+fn play_out<G: Game, R: cs_planning::mcts::Rollout>(g: &G, s: &G::State, policy: &mut R, max_plies: usize) -> (Vec<String>, Option<Vec<i64>>, bool) {
+    let mut s = s.clone();
+    let mut names = vec![];
+    loop {
+        if let Some(o) = g.outcome(&s) { return (names, Some(o), false); }
+        let moves = g.moves(&s);
+        if moves.is_empty() { return (names, None, false); }
+        if names.len() >= max_plies { return (names, None, true); }
+        let i = policy.pick(g, &s, &moves).min(moves.len() - 1);
+        names.push(g.move_name(&s, &moves[i]));
+        s = g.apply(&s, &moves[i]);
+    }
+}
+
+/// playout_game(variant, fen=None, moves=[], seed=1, max_plies=400, rollout="careful", store=None, spec=None, worth={}, valuation="", eps=0.1, boost=2.0) ->
+/// {moves, outcome, capped, named, plies}: ONE playout from the position after `moves` to a terminal state (`outcome`: the per-role list, None when `capped` -- a
+/// guard in plies -- or the game has no move), its moves kept. `rollout` "careful" is cs_planning's two-ply look; "rules" plays one of the moves the store's lemmas name
+/// (uniformly among them) when any lemma speaks, else the careful look (cs_decision::RulesFirst; needs `store`, the snapshot path, and `spec`, the variant's description
+/// text); with probability `eps` a uniform move. `named` counts the plies where a rule spoke. The judge is `worth` when given, else the snapshot's judge, else a count.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seed=1, max_plies=400, rollout="careful", store=None, spec=None, worth=HashMap::new(), valuation=String::new(), eps=cs_decision::WDL_EPS, boost=2.0))]
+#[allow(clippy::too_many_arguments)]
+fn playout_game(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, seed: u64, max_plies: usize, rollout: &str, store: Option<&str>, spec: Option<&str>,
+                worth: HashMap<String, i64>, valuation: String, eps: f64, boost: f64) -> PyResult<PyObject> {
+    if rollout != "careful" && rollout != "rules" { return Err(pyo3::exceptions::PyValueError::new_err(format!("rollout: {rollout} is not careful or rules"))); }
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    let snapshot = match store { Some(path) => Some(cs_memory::snapshot::Snapshot::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?), None => None };
+    let judge: Option<cs_tactics::ledger::Worth> = if !worth.is_empty() { Some(cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first: false }) }
+        else { snapshot.as_ref().and_then(|sn| sn.judge.as_ref()).map(|j| cs_tactics::ledger::Worth { name: j.name.clone(), table: j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), ours_first: j.ours_first }) };
+    let rules = rollout == "rules";
+    if rules && (snapshot.is_none() || spec.is_none()) { return Err(pyo3::exceptions::PyValueError::new_err("rollout \"rules\" needs store and spec (the snapshot path and the variant's description text)")); }
+    let r = py.allow_threads(|| -> Result<_, String> {
+        fn run<G: Game, J: cs_tactics::ledger::Judge + Clone>(g: &G, s: &G::State, judge: J, rules: Option<(&cs_memory::snapshot::Snapshot, &str)>, boost: f64, eps: f64, seed: u64, max_plies: usize)
+            -> Result<(Vec<String>, Option<Vec<i64>>, bool, u64), String> {
+            let careful = cs_planning::rollout::Careful::new(judge, eps, seed);
+            match rules {
+                None => { let mut p = careful; let (m, o, c) = play_out(g, s, &mut p, max_plies); Ok((m, o, c, 0)) }
+                Some((sn, text)) => {
+                    let view = cs_game::gdl_game::FactView::new(text, sn.vocabulary.clone())?;
+                    let mut p = cs_decision::RulesFirst::new(cs_decision::LemmaPrior::new(sn, &view, boost), careful, eps, seed);
+                    let (m, o, c) = play_out(g, s, &mut p, max_plies);
+                    Ok((m, o, c, p.named))
+                }
+            }
+        }
+        let rules_in = match (&snapshot, spec) { (Some(sn), Some(t)) if rules => Some((sn, t)), _ => None };
+        match judge { Some(j) => run(&g, &s, j, rules_in, boost.max(1.5), eps, seed, max_plies), None => run(&g, &s, cs_tactics::ledger::Count, rules_in, boost.max(1.5), eps, seed, max_plies) }
+    }).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let (names, outcome, capped, named) = r;
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("plies", names.len())?;
+    d.set_item("moves", names)?;
+    d.set_item("outcome", outcome)?;
+    d.set_item("capped", capped)?;
+    d.set_item("named", named)?;
+    Ok(d.into())
+}
+
 /// A corpus of cards (positions with their facts and the exact value of every legal move) lemmas are verified on.
 #[pyclass]
 struct CardSet { inner: std::sync::Arc<cs_memory::cards::CardSet> }
@@ -851,6 +910,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(variants, m)?)?;
     m.add_function(wrap_pyfunction!(certify_coplay, m)?)?;
     m.add_function(wrap_pyfunction!(best_move, m)?)?;
+    m.add_function(wrap_pyfunction!(playout_game, m)?)?;
     m.add_function(wrap_pyfunction!(solve_batch, m)?)?;
     m.add_function(wrap_pyfunction!(facts, m)?)?;
     m.add_function(wrap_pyfunction!(facts_audit, m)?)?;

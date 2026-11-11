@@ -302,9 +302,10 @@ def teacher_seeds(cards, dev_idx: list, positions: dict, teacher, variant: str, 
     return D.run(ctx, [D.detector_of(detector, teacher)])
 
 
-def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Settings | None" = None, teacher=None, write: bool = False, say=print) -> dict:
+def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Settings | None" = None, teacher=None, write: bool = False, say=print, extra_positions: "list | None" = None) -> dict:
     """One sleep over a wake log -> the report (the funnel, the lemmas admitted, what was rejected and why). `teacher(variant, moves) -> uci or None` is optional
-    and training-only; `write` files the lemmas and publishes the next snapshot."""
+    and training-only; `write` files the lemmas and publishes the next snapshot. `extra_positions` (plan 78.28): positions beside the log's, each {id, start, moves (the prefix),
+    played (the move made there), group}; they join the corpus as cards (and so the rank source's regret read) exactly like a logged decision; absent, the sleep is unchanged."""
     s = settings or Settings()
     variant = variant or game
     t0 = time.perf_counter()
@@ -350,6 +351,14 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
             items.append((variant, x["start"], x["moves_before"], x["id"], x["group"]))
             seen.add(x["id"])
             positions[x["id"]], played_of[x["id"]] = (x["start"], x["moves_before"]), x["played"]
+    for x in (extra_positions or []):
+        if x["id"] not in seen:
+            items.append((variant, x.get("start"), list(x["moves"]), x["id"], x["group"]))
+            seen.add(x["id"])
+            moves_of[x["id"]] = list(x["moves"])
+            positions[x["id"]], played_of[x["id"]] = (x.get("start"), list(x["moves"])), x["played"]
+    if extra_positions:
+        f["extra_positions"] = len(extra_positions)
     t_cards = time.perf_counter()
     cards = CE.build_cards(items, spec, vocab, s.depth, s.fuse, s.threads, judge.get("worth", {}), bool(judge.get("ours_first", False)))
     timing = {"cards": round(time.perf_counter() - t_cards, 2), "climb": 0.0, "verify": 0.0}
