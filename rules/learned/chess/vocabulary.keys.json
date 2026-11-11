@@ -44,5 +44,10 @@
   "king_in_front"
  ],
  "units": null,
+ "axes": [
+  {"sort": "file", "succ": "file_succ"},
+  {"sort": "rank", "succ": "rank_succ", "goal": "last_rank"}
+ ],
+ "distance_sort": "distance",
  "note": "The key-square vocabulary of chess (plan 78.32): the relational vocabulary (vocabulary.relational.json) plus the key squares of a pawn (rules/concepts/chess_keys.gdl): how far each king is from the nearest key square of a pawn, and the defending king standing right in front of it. The words were proposed by hand when induction went in circles; a rule written with them is admitted only by the exact drill."
 }

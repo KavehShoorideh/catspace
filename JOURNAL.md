@@ -36539,3 +36539,13 @@ where the king must go first. Three words (key squares of a pawn: rules/concepts
 them the exam moves outside the spread for the first time. The rules are in sandbox stores only. Lines in docs/ANALYST_PLAN.md 78.32.
 
 OBS gate engine: files 73, passed 933, failed 0, xfailed 1, errors 0, wall 1361.1 s
+
+## 2026-11-11 17:30 -- plan 78.33: relative position first, then absolute position as board structure
+
+Kaveh's two views of a position: relations between units wherever they stand, then where they stand in the board (edges, the promotion rank), a named square last. Built as three
+tiers of body literals in the induction search, with the board's structure generated from the game description (board_structure.py: edge and goal distances per axis). Run K (the
+hand rules as seeds, old search) and run L (the same with tiers): the exam takes the hand rules' step and then stays flat in both. Relative-tier rules fire right more often, but
+one of them, with zero wrong on the corpus, is refuted in the games. Induction saw seven problems in three cycles while the exam has some thirty failed positions: the bottleneck is
+the source of problems and a corpus that does not grow with the games. Lines in docs/ANALYST_PLAN.md 78.32 (run K) and 78.33.
+
+OBS gate engine: files 74, passed 948, failed 0, xfailed 1, errors 0, wall 1346.8 s

@@ -15,6 +15,10 @@
          used here. The rule is written by the store's own writer (game_store.write_lemma + publish) with provenance `origin induced, mined_from problem`; no verdict of the labeller and no count of
          a drill is in the lemma or the snapshot.
 
+  TIERS (plan 78.33)  the body literals come in three tiers (tiered_candidates): RELATIVE (every coordinate a variable), STRUCTURE (plus edge_gap / goal_gap literals on coordinate variables already
+         in the rule, board_structure.py), NAMED (a coordinate constant kept). For each head the search runs on the narrowest tier first and widens only when no candidate passes the whole admission;
+         the lemma records `meta.tier`. The `tiers` setting can stop the run early. A vocabulary with no `axes` has one "untiered" pass, as before.
+
 Game-free: the variant string, the store's vocabulary, objects passed in (corpus, labeller); no game object is named here.
 
   induce(problem, corpus, *, reader, ...) -> {status "found" | "open", lemma, head, dev, held, why, stage, heads_tried}      (the search and the held-out part of the admission)
@@ -29,12 +33,14 @@ from collections import Counter
 
 from catspace.incubator.analyst.discovery import abstraction as AB
 from catspace.incubator.analyst.discovery import apply_audit as AU
+from catspace.incubator.analyst.discovery import board_structure as BS
 from catspace.incubator.analyst.discovery import corpus as CP
 from catspace.incubator.analyst.discovery import game_store as GS
 from catspace.incubator.analyst.discovery import playout_sleep as PS
 from catspace.incubator.analyst.discovery import targeted as TG
 
-SETTINGS = {"max_literals": 4, "beam": 8, "min_right": 10, "min_held": 5, "max_heads": 4, "finalists": 3, "max_bindings": 256, "stride": 3}
+SETTINGS = {"max_literals": 4, "beam": 8, "min_right": 10, "min_held": 5, "max_heads": 4, "finalists": 3, "max_bindings": 256, "stride": 3, "tiers": ["relative", "structure", "named"]}
+TIERS = ("relative", "structure", "named")       # plan 78.33: the order of the body literals' tiers (the narrowest first)
 STAGES = ("position", "head", "dev", "held", "check", "broken")          # how far a candidate got: the reason of the furthest one is the problem's
 
 
@@ -46,10 +52,104 @@ def _key(t: dict, body: list) -> tuple:
     return (t["wrong"], -t["right"], len(body), _nconst(body), json.dumps(body, sort_keys=True))
 
 
-def search_body(corpus: "CP.Corpus", facts: list, names: dict, head: dict, *, max_literals: int, beam: int, min_right: int, finalists: int, max_bindings: int, part: str = "dev", stride: int = 1) -> dict:
+def tiered_candidates(facts: list, names: dict, structure: "BS.Structure") -> dict:
+    """PLAN 78.33: the body literals of a problem position in three TIERS (cumulative: a wider tier's search may use the narrower tiers' literals too).
+    Every constant of the position is one variable everywhere in a lifted literal (the head's own constants are the head's variables), as targeted.body_candidates. An argument is a
+    COORDINATE when its declared sort (the `signature` of the relation) is a coordinate sort of `structure` (the vocabulary's axes); the others (sides, kinds, distances) are not.
+      relative   no coordinate constant: each fact once with every constant lifted, once with the coordinates lifted and the other constants kept (a distance, a side token, a piece kind).
+      named      a coordinate constant stays (the constants-kept form of targeted.body_candidates); a fact whose arguments have no declared sort counts here when it has any constant.
+      structure  per coordinate of the position, the structure facts of the card (edge_gap_<sort>(?v, dK), goal_gap_<sort>(side, ?v, dK): the engine reads them at the position in the mover's
+                 perspective, so the side token is us / them) with the distance constant kept and the side token kept or lifted. Carried as (lit, description, needs) with `needs` = the variables the literal is attached to: the search uses it
+                 only in a body where those variables already occur in the head or in a non-structure literal.
+    -> {"relative": [(lit, desc)], "structure": [(lit, desc, {needs})], "named": [(lit, desc)]}"""
+    allmap = dict(names)
+    srel = set(structure.relations())
+    sfacts = [f for f in facts if f[0] in srel]
+    facts = [f for f in facts if not TG.is_counter(f) and f[0] not in srel]
+    for f in facts:
+        for a in f[1:]:
+            if TG.is_const(a) and a not in allmap:
+                allmap[a] = f"?k{len(allmap)}"
+    coord = set(structure.coordinate_sorts)
+    out: dict = {"relative": [], "structure": [], "named": []}
+    seen: set = set()
+    coords: dict = {}                                                # coordinate constant -> axis sort, in order of first appearance
+    for f in facts:
+        rel, args = f[0], list(f[1:])
+        sig = structure.signatures.get(rel)
+        sorts = list(sig) if sig and len(sig) == len(args) else [None] * len(args)
+        for a, srt in zip(args, sorts):
+            if srt in coord and TG.is_const(a):
+                coords.setdefault(a, srt)
+        for kind in ("lift", "mixed", "keep"):
+            new = []
+            for a, srt in zip(args, sorts):
+                if not TG.is_const(a):
+                    new.append(a)
+                elif kind == "lift" or a in names or (kind == "mixed" and srt in coord):
+                    new.append(allmap[a])
+                else:
+                    new.append(a)
+            lit = AB.lit(rel, new)
+            key = json.dumps(lit, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            named = any(TG.is_const(x) and (srt in coord or srt is None) for x, srt in zip(new, sorts) if not x.startswith("?"))
+            out["named" if named else "relative"].append((lit, f"{rel}({', '.join(lit['args'])})"))
+    for c in names:                                                  # a coordinate the head names but no fact shows
+        for srt, seq in structure.order.items():
+            if c in seq:
+                coords.setdefault(c, srt)
+    for f in sfacts:                                                 # the structure facts the engine reads at the position (perspective us / them), of the coordinates the rule can speak of
+        rel, args = f[0], list(f[1:])
+        c, d = args[-2], args[-1]
+        if c not in coords:
+            continue
+        prefix = args[:-2]
+        forms = [prefix] + ([[allmap[x] for x in prefix]] if prefix and all(x in allmap for x in prefix) else [])
+        for fm in forms:
+            lit = AB.lit(rel, fm + [allmap[c], d])
+            key = json.dumps(lit, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            out["structure"].append((lit, f"{rel}({', '.join(lit['args'])})", {allmap[c]}))
+    return out
+
+
+def tier_passes(facts: list, names: dict, structure: "BS.Structure | None", tiers=TIERS) -> list:
+    """The searches of one head, narrowest first: [(tier, cands [(lit, desc)], needs {literal json: {variables}})]. A tier that adds no literal to the one before is left out. With no
+    `structure` (or none with axes) there is ONE pass, tier "untiered": targeted.body_candidates as before."""
+    if structure is None or not structure.axes:
+        return [("untiered", TG.body_candidates(facts, names, set()), {})]
+    c = tiered_candidates(facts, names, structure)
+    passes, cands, needs, prev = [], [], {}, 0
+    for tier in TIERS:
+        if tier not in tiers:
+            continue
+        if tier == "relative":
+            cands = cands + c["relative"]
+        elif tier == "structure":
+            cands = cands + [(l, d) for l, d, _n in c["structure"]]
+            needs = {json.dumps(l, sort_keys=True): n for l, _d, n in c["structure"]}
+        else:
+            cands = cands + c["named"]
+        if len(cands) > prev:
+            passes.append((tier, list(cands), dict(needs)))
+            prev = len(cands)
+    return passes
+
+
+def search_body(corpus: "CP.Corpus", facts: list, names: dict, head: dict, *, max_literals: int, beam: int, min_right: int, finalists: int, max_bindings: int, part: str = "dev", stride: int = 1,
+                cands: "list | None" = None, needs: "dict | None" = None) -> dict:
     """The beam search for one head -> {found: [(body, tally)] (zero wrong and >= min_right right, the best first; [] if none), best: (body, tally) with the fewest wrong then the most right
-    seen at any size, levels: [{literals, evaluated, kept}]}."""
-    cands = TG.body_candidates(facts, names, set())
+    seen at any size, levels: [{literals, evaluated, kept}]}. `cands` [(lit, desc)] replaces targeted.body_candidates (a tier's literals); `needs` {literal json: {variables}} marks the
+    structure literals, which join a body only where each of their variables is a variable of the head or occurs in a non-structure literal of the body."""
+    if cands is None:
+        cands = TG.body_candidates(facts, names, set())
+    needs = needs or {}
+    head_vars = set(names.values())
     levels, best = [], None
     frontier = [([], None)]                                         # (body, tally of the parent: None = read on the whole part)
     seen: set = set()
@@ -57,10 +157,11 @@ def search_body(corpus: "CP.Corpus", facts: list, names: dict, head: dict, *, ma
         children = []
         for body, ptally in frontier:
             have = {json.dumps(l, sort_keys=True) for l in body}
+            scope = head_vars | {a for l in body if json.dumps(l, sort_keys=True) not in needs for a in l["args"] if a.startswith("?")}
             todo = []
             for lit, _desc in cands:
                 lk = json.dumps(lit, sort_keys=True)
-                if lk in have:
+                if lk in have or (lk in needs and not needs[lk] <= scope):
                     continue
                 nb = body + [lit]
                 ck = frozenset(json.dumps(l, sort_keys=True) for l in nb)
@@ -119,11 +220,14 @@ def _counts(t: "dict | None") -> str:
 
 
 def induce(problem: dict, corpus: "CP.Corpus", *, reader: "TG.Reader", max_literals: int = SETTINGS["max_literals"], beam: int = SETTINGS["beam"], min_right: int = SETTINGS["min_right"],
-           min_held: int = SETTINGS["min_held"], max_heads: int = SETTINGS["max_heads"], finalists: int = SETTINGS["finalists"], max_bindings: int = SETTINGS["max_bindings"], stride: int = SETTINGS["stride"], accept=None, say=print, tag: str = "") -> dict:
+           min_held: int = SETTINGS["min_held"], max_heads: int = SETTINGS["max_heads"], finalists: int = SETTINGS["finalists"], max_bindings: int = SETTINGS["max_bindings"], stride: int = SETTINGS["stride"], accept=None, say=print, tag: str = "",
+           structure: "BS.Structure | None" = None, tiers=SETTINGS["tiers"]) -> dict:
     """A rule for `problem` ({start, moves}) from the corpus's exact labels: the heads of its exact Reading, a body by beam search on the development part, the held-out admission on the held-out
     part, then `accept(candidate) -> (ok, why, stage)` when given (solve_problems': the problem's own check and the no-regression check on a trial snapshot; a rule it refuses
     is not found, and the search goes on with the next candidate and head). -> {status: "found" | "open", lemma, head, dev, held (drill counts), why, stage (how far the furthest candidate
-    got: STAGES), heads_tried, candidates ([the accepted rule])}."""
+    got: STAGES), heads_tried, candidates ([the accepted rule]), tier (the tier of the rule found), tiers {tier: {stage, near, why}}}.
+    PLAN 78.33: with a `structure` (board_structure.Structure of the game's axes) each head is searched tier by tier (`tiers`, from TIERS: relative, structure, named; each wider tier
+    only when the narrower ones gave no rule that passes both parts of the drill and the problem's check); without one, a single "untiered" pass as before."""
     p = {"start": problem.get("start"), "moves": list(problem["moves"])}
     try:
         rd = reader.read(p, "problem", "problem")
@@ -142,46 +246,59 @@ def induce(problem: dict, corpus: "CP.Corpus", *, reader: "TG.Reader", max_liter
     say(f"OBS induce {tag}: position {len(p['moves'])} plies, class {rd.before}, {len(rd.keep)} legal moves, keep {sorted(rd.good)}, lose {sorted(rd.bad)}; {len(heads)} head(s): "
         + "; ".join(f"{TG.head_text(h['head'])} names {h['matched']}" for h in heads))
     furthest = {"stage": "head", "why": "", "lemma": None, "head": None, "dev": None, "held": None}
+    progress: dict = {}                                             # tier -> {stage, near (a rule passed the development part and failed the held-out part), why}: how far each tier got
     for hi, h in enumerate(heads, 1):
-        r = search_body(corpus, card["facts"], h["names"], h["head"], max_literals=max_literals, beam=beam, min_right=min_right, finalists=finalists, max_bindings=max_bindings, stride=stride)
-        if not r["found"]:
-            b = r["best"]
-            if b is None:
-                why = f"head {hi}: no literal true at the problem leaves a non-trivial right firing on the development part"
-                lem, dev = None, None
-            else:
-                lem = TG.lemma_of(b[0], h["head"])
-                dev = {k: b[1][k] for k in ("binds", "names_a_move", "right", "wrong", "trivial")}
-                why = (f"head {hi}: no conjunction of at most {max_literals} literals has zero wrong and at least {min_right} right on the development part (the best has {b[1]['wrong']} wrong, "
-                       f"{b[1]['right']} right with {len(b[0])} literal(s))")
-            furthest = _further(furthest, {"stage": "dev", "why": why, "lemma": lem, "head": h["head"], "dev": dev, "held": None})
-            say(f"OBS induce {tag} head {hi}: {TG.head_text(h['head'])}: {why}")
-            continue
-        passed = []
-        for body, t in r["found"]:
-            lem = TG.lemma_of(body, h["head"])
-            lem["name"] = AB.name_of(lem)
-            dev = CP.drill(lem, corpus, part="dev", max_bindings=max_bindings)
-            held = CP.drill(lem, corpus, part="held", max_bindings=max_bindings)
-            ok = held["wrong"] == 0 and held["right"] >= min_held and not held["truncated"] and dev["wrong"] == 0
-            say(f"OBS induce {tag} head {hi} candidate: rule {rule_text(lem)}; dev binds/right/wrong/trivial {_counts(dev)}, held {_counts(held)}; "
-                + ("passes the held-out part" if ok else f"REJECTED on the held-out part: " + (f"{held['wrong']} wrong firing(s)" if held["wrong"] else f"{held['right']} right firing(s), need {min_held}")))
-            if ok:
-                cand = {"lemma": lem, "head": h["head"], "dev": dev, "held": held}
-                good, why2, stage2 = accept(cand) if accept else (True, "", "held")
-                if good:
-                    passed.append(cand)
+        for tier, cands, needs in tier_passes(card["facts"], h["names"], structure, tiers):
+            pg = progress.setdefault(tier, {"stage": "head", "near": False, "why": ""})
+            r = search_body(corpus, card["facts"], h["names"], h["head"], max_literals=max_literals, beam=beam, min_right=min_right, finalists=finalists, max_bindings=max_bindings, stride=stride,
+                            cands=cands, needs=needs)
+            tt = f" {tier}" if tier != "untiered" else ""
+            if not r["found"]:
+                b = r["best"]
+                if b is None:
+                    why = f"head {hi}: no literal true at the problem leaves a non-trivial right firing on the development part"
+                    lem, dev = None, None
                 else:
-                    furthest = _further(furthest, {"stage": stage2, "why": f"head {hi}: {why2}", "lemma": lem, "head": h["head"], "dev": dev, "held": held})
-            else:
-                furthest = _further(furthest, {"stage": "held", "why": (f"head {hi}: the rule passes the development part but has {held['wrong']} wrong firing(s) on the held-out part" if held["wrong"]
-                                                                       else f"head {hi}: the rule passes the development part but only {held['right']} right firing(s) on the held-out part (need {min_held})"),
-                                               "lemma": lem, "head": h["head"], "dev": dev, "held": held})
-        if passed:
-            return {"status": "found", "lemma": passed[0]["lemma"], "head": passed[0]["head"], "dev": passed[0]["dev"], "held": passed[0]["held"], "why": "", "stage": "held", "heads_tried": hi,
-                    "candidates": passed}
+                    lem = TG.lemma_of(b[0], h["head"])
+                    dev = {k: b[1][k] for k in ("binds", "names_a_move", "right", "wrong", "trivial")}
+                    why = (f"head {hi}: no conjunction of at most {max_literals} literals has zero wrong and at least {min_right} right on the development part (the best has {b[1]['wrong']} wrong, "
+                           f"{b[1]['right']} right with {len(b[0])} literal(s))")
+                furthest = _further(furthest, {"stage": "dev", "why": why, "lemma": lem, "head": h["head"], "dev": dev, "held": None})
+                if STAGES.index(pg["stage"]) < STAGES.index("dev"):
+                    pg.update(stage="dev", why=why)
+                say(f"OBS induce {tag} head {hi}{tt}: {TG.head_text(h['head'])}: {why}")
+                continue
+            passed = []
+            for body, t in r["found"]:
+                lem = TG.lemma_of(body, h["head"])
+                lem["name"] = AB.name_of(lem)
+                dev = CP.drill(lem, corpus, part="dev", max_bindings=max_bindings)
+                held = CP.drill(lem, corpus, part="held", max_bindings=max_bindings)
+                ok = held["wrong"] == 0 and held["right"] >= min_held and not held["truncated"] and dev["wrong"] == 0
+                say(f"OBS induce {tag} head {hi}{tt} candidate: rule {rule_text(lem)}; dev binds/right/wrong/trivial {_counts(dev)}, held {_counts(held)}; "
+                    + ("passes the held-out part" if ok else f"REJECTED on the held-out part: " + (f"{held['wrong']} wrong firing(s)" if held["wrong"] else f"{held['right']} right firing(s), need {min_held}")))
+                if ok:
+                    cand = {"lemma": lem, "head": h["head"], "dev": dev, "held": held, "tier": tier}
+                    good, why2, stage2 = accept(cand) if accept else (True, "", "held")
+                    if good:
+                        passed.append(cand)
+                    else:
+                        furthest = _further(furthest, {"stage": stage2, "why": f"head {hi}: {why2}", "lemma": lem, "head": h["head"], "dev": dev, "held": held})
+                        if STAGES.index(pg["stage"]) < STAGES.index(stage2):
+                            pg.update(stage=stage2, why=f"head {hi}: {why2}")
+                else:
+                    if dev["wrong"] == 0:
+                        pg["near"] = True                           # a near miss: passed the development part, failed the held-out part
+                    why3 = (f"head {hi}: the rule passes the development part but has {held['wrong']} wrong firing(s) on the held-out part" if held["wrong"]
+                            else f"head {hi}: the rule passes the development part but only {held['right']} right firing(s) on the held-out part (need {min_held})")
+                    furthest = _further(furthest, {"stage": "held", "why": why3, "lemma": lem, "head": h["head"], "dev": dev, "held": held})
+                    if STAGES.index(pg["stage"]) < STAGES.index("held"):
+                        pg.update(stage="held", why=why3)
+            if passed:
+                return {"status": "found", "lemma": passed[0]["lemma"], "head": passed[0]["head"], "dev": passed[0]["dev"], "held": passed[0]["held"], "why": "", "stage": "held", "heads_tried": hi,
+                        "candidates": passed, "tier": tier, "tiers": progress}
     return {"status": "open", "lemma": furthest["lemma"], "head": furthest["head"], "dev": furthest["dev"], "held": furthest["held"], "why": furthest["why"] or "no head gave a rule", "stage": furthest["stage"],
-            "heads_tried": len(heads), "candidates": []}
+            "heads_tried": len(heads), "candidates": [], "tier": None, "tiers": progress}
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------ the loop over the problems
@@ -218,10 +335,11 @@ def trial_snapshot(game: str, lemma: dict, directory, vocabulary: "str | None" =
     return str(p)
 
 
-def provenance(problem: dict, variant: str, labeller, vocabulary: "str | None") -> dict:
+def provenance(problem: dict, variant: str, labeller, vocabulary: "str | None", tier: "str | None" = None) -> dict:
     """The lemma's meta: where it came from. NO number and no verdict of the labeller."""
     return {"origin": "induced", "plan": "78.32", "game": variant, "mined_from": "problem", "problem": {"start": problem.get("start"), "moves": len(problem["moves"]), "played": problem.get("played")},
-            "teacher": True, "source": getattr(labeller, "source", "exact"), **({"vocabulary": vocabulary} if vocabulary else {})}
+            "teacher": True, "source": getattr(labeller, "source", "exact"), **({"vocabulary": vocabulary} if vocabulary else {}),
+            **({"tier": tier} if tier else {})}
 
 
 def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | None" = None, labeller, vocabulary: "str | None" = None, spec: "dict | None" = None, seconds: float = 0.2,
@@ -238,6 +356,10 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
     spec = spec if spec is not None else GS.spec_texts(game, vocabulary)
     vocab_json = json.dumps(GS.vocabulary(game, vocabulary))
     corpus.cards(spec, vocab_json)
+    vfile = GS.vocabulary_file(game, vocabulary)
+    structure = BS.from_vocabulary(spec[variant], vfile) if spec.get(variant) else None          # (no axes in the vocabulary file: one untiered pass, as before 78.33)
+    if structure is not None and not structure.axes:
+        structure = None
     verdicts = PS.Verdicts(labeller, variant)
     reader = TG.Reader(variant, spec, vocab_json, verdicts)
     wk = wake_kw or {}
@@ -254,6 +376,7 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
     start_open = [i for i, st in enumerate(status) if st == "open"]
     info = {i: {"index": i, "status": status[i], "why": ""} for i in range(len(rows))}
     admitted, attempted, reasons, done = [], 0, Counter(), set()
+    near: Counter = Counter()                                       # per tier: the problems where a rule passed the development part and failed the held-out part
     with tempfile.TemporaryDirectory() as tmp:
         for i in range(len(rows)):
             if status[i] != "open" or i in done:
@@ -266,7 +389,7 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
 
             def accept(cand, i=i, solved_rows=solved_rows, seen_check=seen_check):
                 lem = cand["lemma"]
-                lem["meta"] = provenance(rows[i], variant, labeller, vocabulary)
+                lem["meta"] = provenance(rows[i], variant, labeller, vocabulary, cand.get("tier") if cand.get("tier") != "untiered" else None)
                 lem["stats"] = {"status": "INDUCED"}
                 GS.check_lemma(lem)
                 snap = trial_snapshot(game, lem, tmp, vocabulary, judge)
@@ -279,15 +402,20 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
                     return False, f"the rule breaks {len(broken)} problem(s) solved before", "broken"
                 return True, "", "held"
             out = induce(rows[i], corpus, reader=reader, max_literals=s["max_literals"], beam=s["beam"], min_right=s["min_right"], min_held=s["min_held"], max_heads=s["max_heads"],
-                         finalists=s["finalists"], max_bindings=s["max_bindings"], stride=s["stride"], accept=accept, say=say, tag=tag)
+                         finalists=s["finalists"], max_bindings=s["max_bindings"], stride=s["stride"], accept=accept, say=say, tag=tag, structure=structure, tiers=s["tiers"])
             why, stage, own_keeps = out["why"], out["stage"], seen_check.get("keeps")
             final = out["lemma"] if out["status"] == "found" else None
             line = (f"OBS induce {tag}: head {TG.head_text(out['head']) if out['head'] else 'none'}, rule {rule_text(out['lemma'])}, dev binds/right/wrong/trivial {_counts(out['dev'])}, "
                     f"held binds/right/wrong/trivial {_counts(out['held'])}, problem check kept {own_keeps if own_keeps is not None else 'not run'}; ")
+            tier_prog = out.get("tiers") or {}
+            for tn, pg in tier_prog.items():
+                if pg["near"]:
+                    near[tn] += 1
             if final is None:
                 info[i]["why"] = why
                 reasons[_reason_key(stage, why)] += 1
-                say(line + f"open because {why}")
+                say(line + f"open because {why}" + (("; tiers: " + "; ".join(f"{tn} got as far as {pg['stage']}" + (" (near miss: passed the development part, failed the held-out part)" if pg["near"] else "")
+                                                    for tn, pg in tier_prog.items())) if tier_prog and "untiered" not in tier_prog else ""))
                 continue
             GS.write_lemma(game, final)
             sid = GS.publish(game, teacher_used=True, vocabulary=vocabulary, **({"judge": GS.judge_of(game, judge)} if judge else {}))
@@ -299,11 +427,12 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
             for j in newly:
                 info[j]["status"] = "solved"
                 info[j]["why"] = f"by rule {final['name']}"
-            admitted.append({"name": final["name"], "text": rule_text(final), "problem": i, "solved_others": [j for j in newly if j != i], "broke": lost, "snapshot": sid, "dev": out["dev"], "held": out["held"]})
-            say(line + f"ADMITTED {final['name']} (snapshot {sid}); solved {len(newly)} problem(s) in all, the others {[j + 1 for j in newly if j != i]}; broke {len(lost)}")
+            admitted.append({"name": final["name"], "text": rule_text(final), "problem": i, "solved_others": [j for j in newly if j != i], "broke": lost, "snapshot": sid, "dev": out["dev"], "held": out["held"], "tier": out.get("tier")})
+            say(line + f"ADMITTED {final['name']} (snapshot {sid}, tier {out.get('tier')}); solved {len(newly)} problem(s) in all, the others {[j + 1 for j in newly if j != i]}; broke {len(lost)}")
     solved = sum(1 for i in start_open if status[i] == "solved")
     open_n = sum(1 for st in status if st == "open")
-    say(f"OBS induce total: problems {len(rows)}, attempted {attempted}, admitted {len(admitted)}, solved {solved}, still open {open_n}, reasons {dict(reasons)}")
+    say(f"OBS induce total: problems {len(rows)}, attempted {attempted}, admitted {len(admitted)}, solved {solved}, still open {open_n}, reasons {dict(reasons)}, "
+        f"admitted per tier {dict(Counter(a['tier'] for a in admitted))}, near misses per tier {dict(near)}")
     for a in admitted:
         say(f"OBS induce rule {a['name']}: {a['text']}; dev binds/right/wrong/trivial {_counts(a['dev'])}, held {_counts(a['held'])}; mined from problem {a['problem'] + 1}, also solved {[j + 1 for j in a['solved_others']]}")
     say(f"OBS induce time: {time.perf_counter() - t0:.1f} s, labeller calls {verdicts.calls}")

@@ -5536,3 +5536,117 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
   3 The rules are in sandbox stores only. Nothing was written to rules/learned/chess/lemmas.
   OPEN  the exam positions still failed with the hand rules are the same two families in positions where our king is NOT nearer the key squares (the pawn is still pushed), and
         the defender's king moves; rook pawns have no key-square word yet; one size, one game.
+
+  RUN K, ADDED TO 78.32 BEFORE 78.33 WAS BUILT (sandbox data/derived/init_store_w32k; run I's command with --vocabulary keys --drill-sleep --seed-rules
+  rules/concepts/chess_keys.proposed.json; the search still writes a literal lifted or with its constants kept):
+    OBS exam before the seed rules: kept 254 of 300 (win-keeping 120 of 150, draw-keeping 134 of 150), gained 0, lost 0
+    OBS exam spread: 267 vs 267, decisions differing 0
+    OBS exam before cycle 1 (3 lemmas): kept 267 of 300 (win-keeping 134 of 150, draw-keeping 133 of 150), gained 16, lost 3
+    OBS exam after cycle 1: kept 269 of 300 (win-keeping 135 of 150, draw-keeping 134 of 150), gained 2, lost 0
+    OBS exam after cycle 2: kept 268 of 300 (win-keeping 135 of 150, draw-keeping 133 of 150), gained 0, lost 1
+    OBS exam after cycle 3: kept 267 of 300 (win-keeping 134 of 150, draw-keeping 133 of 150), gained 0, lost 1
+    OBS exam curve: before the seed rules 254/300, before cycle 1 (3 lemmas) 267/300, after cycle 1 269/300, after cycle 2 268/300, after cycle 3 267/300
+    OBS drill admit hand-king-onto-key-square: dev binds/right/wrong/trivial 3717/152/0/2444, held 3713/168/0/2430; KEPT
+    OBS drill admit hand-king-nearer-key-square-when-ahead: dev binds/right/wrong/trivial 757/440/0/317, held 711/405/0/306; KEPT
+    OBS drill admit hand-king-in-front-of-their-pawn: dev binds/right/wrong/trivial 3874/90/0/2420, held 6399/126/0/4267; KEPT
+    OBS drill admit hand-king-onto-their-key-square: dev binds/right/wrong/trivial 3769/220/28/2370, held 3801/281/38/2352; DROPPED: wrong firings on the exact corpus
+    OBS drill admit total: rules 4, kept 3, dropped 1
+    OBS drill admit opposition-response-9db2bb1b: dev binds/right/wrong/trivial 5/5/0/0, held 4/4/0/0; KEPT
+    OBS drill admit total: rules 1, kept 1, dropped 0
+    OBS drill admit flight-response-52be7599: dev binds/right/wrong/trivial 449/21/122/287, held 255/6/67/177; DROPPED: wrong firings on the exact corpus
+    OBS drill admit total: rules 1, kept 0, dropped 1
+    OBS drill admit apart-response-2ef8cba7: dev binds/right/wrong/trivial 107/5/4/80, held 210/5/8/161; DROPPED: wrong firings on the exact corpus
+    OBS drill admit total: rules 1, kept 0, dropped 1
+    OBS induce total: problems 2, attempted 0, admitted 0, solved 0, still open 0, reasons {}
+    OBS induce total: problems 6, attempted 4, admitted 3, solved 3, still open 1, reasons {'held-out part: wrong firings': 1}
+    OBS induce total: problems 7, attempted 2, admitted 0, solved 0, still open 2, reasons {'held-out part: wrong firings': 2}
+    OBS playout_sleep problems: total 2, new 2, solved before 0, solved after 2, still open 0, came back 0
+    OBS playout_sleep problems: total 6, new 4, solved before 1, solved after 4, still open 1, came back 1
+    OBS playout_sleep problems: total 7, new 1, solved before 5, solved after 0, still open 2, came back 0
+  The rules induction admitted in it:
+    OBS induce ADMITTED apart-response-a365922d: IF cell(?h0, 3, them, king) THEN a best move removes [] adds [apart(us, ?h0, 5, us, ?h0, ?h1, ?h2)]; dev binds/right/wrong/trivial 1668/16/0/1056 held 1740/7/0/1259
+    OBS induce ADMITTED opposition-response-d6795ca1: IF king_ahead(us, ?k5, ?k6) AND flight(us, f, 4) THEN a best move removes [] adds [opposition()]; dev binds/right/wrong/trivial 72/18/0/33 held 58/12/0/37
+    OBS induce ADMITTED apart-response-53a4e9db: IF attack(us, ?h0, 2, c, 1) THEN a best move removes [] adds [apart(us, ?h0, ?h1, us, c, ?h1, ?h2)]; dev binds/right/wrong/trivial 1004/24/0/637 held 940/10/0/621
+    OBS audit lemma apart-response-53a4e9db: fired 433 in 103 games, proposed 53 moves, followed 17, claim held 34 of 39 by uci (refuted 5, trivial 325, silent 69), played optimal 12/15 when followed vs 24/24 when not
+    OBS audit lemma apart-response-a365922d: fired 449 in 113 games, proposed 7 moves, followed 1, claim held 1 of 2 by uci (refuted 1, trivial 224, silent 223), played optimal 1/1 when followed vs 1/1 when not
+    OBS audit lemma hand-king-in-front-of-their-pawn: fired 1152 in 96 games, proposed 135 moves, followed 135, claim held 56 of 56 by uci (refuted 0, trivial 843, silent 253), played optimal 56/56 when followed vs 0/0 when not
+    OBS audit lemma hand-king-nearer-key-square-when-ahead: fired 214 in 50 games, proposed 452 moves, followed 117, claim held 150 of 150 by uci (refuted 0, trivial 64, silent 0), played optimal 96/96 when followed vs 54/54 when not
+    OBS audit lemma hand-king-onto-key-square: fired 812 in 72 games, proposed 348 moves, followed 92, claim held 125 of 125 by uci (refuted 0, trivial 416, silent 271), played optimal 67/67 when followed vs 58/58 when not
+    OBS audit lemma opposition-response-9db2bb1b: fired 25 in 25 games, proposed 25 moves, followed 25, claim held 25 of 25 by uci (refuted 0, trivial 0, silent 0), played optimal 25/25 when followed vs 0/0 when not
+    OBS audit lemma opposition-response-d6795ca1: fired 57 in 23 games, proposed 18 moves, followed 10, claim held 15 of 15 by uci (refuted 0, trivial 35, silent 7), played optimal 9/9 when followed vs 6/6 when not
+  READING (run K)
+  1 The whole gain of the exam is the hand rules' (before the seed rules to before cycle 1); the three cycles after them leave it within a decision or two.
+  2 `--drill-sleep` drops the lemma sleep's rules that are wrong on the corpus (the flight-response and apart-response DROPPED lines) and keeps one.
+  3 The hand rules are refuted nowhere in the last wake (their audit lines, by the UCI source). One induced rule that names squares (apart-response-53a4e9db: a body with the
+    constants 2, c, 1) passes both parts of the drill and is refuted in the games (its audit line): a rule that names squares can pass a held-out part of 15000 positions and
+    still be wrong. This is the case 78.33's tiers are for.
+  4 With the hand rules in the store the playouts find few problems (the `problems` lines: 2, 4 and 1 new) while the exam still has some thirty positions the wake gets wrong:
+    the games no longer reach the mistakes that remain. OPEN: another source of problems (the wake's own decision on the development part of the exact corpus).
+
+#### 78.33 RELATIVE POSITION FIRST, THEN ABSOLUTE POSITION AS BOARD STRUCTURE (2026-11-11; Kaveh: "there is some notion of translational invariance in chess. Basically, a pin is a
+     pin, no matter where it is ... in some cases, naming the square is important ... the fact that there's an edge is important ... every rank is not the same ... consider the
+     relations of the units independently, and then consider the relations of the units in the context of their position in space. First is relative position, and then it's
+     absolute position")
+
+  WHAT 78.32 SHOWED OF THIS  a body literal is written two ways today: every constant lifted to a variable, or the constants kept (a square by its name). The rules induction lost on
+            the held-out part were of the second kind. The hand rules that passed are relations between units (a king's distance to squares placed relative to a pawn, one
+            king nearer than the other) with two facts of the board's structure inside the word (not a rook file; the pawn's advance).
+  DESIGN
+  1 THREE TIERS OF BODY LITERALS, tried in this order by the induction search (a wider tier only when the narrower one gives no rule that passes both parts of the drill):
+            RELATIVE   relations between units with every coordinate a variable; constants of a DISTANCE sort stay (a distance does not change when the position is shifted).
+            STRUCTURE  the relative literals plus where a coordinate stands in the board: its distance to the nearest edge of its axis, and to the goal end of the axis for the
+                       side (the promotion rank). A coordinate is described, never named.
+            NAMED      the constants kept, as now. Last.
+  2 THE BOARD'S STRUCTURE FROM THE DESCRIPTION, generic: the vocabulary file names the game's AXES (a coordinate sort and its successor relation; optionally the relation that
+            gives a side's last coordinate on it). Code that knows no game writes the rules-delta for them: the edge distance of every coordinate of an axis (an edge is a
+            coordinate with no successor or no predecessor), and the goal distance per side. A game with no axes has an empty STRUCTURE tier.
+  3 EVERY RULE SAYS ITS TIER  (meta.tier), and induction prints, per problem, the tier that gave the rule or how far each tier got.
+  4 MEASURE  the same three cycles and the same exam as 78.32, with the hand rules as seeds: rules admitted per tier, the near misses per tier (wrong on the held-out part), the
+            exam curve.
+  LATER  relations over two hops (the square a unit reaches in two moves, said without naming it); an exception at the edge as an ordinary rule with one STRUCTURE literal more.
+
+  BUILT  discovery/board_structure.py (game-free: from the vocabulary file's `axes` and the description's successor facts, a rules-delta of ground facts edge_gap_<sort> coordinate
+         distance and goal_gap_<sort> side coordinate distance; signatures_of / sorts_of say which argument of a relation is a coordinate); game_store composes it when the
+         vocabulary file has `axes` (vocabulary.keys.json has; the other vocabularies are byte for byte as before); induce.tiered_candidates and the widening search (setting
+         `tiers`), meta.tier; tests/test_plan78_33_tiers.py. HEADS are not tiered: a head can still carry a rank constant.
+  RUN L  (sandbox data/derived/init_store_w33; run K's command, the tiers on):
+    OBS exam before the seed rules: kept 254 of 300 (win-keeping 120 of 150, draw-keeping 134 of 150), gained 0, lost 0
+    OBS exam spread: 267 vs 269, decisions differing 4
+    OBS exam before cycle 1 (3 lemmas): kept 267 of 300 (win-keeping 133 of 150, draw-keeping 134 of 150), gained 17, lost 4
+    OBS exam after cycle 1: kept 269 of 300 (win-keeping 135 of 150, draw-keeping 134 of 150), gained 3, lost 1
+    OBS exam after cycle 2: kept 269 of 300 (win-keeping 135 of 150, draw-keeping 134 of 150), gained 1, lost 1
+    OBS exam after cycle 3: kept 269 of 300 (win-keeping 135 of 150, draw-keeping 134 of 150), gained 1, lost 1
+    OBS exam curve: before the seed rules 254/300, before cycle 1 (3 lemmas) 267/300, after cycle 1 269/300, after cycle 2 269/300, after cycle 3 269/300
+    OBS drill admit total: rules 4, kept 3, dropped 1
+    OBS drill admit total: rules 4, kept 1, dropped 3
+    OBS drill admit total: rules 2, kept 1, dropped 1
+    OBS drill admit total: rules 0, kept 0, dropped 0
+    OBS induce total: problems 4, attempted 1, admitted 1, solved 1, still open 0, reasons {}, admitted per tier {'named': 1}, near misses per tier {'relative': 1, 'structure': 1, 'named': 1}
+    OBS induce total: problems 5, attempted 0, admitted 0, solved 0, still open 0, reasons {}, admitted per tier {}, near misses per tier {}
+    OBS induce total: problems 7, attempted 4, admitted 3, solved 2, still open 1, reasons {'held-out part: wrong firings': 1}, admitted per tier {'relative': 3}, near misses per tier {'relative': 1, 'structure': 1, 'named': 1}
+    OBS playout_sleep problems: total 4, new 4, solved before 0, solved after 4, still open 0, came back 0
+    OBS playout_sleep problems: total 5, new 1, solved before 2, solved after 3, still open 0, came back 2
+    OBS playout_sleep problems: total 7, new 2, solved before 2, solved after 4, still open 1, came back 3
+  The rules induction admitted in it:
+    OBS induce ADMITTED apart-response-a365922d (tier named): IF cell(?h0, 3, them, king) THEN a best move removes [] adds [apart(us, ?h0, 5, us, ?h0, ?h1, ?h2)]; dev binds/right/wrong/trivial 1668/16/0/1056 held 1740/7/0/1259
+    OBS induce ADMITTED apart-response-c09d6ddd (tier relative): IF key_gap(them, ?k4, ?k5, ?h2) AND flight(us, ?k4, ?h1) THEN a best move removes [] adds [apart(them, ?h0, 3, us, ?h0, ?h1, ?h2)]; dev binds/right/wrong/trivial 1343/49/0/978 held 1477/23/0/1036
+    OBS induce ADMITTED opposition-response-2a822331 (tier relative): IF apart(us, ?k2, ?k1, us, ?k2, ?k3, d1) THEN a best move removes [] adds [opposition()]; dev binds/right/wrong/trivial 217/17/0/127 held 227/14/0/135
+    OBS induce ADMITTED apart-response-5f485a47 (tier relative): IF apart(them, ?k3, ?k4, us, ?k6, ?k7, d6) AND attack(us, ?k6, ?k7, ?k3, ?k7) THEN a best move removes [] adds [apart(us, ?h0, ?h1, us, ?h2, ?h1, d1)]; dev binds/right/wrong/trivial 1466/127/0/1022 held 883/24/0/669
+    OBS audit lemma apart-response-5f485a47: fired 236 in 108 games, proposed 60 moves, followed 36, claim held 27 of 31 by uci (refuted 4, trivial 168, silent 37), played optimal 19/23 when followed vs 8/8 when not
+    OBS audit lemma apart-response-a365922d: fired 379 in 114 games, proposed 4 moves, followed 2, claim held 2 of 3 by uci (refuted 1, trivial 169, silent 207), played optimal 2/2 when followed vs 1/1 when not
+    OBS audit lemma apart-response-c09d6ddd: fired 364 in 66 games, proposed 70 moves, followed 70, claim held 63 of 63 by uci (refuted 0, trivial 248, silent 53), played optimal 63/63 when followed vs 0/0 when not
+    OBS audit lemma apart-response-e5c8dc72: fired 39 in 16 games, proposed 39 moves, followed 39, claim held 39 of 39 by uci (refuted 0, trivial 0, silent 0), played optimal 39/39 when followed vs 0/0 when not
+    OBS audit lemma flight-response-9b0d9a8b: fired 34 in 29 games, proposed 34 moves, followed 31, claim held 25 of 25 by uci (refuted 0, trivial 9, silent 0), played optimal 22/22 when followed vs 3/3 when not
+    OBS audit lemma hand-king-in-front-of-their-pawn: fired 1070 in 96 games, proposed 131 moves, followed 128, claim held 50 of 50 by uci (refuted 0, trivial 794, silent 226), played optimal 47/47 when followed vs 3/3 when not
+    OBS audit lemma hand-king-nearer-key-square-when-ahead: fired 204 in 41 games, proposed 440 moves, followed 116, claim held 143 of 143 by uci (refuted 0, trivial 61, silent 0), played optimal 90/90 when followed vs 53/53 when not
+    OBS audit lemma hand-king-onto-key-square: fired 742 in 72 games, proposed 326 moves, followed 85, claim held 108 of 108 by uci (refuted 0, trivial 415, silent 219), played optimal 54/54 when followed vs 54/54 when not
+    OBS audit lemma opposition-response-2a822331: fired 122 in 72 games, proposed 48 moves, followed 27, claim held 38 of 38 by uci (refuted 0, trivial 60, silent 24), played optimal 17/17 when followed vs 21/21 when not
+  READING (run L against run K)
+  1 The exam is the same curve: the hand rules' step, then flat. The tiers did not move it. One run each.
+  2 Three of the four induced rules come from the RELATIVE tier and fire right more often on the corpus than run K's named ones (their ADMITTED lines against run K's).
+  3 A relative rule can still be wrong in the games: apart-response-5f485a47 has zero wrong on both parts of the corpus and is refuted in the last wake (its audit line).
+    Zero wrong on this corpus is not zero wrong in the games the rule then changes: the corpus does not hold the positions the new rule leads the wake into.
+  4 Induction worked on seven problems in three cycles. The exam's thirty-odd failed positions are not reached by the playouts. The bottleneck is the SOURCE OF PROBLEMS and
+    the corpus not growing with the games, not the order of the literals.
+  NEXT  (78.34) problems from the wake's own decision on the development part of the exact corpus; the positions of the last wake where an admitted rule fired join the
+        corpus with their exact labels, and a rule refuted there is withdrawn (October's drill grew the same way); heads tiered as bodies are.

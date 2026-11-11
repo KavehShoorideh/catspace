@@ -25,6 +25,7 @@ from pathlib import Path
 
 import cs_engine as CE
 
+from catspace.incubator.analyst.discovery import board_structure as BS
 from catspace.io import paths
 
 ROOT = paths.REPO_ROOT
@@ -56,7 +57,7 @@ def vocabulary_file(game: str, name: "str | None" = None) -> dict:
 def vocabulary(game: str, name: "str | None" = None) -> dict:
     """The vocabulary as the Rust core reads it: {derived, delta, units}."""
     v = vocabulary_file(game, name)
-    return {"derived": list(v.get("derived", [])), "delta": list(v.get("delta", [])), "units": v.get("units")}
+    return {"derived": list(v.get("derived", [])) + [r for r in BS.relation_names(v) if r not in v.get("derived", [])], "delta": list(v.get("delta", [])), "units": v.get("units")}
 
 
 _vocabulary = vocabulary          # (`build` has a parameter of the same name)
@@ -78,6 +79,8 @@ def spec_texts(game: str, name: "str | None" = None) -> dict:
         text = base if delta is None else CE.compose(base, (RULES / delta).read_text())
         for c in concept_deltas(v):
             text = CE.compose(text, (RULES / c).read_text())
+        if v.get("axes"):                                    # plan 78.33: the board's structure (edge and goal distances of each axis), generated from the description
+            text = CE.compose(text, BS.structure_delta(text, v))
         out[variant] = text
     return out
 
