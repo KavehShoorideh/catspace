@@ -36509,3 +36509,11 @@ Three cycles at three units on a fresh sandbox: the loop runs and files ten real
 Next: a targeted miner aimed at one problem at a time, admitted only when that problem's check passes.
 
 OBS gate engine: files 69, passed 869, failed 0, xfailed 1, errors 0, wall 1254.4 s
+
+## 2026-11-10 23:00 -- plan 78.29: a rule for one problem
+
+Targeted miner built (targeted.py) and wired (`initialize --targeted`, off by default). With a drill near the problem it solved ten of ten and its rules were wrong in real
+games; with the lemma sleep's bar on held-out log positions it admits nothing. Problems as forced seeds of the lemma sleep: confirmed and climbed, most candidates die on too
+few firings with a perfect record. Next: evidence on demand for a candidate (more positions where it speaks, from the sleep's playouts). Lines in docs/ANALYST_PLAN.md 78.29.
+
+OBS gate engine: files 70, passed 890, failed 0, xfailed 1, errors 0, wall 1303.1 s

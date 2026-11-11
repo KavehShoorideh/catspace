@@ -241,7 +241,7 @@ def regret_seeds(ctx: "D.Context", source, rep: dict) -> list:
         top = sur["source_top"]
         why = _why(ctx, source, sur)
         optimal = sorted((m for m in card["moves"] if m["value"] == best), key=lambda m: (m["name"] != top, m["lost"], m["name"]))
-        x = {"id": sur["id"], "group": sur["group"], "played": sur["played"], "reply": top, "predicted": 0, "seen": 0, "kind": "regret", "regret": sur["regret"], **({"why": why} if why else {})}
+        x = {"id": sur["id"], "group": sur["group"], "played": sur["played"], "reply": top, "predicted": 0, "seen": 0, "kind": "regret", "regret": sur["regret"], **({"forced": True} if sur["id"] in ctx.force_ids else {}), **({"why": why} if why else {})}
         if why:
             r.setdefault("confirmed_rows", []).append({"id": sur["id"], **why})
         seeds.extend((x, card, m, top, played, None) for m in optimal[:k])

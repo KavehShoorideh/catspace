@@ -5228,3 +5228,102 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
   4 The playouts follow the one rule where it speaks (56 plies of 120 playouts); the share of playouts matching the verdict of their start did not move beyond noise.
   NEXT (not started): aim a targeted miner at each open problem (the played move against the keeping move, the smallest condition that separates them, drilled against
   counter-positions), admit only if the problem's check passes; re-judge problems deeper before filing them.
+
+#### 78.29 A RULE FOR ONE PROBLEM: THE TARGETED MINER, ITS FAILURE IN REAL GAMES, AND PROBLEMS AS FORCED SEEDS (2026-11-10; Kaveh: "Ok go on to next")
+
+  BUILT   catspace/incubator/analyst/discovery/targeted.py (diagnose_problems, diagnose_sleep, solve_problems: for one problem a head the keeping moves have and the played move
+          has not, a body grown by repair against a local drill and a WILD drill of the cycle's log positions, admission by the lemma sleep's own held gates on a held-out wild
+          half plus the problem's own check and no regression); `initialize --targeted`; `sleep.sleep` forced seeds (every open problem is a development card, always shown to the
+          rank source, climbed first; admission unchanged); tests/test_plan78_29_targeted.py. Lines below are cut at 330 characters where marked " ...".
+  DIAGNOSIS OF 78.28 (why the lemma sleep solved none of ten):
+    OBS targeted diagnose: snapshot e1759786f1507b4e with 1 lemma(s), 10 problem(s); the lemma operator was silent at 10 of them
+    OBS targeted diagnose summary: problems 10, the ledger ties a keeping move with its best at 10, the oracle rule makes the decision keep the verdict at 10, problems that survive the deeper judge 10
+    OBS targeted diagnose sleep sampling: 852 development cards, the rank source is asked about at most 200 of them, one in 4 (evenly spread); regret surprises raised 42, confirmed 42, problems among the development cards 8
+    OBS targeted diagnose sleep funnel: seeds 60, climbed 26, supported on dev 2, verified held 0, lemmas admitted 0
+  A. THE TARGETED MINER WITH A LOCAL DRILL ONLY, on the ten problems (a copy of the sandbox):
+    OBS targeted problems: total 10, attempted 10, solved 10, still open 0, rules admitted 7
+  B. THE SAME IN THE CYCLE (three cycles, fresh sandbox init_store_w29c, `--playouts --targeted`):
+    OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3799, outcomes {'[50, 50]': 120, '[100, 0]': 11, '[0, 100]': 1}, 44 s
+    OBS playout_sleep candidates chess: turning positions 15, new problems 3, candidates the engine's own decision already keeps (dropped) 11, problems carried 0
+    OBS init sleep chess: lemmas admitted 1 ['flight-response-7236b77e'], rejected 55
+    OBS targeted problems: total 3, attempted 3, solved 2, still open 1, rules admitted 2
+    OBS playout_sleep problems: total 3, new 3, solved before 0, solved after 2, still open 1, came back 0
+    OBS init wake b chess: snapshot 04eaa64690ccd1c8 (3 lemma(s)), games 132, plies 3868, outcomes {'[50, 50]': 111, '[100, 0]': 15, '[0, 100]': 6}, 46 s
+    OBS playout_sleep candidates chess: turning positions 18, new problems 6, candidates the engine's own decision already keeps (dropped) 12, problems carried 3
+    OBS init sleep chess: lemmas admitted 0 [], rejected 60
+    OBS targeted problems: total 9, attempted 7, solved 4, still open 3, rules admitted 4
+    OBS playout_sleep problems: total 9, new 6, solved before 2, solved after 4, still open 3, came back 0
+    OBS init wake w2 chess: snapshot 1a0010d8311fa791 (7 lemma(s)), games 132, plies 3517, outcomes {'[50, 50]': 118, '[0, 100]': 5, '[100, 0]': 9}, 43 s
+    OBS playout_sleep candidates chess: turning positions 21, new problems 2, candidates the engine's own decision already keeps (dropped) 19, problems carried 9
+    OBS targeted problems: total 11, attempted 5, solved 1, still open 4, rules admitted 1
+    OBS playout_sleep problems: total 11, new 2, solved before 6, solved after 1, still open 4, came back 0
+    OBS init wake w3 chess: snapshot a965b910d5417793 (8 lemma(s)), games 132, plies 3566, outcomes {'[50, 50]': 122, '[100, 0]': 8, '[0, 100]': 2}, 42 s
+    OBS mined apart-response-74332718: IF attack(them, ?k4, ?k5, ?k6, ?h1) THEN a best move removes [] adds [apart(us, ?h0, ?h1, us, ?h2, ?h1, ?h3)]
+    OBS mined apart-response-ae55a077: IF flight(us, d, ?h1) THEN a best move removes [] adds [apart(us, ?h0, ?h1, us, ?h2, ?h1, ?h3)]
+    OBS mined apart-response-b5330862: IF defended(us, e, ?h2) THEN a best move removes [] adds [apart(them, ?h0, ?h1, us, ?h0, ?h2, ?h3)]
+    OBS mined apart-response-f96e51e8: IF attack(them, ?h0, ?h1, ?h0, ?k6) THEN a best move removes [] adds [apart(them, ?h0, ?h1, us, ?h2, ?h1, d4)]
+    OBS mined diagonal_opposition-response-9623ff4f: IF flight(them, f, 3) THEN a best move removes [] adds [diagonal_opposition()]
+    OBS mined flight-response-7236b77e: IF apart(us, ?v4, ?v5, them, ?v0, ?v1, ?v6) AND apart(us, ?v4, ?v5, us, ?v2, ?v1, ?v3) AND attack(them, ?v0, ?v1, ?v0, ?v7) AND attack(us, ?v4, ?v5, ?v4, ?v7) AND closer(?v3, ?v6) AND flight(us, ?v4, ?v8) THEN a best move removes [] adds [flight(us, ?v12, ?v1)]
+    OBS mined flight-response-edde75f5: IF in_square(them, g, 5) THEN a best move removes [] adds [flight(us, f, 7)]
+    OBS mined king_ahead-response-3c75a9f1: IF to_promote(us, ?h0, ?h1, d6) THEN a best move removes [] adds [king_ahead(us, ?h0, ?h1)]
+    OBS audit lemma apart-response-74332718: fired 3302 in 132 games, proposed 875 moves, followed 181, claim held 188 of 3302 by uci, played optimal 76/181 when followed vs 2243/3121 when not
+    OBS audit lemma apart-response-ae55a077: fired 1858 in 132 games, proposed 1488 moves, followed 403, claim held 313 of 1858 by uci, played optimal 222/403 when followed vs 1089/1455 when not
+    OBS audit lemma apart-response-b5330862: fired 294 in 48 games, proposed 186 moves, followed 34, claim held 25 of 294 by uci, played optimal 4/34 when followed vs 98/260 when not
+    OBS audit lemma apart-response-f96e51e8: fired 3302 in 132 games, proposed 342 moves, followed 144, claim held 64 of 3302 by uci, played optimal 25/144 when followed vs 2294/3158 when not
+    OBS audit lemma diagonal_opposition-response-9623ff4f: fired 280 in 64 games, proposed 98 moves, followed 64, claim held 58 of 280 by uci, played optimal 41/64 when followed vs 158/216 when not
+    OBS audit lemma flight-response-7236b77e: fired 48 in 35 games, proposed 253 moves, followed 26, claim held 36 of 48 by uci, played optimal 7/26 when followed vs 5/22 when not
+    OBS audit lemma flight-response-edde75f5: fired 39 in 11 games, proposed 65 moves, followed 13, claim held 13 of 39 by uci, played optimal 13/13 when followed vs 24/26 when not
+    OBS audit lemma king_ahead-response-3c75a9f1: fired 179 in 67 games, proposed 58 moves, followed 35, claim held 26 of 179 by uci, played optimal 16/35 when followed vs 89/144 when not
+    OBS init compare chess size 3: wake a outcomes {'[50, 50]': 120, '[100, 0]': 11, '[0, 100]': 1}, regret 44/200 (0.22); wake b outcomes {'[50, 50]': 122, '[100, 0]': 8, '[0, 100]': 2}, regret 62/200 (0.31); a mechanism check on 22 starts, not a strength claim
+  C. WITH THE WILD HELD-OUT GATE (fresh sandbox init_store_w29d):
+    OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3938, outcomes {'[50, 50]': 120, '[100, 0]': 11, '[0, 100]': 1}, 47 s
+    OBS playout_sleep candidates chess: turning positions 18, new problems 1, candidates the engine's own decision already keeps (dropped) 17, problems carried 0
+    OBS init sleep chess: lemmas admitted 0 [], rejected 60
+    OBS targeted problems: total 1, attempted 1, solved 0, still open 1, rules admitted 0
+    OBS playout_sleep problems: total 1, new 1, solved before 0, solved after 0, still open 1, came back 0
+    OBS init wake b chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3898, outcomes {'[50, 50]': 118, '[100, 0]': 12, '[0, 100]': 2}, 46 s
+    OBS playout_sleep candidates chess: turning positions 14, new problems 4, candidates the engine's own decision already keeps (dropped) 10, problems carried 1
+    OBS targeted problems: total 5, attempted 5, solved 0, still open 5, rules admitted 0
+    OBS playout_sleep problems: total 5, new 4, solved before 0, solved after 0, still open 5, came back 0
+    OBS init wake w2 chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3859, outcomes {'[50, 50]': 115, '[100, 0]': 14, '[0, 100]': 3}, 46 s
+    OBS playout_sleep candidates chess: turning positions 14, new problems 5, candidates the engine's own decision already keeps (dropped) 9, problems carried 5
+    OBS init sleep chess: lemmas admitted 1 ['cell-response-e0223b01'], rejected 59
+    OBS targeted problems: total 10, attempted 10, solved 0, still open 10, rules admitted 0
+    OBS playout_sleep problems: total 10, new 5, solved before 0, solved after 0, still open 10, came back 0
+    OBS init wake w3 chess: snapshot 887102390aec8923 (1 lemma(s)), games 132, plies 3889, outcomes {'[100, 0]': 17, '[50, 50]': 115}, 46 s
+    OBS mined cell-response-e0223b01: IF attack(us, ?v2, ?v3, ?v5, ?v3) AND attack(us, ?v5, ?v3, ?v2, ?v1) AND flight(them, ?v8, ?v1) THEN a best move removes [] adds [cell(?v2, ?v7, us, ?v9)]
+    OBS audit lemma cell-response-e0223b01: fired 42 in 30 games, proposed 195 moves, followed 41, claim held 41 of 42 by uci, played optimal 34/41 when followed vs 1/1 when not
+    OBS init compare chess size 3: wake a outcomes {'[50, 50]': 120, '[100, 0]': 11, '[0, 100]': 1}, regret 43/200 (0.215); wake b outcomes {'[100, 0]': 17, '[50, 50]': 115}, regret 51/200 (0.255); a mechanism check on 22 starts, not a strength claim
+  D. PROBLEMS AS FORCED SEEDS OF THE LEMMA SLEEP, 400 PLAYOUTS A CYCLE, no targeted miner (fresh sandbox init_store_w29f):
+    OBS init wake a chess: snapshot a12c8e72629284f1 (0 lemma(s)), games 132, plies 3868, outcomes {'[50, 50]': 118, '[100, 0]': 12, '[0, 100]': 2}, 44 s
+    OBS playout_sleep candidates chess: turning positions 64, new problems 6, candidates the engine's own decision already keeps (dropped) 56, problems carried 0
+    OBS sleep forced seeds: given 6, confirmed 6, climbed 5, supported on dev 0, verified held 0
+    OBS init sleep chess: lemmas admitted 1 ['flight-response-38e43fbe'], rejected 57
+    OBS playout_sleep problems: total 6, new 6, solved before 0, solved after 0, still open 6, came back 0
+    OBS init wake b chess: snapshot f341a7996e4e0a4c (1 lemma(s)), games 132, plies 3938, outcomes {'[50, 50]': 118, '[100, 0]': 13, '[0, 100]': 1}, 46 s
+    OBS playout_sleep candidates chess: turning positions 53, new problems 10, candidates the engine's own decision already keeps (dropped) 40, problems carried 6
+    OBS sleep forced seeds: given 16, confirmed 16, climbed 14, supported on dev 2, verified held 1
+    OBS init sleep chess: lemmas admitted 1 ['cell-response-4ebc9dca'], rejected 82
+    OBS playout_sleep problems: total 16, new 10, solved before 0, solved after 0, still open 16, came back 0
+    OBS init wake w2 chess: snapshot c7ca9b351f85559c (2 lemma(s)), games 132, plies 3850, outcomes {'[50, 50]': 118, '[100, 0]': 13, '[0, 100]': 1}, 45 s
+    OBS playout_sleep candidates chess: turning positions 52, new problems 7, candidates the engine's own decision already keeps (dropped) 43, problems carried 16
+    OBS sleep forced seeds: given 23, confirmed 23, climbed 22, supported on dev 6, verified held 0
+    OBS init sleep chess: lemmas admitted 0 [], rejected 94
+    OBS playout_sleep problems: total 23, new 7, solved before 0, solved after 0, still open 23, came back 0
+    OBS init wake w3 chess: snapshot c7ca9b351f85559c (2 lemma(s)), games 132, plies 3732, outcomes {'[50, 50]': 119, '[100, 0]': 11, '[0, 100]': 2}, 43 s
+    OBS mined cell-response-4ebc9dca: IF attack(them, ?v0, ?v1, ?v5, ?v3) AND attack(them, ?v5, ?v6, ?v5, ?v1) AND cell(?v2, ?v3, us, ?v11) AND flight(us, ?v10, ?v1) THEN a best move removes [] adds [cell(?v2, ?v9, us, ?v11)]
+    OBS mined flight-response-38e43fbe: IF apart(us, ?v4, ?v5, them, ?v0, ?v1, ?v6) AND apart(us, ?v4, ?v5, us, ?v2, ?v1, ?v3) AND attack(them, ?v0, ?v1, ?v0, ?v7) AND attack(us, ?v4, ?v5, ?v4, ?v7) AND closer(?v3, ?v6) AND flight(us, ?v4, ?v8) AND flight(us, ?v9, ?v5) THEN a best move removes [] adds [flight(us, ?v12, ?v1)]
+    OBS audit lemma cell-response-4ebc9dca: fired 119 in 75 games, proposed 138 moves, followed 113, claim held 107 of 119 by uci, played optimal 106/113 when followed vs 6/6 when not
+    OBS audit lemma flight-response-38e43fbe: fired 23 in 23 games, proposed 73 moves, followed 23, claim held 23 of 23 by uci, played optimal 3/23 when followed vs 0/0 when not
+    OBS init compare chess size 3: wake a outcomes {'[50, 50]': 118, '[100, 0]': 12, '[0, 100]': 2}, regret 46/200 (0.23); wake b outcomes {'[50, 50]': 119, '[100, 0]': 11, '[0, 100]': 2}, regret 51/200 (0.255); a mechanism check on 22 starts, not a strength claim
+
+  READING
+  1 The decision follows a rule: at all ten problems a rule naming only the keeping move makes the engine keep the verdict. What is missing is the rule.
+  2 A rule tested only near its problem (A, B) solves the problem and is wrong in the games: one-literal bodies fire at every decision, the audit refutes them, regret rises.
+    Solving the problem cannot be the only bar.
+  3 With the lemma sleep's own bar on held-out log positions (C) the targeted miner admits nothing: its repair goes from a rule that fires everywhere to one that fires nowhere.
+  4 As forced seeds (D) every problem is confirmed and nearly every one is climbed; most candidates then die with a perfect record on too few firings (the per-seed lines in
+    scratchpad run_f.out: precision 1.0 on one to seven firings, the lower bound under the bar). The log of one wake does not hold enough positions where a candidate speaks.
+    The rules the sleep did admit hold in the audit.
+  5 So the open piece is EVIDENCE ON DEMAND: for a candidate that is right on the few positions it has, find more positions where its body binds (the playouts of the sleep
+    visit tens of thousands) and ask the rank source there, then apply the same bar.

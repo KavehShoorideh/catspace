@@ -305,7 +305,11 @@ def teacher_seeds(cards, dev_idx: list, positions: dict, teacher, variant: str, 
 def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Settings | None" = None, teacher=None, write: bool = False, say=print, extra_positions: "list | None" = None) -> dict:
     """One sleep over a wake log -> the report (the funnel, the lemmas admitted, what was rejected and why). `teacher(variant, moves) -> uci or None` is optional
     and training-only; `write` files the lemmas and publishes the next snapshot. `extra_positions` (plan 78.28): positions beside the log's, each {id, start, moves (the prefix),
-    played (the move made there), group}; they join the corpus as cards (and so the rank source's regret read) exactly like a logged decision; absent, the sleep is unchanged."""
+    played (the move made there), group}; they join the corpus as cards (and so the rank source's regret read) exactly like a logged decision; absent, the sleep is unchanged.
+    Plan 78.29: an entry with `"force": True` is a FORCED SEED (an open problem): its group is always in the DEVELOPMENT half (never held out), the rank source is always asked about it (not
+    only one development card in `stride`), a regret is raised whenever the source grades the move played below its best (no gap or top-k), and its seeds are climbed FIRST (not cut by
+    `max_seeds`). Admission is unchanged: the same gates on the held-out cards. Prints `OBS sleep forced seeds: ...` and, per forced seed that does not end as a lemma, the stage where it
+    died and the best candidate's development / held figures; the report gains `forced`."""
     s = settings or Settings()
     variant = variant or game
     t0 = time.perf_counter()
@@ -328,7 +332,9 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     rep["tools"]["applied"] = {"teacher_mode": s.teacher_mode, "teacher_surprises": s.teacher_surprises}
     f = rep["funnel"]
     f["games"], f["decisions"] = len(games), len(decisions)
-    ctx = D.Context(variant, s, decisions, games, spec=spec, vocab=vocab, judge=judge, rep=rep)
+    forced_ids = {x["id"] for x in (extra_positions or []) if x.get("force")}
+    forced_groups = {x["group"] for x in (extra_positions or []) if x.get("force")}
+    ctx = D.Context(variant, s, decisions, games, spec=spec, vocab=vocab, judge=judge, rep=rep, force_ids=forced_ids)
     sur_all = D.Hindsight().detect(ctx)
     f["surprises"] = len(sur_all)
     sur = [x for x in sur_all if x["need"] is not None and x["need"] <= s.depth]          # a replay of `depth` plies can only reproduce a loss it can reach
@@ -366,8 +372,8 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     ids = [json.loads(cards.card(i))["id"] for i in range(len(cards))]
     groups = [json.loads(cards.card(i))["group"] for i in range(len(cards))]
     index = {cid: i for i, cid in enumerate(ids)}
-    dev_idx = [i for i, g in enumerate(groups) if is_dev(g, s)]
-    held_idx = [i for i, g in enumerate(groups) if not is_dev(g, s)]
+    dev_idx = [i for i, g in enumerate(groups) if is_dev(g, s) or g in forced_groups]
+    held_idx = [i for i, g in enumerate(groups) if not is_dev(g, s) and g not in forced_groups]
     by_source = s.judge_by == "source"
     if by_source:
         # plan 78.23: the source is the judge. The cards keep the effects of each move on the facts; every move's value is the source's grade, dev and held alike
@@ -442,7 +448,8 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
         f["seeds"] = len(seeds)
         if deep_cards is not None:
             cards_all = CE.CardSet.merge([cards, deep_cards])
-    seeds = spread(seeds, lambda t: t[0]["group"])[:s.max_seeds]
+    forced_seeds = [t for t in seeds if t[0].get("forced")]
+    seeds = forced_seeds + spread([t for t in seeds if not t[0].get("forced")], lambda t: t[0]["group"])[:s.max_seeds]          # (forced seeds first, and not cut by the cap)
     # abstract on the development cards, verify on the held-out cards
     known = {AB.canonical(l) for l in GS.read_lemmas(game, s.vocabulary)}
     admitted, climbed, dev_ok = {}, 0, 0
@@ -486,6 +493,40 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
         admitted[canon] = lemma
     f["climbed"], f["supported_dev"], f["verified_held"] = climbed, dev_ok, len(admitted)
     rep["lemmas"] = list(admitted.values())
+    if forced_ids:
+        reg = rep.get("regret", {})
+        fl = []
+        for fid in sorted(forced_ids):
+            rej = [r for r in rep["rejected"] if r["seed"].startswith(fid + " ")]
+            adm = [l["name"] for l in admitted.values() if (l["meta"].get("surprise") or {}).get("id") == fid]
+            n_seed = sum(1 for t in seeds if t[0]["id"] == fid)
+            if fid not in index:
+                stage = "no card (the position is over or gives no facts)"
+            elif adm:
+                stage = "admitted"
+            elif fid in reg.get("tied", []):
+                stage = "tied: the exact reading at the card's depth values the move played as best"
+            elif fid in reg.get("unconfirmed", []):
+                stage = "unconfirmed: the move played is not on the card"
+            elif fid in reg.get("cut", []):
+                stage = "cut: the card's reading was cut"
+            elif n_seed == 0:
+                stage = "no regret raised: the rank source grades the move played as its best"
+            elif rej:
+                stage = "; ".join(sorted({r["why"] for r in rej}))
+            else:
+                stage = "climbed, not admitted"
+            best = max(rej, key=lambda r: ((r.get("held") or {}).get("fires", -1), (r.get("dev") or {}).get("fires", -1)), default=None)
+            fl.append({"id": fid, "seeds": n_seed, "confirmed": fid in reg.get("confirmed", []), "admitted": adm, "stage": stage, "best": ({k: best.get(k) for k in ("seed", "dev", "held")} if best else None),
+                       "climbed": n_seed - sum(1 for r in rej if r["why"].startswith("the ground seed")), "supported": n_seed - sum(1 for r in rej if r["why"].startswith(("the ground seed", "too little support on the dev")))})
+        rep["forced"] = fl
+        f["forced"] = len(fl)
+        say(f"OBS sleep forced seeds: given {len(fl)}, confirmed {sum(1 for x in fl if x['confirmed'])}, climbed {sum(1 for x in fl if x['climbed'] > 0)}, supported on dev "
+            f"{sum(1 for x in fl if x['supported'] > 0)}, verified held {sum(1 for x in fl if x['admitted'])}")
+        for x in fl:
+            if not x["admitted"]:
+                b = x["best"]
+                say(f"OBS sleep forced seed {x['id']} died: {x['stage']}" + (f"; best candidate {b['seed'].split(' ', 1)[1]}: dev {b['dev']}, held {b['held']}" if b else ""))
     if write and admitted:
         for l in admitted.values():
             GS.write_lemma(game, l)

@@ -40,6 +40,7 @@ class Context:
     vocab: str = ""
     judge: dict = field(default_factory=dict)
     rep: dict = field(default_factory=dict)
+    force_ids: set = field(default_factory=set)             # plan 78.29: card ids of FORCED positions (problems): always shown to the rank source, a regret raised whenever the played move is not best
 
     def card(self, i: int) -> dict:
         return json.loads(self.cards.card(i))
@@ -65,7 +66,11 @@ def _sampled(ctx: Context):
     """The development cards a rank source is asked about (at most `teacher_positions`, evenly spread): (index, card) with a usable position."""
     s = ctx.settings
     stride = max(1, len(ctx.dev_idx) // max(1, s.teacher_positions))
-    for i in ctx.dev_idx[::stride][:s.teacher_positions]:
+    pick = list(ctx.dev_idx[::stride][:s.teacher_positions])
+    if ctx.force_ids:
+        have = set(pick)
+        pick += [i for i in ctx.dev_idx if i not in have and ctx.card(i)["id"] in ctx.force_ids]          # (a forced position is always shown)
+    for i in pick:
         card = ctx.card(i)
         if card["cut"] or card["id"] not in ctx.positions:
             continue
@@ -171,6 +176,14 @@ class Regret:
                 continue
             r["ranked"] += 1
             ev = self.rule(ranking, played, s.teacher_top_k)
+            if ev is None and card["id"] in ctx.force_ids:
+                # a forced position: a regret whenever the source grades the move played below its best (no gap, no top-k: the position is a problem already)
+                grade = getattr(self.source, "grade", None)
+                grade = grade if callable(grade) else (lambda x: int(round(x)))
+                order = sorted(ranking, key=lambda x: -x[1])
+                sc = dict(order)
+                if order[0][0] != played and grade(sc[played]) < grade(order[0][1]):
+                    ev = {"source_top": order[0][0], "top_score": order[0][1], "played_score": sc[played], "gap": getattr(self.source, "gap", None), "rule": "forced"}
             if ev is not None:
                 out.append(_surprise(card, i, ctx, self.name, source=src, regret=ev, source_top=ev["source_top"]))
         r["surprises"] = len(out)

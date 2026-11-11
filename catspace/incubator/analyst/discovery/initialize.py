@@ -10,6 +10,7 @@ THIS IS A MECHANISM CHECK, NOT A STRENGTH CLAIM: one size, a few dozen games, a 
          [--games-per-start 4] [--limit N] [--set NAME=VALUE ...] [--vocabulary NAME] [--gate NAME=VALUE ...] [--held-gate NAME=VALUE ...]
          [--teacher-mate-bucket N] [--teacher-cache FILE] [--tag T] [--wdl [--cycles K] [--wdl-judge-depth D] [--wdl-judge-cache FILE] [--wdl-set NAME=VALUE ...]]
          [--playouts [--playout-set NAME=VALUE ...]]       (plan 78.28; the judge is the --teacher engine at --wdl-judge-depth, default 12)
+         [--targeted [--targeted-set NAME=VALUE ...]]       (plan 78.29, with --playouts: after the lemma sleep, one targeted rule per open problem; default off)
 """
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ from catspace.incubator.analyst.discovery import game_store as GS
 from catspace.incubator.analyst.discovery import judges as JG
 from catspace.incubator.analyst.discovery import playout_sleep as PS
 from catspace.incubator.analyst.discovery import sleep as SL
+from catspace.incubator.analyst.discovery import targeted as TG
 from catspace.incubator.analyst.discovery import wake as WK
 from catspace.incubator.analyst.discovery import wdl_sleep as WS
 from catspace.io import paths
@@ -124,6 +126,20 @@ def regret_rate(game: str, log: str, source, *, sample: int = 200, seed: int = 1
     return {"sampled": len(pick), "ranked": ranked, "regret": regret, "rate": round(regret / ranked, 4) if ranked else None}
 
 
+def forced_positions(rows: list, turning_extras: list) -> list:
+    """Plan 78.29: every OPEN problem of the problem file (the carried ones too) as a forced seed of the lemma sleep ({id, start, moves, played, group, force}); the move played is the
+    decision's last (the move that loses the verdict now), else the playout's. The turning positions equal to one of them are left out of `turning_extras` (no duplicate card).
+    -> (forced, the remaining turning extras)."""
+    forced, keys = [], set()
+    for k, r in enumerate(rows):
+        h = r["history"][-1] if r.get("history") else None
+        if h is not None and h["status"] != "open":
+            continue
+        keys.add(PS.key_of(r))
+        forced.append({"id": f"problem:{k}:{len(r['moves'])}", "start": r.get("start"), "moves": list(r["moves"]), "played": (h or {}).get("move") or r.get("played"), "group": f"problem:{k}", "force": True})
+    return forced, [e for e in turning_extras if (e.get("start"), tuple(e["moves"])) not in keys]
+
+
 PLAYOUT_DEFAULTS = {"positions": 20, "per_position": 2, "max_plies": 120, "max_turning": 20, "max_scan": 60, "check_seconds": None}
 
 
@@ -171,7 +187,8 @@ def playout_after(game: str, log: str, snapshot: str, pre: dict, *, variant: str
 
 def run_size(game: str, size: int, *, source, store_root=None, variant: "str | None" = None, judge: "str | None" = None, games_per_start: int = 4, seconds: float = 0.2,
              random_plies: int = 2, max_plies: int = 80, limit: "int | None" = None, seed: int = 1, sleep_settings: "dict | None" = None, vocabulary: "str | None" = None,
-             tag: "str | None" = None, sample: int = 200, wdl: bool = False, cycles: int = 1, wdl_judge=None, wdl_settings: "dict | None" = None, playouts: bool = False, playout_judge=None, playout_settings: "dict | None" = None, say=print) -> dict:
+             tag: "str | None" = None, sample: int = 200, wdl: bool = False, cycles: int = 1, wdl_judge=None, wdl_settings: "dict | None" = None, playouts: bool = False, playout_judge=None, playout_settings: "dict | None" = None, targeted: bool = False, targeted_settings: "dict | None" = None,
+             force_problems: bool = True, say=print) -> dict:
     """The loop for one size: starts -> publish -> wake a -> sleep (source as judge) -> wake b -> audit -> compare. Returns everything and writes it as JSON next to the logs.
 
     Plan 78.27: `wdl=True` plays every wake with the win / draw / loss estimate and the sandbox's table (`<root>/learned/<game>/wdl_table.json`, none until a sleep writes it), prints the
@@ -183,9 +200,20 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
     per_position, max_plies, max_turning, max_scan, check_seconds). Per cycle: playouts from sample positions of the wake's log with the current snapshot's rules, match_share (before);
     the turning moves; the problem file (`<root>/learned/<game>/playout_problems.json`, training data the wake never reads) is checked with the current snapshot (the wake's own
     decision); the turning positions go into the lemma sleep as extra seeds; the problems are checked again with the new snapshot; the playouts are played again with it (match_share
-    after). The report's `cycles[i]["playouts"]` holds all of it. Off, nothing changes."""
+    after). The report's `cycles[i]["playouts"]` holds all of it. Off, nothing changes.
+
+    Plan 78.29: `targeted=True` (needs `playouts=True`) runs `targeted.solve_problems` after the lemma sleep and before the problems are checked again: for each open problem the targeted miner
+    looks for the simplest rule the problem's counter-positions allow and admits it only when the problem's own check passes (`targeted_settings`: its settings, see targeted.SETTINGS). The
+    rules are written and a snapshot published as the lemma sleep does; the final check reads the new snapshot; `cycles[i]["targeted"]` and `cycles[i]["playouts"]["targeted"]` hold the counts.
+    Off (the default), nothing changes.
+
+    Plan 78.29 (second route): `force_problems=True` (the default with playouts on) hands EVERY open problem of the problem file, the carried ones too, to each lemma sleep as a forced seed
+    (`sleep.sleep(extra_positions=[... "force": True])`: always in the development half, always shown to the rank source, regret raised when the move played is not best, climbed first; the
+    admission gates are unchanged). `--no-force-problems` turns it off."""
     if cycles < 1 or (cycles > 1 and not (wdl or playouts)):
         raise ValueError("cycles must be at least 1, and more than one needs wdl=True or playouts=True")
+    if targeted and not playouts:
+        raise ValueError("targeted=True needs playouts=True: the problems it solves are the playout sleep's")
     pjudge = playout_judge or wdl_judge
     if playouts and pjudge is None:
         raise ValueError("playouts=True needs a judge of verdicts (playout_judge or wdl_judge): the outside engine, at sleep only")
@@ -239,13 +267,24 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
                 pre = playout_before(game, log_prev, wake_prev["snapshot"], c + 1, variant=variant, specs=specs, judge=pjudge, opts=playout_settings or {}, seconds=seconds, seed=seed,
                                      problems_file=inside(root / "learned" / game / "playout_problems.json", root),
                                      wake_kw={"wdl": True, "wdl_table": str(table_path) if table_path.exists() else None} if wdl else {}, say=say)
-            sl = SL.sleep(game, log_prev, variant=variant, settings=settings, teacher=source, write=True, say=say, **({"extra_positions": pre["extra_positions"]} if pre else {}))
+            extras = pre["extra_positions"] if pre else None
+            if pre and force_problems:
+                forced, rest = forced_positions(pre["problems"], pre["extra_positions"])
+                extras = forced + rest
+            sl = SL.sleep(game, log_prev, variant=variant, settings=settings, teacher=source, write=True, say=say, **({"extra_positions": extras} if pre else {}))
             rep["sleep"] = {"funnel": sl["funnel"], "lemmas": [l["name"] for l in sl["lemmas"]], "rejected": len(sl["rejected"]), "snapshot": sl.get("snapshot"), "judge": sl["judge"]}
             say(f"OBS init sleep {game}: lemmas admitted {len(sl['lemmas'])} {rep['sleep']['lemmas']}, rejected {len(sl['rejected'])}, funnel {sl['funnel']}")
             cyc["sleep"] = rep["sleep"]
             if playouts:
-                cyc["playouts"] = playout_after(game, log_prev, sl.get("snapshot") or GS.head(game), pre, variant=variant, specs=specs, judge=pjudge, opts=playout_settings or {}, seconds=seconds,
-                                                seed=seed, wake_kw={"wdl": True, "wdl_table": str(table_path) if table_path.exists() else None} if wdl else {}, say=say)
+                wake_kw = {"wdl": True, "wdl_table": str(table_path) if table_path.exists() else None} if wdl else {}
+                if targeted:
+                    o = {**PLAYOUT_DEFAULTS, **(playout_settings or {})}
+                    cyc["targeted"] = TG.solve_problems(game, pre["problems"], variant=variant, judge=pjudge, teacher=source, logs=[log_prev], seconds=float(o["check_seconds"] or seconds), vocabulary=vocabulary,
+                                                        spec=specs, wake_kw=wake_kw, settings={**(targeted_settings or {}), "sleep_settings": settings}, say=say)
+                after = GS.head(game) if targeted else (sl.get("snapshot") or GS.head(game))
+                cyc["playouts"] = playout_after(game, log_prev, after, pre, variant=variant, specs=specs, judge=pjudge, opts=playout_settings or {}, seconds=seconds, seed=seed, wake_kw=wake_kw, say=say)
+                if targeted:
+                    cyc["playouts"]["targeted"] = {k: cyc["targeted"][k] for k in ("total", "attempted", "solved", "still_open")} | {"rules_admitted": len(cyc["targeted"]["admitted"])}
             if wdl:
                 kw = WS.judge_kw_of_snapshot(str(GS.path_of(game, wake_prev["snapshot"])))
                 opts = {"deep_seconds": 0.2, "max_deep": 20, "sample": 10, "max_settle": 10, **(wdl_settings or {})}
@@ -307,6 +346,9 @@ def main(argv: list) -> int:
     ap.add_argument("--wdl-judge-cache", default=None, help="plan 78.27: a file that remembers the judge's readings by position, so a re-run repeats")
     ap.add_argument("--playouts", action="store_true", help="plan 78.28: per cycle, playouts to a real result diagnosed by the --teacher engine as judge (sleep only): turning moves seed the lemma sleep, problems are checked before and after it")
     ap.add_argument("--playout-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.28: positions, per_position, max_plies, max_turning, max_scan, check_seconds (repeatable)")
+    ap.add_argument("--no-force-problems", action="store_true", help="plan 78.29: do not hand the open problems to the lemma sleep as forced seeds (with --playouts they are by default)")
+    ap.add_argument("--targeted", action="store_true", help="plan 78.29 (with --playouts): after the lemma sleep, a targeted rule for each open problem, admitted only when the problem's own check passes")
+    ap.add_argument("--targeted-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.29: a targeted setting (repeatable): " + ", ".join(TG.SETTINGS))
     ap.add_argument("--wdl-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.27: a keyword of the estimate's sleep (deep_seconds, max_deep, sample, max_settle), repeatable")
     a = ap.parse_args(argv)
     overrides = settings_pairs(a.set)
@@ -323,6 +365,12 @@ def main(argv: list) -> int:
         if k not in PLAYOUT_DEFAULTS:
             raise ValueError(f"unknown --playout-set name {k!r}; the names are {sorted(PLAYOUT_DEFAULTS)}")
         psets[k] = float(v) if k == "check_seconds" else int(v)
+    tsets = {}
+    for pair in a.targeted_set:
+        k, _, v = pair.partition("=")
+        if k not in TG.SETTINGS:
+            raise ValueError(f"unknown --targeted-set name {k!r}; the names are {sorted(TG.SETTINGS)}")
+        tsets[k] = int(v)
     kinds = {"deep_seconds": float, "max_deep": int, "sample": int, "max_settle": int}
     wdl_settings = {}
     for pair in a.wdl_set:
@@ -333,7 +381,7 @@ def main(argv: list) -> int:
     try:
         run_size(a.game, a.size, source=teacher, store_root=a.store_root, variant=a.variant, judge=a.judge, games_per_start=a.games_per_start, seconds=a.seconds, limit=a.limit, seed=a.seed,
                  sleep_settings=overrides, vocabulary=a.vocabulary, tag=a.tag, sample=a.sample, wdl=a.wdl, cycles=a.cycles, wdl_judge=wj if a.wdl_judge_depth or not a.wdl else None, wdl_settings=wdl_settings or None,
-                 playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None)
+                 playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None, targeted=a.targeted, targeted_settings=tsets or None, force_problems=not a.no_force_problems)
     finally:
         teacher.close()
         if wj is not None:
