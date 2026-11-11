@@ -5433,3 +5433,106 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
     `match` lines), and it does not carry over to the next cycle's fresh playouts as a trend. The regret of the last wake is not below wake a's (two samples of 200).
   OPEN  why two rules pass the gates and fail in the games; why most problems stay open (the per-seed lines say where each candidate died); the spread of the regret count
         between runs, which is not measured, so no claim about play is made.
+
+#### 78.32 WHAT OCTOBER HAD: A FIXED EXAM, EXACT TRUTH WITH A FULL DRILL, AND A RULE INDUCED FROM EXACT LABELS (2026-11-11; Kaveh: "look at the October runs ... we were on a
+     path to improvement there. We were just not general enough. But here, we're not improving"; on who proposes rules: no outside LLM call in the loop, a locally trained agent
+     is acceptable, and Claude in the session steps in by hand only "when we end up going in circles")
+
+  WHAT OCTOBER DID (read from plans 41 to 72 and the journal): the same puzzle sets re-run after every change with the changed decisions listed; exact proof as the truth; one
+            failed position at a time, the failing condition named, a generic repair, a drill with zero disagreements allowed. Its rules were written by hand; its automatic
+            miner proved almost nothing. The cycle of 78.27 to 78.31 has none of the first three: fresh games each cycle, a sampled outside verdict with an accuracy bar, a
+            problem only as a seed of a statistical search.
+  DESIGN
+  1 THE EXAM   a set of positions fixed once for a game and a size (non-trivial: some legal move keeps the result and some does not, by the exact labeller), graded after every
+            sleep with the wake's own decision: kept N of M, the decisions that changed since the last grading listed. Graded twice with the same snapshot once, to print the
+            spread of the clock. Training data; the wake never reads it.
+  2 THE EXACT LABELLER AND THE FULL DRILL   at the sizes the tablebase covers, the result class of a position is exact and cheap. A corpus of distinct positions (generic
+            sources: the starts, playouts, random legal play), every move of each labelled keeps / loses, cached. A rule is run over the WHOLE corpus: right where every named
+            move keeps, wrong where any named move loses, trivial where every legal move keeps. ADMISSION: zero wrong on a development part and on a held-out part (split by
+            start), a stated minimum of non-trivial right firings, the problem's own check, no solved problem broken.
+  3 INDUCTION  local and deterministic: from a problem, heads the keeping moves have and the losing moves have not; the body found by a covering search over lifted literals of
+            the vocabulary against the corpus's exact labels (most non-trivial right firings subject to zero wrong, conjunctions up to a stated size). No sampled bar.
+  4 THE CYCLE  wake, playouts, problems, induction on the open problems, the exam; the curve of the exam over the cycles is the result.
+  LATER, NOT NOW  a locally trained policy that orders the literals the search tries, rewarded by the drill, when the search is the bottleneck.
+
+  BUILT  discovery/exact.py (ExactLabeller; SyzygyChess: cursed wins and blessed losses count as draws), corpus.py (the labelled corpus, drill / drill_many), exam.py (build, grade,
+         compare, grade_twice), induce.py (search_body, induce, solve_problems, drill_admit), initialize --exact --induce --exam-size --corpus-n --drill-sleep --seed-rules;
+         tests/test_plan78_32_exam_drill_induce.py, tests/test_plan78_32_keys.py. The exam is drawn from held-out groups and taken out of the corpus induction uses.
+  RUN I  (sandbox data/derived/init_store_w32; initialize chess --size 3 --judge "material (mined)" --games-per-start 6 --seconds 0.2 --set depth=3 --vocabulary relational
+         --cycles 3 --playouts --standard result --exact --induce --exam-size 300 --playout-set positions=200 --playout-set per_position=2 --playout-set max_turning=120)
+    OBS corpus: positions 30000, groups 22, non-trivial 9407 (some move keeps and some loses), by result class {'draw': 12707, 'loss': 7676, 'win': 9617}, 0 seconds (read from /Users/kav/code/remote/github/catspace/data/derived/exact_
+    OBS exam spread: 255 vs 253, decisions differing 3
+    OBS exam before cycle 1 (0 lemmas): kept 255 of 300 (win-keeping 121 of 150, draw-keeping 134 of 150), gained 0, lost 0
+    OBS exam after cycle 1: kept 253 of 300 (win-keeping 119 of 150, draw-keeping 134 of 150), gained 0, lost 2
+    OBS exam after cycle 2: kept 252 of 300 (win-keeping 120 of 150, draw-keeping 132 of 150), gained 1, lost 2
+    OBS exam after cycle 3: kept 257 of 300 (win-keeping 121 of 150, draw-keeping 136 of 150), gained 5, lost 0
+    OBS exam curve: before cycle 1 (0 lemmas) 255/300, after cycle 1 253/300, after cycle 2 252/300, after cycle 3 257/300
+    OBS induce total: problems 7, attempted 6, admitted 0, solved 0, still open 6, reasons {'held-out part: too few right firings': 2, 'held-out part: wrong firings': 4}
+    OBS induce total: problems 13, attempted 13, admitted 1, solved 2, still open 11, reasons {'held-out part: too few right firings': 3, 'held-out part: wrong firings': 9}
+    OBS induce total: problems 19, attempted 17, admitted 4, solved 4, still open 13, reasons {'held-out part: too few right firings': 4, 'held-out part: wrong firings': 9}
+    OBS playout_sleep problems: total 7, new 7, solved before 0, solved after 0, still open 7, came back 0
+    OBS playout_sleep problems: total 13, new 6, solved before 0, solved after 2, still open 11, came back 0
+    OBS playout_sleep problems: total 19, new 6, solved before 2, solved after 4, still open 13, came back 0
+  The five induced rules (each: zero wrong on both parts, its own problem's check kept):
+    OBS induce ADMITTED opposition-response-68d63b73: IF defended(us, ?k2, ?k1) AND attack(us, ?k2, ?k3, ?k2, ?k1) THEN a best move removes [] adds [opposition()]; dev binds/right/wrong/trivial 486/35/0/227 held 278/15/0/158
+    OBS induce ADMITTED king_ahead-response-81663b10: IF apart(us, ?h0, ?h1, us, e, ?h1, d2) AND flight(them, ?h0, ?k7) THEN a best move removes [] adds [king_ahead(us, ?h0, ?h1)]; dev binds/right/wrong/trivial 44/16/0/16 held 15/5/0/7
+    OBS induce ADMITTED apart-response-a153a53a: IF apart(them, ?h0, 1, us, d, ?h1, d6) THEN a best move removes [] adds [apart(us, ?h0, ?h1, us, ?h2, ?h1, ?h3)]; dev binds/right/wrong/trivial 150/10/0/110 held 129/16/0/73
+    OBS induce ADMITTED apart-response-bf0eab38: IF to_promote(them, ?k3, ?k4, ?h2) AND attack(them, ?h0, ?h1, e, 8) THEN a best move removes [] adds [apart(them, ?h0, ?h1, us, ?h0, 2, ?h2)]; dev binds/right/wrong/trivial 372/19/0/208 held 1017/43/0/620
+    OBS induce ADMITTED apart-response-8a8cf6e9: IF cell(?h0, 2, us, king) AND apart(us, ?h0, ?k4, us, ?k3, ?k4, ?k6) THEN a best move removes [] adds [apart(them, ?h0, ?h1, us, ?h0, 3, ?h2)]; dev binds/right/wrong/trivial 231/32/0/83 held 143/6/0/84
+  THE AUDIT OF THE LAST WAKE, BY THE EXACT LABELLER (scratchpad exact_audit.py: apply_audit with a source that grades a move 1 if it keeps the class; a firing that names no
+  move is now `silent`, not refuted; the run's own audit, by the UCI source, had counted those as refuted):
+    OBS audit chess: 3550 decisions, 552 with a lemma firing, 116 of 132 games touched (0.8788), recomputed proposal counts differing from the engine's 0, rank source exact
+    OBS audit lemma apart-response-8a8cf6e9: fired 20 in 20 games, proposed 3 moves, followed 2, claim held 2 of 2 by exact (refuted 0, trivial 9, silent 9), played optimal 2/2 when followed vs 0/0 when not
+    OBS audit lemma apart-response-a153a53a: fired 60 in 45 games, proposed 24 moves, followed 20, claim held 12 of 12 by exact (refuted 0, trivial 40, silent 8), played optimal 12/12 when followed vs 0/0 when not
+    OBS audit lemma apart-response-bf0eab38: fired 175 in 56 games, proposed 17 moves, followed 15, claim held 9 of 9 by exact (refuted 0, trivial 118, silent 48), played optimal 8/8 when followed vs 1/1 when not
+    OBS audit lemma cell-response-08b6bdc7: fired 25 in 17 games, proposed 25 moves, followed 23, claim held 25 of 25 by exact (refuted 0, trivial 0, silent 0), played optimal 23/23 when followed vs 2/2 when not
+    OBS audit lemma flight-response-07dfa91d: fired 12 in 9 games, proposed 82 moves, followed 8, claim held 3 of 7 by exact (refuted 4, trivial 4, silent 1), played optimal 7/7 when followed vs 0/0 when not
+    OBS audit lemma flight-response-cf128601: fired 44 in 31 games, proposed 12 moves, followed 4, claim held 3 of 3 by exact (refuted 0, trivial 41, silent 0), played optimal 3/3 when followed vs 0/0 when not
+    OBS audit lemma flight-response-e4efd88d: fired 48 in 29 games, proposed 26 moves, followed 24, claim held 0 of 1 by exact (refuted 1, trivial 47, silent 0), played optimal 0/1 when followed vs 0/0 when not
+    OBS audit lemma flight-response-fd04670c: fired 65 in 26 games, proposed 344 moves, followed 51, claim held 22 of 31 by exact (refuted 9, trivial 34, silent 0), played optimal 12/17 when followed vs 14/14 when not
+    OBS audit lemma flight-response-ff9e9dbe: fired 48 in 29 games, proposed 26 moves, followed 24, claim held 0 of 1 by exact (refuted 1, trivial 47, silent 0), played optimal 0/1 when followed vs 0/0 when not
+    OBS audit lemma king_ahead-response-81663b10: fired 21 in 11 games, proposed 1 moves, followed 1, claim held 1 of 1 by exact (refuted 0, trivial 13, silent 7), played optimal 1/1 when followed vs 0/0 when not
+    OBS audit lemma opposition-response-68d63b73: fired 125 in 70 games, proposed 52 moves, followed 41, claim held 24 of 24 by exact (refuted 0, trivial 56, silent 45), played optimal 13/13 when followed vs 11/11 when not
+  READING (run I)
+  1 The exam is flat within the clock's spread (the spread line; the curve). One run.
+  2 The full drill does what it was built for: the five induced rules are refuted nowhere in the games of the last wake by the exact labeller (the apart-, king_ahead- and
+    opposition-response lines: refuted 0). The refuted firings all belong to rules of the LEMMA SLEEP (the flight-response lines), which is still admitted by the sampled
+    gates; one of them is followed and wrong (flight-response-fd04670c: played optimal 12/17 when followed). So in this run the two miners pull the exam in opposite directions.
+  3 Induction leaves most problems open for one reason (the reasons of `induce total`): a body of square constants is perfect on the development part and wrong once or twice,
+    or silent, on the held-out part. The same near miss on problem after problem: the vocabulary has no word for what these positions share. This is the going in circles.
+  FOUND AND FIXED  (a) sleep.py and targeted.py published snapshots WITHOUT the valuation record the wake plays by (`--judge`), so the wake after a sleep read positions by another
+    valuation than the wake before it: the `solved after` counts and the regret comparisons of 78.28 to 78.31 carry this flaw (the first run of this plan showed it on the exam;
+    its output is kept as run_i_attempt1_unjudged_publish.out). Now the lemma sleep publishes with the record it learned by and a snapshot built on the head carries the head's
+    record (game_store.head_judge). (b) apply_audit counted a firing that names no move as refuted; it is `silent` now. (c) `--drill-sleep`: the lemma sleep's rules are filed only
+    with zero wrong firings on the exact corpus, the induced rules' test.
+
+  THE HAND STEP (Kaveh: "You can be the one to do it when we end up going in circles ... Don't make another call to an external LLM, just you"). Done by Claude in the session,
+  by reading the open problems; nothing below was found by the loop.
+  WHAT THE OPEN PROBLEMS SHARE  of the thirteen open at the end of run I, nine are the side with the pawn pushing it where only a king move keeps the win; two are the defender
+    stepping away from the pawn. On the corpus's king-and-pawn positions (scratchpad hand_kpk.py, the pawn side to move, a win, non-trivial; `right` = every pawn push keeps):
+    OBS hand A0 push the pawn (what the engine does): fires 3102, right 1008, wrong 2094
+  THE WORDS  rules/concepts/chess_keys.gdl (a third additive delta; vocabulary `keys` = relational + these): key_square (for a pawn not on a rook file: the three squares two
+    ranks ahead of it, from its fifth rank on also those one rank ahead), key_gap (our king's distance to the nearest key square of our pawn; no fact when the pawn hangs),
+    key_guard (the same for the opponent's king), king_in_front. Plain geometry, tested against a python-chess oracle; whether a rule with them is true is the drill's to say.
+  THE RULES  rules/concepts/chess_keys.proposed.json (proposals, not lemmas of the store), through the same full drill as an induced rule (scratchpad hand_rules.py):
+    OBS hand rule hand-king-onto-key-square: dev binds/right/wrong/trivial 3717/152/0/2444, held 3713/168/0/2430
+    OBS hand rule hand-king-nearer-key-square-when-ahead: dev binds/right/wrong/trivial 757/440/0/317, held 711/405/0/306
+    OBS hand rule hand-king-in-front-of-their-pawn: dev binds/right/wrong/trivial 3874/90/0/2420, held 6399/126/0/4267
+    OBS hand rule hand-king-onto-their-key-square: dev binds/right/wrong/trivial 3769/220/28/2370, held 3801/281/38/2352
+    hand-king-onto-key-square: IF key_gap(us, F, R, _) THEN a move that adds key_gap(us, F, R, d0). hand-king-nearer-key-square-when-ahead: IF key_gap(us, F, R, G) AND
+    key_guard(us, F, R, T) AND closer(G, T) AND closer(N, G) THEN a move that adds key_gap(us, F, R, N). hand-king-in-front-of-their-pawn: IF to_promote(them, F, R, _) THEN a
+    move that adds king_in_front(them, F, R). The fourth (our king onto a key square of THEIR pawn) has wrong firings and is dropped by the drill.
+  THE EXAM WITH THEM  (sandbox data/derived/init_store_w32h, nothing else running; scratchpad hand_exam.py):
+    OBS exam hand: no rules, key-square vocabulary: kept 254 of 300 (win-keeping 121 of 150, draw-keeping 133 of 150), gained 0, lost 0
+    OBS exam hand: after adding hand-king-onto-key-square: kept 254 of 300 (win-keeping 120 of 150, draw-keeping 134 of 150), gained 3, lost 3
+    OBS exam hand: after adding hand-king-nearer-key-square-when-ahead: kept 267 of 300 (win-keeping 134 of 150, draw-keeping 133 of 150), gained 15, lost 2
+    OBS exam hand: after adding hand-king-in-front-of-their-pawn: kept 267 of 300 (win-keeping 134 of 150, draw-keeping 133 of 150), gained 3, lost 3
+    OBS exam hand total: 254 of 300 with no rules, 267 of 300 with the three hand rules, gained 16, lost 3
+  READING (the hand step)
+  1 The first move of the exam outside the clock's spread in plans 78.27 to 78.32 comes from three rules written with one new idea, admitted by the same drill. The loop's parts
+    (problems, exact drill, exam) measured it; the idea came from outside the loop.
+  2 What induction lacked was the WORD, not search time: with key_gap in the vocabulary the second rule is a four-literal conjunction of the kind induction already searches.
+    Whether induction now finds it, and what it finds beyond it, is the next run (vocabulary keys, the proposals as seed rules, --drill-sleep).
+  3 The rules are in sandbox stores only. Nothing was written to rules/learned/chess/lemmas.
+  OPEN  the exam positions still failed with the hand rules are the same two families in positions where our king is NOT nearer the key squares (the pawn is still pushed), and
+        the defender's king moves; rook pawns have no key-square word yet; one size, one game.

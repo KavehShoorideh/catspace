@@ -36526,3 +36526,16 @@ named move. Under it: fourteen rules in three cycles, eight of twenty-seven prob
 docs/ANALYST_PLAN.md 78.30 / 78.31.
 
 OBS gate engine: files 71, passed 902, failed 0, xfailed 1, errors 0, wall 1335.3 s
+
+## 2026-11-11 12:00 -- plan 78.32: the fixed exam, the exact drill, induction; then the hand step (key squares)
+
+What October had and this cycle lacked: a fixed exam re-graded after every sleep, exact truth with a full drill, a rule tried against one failed position. Built: the exact
+labeller (Syzygy), a labelled corpus, the full drill as the admission test (zero wrong on a development and a held-out part), a fixed exam of 300 positions, rule induction from
+the open problems. Three cycles: the exam stayed flat within the clock's spread; induction admitted five rules, none refuted in the games by the exact labeller; the refuted
+firings were all the lemma sleep's (sampled gates). Induction's near misses were all one kind (square constants, perfect on the development part, wrong once or twice held out):
+no word for what the positions share. Two flaws found and fixed: snapshots published after a sleep dropped the wake's valuation record (78.28 to 78.31 carry it), and the audit
+counted a firing that names no move as refuted. Then, as Kaveh allowed for when the loop goes in circles, Claude in the session read the open problems by hand: the pawn pushed
+where the king must go first. Three words (key squares of a pawn: rules/concepts/chess_keys.gdl, vocabulary `keys`) and three rules through the same drill with zero wrong; with
+them the exam moves outside the spread for the first time. The rules are in sandbox stores only. Lines in docs/ANALYST_PLAN.md 78.32.
+
+OBS gate engine: files 73, passed 933, failed 0, xfailed 1, errors 0, wall 1361.1 s

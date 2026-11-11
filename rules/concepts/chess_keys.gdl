@@ -1,0 +1,32 @@
+;;; rules/concepts/chess_keys.gdl -- THE KEY SQUARES OF A PAWN as rules (plan 78.32, proposed BY HAND when rule induction went in circles on king-and-pawn play). A DELTA
+;;; composed AFTER rules/concepts/chess.gdl and rules/concepts/chess_units.gdl (it uses `near_file`, `hanging`, `file_gap`, `rank_gap`, `dist_max`, `closer`), ADDITIVE
+;;; ONLY (no retract): it changes NO rule of the game. The words are plain geometry of the state, whoever is to move; whether a rule written with them is TRUE is decided
+;;; by the exact drill, never by this file. Each definition is tested against an independent python-chess oracle (tests/test_plan78_32_keys.py).
+;;;
+;;;   (key_square ?s ?f ?r ?kf ?kr)  (?kf ?kr) is a KEY SQUARE of the pawn of ?s on (?f ?r): for a pawn NOT on a rook file, the squares on its file and the two adjacent
+;;;                                  files TWO ranks ahead of it; from its fifth rank on (white rank 5, black rank 4) also those ONE rank ahead. A rook pawn has none here.
+;;;   (key_gap ?s ?f ?r ?d)          the king of ?s is ?d king-steps from the NEAREST key square of its own pawn on (?f ?r) (d0: it stands on one). No fact when that
+;;;                                  pawn is `hanging` (the opponent could take it for nothing).
+;;;   (key_guard ?s ?f ?r ?d)        the same distance for the king of the OPPONENT of ?s (how near the defender is to the key squares of the pawn of ?s). No fact
+;;;                                  when the pawn is hanging.
+;;;   (king_in_front ?s ?f ?r)       the king of the OPPONENT of ?s stands on the square directly in front of the pawn of ?s on (?f ?r)
+;;; Negation is stratified: hanging < key_gap, key_guard; key_dist < key_nearer < key_gap, key_guard.
+
+(signature inner_file file) (signature early_rank side rank) (signature fwd side rank rank)
+(signature key_square side file rank file rank) (signature key_dist side file rank side distance) (signature key_nearer side file rank side distance)
+(signature key_gap side file rank distance) (signature key_guard side file rank distance) (signature king_in_front side file rank)
+
+(inner_file b) (inner_file c) (inner_file d) (inner_file e) (inner_file f) (inner_file g)
+(early_rank white 2) (early_rank white 3) (early_rank white 4) (early_rank black 7) (early_rank black 6) (early_rank black 5)
+(<= (fwd white ?r1 ?r2) (rank_succ ?r1 ?r2))
+(<= (fwd black ?r1 ?r2) (rank_succ ?r2 ?r1))
+
+(<= (key_square ?s ?f ?r ?kf ?kr) (true (cell ?f ?r ?s pawn)) (inner_file ?f) (near_file ?f ?kf) (fwd ?s ?r ?r1) (fwd ?s ?r1 ?kr))
+(<= (key_square ?s ?f ?r ?kf ?kr) (true (cell ?f ?r ?s pawn)) (inner_file ?f) (near_file ?f ?kf) (fwd ?s ?r ?kr) (not (early_rank ?s ?r)))
+
+(<= (key_dist ?s ?f ?r ?ks ?d) (key_square ?s ?f ?r ?kf ?kr) (true (cell ?xf ?xr ?ks king)) (file_gap ?xf ?kf ?a) (rank_gap ?xr ?kr ?b) (dist_max ?a ?b ?d))
+(<= (key_nearer ?s ?f ?r ?ks ?d) (key_dist ?s ?f ?r ?ks ?d2) (closer ?d2 ?d))
+
+(<= (key_gap ?s ?f ?r ?d) (key_dist ?s ?f ?r ?s ?d) (not (key_nearer ?s ?f ?r ?s ?d)) (not (hanging ?s ?f ?r)))
+(<= (key_guard ?s ?f ?r ?d) (opponent ?s ?o) (key_dist ?s ?f ?r ?o ?d) (not (key_nearer ?s ?f ?r ?o ?d)) (not (hanging ?s ?f ?r)))
+(<= (king_in_front ?s ?f ?r) (true (cell ?f ?r ?s pawn)) (fwd ?s ?r ?r1) (opponent ?s ?o) (true (cell ?f ?r1 ?o king)))

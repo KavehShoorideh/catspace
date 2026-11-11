@@ -11,6 +11,8 @@ THIS IS A MECHANISM CHECK, NOT A STRENGTH CLAIM: one size, a few dozen games, a 
          [--teacher-mate-bucket N] [--teacher-cache FILE] [--tag T] [--wdl [--cycles K] [--wdl-judge-depth D] [--wdl-judge-cache FILE] [--wdl-set NAME=VALUE ...]]
          [--playouts [--playout-set NAME=VALUE ...]]       (plan 78.28; the judge is the --teacher engine at --wdl-judge-depth, default 12)
          [--targeted [--targeted-set NAME=VALUE ...]]       (plan 78.29, with --playouts: after the lemma sleep, one targeted rule per open problem; default off)
+         [--exact] [--induce [--induce-set NAME=VALUE ...] [--corpus-n N]] [--exam PATH] [--exam-size N]       (plan 78.32: the exact labeller judges the playouts and problems; rules induced
+          from the exact corpus for the open problems; a fixed exam graded before cycle 1 and after every cycle; defaults off)
 """
 from __future__ import annotations
 
@@ -25,9 +27,13 @@ from pathlib import Path
 
 from catspace.incubator.analyst.discovery import abstraction as AB
 from catspace.incubator.analyst.discovery import apply_audit as AU
+from catspace.incubator.analyst.discovery import corpus as CP
 from catspace.incubator.analyst.discovery import curriculum as CU
 from catspace.incubator.analyst.discovery import detectors as D
+from catspace.incubator.analyst.discovery import exact as EX
+from catspace.incubator.analyst.discovery import exam as EXM
 from catspace.incubator.analyst.discovery import game_store as GS
+from catspace.incubator.analyst.discovery import induce as IND
 from catspace.incubator.analyst.discovery import judges as JG
 from catspace.incubator.analyst.discovery import playout_sleep as PS
 from catspace.incubator.analyst.discovery import sleep as SL
@@ -210,7 +216,8 @@ def playout_after(game: str, log: str, snapshot: str, pre: dict, *, variant: str
 def run_size(game: str, size: int, *, source, store_root=None, variant: "str | None" = None, judge: "str | None" = None, games_per_start: int = 4, seconds: float = 0.2,
              random_plies: int = 2, max_plies: int = 80, limit: "int | None" = None, seed: int = 1, sleep_settings: "dict | None" = None, vocabulary: "str | None" = None,
              tag: "str | None" = None, sample: int = 200, wdl: bool = False, cycles: int = 1, wdl_judge=None, wdl_settings: "dict | None" = None, playouts: bool = False, playout_judge=None, playout_settings: "dict | None" = None, targeted: bool = False, targeted_settings: "dict | None" = None,
-             force_problems: bool = True, standard: str = "score", say=print) -> dict:
+             force_problems: bool = True, standard: str = "score", induce: bool = False, induce_settings: "dict | None" = None, drill_sleep: bool = False, seed_rules: "str | None" = None, exam: "str | None" = None, exam_size: "int | None" = None,
+             exact: bool = False, corpus_n: int = 30000, say=print) -> dict:
     """The loop for one size: starts -> publish -> wake a -> sleep (source as judge) -> wake b -> audit -> compare. Returns everything and writes it as JSON next to the logs.
 
     Plan 78.27: `wdl=True` plays every wake with the win / draw / loss estimate and the sandbox's table (`<root>/learned/<game>/wdl_table.json`, none until a sleep writes it), prints the
@@ -235,14 +242,25 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
 
     Plan 78.31: `standard="result"` (CLI `--standard result`, with the rank source built with grade_mode "result") switches EVERYTHING together to the owner's definition of a mistake -- a change of
     RESULT: the rank source grades by win / draw / loss class, the lemma sleep's gates, the forced seeds, the evidence, the audit's claim-held / played-optimal and the regret count of `OBS init compare`
-    all read it, and every named move must be in the best class. The first OBS line of each tool prints the standard. Default "score": nothing changes."""
+    all read it, and every named move must be in the best class. The first OBS line of each tool prints the standard. Default "score": nothing changes.
+
+    Plan 78.32: `exact=True` makes the EXACT labeller of the game (exact.labeller_of: Syzygy for chess; training only) the judge of the playouts and of the problems instead of `playout_judge`. `induce=True`
+    (needs playouts and exact) runs `induce.solve_problems` after the lemma sleep (and the targeted miner) on the open problems, against the exact CORPUS (corpus.ensure_corpus, `corpus_n` positions, cached
+    under paths.derived; the exam's positions are taken out of it), before the problems are checked again. `exam` (a path; with `exam_size` positions, 300 when not given, built once from the corpus when the
+    file is missing; needs exact) is graded with the wake's own decision before cycle 1 (twice, to print the clock's spread) and with the final snapshot of every cycle; the report gains `exam` (the
+    curve). The exam is only graded, never used to admit anything. Off, nothing changes."""
     if cycles < 1 or (cycles > 1 and not (wdl or playouts)):
         raise ValueError("cycles must be at least 1, and more than one needs wdl=True or playouts=True")
+    if induce and not (playouts and exact):
+        raise ValueError("induce=True needs playouts=True (the problems it solves) and exact=True (the labels it learns from)")
+    if (exam or exam_size) and not exact:
+        raise ValueError("an exam needs exact=True: the exact labeller says whether a decision keeps the result")
     if targeted and not playouts:
         raise ValueError("targeted=True needs playouts=True: the problems it solves are the playout sleep's")
     if getattr(source, "grade_mode", "score") != standard:
         raise ValueError(f"standard {standard!r} but the rank source grades by {getattr(source, 'grade_mode', 'score')!r}: build the source with grade_mode={standard!r}")
-    pjudge = playout_judge or wdl_judge
+    labeller = EX.labeller_of(game) if exact else None
+    pjudge = labeller if exact else (playout_judge or wdl_judge)
     if playouts and pjudge is None:
         raise ValueError("playouts=True needs a judge of verdicts (playout_judge or wdl_judge): the outside engine, at sleep only")
     variant = variant or game
@@ -262,6 +280,28 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
         rep["starts"] = len(starts)
         say(f"OBS init starts {game}: size {size}, {len(starts)} start positions")
         specs = GS.spec_texts(game, vocabulary)
+        corpus = exam_data = None
+        if induce or exam or exam_size:
+            corpus = CP.ensure_corpus(game, size, variant=variant, n=corpus_n, seed=seed, labeller=labeller, say=say)
+            labeller.save()
+        if exam or exam_size:
+            n_exam = int(exam_size or 300)
+            exam_data = EXM.ensure_exam(game, size, n=n_exam, seed=seed, corpus=corpus, path=str(exam) if exam else None, say=say)
+            corpus = corpus.excluding(EXM.exam_keys(exam_data))
+        exam_prev, exam_curve = None, []
+
+        def grade_exam(label: str, snapshot: str, twice: bool = False) -> dict:
+            nonlocal exam_prev
+            kw = dict(variant=variant, store=str(GS.path_of(game, snapshot)), spec=specs, seconds=seconds, wake_kw={}, labeller=labeller)
+            if twice:
+                g, _g2, _d = EXM.grade_twice(exam_data, say=say, **kw)
+            else:
+                g = EXM.grade(exam_data, **kw)
+            cmp = EXM.compare(exam_prev, g)
+            EXM.say_exam(label, g, cmp, say)
+            exam_prev = g
+            exam_curve.append({"label": label, "snapshot": snapshot, "kept": g["kept"], "total": g["total"], "by_class": g["by_class"], "gained": len(cmp["gained"]), "lost": len(cmp["lost"])})
+            return g
 
         table_path = inside(root / "learned" / game / "wdl_table.json", root)
 
@@ -284,7 +324,22 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
             say(f"OBS init gaps {game} wake {label}: decisions {g['decisions']}, " + ", ".join(f"{k} {v}" for k, v in g["counts"].items()) + f", modes {g['modes']}, table {g['table']}, worklist {len(g['worklist'])}")
             return {k: v for k, v in g.items() if k != "worklist"} | {"worklist": len(g["worklist"])}
 
+        if seed_rules:
+            # plan 78.32, the hand step: rules proposed from OUTSIDE the loop (a person, or the assistant by hand when the loop goes in circles) enter the sandbox store only through the
+            # same admission test as an induced rule: zero wrong firings on both parts of the exact corpus. The exam is graded before them so their effect is seen on its own.
+            if corpus is None:
+                raise ValueError("seed_rules needs the exact corpus (exact=True with induce or an exam): a proposed rule is admitted only by the full drill")
+            if exam_data is not None:
+                grade_exam("before the seed rules", GS.publish(game, **({"judge": GS.judge_of(game, judge)} if judge else {}), **vkw))
+            proposed = json.loads(Path(seed_rules).read_text())["rules"]
+            kept, dropped = IND.drill_admit(proposed, corpus, specs, json.dumps(GS.vocabulary(game, vocabulary)), say=say)
+            for l in kept:
+                GS.check_lemma(l)
+                GS.write_lemma(game, l)
+            rep["seed_rules"] = {"file": str(seed_rules), "kept": [l["name"] for l in kept], "dropped": [l["name"] for l in dropped]}
         rep["wake_a"], log_a = wake("a", f"i{size}{tag}a")
+        if exam_data is not None:
+            grade_exam(f"before cycle 1 ({len(GS.info(game, rep['wake_a']['snapshot'])['lemmas'])} lemmas)", rep["wake_a"]["snapshot"], twice=True)
         log_b = log_a
         rep["cycles"] = []
         for c in range(cycles):
@@ -306,7 +361,18 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
                 kw["corpus"] = corpus_positions([log_prev], pre.get("games", []))
                 seed_pos = {e["id"]: (e["start"], e["moves"]) for e in extras if e.get("force")}
                 kw["prefer"] = TG.keep_at_problem(variant, specs, json.dumps(GS.vocabulary(game, vocabulary)), pjudge, seed_pos)
-            sl = SL.sleep(game, log_prev, variant=variant, settings=settings, teacher=source, write=True, say=say, **({"extra_positions": extras} if pre else {}), **kw)
+            gate_by_drill = drill_sleep and corpus is not None
+            sl = SL.sleep(game, log_prev, variant=variant, settings=settings, teacher=source, write=not gate_by_drill, say=say, **({"extra_positions": extras} if pre else {}), **kw)
+            if gate_by_drill:
+                # plan 78.32: the lemma sleep's rules pass the same admission test as the induced ones (zero wrong firings on the exact corpus) before any is filed
+                kept, _dropped = IND.drill_admit(sl["lemmas"], corpus, specs, json.dumps(GS.vocabulary(game, vocabulary)), say=say)
+                for l in kept:
+                    GS.write_lemma(game, l)
+                sl["lemmas"] = kept
+                sl["snapshot"] = GS.publish(game, teacher_used=True, **({"judge": GS.judge_of(game, judge)} if judge else {}), **vkw)
+            if induce or exam_data is not None:
+                # the lemma sleep publishes without the valuation record the wake plays by; the snapshot the NEXT WAKE will play (the same content, so the same id) is what induction and the exam read
+                GS.publish(game, **({"judge": GS.judge_of(game, judge)} if judge else {}), **vkw)
             if pre and force_problems and sl.get("snapshot"):
                 TG.say_forced_rules(game, sl["lemmas"], pre["problems"], str(GS.path_of(game, sl["snapshot"])), variant=variant, spec=specs, judge=pjudge, seconds=seconds,
                                     vocab_json=json.dumps(GS.vocabulary(game, vocabulary)), say=say)
@@ -319,7 +385,11 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
                     o = {**PLAYOUT_DEFAULTS, **(playout_settings or {})}
                     cyc["targeted"] = TG.solve_problems(game, pre["problems"], variant=variant, judge=pjudge, teacher=source, logs=[log_prev], seconds=float(o["check_seconds"] or seconds), vocabulary=vocabulary,
                                                         spec=specs, wake_kw=wake_kw, settings={**(targeted_settings or {}), "sleep_settings": settings}, say=say)
-                after = GS.head(game) if targeted else (sl.get("snapshot") or GS.head(game))
+                if induce:
+                    o = {**PLAYOUT_DEFAULTS, **(playout_settings or {})}
+                    cyc["induce"] = IND.solve_problems(game, pre["problems"], corpus, variant=variant, labeller=labeller, vocabulary=vocabulary, spec=specs, seconds=float(o["check_seconds"] or seconds),
+                                                       wake_kw=wake_kw, judge=judge, settings=induce_settings, say=say)
+                after = GS.head(game) if (targeted or induce) else (sl.get("snapshot") or GS.head(game))
                 cyc["playouts"] = playout_after(game, log_prev, after, pre, variant=variant, specs=specs, judge=pjudge, opts=playout_settings or {}, seconds=seconds, seed=seed, wake_kw=wake_kw, say=say)
                 if targeted:
                     cyc["playouts"]["targeted"] = {k: cyc["targeted"][k] for k in ("total", "attempted", "solved", "still_open")} | {"rules_admitted": len(cyc["targeted"]["admitted"])}
@@ -328,13 +398,19 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
                 opts = {"deep_seconds": 0.2, "max_deep": 20, "sample": 10, "max_settle": 10, **(wdl_settings or {})}
                 cyc["wdl_sleep"] = WS.sleep_wdl(game, [log_prev], variant=variant, prior_table=str(table_path) if table_path.exists() else None, judge=wdl_judge, judge_kw=kw,
                                                 out=str(table_path), seed=seed, say=say, **opts)
+            if exam_data is not None:
+                cyc["exam"] = grade_exam(f"after cycle {c + 1}", GS.head(game))
+                cyc["exam"] = {k: v for k, v in cyc["exam"].items() if k != "decisions"} | {"label": exam_curve[-1]["label"], "gained": exam_curve[-1]["gained"], "lost": exam_curve[-1]["lost"]}
             label = "b" if c == 0 else f"w{c + 1}"
             rep["wake_b"], log_b = wake(label, f"i{size}{tag}{label}")
             if wdl:
                 cyc["gaps_after"] = gaps_of(label, log_b)
             cyc["wake"] = rep["wake_b"]
             rep["cycles"].append(cyc)
-        if not (wdl or playouts):
+        if exam_data is not None:
+            rep["exam"] = exam_curve
+            say("OBS exam curve: " + ", ".join(f"{e['label']} {e['kept']}/{e['total']}" for e in exam_curve))
+        if not (wdl or playouts or exam_data is not None):
             del rep["cycles"]
         rep["mined"] = AU.mined(game, vocabulary)
         for line in rep["mined"]:
@@ -349,6 +425,8 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
             f"({b['rate']}) under the {standard} standard; a mechanism check on {len(starts)} starts, not a strength claim")
     finally:
         GS.LEARNED_ROOT, GS.SNAPSHOT_ROOT = old
+        if labeller is not None:
+            labeller.close()
     out = paths.experiment(f"init_{game}_{size}_{tag}.json")
     json.dump(rep, open(out, "w"), indent=1, default=str)
     say(f"OBS init report {game} size {size} -> {out}")
@@ -389,6 +467,14 @@ def main(argv: list) -> int:
     ap.add_argument("--no-force-problems", action="store_true", help="plan 78.29: do not hand the open problems to the lemma sleep as forced seeds (with --playouts they are by default)")
     ap.add_argument("--targeted", action="store_true", help="plan 78.29 (with --playouts): after the lemma sleep, a targeted rule for each open problem, admitted only when the problem's own check passes")
     ap.add_argument("--targeted-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.29: a targeted setting (repeatable): " + ", ".join(TG.SETTINGS))
+    ap.add_argument("--exact", action="store_true", help="plan 78.32: the exact labeller (Syzygy for chess, training only) judges the playouts and the problems instead of the UCI WDL judge")
+    ap.add_argument("--induce", action="store_true", help="plan 78.32 (with --playouts --exact): after the lemma sleep, a rule induced from the exact corpus for each open problem")
+    ap.add_argument("--induce-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.32: an induction setting (repeatable): " + ", ".join(IND.SETTINGS))
+    ap.add_argument("--seed-rules", default=None, metavar="FILE", help="plan 78.32: rules proposed from outside the loop ({rules: [lemma, ..]}); each enters the sandbox store only with zero wrong firings on the exact corpus")
+    ap.add_argument("--drill-sleep", action="store_true", help="plan 78.32: the lemma sleep's rules are filed only with zero wrong firings on the exact corpus (the induced rules' admission test)")
+    ap.add_argument("--corpus-n", type=int, default=30000, help="plan 78.32: positions of the exact corpus (built once, cached under paths.derived)")
+    ap.add_argument("--exam", default=None, metavar="PATH", help="plan 78.32 (with --exact): the fixed exam file; built from the corpus when missing; graded before cycle 1 and after every cycle")
+    ap.add_argument("--exam-size", type=int, default=None, help="plan 78.32 (with --exact): positions of the exam (300 when only --exam is given); with no --exam the default file for this size")
     ap.add_argument("--wdl-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.27: a keyword of the estimate's sleep (deep_seconds, max_deep, sample, max_settle), repeatable")
     a = ap.parse_args(argv)
     overrides = settings_pairs(a.set)
@@ -398,7 +484,13 @@ def main(argv: list) -> int:
     teacher = SL.UciTeacher(a.teacher, a.teacher_ms, dict(o.partition("=")[::2] for o in a.teacher_option), mate_bucket=a.teacher_mate_bucket, grade_mode=a.standard, decisive=a.decisive)
     if a.teacher_cache:
         teacher = JG.Cached(teacher, a.teacher_cache)
-    wj = WS.UciWdlJudge(a.teacher, a.wdl_judge_depth or 12, a.wdl_judge_cache) if (a.wdl and a.wdl_judge_depth) or a.playouts else None
+    wj = WS.UciWdlJudge(a.teacher, a.wdl_judge_depth or 12, a.wdl_judge_cache) if ((a.wdl and a.wdl_judge_depth) or a.playouts) and not a.exact else None
+    isets = {}
+    for pair in a.induce_set:
+        k, _, v = pair.partition("=")
+        if k not in IND.SETTINGS:
+            raise ValueError(f"unknown --induce-set name {k!r}; the names are {sorted(IND.SETTINGS)}")
+        isets[k] = int(v)
     psets = {}
     for pair in a.playout_set:
         k, _, v = pair.partition("=")
@@ -421,7 +513,8 @@ def main(argv: list) -> int:
     try:
         run_size(a.game, a.size, source=teacher, store_root=a.store_root, variant=a.variant, judge=a.judge, games_per_start=a.games_per_start, seconds=a.seconds, limit=a.limit, seed=a.seed,
                  sleep_settings=overrides, vocabulary=a.vocabulary, tag=a.tag, sample=a.sample, wdl=a.wdl, cycles=a.cycles, wdl_judge=wj if a.wdl_judge_depth or not a.wdl else None, wdl_settings=wdl_settings or None,
-                 playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None, targeted=a.targeted, targeted_settings=tsets or None, force_problems=not a.no_force_problems, standard=a.standard)
+                 playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None, targeted=a.targeted, targeted_settings=tsets or None, force_problems=not a.no_force_problems, standard=a.standard,
+                 induce=a.induce, induce_settings=isets or None, drill_sleep=a.drill_sleep, seed_rules=a.seed_rules, exam=a.exam, exam_size=a.exam_size, exact=a.exact, corpus_n=a.corpus_n)
     finally:
         teacher.close()
         if wj is not None:

@@ -177,6 +177,15 @@ def path_of(game: str, snapshot_id: str) -> Path:
     return snapshot_dir(game) / f"{snapshot_id}.json"
 
 
+def head_judge(game: str) -> "dict | None | str":
+    """The valuation record the game's HEAD snapshot carries (the record the wake now plays by), for a snapshot built on top of it: a rule added at sleep must be tried and published
+    under the same record the wake reads positions by. "store" where there is no HEAD yet (the store's record in use)."""
+    cur = head(game)
+    if not cur or not path_of(game, cur).is_file():
+        return "store"
+    return json.loads(path_of(game, cur).read_bytes()).get("judge")
+
+
 def publish(game: str, **kw) -> str:
     """Publish the next snapshot of `game` (its parent the current HEAD) and make it HEAD -> its id. The same content publishes to the same id (nothing new is written);
     the file is read back the way the engine reads it, and refused if it does not hash to its name."""

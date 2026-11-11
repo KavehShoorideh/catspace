@@ -144,7 +144,9 @@ def audit(game: str, log: str, *, snapshot: "str | None" = None, variant: "str |
             s["followed"] += item["followed"]
             if opt and item["trivial"]:
                 s["trivial"] += 1
-            if opt and not item["trivial"]:
+            if opt and not item["trivial"] and all_named and not prop:
+                s["silent"] = s.get("silent", 0) + 1                                   # (plan 78.32: the body matched but no legal move does what the rule names: it says nothing, so it is not refuted)
+            elif opt and not item["trivial"]:
                 s["scored"] += 1
                 s["proposal_optimal"] += bool(item["proposal_optimal"])
                 k = "followed" if item["followed"] else "not_followed"
@@ -172,7 +174,7 @@ def audit(game: str, log: str, *, snapshot: "str | None" = None, variant: "str |
     say(f"OBS audit {game}: {len(decisions)} decisions, {len(rows)} with a lemma firing, {len(touched)} of {len(games)} games touched ({overall['share_games']}), "
         f"recomputed proposal counts differing from the engine's {mismatch}, rank source {src_name}")
     for n, s in lemmas.items():
-        claim = f", claim held {s['proposal_optimal']} of {s['scored']} by {src_name}" + (f" (refuted {s['scored'] - s['proposal_optimal']}, trivial {s['trivial']})" if all_named else "") + f", played optimal {s['followed_optimal']}/{s['followed_n']} when followed vs {s['not_followed_optimal']}/{s['not_followed_n']} when not" \
+        claim = f", claim held {s['proposal_optimal']} of {s['scored']} by {src_name}" + (f" (refuted {s['scored'] - s['proposal_optimal']}, trivial {s['trivial']}, silent {s.get('silent', 0)})" if all_named else "") + f", played optimal {s['followed_optimal']}/{s['followed_n']} when followed vs {s['not_followed_optimal']}/{s['not_followed_n']} when not" \
             if source is not None else ""
         say(f"OBS audit lemma {n}: fired {s['fired']} in {s['games']} games, proposed {s['proposed']} moves, followed {s['followed']}{claim}")
         for ex in examples[n]:

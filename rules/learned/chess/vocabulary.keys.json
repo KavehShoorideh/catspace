@@ -1,0 +1,48 @@
+{
+ "spec": "chess.gdl",
+ "variants": {
+  "chess": null,
+  "kingofthehill": "variants/kingofthehill.gdl",
+  "3check": "variants/3check.gdl"
+ },
+ "concepts": [
+  "concepts/chess.gdl",
+  "concepts/chess_units.gdl",
+  "concepts/chess_keys.gdl"
+ ],
+ "derived": [
+  "attack",
+  "check",
+  "defended",
+  "hanging",
+  "passed_pawn",
+  "apart",
+  "closer",
+  "flight",
+  "opposition",
+  "diagonal_opposition",
+  "to_promote",
+  "king_ahead",
+  "in_square",
+  "key_gap",
+  "key_guard",
+  "king_in_front"
+ ],
+ "delta": [
+  "cell",
+  "apart",
+  "flight",
+  "opposition",
+  "diagonal_opposition",
+  "hanging",
+  "to_promote",
+  "king_ahead",
+  "in_square",
+  "check",
+  "key_gap",
+  "key_guard",
+  "king_in_front"
+ ],
+ "units": null,
+ "note": "The key-square vocabulary of chess (plan 78.32): the relational vocabulary (vocabulary.relational.json) plus the key squares of a pawn (rules/concepts/chess_keys.gdl): how far each king is from the nearest key square of a pawn, and the defending king standing right in front of it. The words were proposed by hand when induction went in circles; a rule written with them is admitted only by the exact drill."
+}

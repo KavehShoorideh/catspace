@@ -641,7 +641,8 @@ def sleep(game: str, log: str, *, variant: "str | None" = None, settings: "Setti
     if write and admitted:
         for l in admitted.values():
             GS.write_lemma(game, l)
-        rep["snapshot"] = GS.publish(game, teacher_used=any(l["meta"]["teacher"] for l in admitted.values()), vocabulary=s.vocabulary)
+        rep["snapshot"] = GS.publish(game, teacher_used=any(l["meta"]["teacher"] for l in admitted.values()), vocabulary=s.vocabulary,
+                                     judge=GS.judge_of(game, s.judge) if s.judge else "store")      # (plan 78.32: the next wake plays by the record the sleep learned by)
     rep["seconds"] = round(time.perf_counter() - t0, 2)
     rep["timing"] = {k: round(v, 2) for k, v in timing.items()}
     say("OBS sleep time " + game + ": " + ", ".join(f"{k} {v} s" for k, v in rep["timing"].items()) + f", total {rep['seconds']} s")

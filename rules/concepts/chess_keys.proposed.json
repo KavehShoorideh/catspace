@@ -1,0 +1,201 @@
+{
+ "format": "proposed-rules-1",
+ "game": "chess",
+ "vocabulary": "keys",
+ "note": "Rules proposed BY HAND (plan 78.32) when rule induction went in circles on king-and-pawn play, written with the key-square words of rules/concepts/chess_keys.gdl. They are PROPOSALS, not lemmas of the store: initialize --seed-rules runs each through the full drill on the exact corpus and files only those with zero wrong firings, into the sandbox store. The fourth is kept here although the drill drops it.",
+ "rules": [
+  {
+   "name": "hand-king-onto-key-square",
+   "body": [
+    {
+     "relation": "key_gap",
+     "args": [
+      "us",
+      "?h0",
+      "?h1",
+      "?k0"
+     ],
+     "neg": false
+    }
+   ],
+   "response": {
+    "removed": [],
+    "added": [
+     {
+      "relation": "key_gap",
+      "args": [
+       "us",
+       "?h0",
+       "?h1",
+       "d0"
+      ],
+      "neg": false
+     }
+    ]
+   },
+   "stats": {
+    "status": "HAND"
+   },
+   "meta": {
+    "game": "chess",
+    "origin": "hand",
+    "plan": "78.32",
+    "author": "Claude in session, by hand",
+    "teacher": true,
+    "source": "syzygy",
+    "vocabulary": "keys"
+   }
+  },
+  {
+   "name": "hand-king-nearer-key-square-when-ahead",
+   "body": [
+    {
+     "relation": "key_gap",
+     "args": [
+      "us",
+      "?h0",
+      "?h1",
+      "?k0"
+     ],
+     "neg": false
+    },
+    {
+     "relation": "key_guard",
+     "args": [
+      "us",
+      "?h0",
+      "?h1",
+      "?k1"
+     ],
+     "neg": false
+    },
+    {
+     "relation": "closer",
+     "args": [
+      "?k0",
+      "?k1"
+     ],
+     "neg": false
+    },
+    {
+     "relation": "closer",
+     "args": [
+      "?h2",
+      "?k0"
+     ],
+     "neg": false
+    }
+   ],
+   "response": {
+    "removed": [],
+    "added": [
+     {
+      "relation": "key_gap",
+      "args": [
+       "us",
+       "?h0",
+       "?h1",
+       "?h2"
+      ],
+      "neg": false
+     }
+    ]
+   },
+   "stats": {
+    "status": "HAND"
+   },
+   "meta": {
+    "game": "chess",
+    "origin": "hand",
+    "plan": "78.32",
+    "author": "Claude in session, by hand",
+    "teacher": true,
+    "source": "syzygy",
+    "vocabulary": "keys"
+   }
+  },
+  {
+   "name": "hand-king-in-front-of-their-pawn",
+   "body": [
+    {
+     "relation": "to_promote",
+     "args": [
+      "them",
+      "?h0",
+      "?h1",
+      "?k0"
+     ],
+     "neg": false
+    }
+   ],
+   "response": {
+    "removed": [],
+    "added": [
+     {
+      "relation": "king_in_front",
+      "args": [
+       "them",
+       "?h0",
+       "?h1"
+      ],
+      "neg": false
+     }
+    ]
+   },
+   "stats": {
+    "status": "HAND"
+   },
+   "meta": {
+    "game": "chess",
+    "origin": "hand",
+    "plan": "78.32",
+    "author": "Claude in session, by hand",
+    "teacher": true,
+    "source": "syzygy",
+    "vocabulary": "keys"
+   }
+  },
+  {
+   "name": "hand-king-onto-their-key-square",
+   "body": [
+    {
+     "relation": "key_guard",
+     "args": [
+      "them",
+      "?h0",
+      "?h1",
+      "?k0"
+     ],
+     "neg": false
+    }
+   ],
+   "response": {
+    "removed": [],
+    "added": [
+     {
+      "relation": "key_guard",
+      "args": [
+       "them",
+       "?h0",
+       "?h1",
+       "d0"
+      ],
+      "neg": false
+     }
+    ]
+   },
+   "stats": {
+    "status": "HAND"
+   },
+   "meta": {
+    "game": "chess",
+    "origin": "hand",
+    "plan": "78.32",
+    "author": "Claude in session, by hand",
+    "teacher": true,
+    "source": "syzygy",
+    "vocabulary": "keys"
+   }
+  }
+ ]
+}

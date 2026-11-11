@@ -527,7 +527,7 @@ def say_wild(tag: str, w: dict, say) -> None:
 def trial_snapshot(game: str, lemma: dict, directory, vocabulary: "str | None" = None) -> str:
     """The snapshot the store would publish if `lemma` were written now (the head's lemmas plus it, in the writer's order), written under `directory` as <id>.json. -> its path. The
     published snapshot of the same lemma has the same content and so the same id."""
-    data = json.loads(GS.build(game, parent=GS.head(game), teacher_used=True, vocabulary=vocabulary))
+    data = json.loads(GS.build(game, parent=GS.head(game), teacher_used=True, vocabulary=vocabulary, judge=GS.head_judge(game)))      # (plan 78.32: the record the wake plays by)
     data["lemmas"] = sorted([l for l in data["lemmas"] if l["name"] != lemma["name"]] + [lemma], key=lambda l: GS.slug(l["name"]))
     data["teacher_used"] = True
     raw = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
@@ -767,7 +767,7 @@ def _solve(game, problems_path, variant, judge, teacher, logs, seconds, max_roun
                 continue
             lemma = out["lemma"]
             GS.write_lemma(game, lemma)
-            sid = GS.publish(game, teacher_used=True, vocabulary=vocabulary)
+            sid = GS.publish(game, teacher_used=True, vocabulary=vocabulary, judge=GS.head_judge(game))
             snap_path = str(GS.path_of(game, sid))
             res = check_all(snap_path)
             now = ["solved" if c["keeps"] else "open" for c in res]
