@@ -124,6 +124,16 @@ def write_lemma(game: str, lemma: dict) -> Path:
     return p
 
 
+def remove_lemma(game: str, name: str) -> bool:
+    """Plan 78.34: withdraw a rule: delete the lemma's source file from the store `game_store` points at (the sandbox, in a run; never call it on the real store). -> True when a file was removed,
+    False when there was none. The next `publish` leaves the rule out of the snapshot."""
+    p = lemma_dir(game) / f"{slug(name)}.json"
+    if not p.is_file():
+        return False
+    p.unlink()
+    return True
+
+
 ANY = object()          # `read_lemmas(vocabulary=ANY)`: every lemma of the game, whatever vocabulary it was written in
 
 

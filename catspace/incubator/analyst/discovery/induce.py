@@ -19,6 +19,10 @@
          in the rule, board_structure.py), NAMED (a coordinate constant kept). For each head the search runs on the narrowest tier first and widens only when no candidate passes the whole admission;
          the lemma records `meta.tier`. The `tiers` setting can stop the run early. A vocabulary with no `axes` has one "untiered" pass, as before.
 
+  HEAD TIERS (plan 78.34)  with a structure (a vocabulary with `axes`) the heads come in two tiers (tiered_heads): RELATIVE (every coordinate argument of the head a variable) tried first, NAMED (a
+         coordinate constant in the head, e.g. rank 5) only after every relative head failed; a named head also gives its relative form (coordinates lifted) unless that is a head already there. The
+         lemma records `meta.head_tier`. The `head_tiers` setting orders / stops them. `max_problems` caps the problems attempted per call (the oldest open first; the rest are printed as left).
+
 Game-free: the variant string, the store's vocabulary, objects passed in (corpus, labeller); no game object is named here.
 
   induce(problem, corpus, *, reader, ...) -> {status "found" | "open", lemma, head, dev, held, why, stage, heads_tried}      (the search and the held-out part of the admission)
@@ -39,8 +43,10 @@ from catspace.incubator.analyst.discovery import game_store as GS
 from catspace.incubator.analyst.discovery import playout_sleep as PS
 from catspace.incubator.analyst.discovery import targeted as TG
 
-SETTINGS = {"max_literals": 4, "beam": 8, "min_right": 10, "min_held": 5, "max_heads": 4, "finalists": 3, "max_bindings": 256, "stride": 3, "tiers": ["relative", "structure", "named"]}
+SETTINGS = {"max_literals": 4, "beam": 8, "min_right": 10, "min_held": 5, "max_heads": 4, "finalists": 3, "max_bindings": 256, "stride": 3, "tiers": ["relative", "structure", "named"],
+            "max_problems": None, "head_tiers": ["relative", "named"]}
 TIERS = ("relative", "structure", "named")       # plan 78.33: the order of the body literals' tiers (the narrowest first)
+HEAD_TIERS = ("relative", "named")               # plan 78.34: the order of the heads' tiers (coordinates as variables first, a named coordinate last)
 STAGES = ("position", "head", "dev", "held", "check", "broken")          # how far a candidate got: the reason of the furthest one is the problem's
 
 
@@ -141,6 +147,84 @@ def tier_passes(facts: list, names: dict, structure: "BS.Structure | None", tier
     return passes
 
 
+def _alpha_key(head: dict) -> str:
+    """The head's text with its variables renamed by first occurrence: two heads that differ only in their variable names are one."""
+    ren: dict = {}
+    f = lambda a: ren.setdefault(a, f"?v{len(ren)}") if a.startswith("?") else a  # noqa: E731
+    return json.dumps({"removed": [[rel, [f(a) for a in args]] for rel, args in head["removed"]], "added": [[rel, [f(a) for a in args]] for rel, args in head["added"]]}, sort_keys=True)
+
+
+def head_coordinates(head: dict, structure: "BS.Structure") -> list:
+    """The coordinate CONSTANTS of a head ({removed, added}: [(relation, args)]): the arguments that are not variables and whose declared sort (the relation's `signature`) is a coordinate sort of
+    `structure`; a relation with no declared signature has none. -> [constant, ...] in order of appearance, with repeats."""
+    coord = set(structure.coordinate_sorts)
+    out = []
+    for lits in (head["removed"], head["added"]):
+        for rel, args in lits:
+            sig = structure.signatures.get(rel)
+            if not sig or len(sig) != len(args):
+                continue
+            out += [a for a, srt in zip(args, sig) if srt in coord and TG.is_const(a)]
+    return out
+
+
+def relative_form(h: dict, card: dict, keep: dict, structure: "BS.Structure") -> "dict | None":
+    """The head `h` (an entry of targeted.heads_for) with every coordinate constant lifted to a variable (the same constant, the same variable; the other constants as they were), or None
+    when it has no coordinate constant or the lifted head names a losing move at this position (a head must name keeping moves only) or no move."""
+    consts = head_coordinates(h["head"], structure)
+    if not consts:
+        return None
+    names = dict(h["names"])
+    taken = {a for lits in (h["head"]["removed"], h["head"]["added"]) for _r, args in lits for a in args if a.startswith("?")}
+    for c in consts:
+        if c not in names:
+            k = 0
+            while f"?hc{k}" in taken:
+                k += 1
+            names[c] = f"?hc{k}"
+            taken.add(names[c])
+    lift = lambda a: names[a] if a in consts else a  # noqa: E731
+    head = {"removed": [(rel, [lift(a) for a in args]) for rel, args in h["head"]["removed"]], "added": [(rel, [lift(a) for a in args]) for rel, args in h["head"]["added"]]}
+    moves = {m["name"]: m for m in card["moves"]}
+    matched = sorted(x for x, mv in moves.items() if TG.head_matches(head, mv["removed"], mv["added"]))
+    if not matched or any(not keep.get(x, True) for x in matched):
+        return None
+    nconst = len({a for lits in (head["removed"], head["added"]) for _r, args in lits for a in args if TG.is_const(a)})
+    return {"head": head, "matched": matched, "lits": h["lits"], "consts": nconst, "names": names}
+
+
+def tiered_heads(card: dict, keep: dict, structure: "BS.Structure | None", *, max_heads: int, head_tiers=HEAD_TIERS) -> list:
+    """PLAN 78.34: the heads to try, RELATIVE heads (no coordinate constant: every coordinate a variable) before NAMED heads (a coordinate named), each entry gaining `head_tier`. With no `structure`
+    (no axes in the vocabulary) the heads of targeted.heads_for as before, no `head_tier`. Otherwise targeted.heads_for is asked for a wider list; its heads with no coordinate constant are the
+    relative ones, and a named head also gives its RELATIVE FORM (coordinates lifted, kept only if it still names keeping moves alone) unless another relative head is the same head up to the
+    names of its variables (no duplicate). Each tier is ordered as heads_for orders (fewest moves matched, fewest literals, fewest constants) and cut to `max_heads`; `head_tiers` says which tiers
+    are tried and in what order (default relative, named)."""
+    if structure is None or not structure.axes:
+        return TG.heads_for(card, keep, limit=max_heads)
+    pool = TG.heads_for(card, keep, limit=max(4 * max_heads, 16))
+    rel, named, seen = [], [], set()
+    for h in pool:
+        if not head_coordinates(h["head"], structure):
+            if _alpha_key(h["head"]) not in seen:
+                seen.add(_alpha_key(h["head"]))
+                rel.append(h)
+    for h in pool:
+        if head_coordinates(h["head"], structure):
+            named.append(h)
+            r = relative_form(h, card, keep, structure)
+            if r is not None and _alpha_key(r["head"]) not in seen:
+                seen.add(_alpha_key(r["head"]))
+                rel.append(r)
+    order = lambda c: (len(c["matched"]), c["lits"], c["consts"], json.dumps(c["head"], sort_keys=True))  # noqa: E731
+    tiers = {"relative": sorted(rel, key=order)[:max_heads], "named": sorted(named, key=order)[:max_heads]}
+    out = []
+    for t in head_tiers:
+        if t not in tiers:
+            raise ValueError(f"unknown head tier {t!r}; the tiers are {HEAD_TIERS}")
+        out += [{**h, "head_tier": t} for h in tiers[t]]
+    return out
+
+
 def search_body(corpus: "CP.Corpus", facts: list, names: dict, head: dict, *, max_literals: int, beam: int, min_right: int, finalists: int, max_bindings: int, part: str = "dev", stride: int = 1,
                 cands: "list | None" = None, needs: "dict | None" = None) -> dict:
     """The beam search for one head -> {found: [(body, tally)] (zero wrong and >= min_right right, the best first; [] if none), best: (body, tally) with the fewest wrong then the most right
@@ -221,7 +305,7 @@ def _counts(t: "dict | None") -> str:
 
 def induce(problem: dict, corpus: "CP.Corpus", *, reader: "TG.Reader", max_literals: int = SETTINGS["max_literals"], beam: int = SETTINGS["beam"], min_right: int = SETTINGS["min_right"],
            min_held: int = SETTINGS["min_held"], max_heads: int = SETTINGS["max_heads"], finalists: int = SETTINGS["finalists"], max_bindings: int = SETTINGS["max_bindings"], stride: int = SETTINGS["stride"], accept=None, say=print, tag: str = "",
-           structure: "BS.Structure | None" = None, tiers=SETTINGS["tiers"]) -> dict:
+           structure: "BS.Structure | None" = None, tiers=SETTINGS["tiers"], head_tiers=SETTINGS["head_tiers"]) -> dict:
     """A rule for `problem` ({start, moves}) from the corpus's exact labels: the heads of its exact Reading, a body by beam search on the development part, the held-out admission on the held-out
     part, then `accept(candidate) -> (ok, why, stage)` when given (solve_problems': the problem's own check and the no-regression check on a trial snapshot; a rule it refuses
     is not found, and the search goes on with the next candidate and head). -> {status: "found" | "open", lemma, head, dev, held (drill counts), why, stage (how far the furthest candidate
@@ -239,15 +323,17 @@ def induce(problem: dict, corpus: "CP.Corpus", *, reader: "TG.Reader", max_liter
         why = "no move keeps the class" if not rd.good else "every move keeps the class"
         return {"status": "open", "why": why, "stage": "position", "lemma": None, "head": None, "dev": None, "held": None, "heads_tried": 0, "candidates": []}
     card = json.loads(reader.cards([(p["start"], p["moves"], "p", "problem")]).card(0))
-    heads = TG.heads_for(card, rd.keep, limit=max_heads)
+    heads = tiered_heads(card, rd.keep, structure, max_heads=max_heads, head_tiers=head_tiers)
     if not heads:
         return {"status": "open", "why": "no pattern over the moves' effects separates the keeping moves from the losing ones", "stage": "head", "lemma": None, "head": None, "dev": None, "held": None,
                 "heads_tried": 0, "candidates": []}
     say(f"OBS induce {tag}: position {len(p['moves'])} plies, class {rd.before}, {len(rd.keep)} legal moves, keep {sorted(rd.good)}, lose {sorted(rd.bad)}; {len(heads)} head(s): "
-        + "; ".join(f"{TG.head_text(h['head'])} names {h['matched']}" for h in heads))
+        + "; ".join(f"{TG.head_text(h['head'])} names {h['matched']}" + (f" [{h['head_tier']} head]" if h.get("head_tier") else "") for h in heads))
     furthest = {"stage": "head", "why": "", "lemma": None, "head": None, "dev": None, "held": None}
     progress: dict = {}                                             # tier -> {stage, near (a rule passed the development part and failed the held-out part), why}: how far each tier got
     for hi, h in enumerate(heads, 1):
+        if h.get("head_tier"):
+            say(f"OBS induce {tag} head {hi}: {h['head_tier']} head {TG.head_text(h['head'])}")
         for tier, cands, needs in tier_passes(card["facts"], h["names"], structure, tiers):
             pg = progress.setdefault(tier, {"stage": "head", "near": False, "why": ""})
             r = search_body(corpus, card["facts"], h["names"], h["head"], max_literals=max_literals, beam=beam, min_right=min_right, finalists=finalists, max_bindings=max_bindings, stride=stride,
@@ -278,7 +364,7 @@ def induce(problem: dict, corpus: "CP.Corpus", *, reader: "TG.Reader", max_liter
                 say(f"OBS induce {tag} head {hi}{tt} candidate: rule {rule_text(lem)}; dev binds/right/wrong/trivial {_counts(dev)}, held {_counts(held)}; "
                     + ("passes the held-out part" if ok else f"REJECTED on the held-out part: " + (f"{held['wrong']} wrong firing(s)" if held["wrong"] else f"{held['right']} right firing(s), need {min_held}")))
                 if ok:
-                    cand = {"lemma": lem, "head": h["head"], "dev": dev, "held": held, "tier": tier}
+                    cand = {"lemma": lem, "head": h["head"], "dev": dev, "held": held, "tier": tier, "head_tier": h.get("head_tier")}
                     good, why2, stage2 = accept(cand) if accept else (True, "", "held")
                     if good:
                         passed.append(cand)
@@ -296,9 +382,9 @@ def induce(problem: dict, corpus: "CP.Corpus", *, reader: "TG.Reader", max_liter
                         pg.update(stage="held", why=why3)
             if passed:
                 return {"status": "found", "lemma": passed[0]["lemma"], "head": passed[0]["head"], "dev": passed[0]["dev"], "held": passed[0]["held"], "why": "", "stage": "held", "heads_tried": hi,
-                        "candidates": passed, "tier": tier, "tiers": progress}
+                        "candidates": passed, "tier": tier, "tiers": progress, "head_tier": passed[0]["head_tier"]}
     return {"status": "open", "lemma": furthest["lemma"], "head": furthest["head"], "dev": furthest["dev"], "held": furthest["held"], "why": furthest["why"] or "no head gave a rule", "stage": furthest["stage"],
-            "heads_tried": len(heads), "candidates": [], "tier": None, "tiers": progress}
+            "heads_tried": len(heads), "candidates": [], "tier": None, "tiers": progress, "head_tier": None}
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------ the loop over the problems
@@ -335,11 +421,11 @@ def trial_snapshot(game: str, lemma: dict, directory, vocabulary: "str | None" =
     return str(p)
 
 
-def provenance(problem: dict, variant: str, labeller, vocabulary: "str | None", tier: "str | None" = None) -> dict:
+def provenance(problem: dict, variant: str, labeller, vocabulary: "str | None", tier: "str | None" = None, head_tier: "str | None" = None) -> dict:
     """The lemma's meta: where it came from. NO number and no verdict of the labeller."""
     return {"origin": "induced", "plan": "78.32", "game": variant, "mined_from": "problem", "problem": {"start": problem.get("start"), "moves": len(problem["moves"]), "played": problem.get("played")},
             "teacher": True, "source": getattr(labeller, "source", "exact"), **({"vocabulary": vocabulary} if vocabulary else {}),
-            **({"tier": tier} if tier else {})}
+            **({"tier": tier} if tier else {}), **({"head_tier": head_tier} if head_tier else {})}
 
 
 def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | None" = None, labeller, vocabulary: "str | None" = None, spec: "dict | None" = None, seconds: float = 0.2,
@@ -378,9 +464,12 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
     admitted, attempted, reasons, done = [], 0, Counter(), set()
     near: Counter = Counter()                                       # per tier: the problems where a rule passed the development part and failed the held-out part
     with tempfile.TemporaryDirectory() as tmp:
-        for i in range(len(rows)):
+        order = range(len(rows)) if s["max_problems"] is None else sorted(range(len(rows)), key=lambda j: (rows[j].get("first_seen", 0), j))          # plan 78.34: oldest first when capped
+        for i in order:
             if status[i] != "open" or i in done:
                 continue
+            if s["max_problems"] is not None and attempted >= int(s["max_problems"]):
+                break
             done.add(i)
             attempted += 1
             tag = f"problem {i + 1}/{len(rows)}"
@@ -389,7 +478,7 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
 
             def accept(cand, i=i, solved_rows=solved_rows, seen_check=seen_check):
                 lem = cand["lemma"]
-                lem["meta"] = provenance(rows[i], variant, labeller, vocabulary, cand.get("tier") if cand.get("tier") != "untiered" else None)
+                lem["meta"] = provenance(rows[i], variant, labeller, vocabulary, cand.get("tier") if cand.get("tier") != "untiered" else None, cand.get("head_tier"))
                 lem["stats"] = {"status": "INDUCED"}
                 GS.check_lemma(lem)
                 snap = trial_snapshot(game, lem, tmp, vocabulary, judge)
@@ -402,7 +491,7 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
                     return False, f"the rule breaks {len(broken)} problem(s) solved before", "broken"
                 return True, "", "held"
             out = induce(rows[i], corpus, reader=reader, max_literals=s["max_literals"], beam=s["beam"], min_right=s["min_right"], min_held=s["min_held"], max_heads=s["max_heads"],
-                         finalists=s["finalists"], max_bindings=s["max_bindings"], stride=s["stride"], accept=accept, say=say, tag=tag, structure=structure, tiers=s["tiers"])
+                         finalists=s["finalists"], max_bindings=s["max_bindings"], stride=s["stride"], accept=accept, say=say, tag=tag, structure=structure, tiers=s["tiers"], head_tiers=s["head_tiers"])
             why, stage, own_keeps = out["why"], out["stage"], seen_check.get("keeps")
             final = out["lemma"] if out["status"] == "found" else None
             line = (f"OBS induce {tag}: head {TG.head_text(out['head']) if out['head'] else 'none'}, rule {rule_text(out['lemma'])}, dev binds/right/wrong/trivial {_counts(out['dev'])}, "
@@ -427,16 +516,19 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
             for j in newly:
                 info[j]["status"] = "solved"
                 info[j]["why"] = f"by rule {final['name']}"
-            admitted.append({"name": final["name"], "text": rule_text(final), "problem": i, "solved_others": [j for j in newly if j != i], "broke": lost, "snapshot": sid, "dev": out["dev"], "held": out["held"], "tier": out.get("tier")})
-            say(line + f"ADMITTED {final['name']} (snapshot {sid}, tier {out.get('tier')}); solved {len(newly)} problem(s) in all, the others {[j + 1 for j in newly if j != i]}; broke {len(lost)}")
+            admitted.append({"name": final["name"], "text": rule_text(final), "problem": i, "solved_others": [j for j in newly if j != i], "broke": lost, "snapshot": sid, "dev": out["dev"], "held": out["held"], "tier": out.get("tier"), "head_tier": out.get("head_tier")})
+            say(line + f"ADMITTED {final['name']} (snapshot {sid}, tier {out.get('tier')}" + (f", head tier {out.get('head_tier')}" if out.get("head_tier") else "") + f"); solved {len(newly)} problem(s) in all, the others {[j + 1 for j in newly if j != i]}; broke {len(lost)}")
     solved = sum(1 for i in start_open if status[i] == "solved")
+    left = sum(1 for i in start_open if status[i] == "open" and i not in done)
+    if s["max_problems"] is not None:
+        say(f"OBS induce deferred: max_problems {int(s['max_problems'])}, open at the start {len(start_open)}, attempted {attempted}, left for the next cycle {left}")
     open_n = sum(1 for st in status if st == "open")
     say(f"OBS induce total: problems {len(rows)}, attempted {attempted}, admitted {len(admitted)}, solved {solved}, still open {open_n}, reasons {dict(reasons)}, "
         f"admitted per tier {dict(Counter(a['tier'] for a in admitted))}, near misses per tier {dict(near)}")
     for a in admitted:
         say(f"OBS induce rule {a['name']}: {a['text']}; dev binds/right/wrong/trivial {_counts(a['dev'])}, held {_counts(a['held'])}; mined from problem {a['problem'] + 1}, also solved {[j + 1 for j in a['solved_others']]}")
     say(f"OBS induce time: {time.perf_counter() - t0:.1f} s, labeller calls {verdicts.calls}")
-    return {"total": len(rows), "attempted": attempted, "admitted": admitted, "solved": solved, "still_open": open_n, "reasons": dict(reasons), "rows": [info[i] for i in range(len(rows))],
+    return {"total": len(rows), "attempted": attempted, "admitted": admitted, "solved": solved, "still_open": open_n, "reasons": dict(reasons), "left": left, "rows": [info[i] for i in range(len(rows))],
             "snapshot": GS.head(game)}
 
 

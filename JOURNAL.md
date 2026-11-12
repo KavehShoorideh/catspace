@@ -36549,3 +36549,13 @@ one of them, with zero wrong on the corpus, is refuted in the games. Induction s
 the source of problems and a corpus that does not grow with the games. Lines in docs/ANALYST_PLAN.md 78.32 (run K) and 78.33.
 
 OBS gate engine: files 74, passed 948, failed 0, xfailed 1, errors 0, wall 1346.8 s
+
+## 2026-11-11 21:00 -- plan 78.34: problems from the labelled corpus, and a corpus that grows with the games
+
+Two changes to where the sleep's problems come from. The wake's decision is asked on 300 labelled positions of the corpus's development part each cycle and the wrong ones go to
+induction (15 attempted a cycle); the positions of each cycle's games where a rule fired are labelled and added to the corpus, every rule is drilled again and one with a wrong
+firing is withdrawn. Heads are tried in tiers as bodies are. Run M, same exam and seed rules as runs K and L: the exam goes past the hand rules' step for the first time; nearly
+all admitted rules are from the relative tier; one rule withdrawn; induction, not the supply of problems, is now the limit. One rule is refuted by the last wake's audit and not
+by the drill, not explained yet. One run. Lines in docs/ANALYST_PLAN.md 78.34.
+
+OBS gate engine: files 75, passed 967, failed 0, xfailed 1, errors 0, wall 1355.9 s

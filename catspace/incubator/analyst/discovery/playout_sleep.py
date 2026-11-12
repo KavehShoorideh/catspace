@@ -265,14 +265,15 @@ def key_of(row: dict) -> tuple:
 
 
 def merge_problems(rows: list, found: list, cycle: int) -> tuple:
-    """`found` ({start, moves, played?}) added to `rows` where not already there -> (rows, the rows that are new). A new row has first_seen = `cycle` and an empty history."""
+    """`found` ({start, moves, played?, source?}) added to `rows` where not already there -> (rows, the rows that are new). A new row has first_seen = `cycle` and an empty history; plan 78.34: a `source`
+    ("corpus" / "withdrawn") of the found one is kept on the row (a row without the field counts as "playout")."""
     have = {key_of(r) for r in rows}
     new = []
     for f in found:
         if key_of(f) in have:
             continue
         have.add(key_of(f))
-        new.append({"start": f.get("start"), "moves": list(f["moves"]), "played": f.get("played"), "first_seen": cycle, "history": []})
+        new.append({"start": f.get("start"), "moves": list(f["moves"]), "played": f.get("played"), "first_seen": cycle, "history": [], **({"source": f["source"]} if f.get("source") else {})})
     return rows + new, new
 
 

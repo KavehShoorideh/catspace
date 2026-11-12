@@ -5650,3 +5650,97 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
     the corpus not growing with the games, not the order of the literals.
   NEXT  (78.34) problems from the wake's own decision on the development part of the exact corpus; the positions of the last wake where an admitted rule fired join the
         corpus with their exact labels, and a rule refuted there is withdrawn (October's drill grew the same way); heads tiered as bodies are.
+
+#### 78.34 THE PROBLEMS THE GAMES DO NOT REACH, AND A CORPUS THAT GROWS WITH THE GAMES (2026-11-11; from the readings of runs K and L)
+
+  WHY       with the hand rules in the store the playouts give induction a handful of problems per cycle while the exam has some thirty positions the wake gets wrong; and a rule
+            with zero wrong firings on the corpus was refuted in the games it changed. October's drill grew with every failure; this corpus is fixed.
+  DESIGN
+  1 PROBLEMS FROM THE CORPUS   at sleep the wake's own decision is taken on a sample of the DEVELOPMENT part's non-trivial positions (never the held-out part, never the exam); a
+            decision that loses the exact class is a problem like a playout's (the same problem file, its source said). A cap per cycle, spread over the groups.
+  2 THE CORPUS GROWS   after a cycle's wake, the positions of its games where a rule of the store fired are labelled by the exact labeller and added to the corpus (their group is
+            their game's start, so the split holds). Every rule of the store is drilled again on the grown corpus; a rule with a wrong firing is WITHDRAWN from the sandbox store
+            (said, with the position), and the position where it was wrong is a problem.
+  3 HEADS IN TIERS   a head is tried first with its coordinates as variables, then with board structure, a named coordinate last, as bodies are in 78.33.
+  4 MEASURE  the same exam and seeds as runs K and L: problems per source and cycle, rules admitted and withdrawn, the exam curve.
+
+  BUILT  discovery/corpus_problems.py (sample_dev, corpus_problems: the wake's decision on a sample of the development part, a decision losing the exact class is a problem
+         with source `corpus`; fired_positions, grow, drill_rules, grow_and_withdraw: the last wake's positions where a rule fired are labelled and added, every rule of the
+         sandbox store drilled again, a rule with a wrong firing removed by game_store.remove_lemma and its positions asked again as problems with source `withdrawn`);
+         corpus.Corpus.extend / position_keys; induce.tiered_heads (meta.head_tier) and the settings max_problems, head_tiers; initialize --corpus-problems N --grow-corpus;
+         tests/test_plan78_34_corpus_problems.py. Every switch is off by default. The exam's positions are never added (the `exam positions left out` count below).
+  RUN M  (sandbox data/derived/init_store_w34; run L's command plus --corpus-problems 300 --grow-corpus --induce-set max_problems=15):
+    OBS exam before the seed rules: kept 254 of 300 (win-keeping 120 of 150, draw-keeping 134 of 150), gained 0, lost 0
+    OBS exam spread: 266 vs 266, decisions differing 4
+    OBS exam before cycle 1 (3 lemmas): kept 266 of 300 (win-keeping 134 of 150, draw-keeping 132 of 150), gained 15, lost 3
+    OBS exam after cycle 1: kept 269 of 300 (win-keeping 135 of 150, draw-keeping 134 of 150), gained 3, lost 0
+    OBS exam after cycle 2: kept 280 of 300 (win-keeping 140 of 150, draw-keeping 140 of 150), gained 11, lost 0
+    OBS exam after cycle 3: kept 280 of 300 (win-keeping 140 of 150, draw-keeping 140 of 150), gained 1, lost 1
+    OBS exam curve: before the seed rules 254/300, before cycle 1 (3 lemmas) 266/300, after cycle 1 269/300, after cycle 2 280/300, after cycle 3 280/300
+    OBS corpus problems cycle 1: asked 300, wrong 34, new problems 34 (already known 0)
+    OBS corpus problems cycle 2: asked 300, wrong 38, new problems 37 (already known 1)
+    OBS corpus problems cycle 3: asked 300, wrong 19, new problems 17 (already known 2)
+    OBS problems by source cycle 1: playout total 7 open 0, corpus total 34 open 25, withdrawn total 0 open 0
+    OBS problems by source cycle 2: playout total 10 open 2, corpus total 71 open 38, withdrawn total 0 open 0
+    OBS problems by source cycle 3: playout total 12 open 3, corpus total 88 open 50, withdrawn total 0 open 0
+    OBS induce deferred: max_problems 15, open at the start 41, attempted 15, left for the next cycle 22
+    OBS induce total: problems 41, attempted 15, admitted 12, solved 16, still open 25, reasons {"the problem's own check fails with the rule": 2, 'held-out part: wrong firings': 1}, admitted per tier {'relative': 11, 'named': 1}, near misses per tier {'relative': 9, 'structure': 6, 'named': 7}
+    OBS induce deferred: max_problems 15, open at the start 65, attempted 15, left for the next cycle 33
+    OBS induce total: problems 81, attempted 15, admitted 8, solved 25, still open 40, reasons {"the problem's own check fails with the rule": 5, 'held-out part: wrong firings': 2}, admitted per tier {'relative': 8}, near misses per tier {'relative': 9, 'structure': 9, 'named': 9}
+    OBS induce deferred: max_problems 15, open at the start 59, attempted 15, left for the next cycle 42
+    OBS induce total: problems 100, attempted 15, admitted 4, solved 6, still open 53, reasons {"the problem's own check fails with the rule": 6, 'held-out part: wrong firings': 4, 'no conjunction with zero wrong and enough right on the development part': 1}, admitted per tier {'relative': 3, 'named': 1}, near misses per tier {'relative': 10, 'structure': 11, 'named': 11}
+    OBS corpus withdrawn cycle 1: rule apart-response-8a4374d4, wrong firings 5 (dev 4, held 1), e.g. 4k3/2p5/8/8/8/8/8/4K3 w - - 0 1 after 19 move(s) [b5c4 b1b2 c4d3 b2b1 c6c5 b1b2] (losing moves ['d3c4', 'd3e2', 'd3e3', 'd3e4']); the decision without the rule is wrong at 0 of the 5 positions asked, new problems 0
+    OBS corpus grow cycle 1: positions with a firing 3198, added 1515 (dev 767, held 748), rules drilled 15, withdrawn 1 ['apart-response-8a4374d4']
+    OBS corpus grow detail cycle 1: already in the corpus 1681, exam positions left out 2, game over 0, not covered by the labeller 0, new start groups [], corpus size now 31215
+    OBS corpus grow cycle 2: positions with a firing 2786, added 345 (dev 161, held 184), rules drilled 23, withdrawn 0 []
+    OBS corpus grow detail cycle 2: already in the corpus 2439, exam positions left out 2, game over 0, not covered by the labeller 0, new start groups [], corpus size now 31560
+    OBS corpus grow cycle 3: positions with a firing 2809, added 51 (dev 18, held 33), rules drilled 27, withdrawn 0 []
+    OBS corpus grow detail cycle 3: already in the corpus 2752, exam positions left out 6, game over 0, not covered by the labeller 0, new start groups [], corpus size now 31611
+    OBS drill admit total: rules 4, kept 3, dropped 1
+    OBS drill admit total: rules 2, kept 0, dropped 2
+    OBS drill admit total: rules 2, kept 1, dropped 1
+    OBS drill admit total: rules 0, kept 0, dropped 0
+    OBS init compare chess size 3: wake a outcomes {'[50, 50]': 97, '[100, 0]': 17, '[0, 100]': 18}, regret 11/200 (0.055); wake b outcomes {'[50, 50]': 118, '[100, 0]': 8, '[0, 100]': 6}, regret 5/200 (0.025) under the result standard; a mechanism check on 22 starts, not a strength claim
+  The last wake's audit by the exact labeller (27 rules in the store):
+    OBS audit lemma apart-response-028664c6: fired 1539 in 132 games, proposed 77 moves, followed 76, claim held 7 of 7 by uci (refuted 0, trivial 921, silent 611), played optimal 6/6 when followed vs 1/1 when not
+    OBS audit lemma apart-response-0f31b694: fired 228 in 57 games, proposed 3 moves, followed 2, claim held 0 of 0 by uci (refuted 0, trivial 178, silent 50), played optimal 0/0 when followed vs 0/0 when not
+    OBS audit lemma apart-response-120c97e1: fired 64 in 37 games, proposed 23 moves, followed 23, claim held 6 of 6 by uci (refuted 0, trivial 53, silent 5), played optimal 6/6 when followed vs 0/0 when not
+    OBS audit lemma apart-response-168d5878: fired 16 in 16 games, proposed 14 moves, followed 12, claim held 6 of 6 by uci (refuted 0, trivial 10, silent 0), played optimal 6/6 when followed vs 0/0 when not
+    OBS audit lemma apart-response-4bf3e8b0: fired 25 in 18 games, proposed 10 moves, followed 9, claim held 10 of 10 by uci (refuted 0, trivial 6, silent 9), played optimal 9/9 when followed vs 1/1 when not
+    OBS audit lemma apart-response-4dee562c: fired 729 in 72 games, proposed 247 moves, followed 118, claim held 110 of 110 by uci (refuted 0, trivial 465, silent 154), played optimal 68/68 when followed vs 42/42 when not
+    OBS audit lemma apart-response-584295b3: fired 729 in 72 games, proposed 7 moves, followed 7, claim held 6 of 6 by uci (refuted 0, trivial 465, silent 258), played optimal 6/6 when followed vs 0/0 when not
+    OBS audit lemma apart-response-6989a11e: fired 729 in 72 games, proposed 32 moves, followed 26, claim held 32 of 32 by uci (refuted 0, trivial 465, silent 232), played optimal 26/26 when followed vs 6/6 when not
+    OBS audit lemma apart-response-6d6baee1: fired 2 in 2 games, proposed 2 moves, followed 2, claim held 2 of 2 by uci (refuted 0, trivial 0, silent 0), played optimal 2/2 when followed vs 0/0 when not
+    OBS audit lemma apart-response-9381521a: fired 167 in 54 games, proposed 15 moves, followed 12, claim held 12 of 12 by uci (refuted 0, trivial 64, silent 91), played optimal 12/12 when followed vs 0/0 when not
+    OBS audit lemma apart-response-b89ca69d: fired 64 in 37 games, proposed 6 moves, followed 6, claim held 6 of 6 by uci (refuted 0, trivial 53, silent 5), played optimal 6/6 when followed vs 0/0 when not
+    OBS audit lemma apart-response-b94d9a91: fired 156 in 64 games, proposed 0 moves, followed 0, claim held 0 of 0 by uci (refuted 0, trivial 87, silent 69), played optimal 0/0 when followed vs 0/0 when not
+    OBS audit lemma apart-response-c9919762: fired 118 in 52 games, proposed 0 moves, followed 0, claim held 0 of 0 by uci (refuted 0, trivial 95, silent 23), played optimal 0/0 when followed vs 0/0 when not
+    OBS audit lemma apart-response-ce4b570a: fired 585 in 118 games, proposed 4 moves, followed 3, claim held 3 of 3 by uci (refuted 0, trivial 395, silent 187), played optimal 2/2 when followed vs 1/1 when not
+    OBS audit lemma apart-response-d4717cad: fired 640 in 72 games, proposed 20 moves, followed 7, claim held 11 of 11 by uci (refuted 0, trivial 432, silent 197), played optimal 7/7 when followed vs 4/4 when not
+    OBS audit lemma apart-response-dbfab44a: fired 958 in 93 games, proposed 289 moves, followed 157, claim held 110 of 110 by uci (refuted 0, trivial 645, silent 203), played optimal 65/65 when followed vs 45/45 when not
+    OBS audit lemma apart-response-ee2af553: fired 3045 in 132 games, proposed 30 moves, followed 17, claim held 26 of 26 by uci (refuted 0, trivial 2068, silent 951), played optimal 14/14 when followed vs 12/12 when not
+    OBS audit lemma apart-response-fb3321e6: fired 35 in 24 games, proposed 5 moves, followed 2, claim held 5 of 5 by uci (refuted 0, trivial 24, silent 6), played optimal 2/2 when followed vs 3/3 when not
+    OBS audit lemma hand-king-in-front-of-their-pawn: fired 1024 in 96 games, proposed 221 moves, followed 188, claim held 76 of 76 by uci (refuted 0, trivial 684, silent 264), played optimal 54/54 when followed vs 22/22 when not
+    OBS audit lemma hand-king-nearer-key-square-when-ahead: fired 115 in 22 games, proposed 246 moves, followed 64, claim held 81 of 81 by uci (refuted 0, trivial 34, silent 0), played optimal 53/53 when followed vs 28/28 when not
+    OBS audit lemma hand-king-onto-key-square: fired 640 in 72 games, proposed 183 moves, followed 47, claim held 71 of 71 by uci (refuted 0, trivial 432, silent 137), played optimal 33/33 when followed vs 38/38 when not
+    OBS audit lemma key_guard-response-820ab97b: fired 72 in 45 games, proposed 0 moves, followed 0, claim held 0 of 0 by uci (refuted 0, trivial 44, silent 28), played optimal 0/0 when followed vs 0/0 when not
+    OBS audit lemma key_guard-response-b5f666d2: fired 1747 in 128 games, proposed 19 moves, followed 19, claim held 5 of 5 by uci (refuted 0, trivial 1219, silent 523), played optimal 5/5 when followed vs 0/0 when not
+    OBS audit lemma key_guard-response-dcd1a85e: fired 136 in 53 games, proposed 199 moves, followed 71, claim held 38 of 38 by uci (refuted 0, trivial 69, silent 29), played optimal 36/36 when followed vs 2/2 when not
+    OBS audit lemma opposition-response-21d8a4be: fired 115 in 65 games, proposed 24 moves, followed 14, claim held 23 of 23 by uci (refuted 0, trivial 65, silent 27), played optimal 13/13 when followed vs 10/10 when not
+    OBS audit lemma opposition-response-93030a07: fired 128 in 63 games, proposed 63 moves, followed 49, claim held 20 of 24 by uci (refuted 4, trivial 87, silent 17), played optimal 20/20 when followed vs 4/4 when not
+    OBS audit lemma opposition-response-e48f4a64: fired 5 in 5 games, proposed 5 moves, followed 5, claim held 5 of 5 by uci (refuted 0, trivial 0, silent 0), played optimal 5/5 when followed vs 0/0 when not
+  READING (run M against runs K and L; one run each, one size, one game)
+  1 The exam moved past the hand rules' step for the first time: runs K and L end at 267 and 269 (their curves above), run M at 280 (its curve line). The clock's spread
+    on this exam is a few positions (the spread lines); the step from 269 to 280 in cycle 2 is larger than that. It is one run.
+  2 The corpus is where the problems are: per cycle the 300 positions asked gave 34, 38 and 19 wrong decisions against the playouts' 7, 3 and 2 (the corpus problems and
+    problems by source lines). The count of wrong decisions on a fresh sample fell in cycle 3.
+  3 Induction is now the limit, not the supply: 15 problems attempted a cycle, 22 to 42 left for the next (the deferred lines), 53 open at the end. The reasons it gives
+    for the ones it could not solve are the problem's own check failing and wrong firings on the held-out part.
+  4 Nearly every admitted rule is from the RELATIVE tier (the admitted per tier counts).
+  5 The grown corpus withdrew one rule, in cycle 1, and none after; the positions added fall from 1515 to 51 as the games repeat. One rule of the last store
+    (opposition-response-93030a07) is refuted at four firings in the last wake by the audit and was not withdrawn by the cycle 3 drill. NOT EXPLAINED here; to be read.
+  6 The games: wake b's regret under the result standard is lower than wake a's (the init compare line). 22 starts, a mechanism check.
+  OPEN   the 53 open problems are not read; whether the gain holds on a second exam seed is not measured; the audit and the drill disagreeing on one rule (5);
+         induction's time per cycle caps the problems at 15.
+  NEXT   read the open problems by family (the hand step's method) only if the next cycles go flat; first run more cycles with the same store and see whether the curve
+         continues, and settle (5).

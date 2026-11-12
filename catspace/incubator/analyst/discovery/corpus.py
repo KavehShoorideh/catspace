@@ -40,6 +40,8 @@ class Corpus:
         self.rows, self.groups, self.game, self.variant, self.size, self.seed, self.meta = rows, groups, game, variant, size, seed, dict(meta or {})
         self._cards = None
         self._ctx = None
+        self._build = None
+        self._pos_keys = None
         self.card_of: dict = {}
         self.row_of: list = []
 
@@ -77,9 +79,42 @@ class Corpus:
         vals = [{m: (1 if k else 0) for m, k in self.rows[ri]["keep"].items()} for ri in ids]
         self._cards = cs.revalued(vals) if len(cs) else cs
         self._ctx = ctx
+        self._build = (spec, vocab_json, depth, threads)
         self.row_of = ids
         self.card_of = {ri: ci for ci, ri in enumerate(ids)}
         return self._cards
+
+    def position_keys(self) -> set:
+        """The kernel's position keys of the rows (computed once, kept up to date by `extend`): a position reached by another move order is the same position."""
+        if self._pos_keys is None:
+            self._pos_keys = {CE.state(self.variant, r["start"], r["moves"])[4] for r in self.rows}
+        return self._pos_keys
+
+    def extend(self, rows: list) -> int:
+        """PLAN 78.34: append labelled rows (each {start, moves, group, before, keep}; every group must already be in `groups`). When the cards are built, only the NEW rows' cards are built (valued 1 / 0 as
+        `cards`) and merged after the old ones, so the card indices of the old rows stay and nothing is rebuilt (building all 30000 cards takes about a minute). -> the number of rows added."""
+        missing = sorted({r["group"] for r in rows} - set(self.groups))
+        if missing:
+            raise ValueError(f"extend: group(s) {missing} are not in the corpus's groups; add them (with their part) first")
+        if not rows:
+            return 0
+        base = len(self.rows)
+        keys = self.position_keys()
+        self.rows.extend(rows)
+        keys.update(CE.state(self.variant, r["start"], r["moves"])[4] for r in rows)
+        if self._cards is None:
+            return len(rows)
+        spec, vocab_json, depth, threads = self._build
+        items = [(self.variant, r["start"], list(r["moves"]), f"c{base + k}", r["group"]) for k, r in enumerate(rows)]
+        cs = CE.build_cards(items, spec, vocab_json, depth, 2_000_000, threads, {}, False)
+        if len(cs):
+            ids = [int(json.loads(cs.card(i))["id"][1:]) for i in range(len(cs))]
+            new = cs.revalued([{m: (1 if k else 0) for m, k in self.rows[ri]["keep"].items()} for ri in ids])
+            self._cards = CE.CardSet.merge([self._cards, new]) if len(self._cards) else new
+            n0 = len(self.row_of)
+            self.row_of = self.row_of + ids
+            self.card_of.update({ri: n0 + k for k, ri in enumerate(ids)})
+        return len(rows)
 
     def idx(self, part: str) -> list:
         """Card indices of the part (the cards must have been built: `cards`)."""
