@@ -15,6 +15,7 @@ THIS IS A MECHANISM CHECK, NOT A STRENGTH CLAIM: one size, a few dozen games, a 
           from the exact corpus for the open problems; a fixed exam graded before cycle 1 and after every cycle; defaults off)
          [--corpus-problems N] [--grow-corpus]       (plan 78.34, both need --exact: N problems per cycle from the development part of the corpus; the corpus grows with the positions where a rule
           fired and a rule with a wrong firing on it is withdrawn; --induce-set max_problems=N head_tiers=relative,named)
+         [--usage-split]       (plan 78.35, with an exam: the use / generation split after every exam grading, and the rules by kind at the end; --induce-set name_bodies=N names an admitted body of N literals or more as a word)
 """
 from __future__ import annotations
 
@@ -42,7 +43,9 @@ from catspace.incubator.analyst.discovery import playout_sleep as PS
 from catspace.incubator.analyst.discovery import sleep as SL
 from catspace.incubator.analyst.discovery import targeted as TG
 from catspace.incubator.analyst.discovery import wake as WK
+from catspace.incubator.analyst.discovery import usage_split as US
 from catspace.incubator.analyst.discovery import wdl_sleep as WS
+from catspace.incubator.analyst.discovery import word_registry as WR
 from catspace.io import paths
 
 
@@ -220,7 +223,7 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
              random_plies: int = 2, max_plies: int = 80, limit: "int | None" = None, seed: int = 1, sleep_settings: "dict | None" = None, vocabulary: "str | None" = None,
              tag: "str | None" = None, sample: int = 200, wdl: bool = False, cycles: int = 1, wdl_judge=None, wdl_settings: "dict | None" = None, playouts: bool = False, playout_judge=None, playout_settings: "dict | None" = None, targeted: bool = False, targeted_settings: "dict | None" = None,
              force_problems: bool = True, standard: str = "score", induce: bool = False, induce_settings: "dict | None" = None, drill_sleep: bool = False, seed_rules: "str | None" = None, exam: "str | None" = None, exam_size: "int | None" = None,
-             exact: bool = False, corpus_n: int = 30000, corpus_problems: int = 0, grow_corpus: bool = False, say=print) -> dict:
+             exact: bool = False, corpus_n: int = 30000, corpus_problems: int = 0, grow_corpus: bool = False, usage_split: bool = False, say=print) -> dict:
     """The loop for one size: starts -> publish -> wake a -> sleep (source as judge) -> wake b -> audit -> compare. Returns everything and writes it as JSON next to the logs.
 
     Plan 78.27: `wdl=True` plays every wake with the win / draw / loss estimate and the sandbox's table (`<root>/learned/<game>/wdl_table.json`, none until a sleep writes it), prints the
@@ -258,7 +261,11 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
     (needs exact) reads each cycle's wake log, labels the positions where a rule fired and adds them to the corpus (its group the game's start's group), drills every rule of the sandbox store on
     both parts of it and WITHDRAWS a rule with any wrong firing (a new snapshot; its wrong positions become problems of source "withdrawn"); this happens after the cycle's wake and BEFORE the exam of
     the cycle is graded, so the exam grades the snapshot that survives; the next cycle's playouts and problem checks play that snapshot (`wake_b.survivor`). The grown corpus is kept in memory and
-    saved to `<root>/learned/<game>/corpus_grown.json`, never over the cached corpus file. Off, nothing changes."""
+    saved to `<root>/learned/<game>/corpus_grown.json`, never over the cached corpus file. Off, nothing changes.
+
+    Plan 78.35: `usage_split=True` (needs an exam) runs usage_split.split on every exam grading whose snapshot holds rules, reusing that grading's decisions (nothing is graded a second time), and
+    prints `OBS usage split <label>: ...` and, with the rules' layers (word_registry.layers), `OBS usage split by rule kind <label>: ...`; once at the end `OBS rules by kind: general G (hand a,
+    machine b), game C (hand c, machine d)` for the final snapshot's rules; the report gains `usage_split`. Off, nothing changes."""
     if cycles < 1 or (cycles > 1 and not (wdl or playouts)):
         raise ValueError("cycles must be at least 1, and more than one needs wdl=True or playouts=True")
     if corpus_problems < 0:
@@ -271,6 +278,8 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
         raise ValueError("induce=True needs playouts=True (the problems it solves) and exact=True (the labels it learns from)")
     if (exam or exam_size) and not exact:
         raise ValueError("an exam needs exact=True: the exact labeller says whether a decision keeps the result")
+    if usage_split and not (exam or exam_size):
+        raise ValueError("usage_split=True needs an exam (exam or exam_size): it reads the decisions of an exam grading")
     if targeted and not playouts:
         raise ValueError("targeted=True needs playouts=True: the problems it solves are the playout sleep's")
     if getattr(source, "grade_mode", "score") != standard:
@@ -304,7 +313,7 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
             n_exam = int(exam_size or 300)
             exam_data = EXM.ensure_exam(game, size, n=n_exam, seed=seed, corpus=corpus, path=str(exam) if exam else None, say=say)
             corpus = corpus.excluding(EXM.exam_keys(exam_data))
-        exam_prev, exam_curve = None, []
+        exam_prev, exam_curve, usage_rows = None, [], []
 
         def grade_exam(label: str, snapshot: str, twice: bool = False) -> dict:
             nonlocal exam_prev
@@ -316,6 +325,10 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
             cmp = EXM.compare(exam_prev, g)
             EXM.say_exam(label, g, cmp, say)
             exam_prev = g
+            if usage_split and GS.info(game, snapshot)["lemmas"]:
+                sp = US.split(exam_data, g, variant=variant, snapshot_path=str(GS.path_of(game, snapshot)), specs=specs, labeller=labeller)
+                US.say_split(label, sp, WR.layers(game, vocabulary), say)
+                usage_rows.append({"label": label, **{k: sp[k] for k in ("kept", "failed", "by_group")}})
             exam_curve.append({"label": label, "snapshot": snapshot, "kept": g["kept"], "total": g["total"], "by_class": g["by_class"], "gained": len(cmp["gained"]), "lost": len(cmp["lost"])})
             return g
 
@@ -452,6 +465,11 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
         if exam_data is not None:
             rep["exam"] = exam_curve
             say("OBS exam curve: " + ", ".join(f"{e['label']} {e['kept']}/{e['total']}" for e in exam_curve))
+        if usage_split:
+            rep["usage_split"] = usage_rows
+            final = GS.head(game)
+            if final:
+                US.say_rules_by_kind(json.loads(GS.path_of(game, final).read_bytes())["lemmas"], WR.layers(game, vocabulary), say)
         if not (wdl or playouts or exam_data is not None):
             del rep["cycles"]
         rep["mined"] = AU.mined(game, vocabulary)
@@ -519,6 +537,7 @@ def main(argv: list) -> int:
     ap.add_argument("--exam-size", type=int, default=None, help="plan 78.32 (with --exact): positions of the exam (300 when only --exam is given); with no --exam the default file for this size")
     ap.add_argument("--corpus-problems", type=int, default=0, metavar="N", help="plan 78.34 (with --playouts --exact): per cycle, the wake's own decision on N sampled non-trivial positions of the corpus's development part; the wrong ones are problems (source corpus)")
     ap.add_argument("--grow-corpus", action="store_true", help="plan 78.34 (with --exact): after each cycle's wake the positions where a rule fired are labelled and added to the corpus, every rule is drilled on the grown corpus and one with a wrong firing is withdrawn")
+    ap.add_argument("--usage-split", action="store_true", help="plan 78.35 (with an exam): after every exam grading with rules in the snapshot, the use / generation split (OBS usage split ..), and at the end OBS rules by kind")
     ap.add_argument("--wdl-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.27: a keyword of the estimate's sleep (deep_seconds, max_deep, sample, max_settle), repeatable")
     a = ap.parse_args(argv)
     overrides = settings_pairs(a.set)
@@ -558,7 +577,7 @@ def main(argv: list) -> int:
         run_size(a.game, a.size, source=teacher, store_root=a.store_root, variant=a.variant, judge=a.judge, games_per_start=a.games_per_start, seconds=a.seconds, limit=a.limit, seed=a.seed,
                  sleep_settings=overrides, vocabulary=a.vocabulary, tag=a.tag, sample=a.sample, wdl=a.wdl, cycles=a.cycles, wdl_judge=wj if a.wdl_judge_depth or not a.wdl else None, wdl_settings=wdl_settings or None,
                  playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None, targeted=a.targeted, targeted_settings=tsets or None, force_problems=not a.no_force_problems, standard=a.standard,
-                 induce=a.induce, induce_settings=isets or None, drill_sleep=a.drill_sleep, seed_rules=a.seed_rules, exam=a.exam, exam_size=a.exam_size, exact=a.exact, corpus_n=a.corpus_n, corpus_problems=a.corpus_problems, grow_corpus=a.grow_corpus)
+                 induce=a.induce, induce_settings=isets or None, drill_sleep=a.drill_sleep, seed_rules=a.seed_rules, exam=a.exam, exam_size=a.exam_size, exact=a.exact, corpus_n=a.corpus_n, corpus_problems=a.corpus_problems, grow_corpus=a.grow_corpus, usage_split=a.usage_split)
     finally:
         teacher.close()
         if wj is not None:

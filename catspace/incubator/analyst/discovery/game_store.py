@@ -4,6 +4,7 @@
                                             the derived relations that belong to the fact layer, the relations a move's effect is read in, how a state holds its units.
   rules/learned/<game>/vocabulary.<name>.json  (plan 78.24) a NAMED vocabulary: the same keys plus `concepts` (rules-delta path(s) composed onto the description); a lemma records
                                             the vocabulary it was written in (`meta.vocabulary`) and a snapshot of that vocabulary holds only those.
+  rules/learned/<game>/words.json           (plan 78.35) the store's WORDS (word_registry.py), composed as rules when the vocabulary file says `"words": true`
   rules/learned/<game>/lemmas/<name>.json   one learned lemma per file (the source of truth, committed): its body and response in the lemma language
                                             (rust/engine/memory/src/lemma.rs), what verification measured, where it came from.
   data/derived/snapshots/<game>/<id>.json   a SNAPSHOT: vocabulary + judge + lemmas + parent, immutable, named by the first 16 hex digits of the SHA-256 of its bytes
@@ -26,6 +27,7 @@ from pathlib import Path
 import cs_engine as CE
 
 from catspace.incubator.analyst.discovery import board_structure as BS
+from catspace.incubator.analyst.discovery import word_registry as WR
 from catspace.io import paths
 
 ROOT = paths.REPO_ROOT
@@ -57,7 +59,12 @@ def vocabulary_file(game: str, name: "str | None" = None) -> dict:
 def vocabulary(game: str, name: "str | None" = None) -> dict:
     """The vocabulary as the Rust core reads it: {derived, delta, units}."""
     v = vocabulary_file(game, name)
-    return {"derived": list(v.get("derived", [])) + [r for r in BS.relation_names(v) if r not in v.get("derived", [])], "delta": list(v.get("delta", [])), "units": v.get("units")}
+    derived = list(v.get("derived", [])) + [r for r in BS.relation_names(v) if r not in v.get("derived", [])]
+    delta = list(v.get("delta", []))
+    if v.get("words"):                                       # plan 78.35: the store's words (word_registry.py) are derived relations; `word_delta` lists those a move's effect is read in
+        derived += [w for w in WR.names_of(game) if w not in derived]
+        delta += [w for w in v.get("word_delta", []) if w not in delta]
+    return {"derived": derived, "delta": delta, "units": v.get("units")}
 
 
 _vocabulary = vocabulary          # (`build` has a parameter of the same name)
@@ -79,6 +86,10 @@ def spec_texts(game: str, name: "str | None" = None) -> dict:
         text = base if delta is None else CE.compose(base, (RULES / delta).read_text())
         for c in concept_deltas(v):
             text = CE.compose(text, (RULES / c).read_text())
+        if v.get("words"):                                   # plan 78.35: the words of the store, compiled to rules (word_registry.delta), after the concepts and before the board's structure
+            d = WR.delta(game)
+            if d:
+                text = CE.compose(text, d)
         if v.get("axes"):                                    # plan 78.33: the board's structure (edge and goal distances of each axis), generated from the description
             text = CE.compose(text, BS.structure_delta(text, v))
         out[variant] = text

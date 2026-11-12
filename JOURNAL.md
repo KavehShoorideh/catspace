@@ -36559,3 +36559,14 @@ all admitted rules are from the relative tier; one rule withdrawn; induction, no
 by the drill, not explained yet. One run. Lines in docs/ANALYST_PLAN.md 78.34.
 
 OBS gate engine: files 75, passed 967, failed 0, xfailed 1, errors 0, wall 1355.9 s
+
+## 2026-11-11 23:30 -- plan 78.35: words as terms compiled to rules, a registry, general or game by a program, the use / generation split
+
+After the look back at October's vocabulary (rich, by hand, in Python, the second game never run) and Kaveh's direction: a word is written as a term over other words and compiled to
+rules the Rust evaluator reads; a registry keeps each word's definition and expansion; a program labels every word GENERAL or GAME from its definition; the exam's failures are split
+into a rule unused and no rule. Measured on run M's store: the failures are a missing rule, not a rule unused. A hand test end to end (edge-pawn words, rules judged by the drill)
+shows the path; the exam moves by one position. Findings: rules that are nearly always right are dropped by the zero-wrong test; by the label every rule of the store is game
+knowledge; the edge-pawn positions sit only in the held-out part. The names from a fixed list read badly (Kaveh): to be replaced by descriptive names and glosses. 78.34's open
+point is settled as a difference of standard (a repetition the exact labeller does not see). Lines in docs/ANALYST_PLAN.md 78.35.
+
+OBS gate engine: files 76, passed 1000, failed 0, xfailed 1, errors 0, wall 1338.7 s

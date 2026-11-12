@@ -5744,3 +5744,100 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
          induction's time per cycle caps the problems at 15.
   NEXT   read the open problems by family (the hand step's method) only if the next cycles go flat; first run more cycles with the same store and see whether the curve
          continues, and settle (5).
+
+#### 78.35 WORDS BUILT FROM WORDS AND GIVEN A NAME; GENERAL AND GAME KNOWLEDGE TOLD APART BY A PROGRAM; USE BEFORE GENERATION (2026-11-11)
+
+  KAVEH (after the look back at October's vocabulary: base_vocabulary.py, terms.py of plan 76.4c, the ontology shelf, the 130 lemma entries; nearly all by hand, in Python,
+        the second game never run): a richer vocabulary is welcome if what is chess knowledge and what applies outside chess are cleanly apart. A concept is CONSTRUCTED
+        from the vocabulary when it can be; when the construction is long it is defined once and given a short NAME from a static list of names (like the names of
+        storms), also for a concept people have no term for. October's words ran in Python: here they run in Rust. Mining will not find everything and help by hand with
+        words and lemmas is accepted; the question first is USE: given the words and lemmas, does the engine reason with them. Use and generation are kept apart.
+  THE USE / GENERATION SPLIT, MEASURED on run M's last store (scratch script; the exam's failed positions, each rule's named moves by the engine's matcher):
+    OBS usage split init_store_w34: snapshot 76b9952015298d66, rules 27, exam kept 281 of 300
+    OBS usage split kept: a rule named the move played: 66
+    OBS usage split kept: no rule named a move: 200
+    OBS usage split kept: rules named other moves only: 15
+    OBS usage split failed: NO RULE: no rule named a move: 18
+    OBS usage split failed: USAGE: a rule named a keeping move, another was played: 1
+    OBS usage split family: NO RULE: mover has -, other has P, to keep a draw: 10
+    OBS usage split family: NO RULE: mover has P, other has -, to keep a win: 8
+    OBS usage split family: USAGE: mover has P, other has -, to keep a win: 1
+  READING  on this exam the failures are a missing rule, not a rule unused: read by hand they are two families, both king and pawn: the side with the pawn pushes it where
+        the king must go first while its king is NOT nearer the key squares than the other king (the hand rule asks nearer), and the side without the pawn does not head
+        for the squares that hold the draw (rook pawns among them, which the hand words leave out). This exam asks one decision; it does not test a chain of rules.
+  DESIGN
+  1 A WORD IS A TERM  a small term language over the relations of the description and of the vocabulary (literal, and, or, not, exists, compose, via: the middle kept,
+        reach in at most k steps, closure, restrict), October's constructors of plan 76.4c kept where a rule can say them. A term COMPILES to rules of the description's own
+        language with a signature, so the Rust evaluator that reads every other word reads it too: nothing of a word is evaluated in Python on the decision path.
+  2 A NAME  a term used by an admitted rule, or an admitted body longer than a set size, is defined once and named: the next unused name of a static list
+        (rules/concepts/names.txt). The registry of a store says for each word its name, its term, its expansion in base words, who made it (hand, generated, mined).
+  3 GENERAL OR GAME, BY A PROGRAM  a word is GENERAL when its definition, followed down to the description's relations, names no constant of the game (sides by role and
+        distances aside); else it is GAME knowledge. Computed from the rules, not declared. Every word of a vocabulary and every rule (by its words) carries the label; a
+        run reports its rules and its exam by label.
+  4 USE  the split above as a standing measurement beside every exam grade.
+  5 GENERATION, after  the induction asks for terms, smallest first under a cap, only where its search fails; a word stays only with a rule that passes the drill.
+  ALSO  78.34's open point 5 (the audit calls a rule refuted where the drill of the same wake's positions does not) is to be settled in this slice.
+
+  BUILT (stages 1 to 4; generation by enumeration, stage 5, is NOT built)
+         discovery/word_terms.py (the term language: literal, and, or, not, distinct, exists, compose, via, reach, reach0, closure, a location's width a parameter; sort checking;
+         compile to rules with helper relations, read by the Rust evaluator like every other relation), word_names.py + rules/concepts/names.txt (208 names in a fixed order),
+         word_registry.py (words.json of a store: define with one definition one name, delta; analyse / layer_of / layers: GENERAL or GAME from the rules; rule_layer,
+         origin_of; a CLI), game_store (a vocabulary file with `words`: true composes the registry's delta and lists its words; `word_delta` for the move-effect relations;
+         absent, the texts are byte for byte as before), induce setting name_bodies (an admitted long body recorded as a named word), usage_split.py and initialize
+         --usage-split; tests/test_plan78_35_words.py. No Rust source changed.
+  THE LABELS OF THE keys VOCABULARY, by the program (a side constant counts as a constant of the game):
+    OBS words layer chess keys: general ['attack', 'check', 'closer', 'defended', 'edge_gap_file', 'edge_gap_rank', 'goal_gap_rank'] game ['alba', 'apart', 'bruno', 'celia', 'dario', 'diagonal_opposition', 'elsa', 'fabio', 'flight', 'hanging', 'in_square', 'key_ga
+    OBS words game because alba: constant pawn
+    OBS words game because apart: constant king
+    OBS words game because bruno: constant king
+    OBS words game because celia: reads bruno -> constant king
+    OBS words game because dario: constant pawn
+    OBS words game because diagonal_opposition: side constant white
+    OBS words game because elsa: constant king
+    OBS words game because fabio: reads elsa -> constant king
+    OBS words game because flight: constant king
+    OBS words game because hanging: constant king
+    OBS words game because in_square: constant king
+    OBS words game because key_gap: reads hanging -> constant king
+    OBS words game because key_guard: reads hanging -> constant king
+    OBS words game because king_ahead: constant pawn
+    OBS words game because king_in_front: constant pawn
+    OBS words game because opposition: side constant white
+    OBS words game because passed_pawn: constant pawn
+    OBS words game because to_promote: constant pawn
+  78.34's OPEN POINT 5, SETTLED (read by the build's subagent from the run's report and the exact labeller; the teacher was not run again): the four refuted firings of
+         opposition-response-93030a07 are one position of rook against a lone king reached with a history in which the played move completes a repetition; the audit's
+         teacher is given the moves and prefers the repetition, the exact labeller and the drill see the position without its history, where every move keeps the class
+         (trivial). A difference of standard, not a fault of the rule; nothing changed. The exact labeller has no history: a draw by repetition is outside it.
+  THE MECHANISM END TO END, BY HAND (scratch script hand_words.py; sandbox data/derived/init_store_w35, a copy of run M's store; Claude in session wrote the words and rules
+         for the edge-pawn family of the failed exam positions; the drill alone admits):
+    OBS word alba (hand, game, size 9): (and (cell ?f ?r ?s pawn) (edge_gap_file ?f d0) (or (file_gap ?f ?zf d0) (file_gap ?f ?zf d1)) (or (goal_gap_rank ?s ?zr d0) (goal_gap_rank ?s ?zr d1))) = (and (cell ?f ?r ?s pawn) (edge_gap_file ?f d0) (or (file_gap ?f ?zf d0) (file_gap ?f ?zf d1)) (or (goal_gap_rank ?s ?zr d0) (goal_gap_rank
+    OBS word bruno (hand, game, size 8): (exists (?zf ?zr ?xf ?xr ?a ?b ?o) (and (alba ?f ?r ?s ?zf ?zr) (opponent ?s ?o) (cell ?xf ?xr ?o king) (file_gap ?xf ?zf ?a) (rank_gap ?xr ?zr ?b) (dist_max ?a ?b ?d))) = (exists (?zf ?zr ?xf ?xr ?a ?b ?o) (and (and (cell ?f ?r ?s pawn) (edge_gap_file ?f d0) (or (file_gap ?f ?zf d0) (file_ga
+    OBS word dario (hand, game, size 10): (and (cell ?f ?r ?s pawn) (edge_gap_file ?f d0) (or (file_gap ?f ?zf d0) (file_gap ?f ?zf d1) (file_gap ?f ?zf d2)) (or (goal_gap_rank ?s ?zr d0) (goal_gap_rank ?s ?zr d1))) = (and (cell ?f ?r ?s pawn) (edge_gap_file ?f d0) (or (file_gap ?f ?zf d0) (file_gap ?f ?zf d1) (file_gap ?f ?zf d2)) 
+    OBS word elsa (hand, game, size 8): (exists (?zf ?zr ?xf ?xr ?a ?b ?o) (and (dario ?f ?r ?s ?zf ?zr) (opponent ?s ?o) (cell ?xf ?xr ?o king) (file_gap ?xf ?zf ?a) (rank_gap ?xr ?zr ?b) (dist_max ?a ?b ?d))) = (exists (?zf ?zr ?xf ?xr ?a ?b ?o) (and (and (cell ?f ?r ?s pawn) (edge_gap_file ?f d0) (or (file_gap ?f ?zf d0) (file_ga
+    (celia and fabio: the fewest steps, `(and (W ?f ?r ?s ?d) (not (exists (?d2) (and (W ?f ?r ?s ?d2) (closer ?d2 ?d)))))` over bruno and elsa)
+    OBS drill admit hand-toward-celia: dev binds/right/wrong/trivial 0/0/0/0, held 2230/622/9/1591; DROPPED: wrong firings on the exact corpus
+    OBS drill admit hand-onto-celia: dev binds/right/wrong/trivial 0/0/0/0, held 2484/52/0/1844; KEPT
+    OBS drill admit hand-toward-fabio: dev binds/right/wrong/trivial 0/0/0/0, held 1985/564/33/1386; DROPPED: wrong firings on the exact corpus
+    OBS drill admit hand-onto-fabio: dev binds/right/wrong/trivial 0/0/0/0, held 2484/111/3/1844; DROPPED: wrong firings on the exact corpus
+    OBS drill admit total: rules 4, kept 1, dropped 3
+    OBS exam hand step 2: run M's rules, words switched on: kept 280 of 300 (win-keeping 140 of 150, draw-keeping 140 of 150), gained 0, lost 0
+    OBS exam hand step 2: with 1 rule(s) on the new words: kept 281 of 300 (win-keeping 141 of 150, draw-keeping 140 of 150), gained 1, lost 0
+    OBS usage split hand step 2: run M's rules, words switched on: kept 280 (a rule named the move played 66, rules named other moves only 15, no rule named a move 199); failed 20 (a rule named a keeping move and another was played 1, of them with a rule also naming a losing move 0; rules named only losing moves 0; no rule named a move 19)
+    OBS usage split by rule kind hand step 2: run M's rules, words switched on: a rule named the move played in 66 decisions: named by a general rule 0 (only by game rules 66), by a hand rule 27 (only by machine rules 39)
+    OBS usage split hand step 2: with 1 rule(s) on the new words: kept 281 (a rule named the move played 67, rules named other moves only 15, no rule named a move 199); failed 19 (a rule named a keeping move and another was played 1, of them with a rule also naming a losing move 0; rules named only losing moves 0; no rule named a move 18)
+    OBS usage split by rule kind hand step 2: with 1 rule(s) on the new words: a rule named the move played in 67 decisions: named by a general rule 0 (only by game rules 67), by a hand rule 28 (only by machine rules 39)
+    OBS rules by kind: general 0 (hand 0, machine 0), game 27 (hand 3, machine 24)
+    OBS rules by kind: general 0 (hand 0, machine 0), game 28 (hand 4, machine 24)
+  READING
+  1 The path works: a word written as a term gets the next name, is evaluated by the Rust evaluator, a rule on it is judged by the drill, and the wake uses it. The exam
+    moves by one position, inside the clock's spread: the mechanism is shown, not a gain.
+  2 The two `toward` rules are right far more often than wrong on the held-out part and are dropped by the zero-wrong test (their drill lines). A rule that is nearly
+    always right has no use in this loop: a rule is followed or absent. Using such a rule as a SUGGESTION that a search then checks is the open question of USE.
+  3 The edge-pawn positions bind only in the held-out part (dev binds 0 in the drill lines): the split by start group leaves the development part without them. A rule
+    of this family cannot be induced from the development part of this corpus.
+  4 By the program's label every rule of the store is GAME knowledge and none GENERAL (the rules by kind lines): the words the rules use name a unit kind or a side.
+    The general layer has 4 of the 16 words. The split is now measured; it is not yet good.
+  5 The family of the side WITH the pawn (pushing where the king must lead while its king is not the nearer) was not attempted here.
+  NEXT   USE: a rule's named move as a suggestion checked by search, and a rule as a goal the search works toward over several moves (the exam asks one decision);
+         the general layer: the distance and attack words rewritten over units by variable so that they carry no unit kind; then stage 5.

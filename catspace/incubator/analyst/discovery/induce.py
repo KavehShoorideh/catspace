@@ -23,6 +23,9 @@
          coordinate constant in the head, e.g. rank 5) only after every relative head failed; a named head also gives its relative form (coordinates lifted) unless that is a head already there. The
          lemma records `meta.head_tier`. The `head_tiers` setting orders / stops them. `max_problems` caps the problems attempted per call (the oldest open first; the rest are printed as left).
 
+  NAMING (plan 78.35)  the setting `name_bodies` (default 0 = off): with N > 0 an ADMITTED rule whose body has N literals or more has its body defined as one word (word_registry.define, origin
+         "mined"; body_term / name_body) and the lemma's meta gains `word` and `word_expansion`; what the rule matches is unchanged. `OBS word named <name>: <term> (rule <rule name>, size N)`.
+
 Game-free: the variant string, the store's vocabulary, objects passed in (corpus, labeller); no game object is named here.
 
   induce(problem, corpus, *, reader, ...) -> {status "found" | "open", lemma, head, dev, held, why, stage, heads_tried}      (the search and the held-out part of the admission)
@@ -42,9 +45,11 @@ from catspace.incubator.analyst.discovery import corpus as CP
 from catspace.incubator.analyst.discovery import game_store as GS
 from catspace.incubator.analyst.discovery import playout_sleep as PS
 from catspace.incubator.analyst.discovery import targeted as TG
+from catspace.incubator.analyst.discovery import word_registry as WR
+from catspace.incubator.analyst.discovery import word_terms as WT
 
 SETTINGS = {"max_literals": 4, "beam": 8, "min_right": 10, "min_held": 5, "max_heads": 4, "finalists": 3, "max_bindings": 256, "stride": 3, "tiers": ["relative", "structure", "named"],
-            "max_problems": None, "head_tiers": ["relative", "named"]}
+            "max_problems": None, "head_tiers": ["relative", "named"], "name_bodies": 0}
 TIERS = ("relative", "structure", "named")       # plan 78.33: the order of the body literals' tiers (the narrowest first)
 HEAD_TIERS = ("relative", "named")               # plan 78.34: the order of the heads' tiers (coordinates as variables first, a named coordinate last)
 STAGES = ("position", "head", "dev", "held", "check", "broken")          # how far a candidate got: the reason of the furthest one is the problem's
@@ -421,6 +426,45 @@ def trial_snapshot(game: str, lemma: dict, directory, vocabulary: "str | None" =
     return str(p)
 
 
+SIDE_TOKENS = ("us", "them")          # the lemma language's side tokens: in a word they are ordinary variables (a word holds for either side)
+
+
+def body_term(lemma: dict) -> str:
+    """PLAN 78.35: the lemma's BODY as a term text (word_terms): the `and` of its literals (a negated literal as `(not ..)`), the side tokens `us` / `them` as the variables ?us / ?them (and a
+    `(distinct ?us ?them)` when both occur), the variables the response uses free and every other variable projected away with `exists`. Raises ValueError when there is nothing to name."""
+    def slot(a: str) -> str:
+        return "?" + a if a in SIDE_TOKENS else a
+    items, seen = [], []
+    for l in lemma["body"]:
+        args = [slot(a) for a in l["args"]]
+        seen += [a for a in args if a.startswith("?")]
+        lit = "(" + " ".join([l["relation"]] + args) + ")"
+        items.append(f"(not {lit})" if l.get("neg") else lit)
+    if len(items) < 1:
+        raise ValueError("an empty body names nothing")
+    if "?us" in seen and "?them" in seen:
+        items.append("(distinct ?us ?them)")
+    resp = lemma.get("response") or {}
+    head = {slot(a) for k in ("removed", "added") for l in resp.get(k, []) for a in l["args"]}
+    hidden = [v for v in dict.fromkeys(seen) if v not in head]
+    body = "(and " + " ".join(items) + ")"
+    return f"(exists ({' '.join(hidden)}) {body})" if hidden else body
+
+
+def name_body(game: str, lemma: dict, vocabulary: "str | None", *, say=print) -> "dict | None":
+    """PLAN 78.35 (4): define the body of an admitted rule as ONE word (word_registry.define, origin "mined") and record `word` and `word_expansion` in the lemma's meta; what the rule matches is
+    NOT changed (the body stays as it is). -> the registry entry, or None when the body cannot be written as a word (said). The word is composed into the description by game_store when the
+    vocabulary file says `"words": true`, from the next spec_texts on, so a later rule can use it."""
+    try:
+        entry, created = WR.define_new(game, body_term(lemma), origin="mined", note=f"the body of rule {lemma['name']}", vocabulary=vocabulary)
+    except (ValueError, KeyError, WT.TermError) as e:
+        say(f"OBS word not named (rule {lemma['name']}): {e}")
+        return None
+    lemma.setdefault("meta", {}).update({"word": entry["name"], "word_expansion": entry["expansion"]})
+    say(f"OBS word {'named' if created else 'reused'} {entry['name']}: {entry['term']} (rule {lemma['name']}, size {entry['size']})")
+    return entry
+
+
 def provenance(problem: dict, variant: str, labeller, vocabulary: "str | None", tier: "str | None" = None, head_tier: "str | None" = None) -> dict:
     """The lemma's meta: where it came from. NO number and no verdict of the labeller."""
     return {"origin": "induced", "plan": "78.32", "game": variant, "mined_from": "problem", "problem": {"start": problem.get("start"), "moves": len(problem["moves"]), "played": problem.get("played")},
@@ -506,6 +550,8 @@ def solve_problems(game: str, problems, corpus: "CP.Corpus", *, variant: "str | 
                 say(line + f"open because {why}" + (("; tiers: " + "; ".join(f"{tn} got as far as {pg['stage']}" + (" (near miss: passed the development part, failed the held-out part)" if pg["near"] else "")
                                                     for tn, pg in tier_prog.items())) if tier_prog and "untiered" not in tier_prog else ""))
                 continue
+            if int(s["name_bodies"] or 0) > 0 and len(final["body"]) >= int(s["name_bodies"]):
+                name_body(game, final, vocabulary, say=say)                  # (plan 78.35: the lemma's body is named; its meaning is unchanged)
             GS.write_lemma(game, final)
             sid = GS.publish(game, teacher_used=True, vocabulary=vocabulary, **({"judge": GS.judge_of(game, judge)} if judge else {}))
             now_res = check_rows(head_path(), rows)
