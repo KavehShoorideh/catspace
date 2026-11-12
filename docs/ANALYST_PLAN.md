@@ -5950,3 +5950,56 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
          induction as for moves and was not built; the conversion's defence is weak for a lost side (no distances in the tables read).
   NEXT   decide with Kaveh: (a) the exam and the cycle at four and five units, where a short search fails; (b) claims induced by the machine until they cover most positions,
          so one or two plies reach one; (c) the claim reader made cheap. The step stays in the code, without effect on a store that holds no claim.
+
+#### 78.37 to 78.39 THREE MORE APPROACHES: SURPRISE ON FULL GAMES AS THE MEASURE, LEARNING BY CONSTRUCTION, A GOAL TAKEN APART BACKWARD (2026-11-12; Kaveh: "we want the rate of surprise to go down ... if you fix this one and then you break another one, what's the point?"; "what happens with a single piece on the board? ... you just add pieces"; "if the bishop can get here, if the knight can get here, I can mate")
+WHY NOW. 78.36 reading 3: the exam at three units is a test of the clock. The pool has to widen and the measure must not reward a local fix.
+
+78.37 SURPRISE ON FULL GAMES (the measure and the food)
+  POOL       games from the game's own start, from a pluggable source: the engine against itself, the engine against an outside engine, a file of game records. The human game
+             files stay unread until Kaveh says so; the source interface takes them without a change.
+  TWO READINGS at every position of a game, both from the mover's side:
+    OURS     what the engine's decision at the stated clock says: the value of its search by the judge in use (the `value` of the decision's steps), whether a step proved the
+             goal, and the class a claim rule gives when one speaks.
+    JUDGE'S  an outside engine at a fixed depth, in its own units, cached on disk. Training kit only: no number of it is written into anything the wake reads.
+  COMMON UNIT both readings are mapped to an EXPECTED RESULT between 0 and 1 by one monotone curve per reading (the judge's by its own win, draw, loss model where it has one;
+             ours by the same curve over the judge's units per unit of worth, fitted once on the games and stated). A change near a decided game is small, a change that
+             turns a win into a draw is large: the weight Kaveh asked for comes from the unit, not from a hand table.
+  JUMP       the change of a reading across one move, in expected result, at least a stated threshold.
+  SURPRISE   a move where one reading jumps and the other does not, or they jump in opposite directions. Kinds: MISSED (the judge jumps, we do not), FALSE (we jump, the judge
+             does not), and by whose move it was (ours: a mistake we did not see; theirs: a chance or a danger we did not see). WEIGHT: the size of the judge's jump.
+  A STANDING GAP (the readings differ and neither moves) is counted apart: it is a wrong level, not a surprise.
+  THE MEASURE on FRESH games every cycle (new seeds, so nothing is held out by hand): surprises per 100 positions, the weighted rate (summed weight per 100 positions),
+             the mean loss of our own moves in the judge's units and in expected result. Stated with the clock, and with the no-rules store beside it at more than one clock.
+  FOOD       the surprises, heaviest first, become the problems of the sleep (the problem file of 78.28, the pool of 78.34 with the judge as labeller where no exact table
+             reaches). A rule is kept when the weighted rate on fresh games does not rise: the gate is the rate, not the one position.
+  STAGES     1 the meter and the ranked list (this slice); 2 the sleep fed from the list; 3 the cycle gated on the rate.
+
+78.38 LEARNING BY CONSTRUCTION (the ladder)
+  LADDER     unit sets generated from the game description in order of size: what the game cannot do without (78.22 `required`), then one more unit of each kind and side,
+             then two. Nothing names a chess unit: kinds and sides are read from the description.
+  OBSERVE    for each set, positions are sampled and their result is OBSERVED: by the exact labeller where a table reaches (training kit), and by the engine's own exhaustive
+             search where the set is small enough, the two compared. The set's SUMMARY: the shares of win, draw and loss by side to move, and whether a result other than a draw
+             exists at all.
+  CLAIMS     a set where one class holds for nearly every position gives a CLAIM rule by machine (78.36), its body in the counting words of the units present, drilled on the
+             set's positions; the exceptions are the next problems (the body grows a condition, relative words first, board structure second: 78.33).
+  CARRY      a set with a capture or a promotion falls to a smaller or a known set: the claims of the sets below are the leaves of the search in the set above. This is where the
+             search toward claims has something to reach, and it is the answer to 78.36 OPEN (claims are few).
+  ORDER      a set is opened when the sets it can fall to are summarised. For each open set with wins, the cycle of 78.34 runs on it with the rules of the sets below loaded.
+  STAGES     1 the ladder, the summaries, the set-level claims and their drill (this slice); 2 the cycle per set with carry; 3 four and five units.
+
+78.39 A GOAL TAKEN APART BACKWARD (the scenario)
+  WHAT EXISTS the census of defects (78.6) and the reasoning chain (78.25) read a threat that is one or two moves from working. What Kaveh describes is further back: no
+             threat exists yet, and the question is what would have to be true.
+  GOAL       a terminal condition of the description (the game's own goal first). Its HOLES in a position: the conditions of the goal that do not hold now, each tied to a
+             location (for the game's goal: every location the target unit can still go to, and its own).
+  SUPPLY     for each hole, the units of ours that could close it: a unit whose kind can act on that location from some location it can reach, with the number of moves, read
+             from the move relations of the description (the `reach` words of 78.35). A fixed unit (one that moves rarely or one way) is read as structure, not as supply.
+  CONTEST    for each supply, what of theirs denies it: a unit of theirs that acts on the supplying location or on the path, and whether an exchange of equals removes both.
+             A supply with no equal of theirs in range is an OPPORTUNITY.
+  SCENARIO   an assignment of distinct supplying units to all holes: "if this unit gets here and that one there, the goal holds". None exists: the goal is out of reach with
+             the units present, and the same reading from their side says our own target unit is SAFE from that direction, and stays safe until the units change.
+  USE        a scenario is a target for the search (the search toward claims of 78.36 with the scenario as the claimed state) and an order of moves (the supplying moves
+             first); from their side it is the list of threats to watch.
+  STAGES     1 holes, supply, contest and scenarios for the game's goal as a report, in Rust beside the census (speed), measured for cost per position; 2 the scenario as a
+             search target; 3 other goals (a unit won).
+ORDER OF WORK. 78.37 stage 1 and 78.38 stage 1 are built side by side (different files); 78.39 starts with a reading of the census and the chain to see what stage 1 can reuse.
