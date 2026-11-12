@@ -7,6 +7,7 @@
 //! is another `Controller`, and plugs in here without touching the operators.
 pub mod batch;
 pub mod cards;
+pub mod claim_op;
 pub mod graph;
 pub mod graph_net;
 pub mod graph_prior;
@@ -43,6 +44,7 @@ pub const REASON_SHARE: f64 = 0.1;         // of the clock: what the reasoning c
 pub const WDL_SHARE: f64 = 0.15;           // of the clock: the first estimate of win / draw / loss (plan 78.26: playouts pooled with the results table)
 pub const WDL_EPS: f64 = 0.1;              // the playouts' policy plays a uniform move this often
 pub const WDL_SEED: u64 = 78;              // the playouts' seed (a decision is reproducible on its own)
+pub const CLAIM_SHARE: f64 = 0.3;           // of the clock: what the search toward claims may take (plan 78.36; a named share, not tuned)
 pub const TIE_SHARE: f64 = 0.3;            // of what is left: the share the tie reading may take (the rest is the prior's census)
 
 /// Everything the fixed controller and its operators are asked, with the defaults the engine plays by.
@@ -62,6 +64,10 @@ pub struct Params {
     pub wdl: bool,
     /// Plan 78.26: the results table the estimate pools with its playouts (shared across positions; None: playouts only).
     pub wdl_table: Option<std::sync::Arc<cs_planning::wdl::Table>>,
+    /// Plan 78.36: run the search toward claims (operator "claim") when the snapshot holds claim rules: after the proof did not decide and before the other steps. A forced line to a
+    /// claimed win is played; otherwise the ledger reads the moves of the best claimed class first and the moves a claim refutes last. Off, or with no claim in the snapshot: the
+    /// decision and its trace are exactly what they were.
+    pub claims: bool,
     /// The keys of the positions the game's record holds before this one (a position met again is the rules' draw).
     pub history: Vec<u64>,
     /// The census plies of the prior's readings (its node fuse grows with them).
@@ -79,7 +85,7 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Params {
-        Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true,
+        Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, claims: true, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true,
                  max_depth: MAX_DEPTH, ledger_depth: LEDGER_DEPTH }
     }
 }
@@ -111,17 +117,88 @@ fn wdl_mode_line<M>(o: &cs_operator::Outcome<M>) -> String {
 }
 
 /// THE FIXED CONTROLLER: proof, then ledger, then (if asked) the density prior over the ledger's ties. Its choice at each step reads only the steps so far.
-pub struct Fixed<'p> { pub params: &'p Params, pub lemmas: bool }
+pub struct Fixed<'p> {
+    pub params: &'p Params,
+    pub lemmas: bool,
+    /// A claim operator is present (plan 78.36): the snapshot holds claim rules and the switch is on.
+    pub claims: bool,
+}
 
 impl<'p> Fixed<'p> {
+    /// PLAN 78.36 THE CLAIM STEP'S READING OF THE ROOT: (the ledger's root order, the moves it reads LAST), or None where it changes nothing (no claim step, no classes, every root
+    /// move refuted). The classes of the root moves are W (a win by claim or game), D, U (unknown) and L (refuted). The response rules' candidates (a suggestion rule's moves are kept
+    /// apart: `suggested` facts) and the reasoning's are read as the case says:
+    ///   any W            [response candidates that are W] + [suggested moves that are W] + [the other W moves: those leading to a position NOT already in the game's record first,
+    ///                    then the nearest win]; every move that is not W is avoided (and is not played while a W move has an equal ledger value);
+    ///   no W, some U     [response candidates minus L] + [reasoning's minus L]; L avoided; a draw has no preference over an unknown;
+    ///   every move D or L [response candidates that are D] + [suggested that are D] + [the other D moves]; L avoided;
+    ///   every move L     nothing changes.
+    fn claim_plan<G: Game>(&self, ctx: &Context<G>) -> Option<(Vec<usize>, Vec<usize>)> {
+        let step = ctx.steps.iter().find(|s| s.operator == "claim")?;
+        let cls = crate::claim_op::root_classes_of(&step.outcome);
+        if cls.is_empty() || cls.iter().all(|c| c.class == 'L') { return None; }
+        let lemma = ctx.steps.iter().find(|s| s.operator == "lemma");
+        let cands: Vec<usize> = lemma.map(|s| s.outcome.candidates.clone()).unwrap_or_default();
+        let suggested: Vec<usize> = lemma.map(|s| s.outcome.facts.iter().filter(|f| f.relation == "suggested").filter_map(|f| f.args.get(1).and_then(|a| a.parse().ok())).collect()).unwrap_or_default();
+        let reasoned: Vec<usize> = ctx.steps.iter().find(|s| s.operator == "reason").map(|s| s.outcome.candidates.clone()).unwrap_or_default();
+        let of = |ch: char| -> Vec<&crate::claim_op::RootClass> { cls.iter().filter(|c| c.class == ch).collect() };
+        let is = |ch: char, i: usize| cls.iter().any(|c| c.index == i && c.class == ch);
+        let mut prefer: Vec<usize> = vec![];
+        let push = |v: &mut Vec<usize>, i: usize| { if !v.contains(&i) { v.push(i); } };
+        if !of('W').is_empty() {
+            for i in &cands { if is('W', *i) { push(&mut prefer, *i); } }
+            for i in &suggested { if is('W', *i) { push(&mut prefer, *i); } }
+            let history: std::collections::HashSet<u64> = self.params.history.iter().copied().collect();
+            let moves = ctx.g.moves(ctx.s);
+            let mut rest: Vec<(bool, i32, usize)> = of('W').iter().map(|c| (history.contains(&ctx.g.key(&ctx.g.apply(ctx.s, &moves[c.index]))), c.value, c.index)).collect();
+            rest.sort_by_key(|(seen, val, i)| (*seen, -*val, *i));
+            for (_, _, i) in rest { push(&mut prefer, i); }
+            let avoid = cls.iter().filter(|c| c.class != 'W').map(|c| c.index).collect();
+            Some((prefer, avoid))
+        } else if !of('U').is_empty() {
+            for i in cands.iter().chain(reasoned.iter()) { if !is('L', *i) { push(&mut prefer, *i); } }
+            Some((prefer, of('L').iter().map(|c| c.index).collect()))
+        } else {
+            for i in &cands { if is('D', *i) { push(&mut prefer, *i); } }
+            for i in &suggested { if is('D', *i) { push(&mut prefer, *i); } }
+            for c in of('D') { push(&mut prefer, c.index); }
+            Some((prefer, of('L').iter().map(|c| c.index).collect()))
+        }
+    }
+
+    /// The moves the claim step has the ledger read last (none without a claim step).
+    fn refuted<G: Game>(&self, ctx: &Context<G>) -> Vec<usize> { self.claim_plan(ctx).map(|p| p.1).unwrap_or_default() }
+
+    /// `among` without the avoided moves (kept whole when that would leave none): the prior or the estimate picks among the moves no claim refutes.
+    fn unrefuted<G: Game>(&self, ctx: &Context<G>, among: &[usize]) -> Vec<usize> {
+        let r = self.refuted(ctx);
+        let kept: Vec<usize> = among.iter().copied().filter(|i| !r.contains(i)).collect();
+        if kept.is_empty() { among.to_vec() } else { kept }
+    }
+
+    /// What follows a proof that did not decide (and, with claims, the claim search that did not either): the estimate, the reasoning or the ledger.
+    fn after_proof<G: Game>(&self, ctx: &Context<G>, me: cs_game::Role) -> Action<G::Move> {
+        let p = self.params;
+        if p.wdl { Action::Run { operator: "wdl".into(), goal: Goal::Estimate { role: me }, seconds: ctx.seconds * WDL_SHARE, max_nodes: NODE_FUSE, max_depth: None } }
+        else if p.reason { Action::Run { operator: "reason".into(), goal: Goal::Reason { role: me }, seconds: ctx.seconds * REASON_SHARE, max_nodes: cs_tactics::reason::REASON_FUSE, max_depth: None } }
+        else { self.ledger(ctx, me, false) }
+    }
+
     /// The ledger step: the lemmas' candidates are its root order, then the reasoning's (no repeats) -- an order, never a verdict.
     fn ledger<G: Game>(&self, ctx: &Context<G>, me: cs_game::Role, force_ties: bool) -> Action<G::Move> {
         let p = self.params;
         let read_ties = p.prior || p.ties || force_ties;
         let left = (ctx.seconds * if read_ties { p.ledger_share } else { 1.0 } - ctx.elapsed()).max(0.01);
-        let mut prefer = ctx.steps.iter().find(|s| s.operator == "lemma").map(|s| s.outcome.candidates.clone()).unwrap_or_default();
-        for i in ctx.steps.iter().find(|s| s.operator == "reason").map(|s| s.outcome.candidates.clone()).unwrap_or_default() { if !prefer.contains(&i) { prefer.push(i); } }
-        Action::Run { operator: "ledger".into(), goal: Goal::Ledger { role: me, ties: if read_ties { Some(TIE_SHARE) } else { None }, prefer }, seconds: left,
+        // PLAN 78.36: the claim step's reading of the root (see `claim_plan`); without one the order is the lemmas', then the reasoning's, as it always was.
+        let (prefer, refuted) = match self.claim_plan(ctx) {
+            Some(p) => p,
+            None => {
+                let mut prefer: Vec<usize> = ctx.steps.iter().find(|s| s.operator == "lemma").map(|s| s.outcome.candidates.clone()).unwrap_or_default();
+                for i in ctx.steps.iter().find(|s| s.operator == "reason").map(|s| s.outcome.candidates.clone()).unwrap_or_default() { if !prefer.contains(&i) { prefer.push(i); } }
+                (prefer, vec![])
+            }
+        };
+        Action::Run { operator: "ledger".into(), goal: Goal::Ledger { role: me, ties: if read_ties { Some(TIE_SHARE) } else { None }, prefer, avoid: refuted }, seconds: left,
                       max_nodes: cs_tactics::ledger::NODE_FUSE, max_depth: Some(p.ledger_depth as u32) }
     }
 }
@@ -139,9 +216,13 @@ impl<'p, G: Game> Controller<G> for Fixed<'p> {
             "lemma" => proof(),
             "forcing" => match (last.outcome.status, &last.outcome.mv) {
                 (Status::Proved, Some(first)) => Action::Play { mv: first.clone(), proved: true },
-                _ if p.wdl => Action::Run { operator: "wdl".into(), goal: Goal::Estimate { role: me }, seconds: ctx.seconds * WDL_SHARE, max_nodes: NODE_FUSE, max_depth: None },
-                _ if p.reason => Action::Run { operator: "reason".into(), goal: Goal::Reason { role: me }, seconds: ctx.seconds * REASON_SHARE, max_nodes: cs_tactics::reason::REASON_FUSE, max_depth: None },
-                _ => self.ledger(ctx, me, false),
+                // (plan 78.36: with claim rules in the snapshot, the search toward claims runs here, before the other steps)
+                _ if self.claims => Action::Run { operator: "claim".into(), goal: Goal::Toward { role: me }, seconds: ctx.seconds * CLAIM_SHARE, max_nodes: NODE_FUSE, max_depth: None },
+                _ => self.after_proof(ctx, me),
+            },
+            "claim" => match (last.outcome.status, &last.outcome.mv) {
+                (Status::Proved, Some(first)) => Action::Play { mv: first.clone(), proved: true },          // (the game's own win only: a claimed win is a class the ledger reads first)
+                _ => self.after_proof(ctx, me),
             },
             "wdl" => match last.goal {
                 Goal::Prefer { .. } => {
@@ -162,11 +243,11 @@ impl<'p, G: Game> Controller<G> for Fixed<'p> {
                 let decided = last.outcome.value.map_or(true, |v| v.abs() >= WIN - 1000);
                 let quiet = p.wdl && ctx.steps.iter().find(|s| s.operator == "wdl").map_or(false, |s| wdl_mode(&s.outcome) == WdlMode::Quiet);
                 if quiet && !decided && last.outcome.candidates.len() > 1 {
-                    return Action::Run { operator: "wdl".into(), goal: Goal::Prefer { role: me, among: last.outcome.candidates.clone(), defects: 0 }, seconds: ctx.remaining(), max_nodes: NODE_FUSE, max_depth: None };
+                    return Action::Run { operator: "wdl".into(), goal: Goal::Prefer { role: me, among: self.unrefuted(ctx, &last.outcome.candidates), defects: 0 }, seconds: ctx.remaining(), max_nodes: NODE_FUSE, max_depth: None };
                 }
                 if p.prior && !decided && last.outcome.candidates.len() > 1 {
                     let fuse = cs_planning::density::FUSE * (1u64 << (2 * (p.prior_depth - cs_planning::density::DEPTH).max(0)));
-                    return Action::Run { operator: "density".into(), goal: Goal::Prefer { role: me, among: last.outcome.candidates.clone(), defects: p.prior_defects },
+                    return Action::Run { operator: "density".into(), goal: Goal::Prefer { role: me, among: self.unrefuted(ctx, &last.outcome.candidates), defects: p.prior_defects },
                                          seconds: ctx.remaining(), max_nodes: fuse, max_depth: Some(p.prior_depth as u32) };
                 }
                 Action::Play { mv, proved: false }
@@ -209,6 +290,13 @@ pub fn decide_params<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, judge
 /// `decide_params` with a lemma operator (a snapshot's lemmas bound to the position): the moves they propose are read first by the ledger search -- an order,
 /// never a verdict, so the value found is the value found without them (within the horizon the search reaches).
 pub fn decide_with_lemmas<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, params: &Params, lemma: Option<&dyn Operator<G>>) -> Option<Decision<G::Move>> {
+    decide_with_store(g, s, seconds, judge, params, lemma, None)
+}
+
+/// `decide_with_lemmas` with the snapshot's CLAIMS (plan 78.36): when `claims` holds at least one rule and `params.claims` is on, the search toward claims runs after the proof did not
+/// decide. With None, with no claim rule or with the switch off, this is `decide_with_lemmas` exactly: no extra step, the same trace.
+pub fn decide_with_store<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, params: &Params, lemma: Option<&dyn Operator<G>>,
+                                            claims: Option<&cs_memory::claim::Claims>) -> Option<Decision<G::Move>> {
     let me = g.mover(s)?;
     let n = g.moves(s).len();
     if n == 0 { return None; }
@@ -225,7 +313,9 @@ pub fn decide_with_lemmas<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, 
     wdl_op.leaf_note = format!("scale {} x the smallest positive worth at the root, so the squash does not depend on the judge's units", cs_planning::wdl::WDL_SCALE);
     if params.wdl { ops.push(&wdl_op); }
     if let Some(l) = lemma { ops.push(l); }
-    let mut d = drive(g, s, seconds, &ops, &Fixed { params, lemmas: lemma.is_some() }, trace);
+    let claim_op = claims.filter(|c| params.claims && !c.is_empty()).map(|c| claim_op::ClaimOp { claims: c, history: params.history.clone() });
+    if let Some(c) = &claim_op { ops.push(c); }
+    let mut d = drive(g, s, seconds, &ops, &Fixed { params, lemmas: lemma.is_some(), claims: claim_op.is_some() }, trace);
     if params.wdl {
         // the mode line sits right after the first estimate's own lines
         if let Some(k) = d.steps.iter().position(|st| st.operator == "wdl" && matches!(st.goal, Goal::Estimate { .. })) {

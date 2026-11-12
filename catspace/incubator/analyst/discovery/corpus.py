@@ -10,6 +10,8 @@ Game-free: the game is the variant string; the starts come from curriculum.py, t
   drill(rule, corpus, *, part) -> {binds, names_a_move, right, wrong, trivial, wrong_examples}       (drill_many / drill_cases: many rules, with the card indices)
      RIGHT   the rule's body binds at a non-trivial position and EVERY move it names keeps the class      WRONG   some move it names loses the class
      TRIVIAL every legal move keeps the class (a position where no rule can be wrong: not counted as right or wrong)      names_a_move: non-trivial positions where it names at least one move
+  A CLAIM rule (plan 78.36: `claim` {"class"} in the place of the `response`) is drilled by the same calls: where its body binds (the engine's own matcher, `CardSet.binds`) it is RIGHT when the
+  row's exact class (`before`) is the claimed class and WRONG otherwise; there is no "trivial" for a claim (it speaks of the position, not of a move).
 """
 from __future__ import annotations
 
@@ -275,8 +277,22 @@ def _tally(ev: dict, corpus: Corpus) -> dict:
     return {"binds": binds, "names_a_move": names, "right": len(right_at), "wrong": len(wrong_at), "trivial": ev["trivial"], "truncated": ev["truncated"], "right_at": right_at, "wrong_at": wrong_at}
 
 
+def is_claim(rule: dict) -> bool:
+    return "claim" in rule
+
+
+def _tally_claim(rule: dict, b: dict, corpus: Corpus) -> dict:
+    """A claim's tally from the cards its body binds on: right where the row's exact class is the claimed class, wrong where it is another."""
+    want = rule["claim"]["class"]
+    right_at, wrong_at = [], []
+    for ci in b["at"]:
+        (right_at if corpus.rows[corpus.row_of[ci]]["before"] == want else wrong_at).append(ci)
+    n = len(b["at"])
+    return {"binds": n, "names_a_move": n, "right": len(right_at), "wrong": len(wrong_at), "trivial": 0, "truncated": b["truncated"], "right_at": right_at, "wrong_at": wrong_at, "claim": want}
+
+
 def drill_many(rules: list, corpus: Corpus, *, part: str = "dev", indices: "list | None" = None, max_bindings: int = 256) -> list:
-    """`rules` (lemma dicts) over the corpus part (or only the card `indices`) by the engine's matcher with all_named. One dict per rule: {binds, names_a_move, right, wrong, trivial, truncated,
+    """`rules` (lemma dicts, or claim rules: see the module doc) over the corpus part (or only the card `indices`) by the engine's matcher with all_named. One dict per rule: {binds, names_a_move, right, wrong, trivial, truncated,
     right_at, wrong_at} (card indices). `binds` = positions where the body binds, trivial ones included; the others are counted on the non-trivial ones. The corpus's cards must be built
     (`corpus.cards(spec, vocab_json)`)."""
     if corpus._cards is None:
@@ -284,8 +300,11 @@ def drill_many(rules: list, corpus: Corpus, *, part: str = "dev", indices: "list
     idx = indices if indices is not None else corpus.idx(part)
     if not rules:
         return []
-    evs = corpus._cards.eval_many([json.dumps(r) for r in rules], idx, max_bindings, None, True)
-    return [_tally(e, corpus) for e in evs]
+    resp = [r for r in rules if not is_claim(r)]
+    claims = [r for r in rules if is_claim(r)]
+    evs = iter(corpus._cards.eval_many([json.dumps(r) for r in resp], idx, max_bindings, None, True) if resp else [])
+    bs = iter(corpus._cards.binds([json.dumps(r) for r in claims], idx, max_bindings) if claims else [])
+    return [_tally_claim(r, next(bs), corpus) if is_claim(r) else _tally(next(evs), corpus) for r in rules]
 
 
 def drill_cases(rule: dict, corpus: Corpus, *, part: str = "dev", max_bindings: int = 256) -> dict:
@@ -299,5 +318,5 @@ def drill(rule: dict, corpus: Corpus, *, part: str = "dev", examples: int = 5, m
     ex = []
     for ci in t["wrong_at"][:examples]:
         r = corpus.rows[corpus.row_of[ci]]
-        ex.append({"start": r["start"], "moves": list(r["moves"]), "group": r["group"], "losing": sorted(m for m, k in r["keep"].items() if not k)})
+        ex.append({"start": r["start"], "moves": list(r["moves"]), "group": r["group"], "losing": sorted(m for m, k in r["keep"].items() if not k), "exact_class": r["before"]})
     return {k: t[k] for k in ("binds", "names_a_move", "right", "wrong", "trivial", "truncated")} | {"wrong_examples": ex}

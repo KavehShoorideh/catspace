@@ -63,7 +63,8 @@ pub enum Goal {
     Win { role: Role, mode: Mode },
     /// The line that loses least of `role`'s units and wins most of theirs, by the operator's judge. `ties`: when set, also read the moves as good as the best one,
     /// with that share of what is left of the decision's clock.
-    Ledger { role: Role, ties: Option<f64>, prefer: Vec<usize> },
+    /// `avoid` (plan 78.36): the moves (indices) a claim search refutes; read LAST at the root, so among moves of equal value the first move that is not avoided is the one kept.
+    Ledger { role: Role, ties: Option<f64>, prefer: Vec<usize>, avoid: Vec<usize> },
     /// The moves (indices into the legal moves) a learned lemma proposes for `role` in this position: a prior, never a verdict.
     Respond { role: Role },
     /// The move whose worst reply leaves `role`'s measure highest.
@@ -79,13 +80,17 @@ pub enum Goal {
     /// The reasoning chain for `role` (plan 78.25): the threats against it by stake, the frame of the top one, the moves that parry or counter it, the units that do not
     /// matter -- or, with no threat, its own tactics. The candidates are an order and the evidence an explanation, never a verdict.
     Reason { role: Role },
+    /// Plan 78.36: work TOWARD the results claims name: a depth-limited AND-OR search whose leaves are the game's own outcome and the claims of the snapshot; each root move gets the
+    /// class `role` can be held to against it (win / draw / unknown / loss). An order and a refutation, read as evidence: never a replacement of the ledger's value.
+    Toward { role: Role },
 }
 
 impl Goal {
     pub fn describe(&self) -> String {
         match self {
             Goal::Win { role, mode } => format!("win({role},{mode:?})"),
-            Goal::Ledger { role, ties, prefer } => format!("ledger({role}{}{})", if ties.is_some() { ",ties" } else { "" }, if prefer.is_empty() { String::new() } else { format!(",prefer {}", prefer.len()) }),
+            Goal::Ledger { role, ties, prefer, avoid } => format!("ledger({role}{}{}{})", if ties.is_some() { ",ties" } else { "" }, if prefer.is_empty() { String::new() } else { format!(",prefer {}", prefer.len()) },
+                                                                   if avoid.is_empty() { String::new() } else { format!(",avoid {}", avoid.len()) }),
             Goal::Respond { role } => format!("respond({role})"),
             Goal::Keep { role } => format!("keep({role})"),
             Goal::Prefer { role, among, defects } => format!("prefer({role},{} moves,{defects} defects)", among.len()),
@@ -93,6 +98,7 @@ impl Goal {
             Goal::Estimate { role } => format!("estimate({role})"),
             Goal::Advise { role } => format!("advise({role})"),
             Goal::Reason { role } => format!("reason({role})"),
+            Goal::Toward { role } => format!("toward({role})"),
         }
     }
 }

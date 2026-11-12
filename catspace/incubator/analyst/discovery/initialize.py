@@ -15,6 +15,8 @@ THIS IS A MECHANISM CHECK, NOT A STRENGTH CLAIM: one size, a few dozen games, a 
           from the exact corpus for the open problems; a fixed exam graded before cycle 1 and after every cycle; defaults off)
          [--corpus-problems N] [--grow-corpus]       (plan 78.34, both need --exact: N problems per cycle from the development part of the corpus; the corpus grows with the positions where a rule
           fired and a rule with a wrong firing on it is withdrawn; --induce-set max_problems=N head_tiers=relative,named)
+         [--suggest-bar X]       (plan 78.36, with --seed-rules: response rules failing zero-wrong but right at least X of the time enter as suggestions; default off)
+         [--conversion N]       (plan 78.36, with an exam: after every exam grading, N games played out from exam positions against the exact labeller's defence: `OBS conversion ..`; default 0 = off)
          [--usage-split]       (plan 78.35, with an exam: the use / generation split after every exam grading, and the rules by kind at the end; --induce-set name_bodies=N names an admitted body of N literals or more as a word)
 """
 from __future__ import annotations
@@ -30,6 +32,7 @@ from pathlib import Path
 
 from catspace.incubator.analyst.discovery import abstraction as AB
 from catspace.incubator.analyst.discovery import apply_audit as AU
+from catspace.incubator.analyst.discovery import conversion as CV
 from catspace.incubator.analyst.discovery import corpus as CP
 from catspace.incubator.analyst.discovery import corpus_problems as CPB
 from catspace.incubator.analyst.discovery import curriculum as CU
@@ -223,7 +226,7 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
              random_plies: int = 2, max_plies: int = 80, limit: "int | None" = None, seed: int = 1, sleep_settings: "dict | None" = None, vocabulary: "str | None" = None,
              tag: "str | None" = None, sample: int = 200, wdl: bool = False, cycles: int = 1, wdl_judge=None, wdl_settings: "dict | None" = None, playouts: bool = False, playout_judge=None, playout_settings: "dict | None" = None, targeted: bool = False, targeted_settings: "dict | None" = None,
              force_problems: bool = True, standard: str = "score", induce: bool = False, induce_settings: "dict | None" = None, drill_sleep: bool = False, seed_rules: "str | None" = None, exam: "str | None" = None, exam_size: "int | None" = None,
-             exact: bool = False, corpus_n: int = 30000, corpus_problems: int = 0, grow_corpus: bool = False, usage_split: bool = False, say=print) -> dict:
+             exact: bool = False, corpus_n: int = 30000, corpus_problems: int = 0, grow_corpus: bool = False, usage_split: bool = False, conversion: int = 0, suggest_bar: "float | None" = None, say=print) -> dict:
     """The loop for one size: starts -> publish -> wake a -> sleep (source as judge) -> wake b -> audit -> compare. Returns everything and writes it as JSON next to the logs.
 
     Plan 78.27: `wdl=True` plays every wake with the win / draw / loss estimate and the sandbox's table (`<root>/learned/<game>/wdl_table.json`, none until a sleep writes it), prints the
@@ -263,6 +266,9 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
     the cycle is graded, so the exam grades the snapshot that survives; the next cycle's playouts and problem checks play that snapshot (`wake_b.survivor`). The grown corpus is kept in memory and
     saved to `<root>/learned/<game>/corpus_grown.json`, never over the cached corpus file. Off, nothing changes.
 
+    Plan 78.36: `conversion=N` (needs an exam) plays N games out from exam positions after every exam grading (conversion.py: the wake's own decision for the side to move at the start, the exact
+    labeller's defence for the other side) and prints `OBS conversion <label>: ..`; the report's exam curve gains the counts. Off (0), nothing changes.
+
     Plan 78.35: `usage_split=True` (needs an exam) runs usage_split.split on every exam grading whose snapshot holds rules, reusing that grading's decisions (nothing is graded a second time), and
     prints `OBS usage split <label>: ...` and, with the rules' layers (word_registry.layers), `OBS usage split by rule kind <label>: ...`; once at the end `OBS rules by kind: general G (hand a,
     machine b), game C (hand c, machine d)` for the final snapshot's rules; the report gains `usage_split`. Off, nothing changes."""
@@ -278,6 +284,8 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
         raise ValueError("induce=True needs playouts=True (the problems it solves) and exact=True (the labels it learns from)")
     if (exam or exam_size) and not exact:
         raise ValueError("an exam needs exact=True: the exact labeller says whether a decision keeps the result")
+    if conversion and not (exam or exam_size):
+        raise ValueError("conversion=N needs an exam (exam or exam_size): the games start from the exam's positions")
     if usage_split and not (exam or exam_size):
         raise ValueError("usage_split=True needs an exam (exam or exam_size): it reads the decisions of an exam grading")
     if targeted and not playouts:
@@ -330,6 +338,10 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
                 US.say_split(label, sp, WR.layers(game, vocabulary), say)
                 usage_rows.append({"label": label, **{k: sp[k] for k in ("kept", "failed", "by_group")}})
             exam_curve.append({"label": label, "snapshot": snapshot, "kept": g["kept"], "total": g["total"], "by_class": g["by_class"], "gained": len(cmp["gained"]), "lost": len(cmp["lost"])})
+            if conversion:
+                cv = CV.convert(exam_data, variant=variant, store=str(GS.path_of(game, snapshot)), spec=specs, seconds=seconds, wake_kw={}, labeller=labeller, n=conversion)
+                CV.say_conversion(label, cv, say)
+                exam_curve[-1]["conversion"] = {k: cv[k] for k in ("games", "win_games", "draw_games", "kept", "kept_win", "kept_draw", "finished", "mean_plies", "median_drop_ply", "max_plies")}
             return g
 
         table_path = inside(root / "learned" / game / "wdl_table.json", root)
@@ -361,11 +373,16 @@ def run_size(game: str, size: int, *, source, store_root=None, variant: "str | N
             if exam_data is not None:
                 grade_exam("before the seed rules", GS.publish(game, **({"judge": GS.judge_of(game, judge)} if judge else {}), **vkw))
             proposed = json.loads(Path(seed_rules).read_text())["rules"]
-            kept, dropped = IND.drill_admit(proposed, corpus, specs, json.dumps(GS.vocabulary(game, vocabulary)), say=say)
-            for l in kept:
+            if suggest_bar is None:
+                kept, dropped = IND.drill_admit(proposed, corpus, specs, json.dumps(GS.vocabulary(game, vocabulary)), say=say)
+                suggested = []
+            else:
+                # plan 78.36: a response rule that fails zero-wrong but is right at least `suggest_bar` of the time enters as a SUGGESTION (the engine uses its moves only where the claim search classes them a win)
+                kept, dropped, suggested = IND.drill_admit(proposed, corpus, specs, json.dumps(GS.vocabulary(game, vocabulary)), say=say, suggest_bar=suggest_bar)
+            for l in kept + suggested:
                 GS.check_lemma(l)
                 GS.write_lemma(game, l)
-            rep["seed_rules"] = {"file": str(seed_rules), "kept": [l["name"] for l in kept], "dropped": [l["name"] for l in dropped]}
+            rep["seed_rules"] = {"file": str(seed_rules), "kept": [l["name"] for l in kept], "dropped": [l["name"] for l in dropped], **({"suggested": [l["name"] for l in suggested]} if suggest_bar is not None else {})}
         rep["wake_a"], log_a = wake("a", f"i{size}{tag}a")
         if exam_data is not None:
             grade_exam(f"before cycle 1 ({len(GS.info(game, rep['wake_a']['snapshot'])['lemmas'])} lemmas)", rep["wake_a"]["snapshot"], twice=True)
@@ -537,6 +554,8 @@ def main(argv: list) -> int:
     ap.add_argument("--exam-size", type=int, default=None, help="plan 78.32 (with --exact): positions of the exam (300 when only --exam is given); with no --exam the default file for this size")
     ap.add_argument("--corpus-problems", type=int, default=0, metavar="N", help="plan 78.34 (with --playouts --exact): per cycle, the wake's own decision on N sampled non-trivial positions of the corpus's development part; the wrong ones are problems (source corpus)")
     ap.add_argument("--grow-corpus", action="store_true", help="plan 78.34 (with --exact): after each cycle's wake the positions where a rule fired are labelled and added to the corpus, every rule is drilled on the grown corpus and one with a wrong firing is withdrawn")
+    ap.add_argument("--suggest-bar", type=float, default=None, metavar="X", help="plan 78.36 (with --seed-rules): a response rule that fails zero-wrong but is right at least this share of the time (and right at least 20 times) enters as a SUGGESTION; default off")
+    ap.add_argument("--conversion", type=int, default=0, metavar="N", help="plan 78.36 (with an exam): after every exam grading, N games played out from exam positions (the wake's decision for the side to move, the exact labeller's defence for the other): `OBS conversion ..`; 0 = off")
     ap.add_argument("--usage-split", action="store_true", help="plan 78.35 (with an exam): after every exam grading with rules in the snapshot, the use / generation split (OBS usage split ..), and at the end OBS rules by kind")
     ap.add_argument("--wdl-set", action="append", default=[], metavar="NAME=VALUE", help="plan 78.27: a keyword of the estimate's sleep (deep_seconds, max_deep, sample, max_settle), repeatable")
     a = ap.parse_args(argv)
@@ -577,7 +596,7 @@ def main(argv: list) -> int:
         run_size(a.game, a.size, source=teacher, store_root=a.store_root, variant=a.variant, judge=a.judge, games_per_start=a.games_per_start, seconds=a.seconds, limit=a.limit, seed=a.seed,
                  sleep_settings=overrides, vocabulary=a.vocabulary, tag=a.tag, sample=a.sample, wdl=a.wdl, cycles=a.cycles, wdl_judge=wj if a.wdl_judge_depth or not a.wdl else None, wdl_settings=wdl_settings or None,
                  playouts=a.playouts, playout_judge=wj if a.playouts else None, playout_settings=psets or None, targeted=a.targeted, targeted_settings=tsets or None, force_problems=not a.no_force_problems, standard=a.standard,
-                 induce=a.induce, induce_settings=isets or None, drill_sleep=a.drill_sleep, seed_rules=a.seed_rules, exam=a.exam, exam_size=a.exam_size, exact=a.exact, corpus_n=a.corpus_n, corpus_problems=a.corpus_problems, grow_corpus=a.grow_corpus, usage_split=a.usage_split)
+                 induce=a.induce, induce_settings=isets or None, drill_sleep=a.drill_sleep, seed_rules=a.seed_rules, exam=a.exam, exam_size=a.exam_size, exact=a.exact, corpus_n=a.corpus_n, corpus_problems=a.corpus_problems, grow_corpus=a.grow_corpus, usage_split=a.usage_split, conversion=a.conversion, suggest_bar=a.suggest_bar)
     finally:
         teacher.close()
         if wj is not None:

@@ -5861,3 +5861,92 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
     OBS drill admit total: rules 4, kept 1, dropped 3
     OBS exam hand step 2: run M's rules, words switched on: kept 282 of 300 (win-keeping 142 of 150, draw-keeping 140 of 150), gained 0, lost 0
     OBS exam hand step 2: with 1 rule(s) on the new words: kept 281 of 300 (win-keeping 141 of 150, draw-keeping 140 of 150), gained 0, lost 1
+
+#### 78.36 USE: A RULE THAT CLAIMS A RESULT, AND A SEARCH THAT WORKS TOWARD IT (2026-11-12; Kaveh: get the use of the lemmas right; "Yes go")
+
+  WHERE USE STANDS (read from rust/engine/decision/src/lib.rs): a rule's named moves are already only the ORDER the ledger search reads the root in. But the ledger's judge
+        is material: where no line changes material within its horizon every move is equal and the first in the order is played. So a rule decides exactly where the search
+        cannot check it, and a rule that is nearly always right (78.35 reading 2) cannot be kept. And a rule names one move: nothing says what a line of moves is FOR.
+  DESIGN
+  1 A CLAIM  a second kind of rule: IF body THEN the position's class for the side to move is win / draw / loss. Admitted like every rule: the full drill on both parts of
+        the exact corpus, zero wrong, enough right. It is a statement about a position, not about a move.
+  2 THE SEARCH TOWARD CLAIMS  an operator of the decision, game-free: a bounded AND-OR search whose leaves are the game's own outcome and the claims of the snapshot. A
+        forced line to a claimed win is played. Otherwise each root move gets the class the other side can force against it within the depth (unknown where no claim
+        speaks); the ledger then reads first the moves of the best known class and LAST the moves a claim refutes, so a response rule's named move is a suggestion that
+        this search can overturn. With no claim in the snapshot the decision and its trace are what they were.
+  3 THE CHAIN, MEASURED  a CONVERSION exam beside the one-decision exam: from fixed held-out positions the engine plays the game out against the exact labeller's defence
+        (an opponent of the training kit: it only plays, nothing of it reaches the wake); counted: games in which the engine never drops the class, and wins finished.
+  4 BY HAND FIRST  claims on the key-square words written by Claude in session and admitted by the drill; induction of claims by the machine is a later stage.
+  FEASIBILITY (scratch script claim_check.py; python-chess on the 30000 labelled positions, the claim stated in its name, `holds` where the exact class is the claimed one;
+        no FAILS line was printed for any of the four):
+    OBS claim check: other king right in front of the pawn, other side to move: holds 183
+    OBS claim check: other king right in front of the pawn, pawn side to move: holds 174
+    OBS claim check: pawn side's king on a key square, pawn safe, other side to move: holds 187
+    OBS claim check: pawn side's king on a key square, pawn safe, pawn side to move: holds 175
+
+  BUILT  Rust: cs_memory claim.rs (a rule with `claim` {class} in place of `response`; the Claims reader binds claims at a position by the matcher LemmaOp uses), `suggest` on a
+         response rule (reported apart, never a candidate by itself); cs_tactics toward.rs (the AND-OR search over a LeafOracle: the game's outcome, a claim, a repetition, else
+         unknown; loss < unknown < draw < win; a game win above a claimed win; stops when nothing speaks within 2 plies); cs_decision claim_op.rs and the Fixed controller's
+         step after the proof (CLAIM_SHARE 0.3 of the clock; switch `claims`), the ledger's `avoid`. Python: corpus.drill / induce.drill_admit for claims and a suggestion
+         bar, conversion.py (--conversion N), --suggest-bar, solve_batch(claims=). tests/test_plan78_36_claims.py and Rust tests. No claim in a snapshot: the decision is as before.
+  THE CLAIMS BY HAND (Claude in session; the drill admits; sandbox data/derived/init_store_w36, run M's rules plus 78.35's):
+    OBS drill admit claim-our-king-on-key-square-wins (claim win): dev binds/right/wrong 96/96/0, held 77/77/0; KEPT
+    OBS drill admit claim-their-king-on-key-square-loses (claim loss): dev binds/right/wrong 100/100/0, held 87/87/0; KEPT
+    OBS drill admit claim-our-king-in-front-of-their-pawn-draws (claim draw): dev binds/right/wrong 63/63/0, held 118/118/0; KEPT
+    OBS drill admit claim-their-king-in-front-of-our-pawn-draws (claim draw): dev binds/right/wrong 59/59/0, held 115/115/0; KEPT
+    OBS drill admit claim-our-king-in-their-edge-pawn-corner-draws (claim draw): dev binds/right/wrong 0/0/0, held 254/254/0; KEPT
+    OBS drill admit claim-their-king-in-our-edge-pawn-corner-draws (claim draw): dev binds/right/wrong 0/0/0, held 255/255/0; KEPT
+    OBS drill admit total: rules 6, kept 6, dropped 0
+  THE BASELINE (no claim) and THE FIRST DESIGN (a claimed win played at once; a claimed draw preferred to an unknown move):
+    OBS exam A: the rules of 78.35, no claim: kept 280 of 300 (win-keeping 140 of 150, draw-keeping 140 of 150), gained 0, lost 0
+    OBS conversion A: the rules of 78.35, no claim: games 60 (win-class 30, draw-class 30); never dropped the class 57 (win-class 30 of 30, draw-class 27 of 30); wins finished 18 of 30 within 80 plies; first drop at ply (median) 1
+    OBS exam B: with 6 claim(s), claim search OFF: kept 281 of 300 (win-keeping 141 of 150, draw-keeping 140 of 150), gained 0, lost 0
+    OBS conversion B: with 6 claim(s), claim search OFF: games 60 (win-class 30, draw-class 30); never dropped the class 57 (win-class 30 of 30, draw-class 27 of 30); wins finished 19 of 30 within 80 plies; first drop at ply (median) 1
+    OBS exam B: with 6 claim(s), claim search ON: kept 267 of 300 (win-keeping 129 of 150, draw-keeping 138 of 150), gained 0, lost 0
+    OBS conversion B: with 6 claim(s), claim search ON: games 60 (win-class 30, draw-class 30); never dropped the class 56 (win-class 29 of 30, draw-class 27 of 30); wins finished 9 of 30 within 80 plies; first drop at ply (median) 1
+  THE SECOND DESIGN (only the game's own win played at once; claimed wins are the moves the ledger chooses among, unseen positions first; a draw not preferred to an unknown;
+         a nearly-right rule kept as a SUGGESTION used only where the claim search verifies its move):
+    OBS exam B: with 6 claim(s), claim search OFF: kept 280 of 300 (win-keeping 140 of 150, draw-keeping 140 of 150), gained 0, lost 0
+    OBS conversion B: with 6 claim(s), claim search OFF: games 60 (win-class 30, draw-class 30); never dropped the class 57 (win-class 30 of 30, draw-class 27 of 30); wins finished 17 of 30 within 80 plies; first drop at ply (median) 1
+    OBS exam B: with 6 claim(s), claim search ON: kept 271 of 300 (win-keeping 132 of 150, draw-keeping 139 of 150), gained 0, lost 0
+    OBS conversion B: with 6 claim(s), claim search ON: games 60 (win-class 30, draw-class 30); never dropped the class 56 (win-class 29 of 30, draw-class 27 of 30); wins finished 10 of 30 within 80 plies; first drop at ply (median) 1
+    OBS drill admit hand-king_to_corner-nearer: dev binds/right/wrong/trivial 0/0/0/0, held 2230/622/9/1591; SUGGESTION (right 622, wrong 9, share 0.986)
+    OBS drill admit hand-our-king-nearer-our-key-squares: dev binds/right/wrong/trivial 3621/793/430/2376, held 3636/842/399/2379; DROPPED: wrong firings on the exact corpus
+    OBS drill admit hand-our-king-nearer-their-key-squares: dev binds/right/wrong/trivial 3422/925/360/2091, held 3428/929/394/2054; DROPPED: wrong firings on the exact corpus
+    OBS drill admit hand-our-pawn-nearer-promotion: dev binds/right/wrong/trivial 3878/365/823/2552, held 6360/591/917/4672; DROPPED: wrong firings on the exact corpus
+    OBS suggestions store: snapshot 70869efc53651942, admitted outright [], suggestions ['hand-king_to_corner-nearer'], dropped ['hand-our-king-nearer-our-key-squares', 'hand-our-king-nearer-their-key-squares', 'hand-our-pawn-nearer-promotion']
+    OBS exam C: B plus the hand suggestions, claim search OFF: kept 281 of 300 (win-keeping 141 of 150, draw-keeping 140 of 150), gained 0, lost 0
+    OBS conversion C: B plus the hand suggestions, claim search OFF: games 60 (win-class 30, draw-class 30); never dropped the class 57 (win-class 30 of 30, draw-class 27 of 30); wins finished 17 of 30 within 80 plies; first drop at ply (median) 1
+    OBS exam C: B plus the hand suggestions, claim search ON: kept 271 of 300 (win-keeping 132 of 150, draw-keeping 139 of 150), gained 0, lost 0
+    OBS conversion C: B plus the hand suggestions, claim search ON: games 60 (win-class 30, draw-class 30); never dropped the class 56 (win-class 29 of 30, draw-class 27 of 30); wins finished 9 of 30 within 80 plies; first drop at ply (median) 1
+  WHY, READ FROM THE DECISIONS (scratch claim_diag.py and the clock runs; the exam by the units on the board, then one trace line, then the exam at longer clocks):
+    OBS exam clock 1.0 s, claim search OFF: kept 296 of 300 (win-keeping 149 of 150, draw-keeping 147 of 150), gained 0, lost 0
+    OBS exam clock 1.0 s, claim search ON: kept 294 of 300 (win-keeping 148 of 150, draw-keeping 146 of 150), gained 0, lost 0
+    OBS exam clock 1.0 s: ON against OFF gained 0, lost 2
+    OBS no-rules store: 70bc4bed520c4a97 rules 0
+    OBS exam no rules, clock 0.2 s: kept 253 of 300 (win-keeping 119 of 150, draw-keeping 134 of 150), gained 0, lost 0
+    OBS exam no rules, clock 1.0 s: kept 290 of 300 (win-keeping 144 of 150, draw-keeping 146 of 150), gained 0, lost 0
+    OBS exam no rules, clock 3.0 s: kept 295 of 300 (win-keeping 148 of 150, draw-keeping 147 of 150), gained 0, lost 0
+    OBS claim diag: ('P', 'off failed', 'on failed') 19
+    OBS claim diag: ('P', 'off kept', 'on failed') 12
+    OBS claim diag: ('P', 'off kept', 'on kept') 237
+    OBS claim diag: ('Q', 'off kept', 'on kept') 3
+    OBS claim diag: ('R', 'off kept', 'on kept') 29
+       TRACE claim toward: depth 2 (stopped: nothing spoke), 76 nodes, 76 claim evaluations (68 real, 0 spoke, 0 conflicts), 0.061 s (0.0608 s in the claims)
+  READING
+  1 NEGATIVE: at the 0.2 s clock the search toward claims makes the engine WORSE in both designs (the exam lines ON against OFF; wins finished in the conversion lines).
+    No failed position is gained (the claim diag lines have no `off failed, on kept` row).
+  2 THE CAUSE IS COST AND REACH. Reading the claims at one position costs about a millisecond (the trace line: 68 real evaluations in 0.0608 s); the step spends its share
+    of the clock, reaches two plies, hears nothing, and the ledger search with what is left reads a different horizon and pushes a pawn. Six claims speak at few positions
+    and the positions that fail are several moves from where any of them speaks.
+  3 THE EXAM AT THIS SIZE IS MOSTLY A TEST OF THE CLOCK. With NO rule the engine keeps 253 at 0.2 s, 290 at 1 s and 295 at 3 s (the no rules lines); with run M's rules and
+    the hand rules 280 at 0.2 s and 296 at 1 s. What the rules of 78.32 to 78.35 buy is what a search buys with five times the clock. A rule's worth at three units is
+    speed; whether rules do what search cannot has to be asked where search cannot reach: more units, or a clock held short on purpose and stated.
+  4 The conversion exam shows a weakness the one-decision exam does not: with or without claims a third of the won games are not finished in 80 plies against a weak
+    defence (the baseline's conversion line).
+  5 Of four hand suggestions one passes the bar; the three general ones (king toward the key squares, pawn toward promotion) are wrong hundreds of times: as stated they
+    are not nearly right.
+  OPEN   the claim reader's cost (the facts of a position are derived again at every node); claims are few: inducing claims from the corpus's exact classes is the same
+         induction as for moves and was not built; the conversion's defence is weak for a lost side (no distances in the tables read).
+  NEXT   decide with Kaveh: (a) the exam and the cycle at four and five units, where a short search fails; (b) claims induced by the machine until they cover most positions,
+         so one or two plies reach one; (c) the claim reader made cheap. The step stays in the code, without effect on a store that holds no claim.

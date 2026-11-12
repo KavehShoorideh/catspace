@@ -363,12 +363,17 @@ fn batch_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, label: &str
     };
     let mut p = params.clone();
     p.history = if record { keys } else { vec![] };
-    let view = store.and_then(|st| if st.snapshot.lemmas.is_empty() { None } else { view_for(st, &it.0) });
+    // (plan 78.36: the claims of the snapshot are read by the claim search when the batch asks for it; a snapshot of response rules only reads exactly as it did)
+    let with_claims = p.claims && store.map_or(false, |st| !st.snapshot.claims.is_empty());
+    let view = store.and_then(|st| if st.snapshot.lemmas.is_empty() && !with_claims { None } else { view_for(st, &it.0) });
     let decision = match (store, &view) {
         (Some(st), Some(v)) => {
             let mut op = cs_memory::op::LemmaOp::new(&st.snapshot, v);
             op.exclude = ablate.clone();
-            cs_decision::decide_with_lemmas(&g, &s, seconds, judge, &p, Some(&op as &dyn cs_operator::Operator<kernel::KernelGame>))
+            let mut claims = cs_memory::claim::Claims::new(&st.snapshot, v);
+            claims.exclude = ablate.clone();
+            let lemma: Option<&dyn cs_operator::Operator<kernel::KernelGame>> = if st.snapshot.lemmas.is_empty() { None } else { Some(&op) };
+            cs_decision::decide_with_store(&g, &s, seconds, judge, &p, lemma, if with_claims { Some(&claims) } else { None })
         }
         _ => cs_decision::decide_params(&g, &s, seconds, judge, &p),
     };
@@ -386,21 +391,22 @@ fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
 
 /// solve_batch(positions, seconds=1.0, worth={}, ours_first=False, valuation="", snapshot="", trace_path=None, threads=0, prior=False, record=True, prior_depth=2,
 /// ledger_share=0.6, prior_defects=1, ordering=True, prune=True, extend=True, store=None, specs={}, labels=None, ablate=[], ties=False, reason=False, wdl=False,
-/// wdl_table=None)
+/// wdl_table=None, claims=True)
 /// -> [(move or None, proved, nodes, seconds, error or None)]: plan 78.12 / 78.14 THE BATCH SOLVER -- `positions` is [(variant, fen or None, moves)], all decided in ONE
 /// call on `threads` workers (0: one per core) with the Python lock released, one summary per position in order. `seconds` is each position's own clock (positions run
 /// side by side: keep `threads` within the cores, or the clocks measure the contention). `store` is a snapshot file (<id>.json, which must hash to its name): its id
 /// tags the log, its judge is used when `worth` is empty, and its lemmas are bound through `specs` ({variant: description text}) by the lemma operator, whose proposals
 /// the ledger search reads first (`ablate`: lemma names left out). `labels` names the positions in the log. With `trace_path` every decision's steps are appended to
-/// that JSON Lines log.
+/// that JSON Lines log. Plan 78.36: `claims` (default True) lets the snapshot's CLAIM rules be read by the search toward claims (operator "claim"); False leaves it out (the A / B
+/// measurement; a snapshot with no claim rule decides the same either way).
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false, wdl=false, wdl_table=None))]
+#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false, wdl=false, wdl_table=None, claims=true))]
 #[allow(clippy::too_many_arguments)]
 fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, snapshot: String,
                trace_path: Option<String>, threads: usize, prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool,
-               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool, wdl: bool, wdl_table: Option<String>) -> PyResult<Vec<BatchRow>> {
+               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool, wdl: bool, wdl_table: Option<String>, claims: bool) -> PyResult<Vec<BatchRow>> {
     let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
-    let params = cs_decision::Params { prior, ties, reason, wdl, wdl_table: table, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
+    let params = cs_decision::Params { prior, ties, reason, wdl, wdl_table: table, claims, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let snapshot = store.as_ref().map(|s| s.snapshot.id.clone()).unwrap_or(snapshot);
     if let Some(l) = &labels { if l.len() != positions.len() { return Err(pyo3::exceptions::PyValueError::new_err("labels: one per position")); } }
@@ -697,6 +703,22 @@ impl CardSet {
         });
         evs.iter().map(|e| eval_dict(py, e)).collect()
     }
+    /// binds(rules, indices=None, max_bindings=64) -> [{at: [card index], truncated, steps}] (plan 78.36): where each rule's BODY binds on the cards (a claim or a lemma; only the body is read),
+    /// by the same matcher and fuse as `eval`, side by side on the cores. The claim drill reads the corpus row's exact class at each of these cards.
+    #[pyo3(signature = (rules, indices=None, max_bindings=64))]
+    fn binds(&self, py: Python<'_>, rules: Vec<String>, indices: Option<Vec<usize>>, max_bindings: usize) -> PyResult<Vec<PyObject>> {
+        let bodies = rules.iter().map(|r| {
+            let v: serde_json::Value = serde_json::from_str(r).map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("rule: {e}")))?;
+            match cs_memory::claim::Rule::from_json(&v).map_err(pyo3::exceptions::PyValueError::new_err)? { cs_memory::claim::Rule::Response(l) => Ok(l.body), cs_memory::claim::Rule::Claim(c) => Ok(c.body) }
+        }).collect::<PyResult<Vec<_>>>()?;
+        self.check_indices(&indices)?;
+        let set = self.inner.clone();
+        let out: Vec<cs_memory::cards::Binds> = py.allow_threads(|| {
+            use rayon::prelude::*;
+            bodies.par_iter().map(|b| set.binds(b, indices.as_deref(), max_bindings)).collect()
+        });
+        out.iter().map(|b| { let d = pyo3::types::PyDict::new(py); d.set_item("at", b.at.clone())?; d.set_item("truncated", b.truncated)?; d.set_item("steps", b.steps)?; Ok(d.into()) }).collect()
+    }
     /// Append the cards to a JSON Lines file.
     fn save(&self, path: &str) -> PyResult<()> {
         let rows: Vec<serde_json::Value> = self.inner.cards.iter().map(|c| c.to_json()).collect();
@@ -770,13 +792,53 @@ fn build_cards(py: Python<'_>, items: Vec<(String, Option<String>, Vec<String>, 
     Ok(CardSet { inner: std::sync::Arc::new(cs_memory::cards::CardSet::new(cards)) })
 }
 
-/// snapshot_info(path) -> {id, game, parent, lemmas, teacher_used}: a snapshot read the way the engine reads it (it must hash to its name).
+/// snapshot_info(path) -> {id, game, parent, lemmas (the response rules), claims (plan 78.36: the claim rules), suggestions (the response rules marked `suggest`), teacher_used}: a snapshot read the way the engine reads it (it must hash to its name).
 #[pyfunction]
 fn snapshot_info(py: Python<'_>, path: &str) -> PyResult<PyObject> {
     let s = cs_memory::snapshot::Snapshot::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let d = pyo3::types::PyDict::new(py);
     d.set_item("id", s.id)?; d.set_item("game", s.game)?; d.set_item("parent", s.parent)?;
     d.set_item("lemmas", s.lemmas.iter().map(|l| l.name.clone()).collect::<Vec<_>>())?; d.set_item("teacher_used", s.teacher_used)?;
+    d.set_item("claims", s.claims.iter().map(|c| c.name.clone()).collect::<Vec<_>>())?;
+    d.set_item("suggestions", s.lemmas.iter().filter(|l| l.suggest).map(|l| l.name.clone()).collect::<Vec<_>>())?;
+    Ok(d.into())
+}
+
+/// claim_toward(variant, store, specs, fen=None, moves=[], seconds=0.2, max_depth=None, max_nodes=50_000_000, worth={}, ours_first=False, valuation="") -> dict: plan 78.36 THE SEARCH TOWARD
+/// CLAIMS on its own (the operator "claim" of the decision, without the rest): the snapshot `store` (a file) holds the claim rules, `specs` the descriptions they are bound through. {status, move
+/// (the proved win's), depth (the deepest completed iteration), exact, cut, nodes, evals, seconds, win, draw, unknown, loss (root moves by class), candidates, refuted (move names), spoke
+/// [(rule, count)], claim_evaluations, claim_seconds, evidence}. A measurement and a debugging door; the wake reaches the same operator through solve_batch.
+#[pyfunction]
+#[pyo3(signature = (variant, store, specs, fen=None, moves=vec![], seconds=0.2, max_depth=None, max_nodes=50_000_000))]
+#[allow(clippy::too_many_arguments)]
+fn claim_toward(py: Python<'_>, variant: &str, store: &str, specs: HashMap<String, String>, fen: Option<&str>, moves: Vec<String>, seconds: f64, max_depth: Option<u32>, max_nodes: u64) -> PyResult<PyObject> {
+    use cs_operator::Operator;
+    let (g, s, keys) = record_of(variant, fen, 518, &moves)?;
+    let Some(me) = g.mover(&s) else { return Err(pyo3::exceptions::PyValueError::new_err("the game is over")) };
+    let st = load_store(store, specs)?;
+    let view = view_for(&st, variant).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("no description for {variant}")))?;
+    let (o, stats, legal) = (|| {
+        let claims = cs_memory::claim::Claims::new(&st.snapshot, &view);
+        let op = cs_decision::claim_op::ClaimOp { claims: &claims, history: keys.clone() };
+        let mut b = cs_operator::Budget::new(seconds, max_nodes);
+        b.max_depth = max_depth;
+        let o = op.run(&g, &s, &cs_operator::Goal::Toward { role: me }, b);
+        (o, claims.stats(), g.moves(&s))
+    })();
+    let d = pyo3::types::PyDict::new(py);
+    let names = |ix: &[usize]| ix.iter().map(|i| g.move_name(&s, &legal[*i])).collect::<Vec<String>>();
+    d.set_item("status", format!("{:?}", o.status))?;
+    d.set_item("move", o.mv.as_ref().map(|m| g.move_name(&s, m)))?;
+    d.set_item("depth", o.depth)?;
+    d.set_item("nodes", o.cost.nodes)?;
+    d.set_item("seconds", o.cost.seconds)?;
+    d.set_item("claim_evaluations", stats.evaluations)?;
+    d.set_item("claim_seconds", stats.seconds)?;
+    d.set_item("candidates", names(&o.candidates))?;
+    d.set_item("refuted", o.facts.iter().filter(|f| f.relation == "refuted").map(|f| f.args[1].clone()).collect::<Vec<_>>())?;
+    d.set_item("spoke", o.facts.iter().filter(|f| f.relation == "spoke").map(|f| (f.args[0].clone(), f.args[1].parse::<u64>().unwrap_or(0))).collect::<Vec<_>>())?;
+    d.set_item("evidence", o.evidence.clone())?;
+    d.set_item("parts", o.parts.iter().map(|p| (p.name.clone(), p.cost.nodes, p.cost.seconds)).collect::<Vec<_>>())?;
     Ok(d.into())
 }
 
@@ -788,11 +850,11 @@ fn compose(base: &str, delta: &str) -> PyResult<String> { cs_gdl::compose(base, 
 #[pyfunction]
 fn content_id(data: &[u8]) -> String { cs_memory::sha::content_id(data) }
 
-/// check_lemma(lemma_json) -> None: raises ValueError if the lemma is not well formed (the engine's own reading of it).
+/// check_lemma(lemma_json) -> None: raises ValueError if the rule is not well formed (the engine's own reading of it). A rule carries a `response` (a lemma) or a `claim` (plan 78.36), not both.
 #[pyfunction]
 fn check_lemma(lemma: &str) -> PyResult<()> {
     let v: serde_json::Value = serde_json::from_str(lemma).map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("lemma: {e}")))?;
-    cs_memory::lemma::Lemma::from_json(&v).map(|_| ()).map_err(pyo3::exceptions::PyValueError::new_err)
+    cs_memory::claim::Rule::from_json(&v).map(|_| ()).map_err(pyo3::exceptions::PyValueError::new_err)
 }
 
 // ---------------------------------------------------------------------------------------------------------------- plan 78.21: the typed fact graph and the graph prior, in Rust
@@ -920,6 +982,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(wdl_keys, m)?)?;
     m.add_function(wrap_pyfunction!(wdl_keys_along, m)?)?;
     m.add_function(wrap_pyfunction!(snapshot_info, m)?)?;
+    m.add_function(wrap_pyfunction!(claim_toward, m)?)?;
     m.add_function(wrap_pyfunction!(content_id, m)?)?;
     m.add_function(wrap_pyfunction!(compose, m)?)?;
     m.add_function(wrap_pyfunction!(check_lemma, m)?)?;

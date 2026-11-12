@@ -44,13 +44,18 @@ pub struct Lemma {
     pub stats: Value,
     /// Where it came from (free-form JSON, kept as written).
     pub meta: Value,
+    /// Plan 78.36: a SUGGESTION -- a rule that was not admitted with zero wrong. It never acts unverified: the lemma operator reports its moves apart from the candidates and the
+    /// decision uses them only where a claim search classed them a win (or, with every move drawn or refuted, a draw). JSON `"suggest": true` at the rule's top level; absent = false.
+    pub suggest: bool,
 }
 
 impl Lemma {
     pub fn to_json(&self) -> Value {
-        json!({"name": self.name, "body": self.body.iter().map(Lit::to_json).collect::<Vec<_>>(),
+        let mut j = json!({"name": self.name, "body": self.body.iter().map(Lit::to_json).collect::<Vec<_>>(),
                "response": {"removed": self.response.removed.iter().map(Lit::to_json).collect::<Vec<_>>(), "added": self.response.added.iter().map(Lit::to_json).collect::<Vec<_>>()},
-               "stats": self.stats, "meta": self.meta})
+               "stats": self.stats, "meta": self.meta});
+        if self.suggest { if let Some(o) = j.as_object_mut() { o.insert("suggest".into(), Value::Bool(true)); } }
+        j
     }
 
     pub fn from_json(v: &Value) -> Result<Lemma, String> {
@@ -58,9 +63,10 @@ impl Lemma {
         let lits = |key: &str, from: &Value| -> Result<Vec<Lit>, String> {
             from.get(key).and_then(|x| x.as_array()).ok_or_else(|| format!("{name}: no {key}"))?.iter().map(Lit::from_json).collect()
         };
+        let suggest = match v.get("suggest") { None | Some(Value::Null) => false, Some(b) => b.as_bool().ok_or_else(|| format!("{name}: suggest is true or false"))? };
         let resp = v.get("response").ok_or_else(|| format!("{name}: no response"))?;
         let l = Lemma { body: lits("body", v)?, response: Response { removed: lits("removed", resp)?, added: lits("added", resp)? },
-                        stats: v.get("stats").cloned().unwrap_or(Value::Null), meta: v.get("meta").cloned().unwrap_or(Value::Null), name };
+                        stats: v.get("stats").cloned().unwrap_or(Value::Null), meta: v.get("meta").cloned().unwrap_or(Value::Null), suggest, name };
         l.validate()?;
         Ok(l)
     }
@@ -69,12 +75,7 @@ impl Lemma {
     /// positive literals with something in it.
     pub fn validate(&self) -> Result<(), String> {
         let at = &self.name;
-        if at.is_empty() { return Err("a lemma needs a name".into()); }
-        if !self.body.iter().any(|l| !l.neg) { return Err(format!("{at}: the body needs a positive literal")); }
-        let bound: BTreeSet<String> = self.body.iter().filter(|l| !l.neg).flat_map(|l| l.vars()).collect();
-        for l in self.body.iter().filter(|l| l.neg) {
-            if let Some(v) = l.vars().into_iter().find(|v| !bound.contains(v)) { return Err(format!("{at}: the negated literal {} uses ?{v}, which no positive literal binds", l.relation)); }
-        }
+        validate_body(at, &self.body)?;
         if self.response.removed.is_empty() && self.response.added.is_empty() { return Err(format!("{at}: the response says nothing")); }
         if self.response.removed.iter().chain(self.response.added.iter()).any(|l| l.neg) { return Err(format!("{at}: the response is positive literals")); }
         Ok(())
@@ -84,13 +85,24 @@ impl Lemma {
     pub fn body_relations(&self) -> BTreeSet<String> { self.body.iter().map(|l| l.relation.clone()).collect() }
 }
 
+/// The well-formedness of a body (a lemma's or a claim's): a name, at least one positive literal, negated literals safe (every variable bound by a positive one).
+pub fn validate_body(at: &str, body: &[Lit]) -> Result<(), String> {
+    if at.is_empty() { return Err("a lemma needs a name".into()); }
+    if !body.iter().any(|l| !l.neg) { return Err(format!("{at}: the body needs a positive literal")); }
+    let bound: BTreeSet<String> = body.iter().filter(|l| !l.neg).flat_map(|l| l.vars()).collect();
+    for l in body.iter().filter(|l| l.neg) {
+        if let Some(v) = l.vars().into_iter().find(|v| !bound.contains(v)) { return Err(format!("{at}: the negated literal {} uses ?{v}, which no positive literal binds", l.relation)); }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     fn sample() -> Lemma {
         Lemma { name: "hang-x".into(), body: vec![Lit::pos("cell", &["?f", "?r", "?s", "knight"]), Lit::pos("attack", &["?o", "?g", "?q", "?f", "?r"])],
                 response: Response { removed: vec![Lit::pos("cell", &["?f", "?r", "?s", "knight"])], added: vec![Lit::pos("cell", &["?x", "?y", "?s", "knight"])] },
-                stats: json!({}), meta: json!({}) }
+                stats: json!({}), meta: json!({}), suggest: false }
     }
     #[test]
     fn json_round_trip_and_checks() {
@@ -106,5 +118,11 @@ mod tests {
         let mut nobody = sample();
         nobody.body.clear();
         assert!(nobody.validate().is_err());
+        // a suggestion carries `suggest` and is written only when true: a rule without it serialises as it always did
+        assert!(l.to_json().get("suggest").is_none());
+        let mut sg = sample();
+        sg.suggest = true;
+        assert_eq!(sg.to_json()["suggest"], true);
+        assert_eq!(Lemma::from_json(&sg.to_json()).unwrap(), sg);
     }
 }

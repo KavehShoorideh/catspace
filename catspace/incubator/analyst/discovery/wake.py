@@ -26,7 +26,7 @@ DRAW = [50, 50]
 
 def play_self(variant: str, games: int, *, seconds: float = 0.2, random_plies: int = 4, max_plies: int = 120, seed: int = 1, store: "str | None" = None,
               specs: "dict | None" = None, threads: int = 0, log: "str | None" = None, run: str = "r0", prior: bool = False, ties: bool = False, reason: bool = False, wdl: bool = False, wdl_table: "str | None" = None,
-              starts: "list | None" = None) -> list:
+              starts: "list | None" = None, claims: bool = True) -> list:
     """Play `games` self-play games of `variant`; -> [{run, game, variant, start, moves, outcome, unfinished, snapshot}]. Positions are decided `seconds` each. `starts`
     (plan 78.22): position strings the kernel accepts (a FEN for the chess family); game g starts from `starts[g % len(starts)]`, None / empty = the game's own start. The
     random opening plies are played after the start."""
@@ -63,7 +63,7 @@ def play_self(variant: str, games: int, *, seconds: float = 0.2, random_plies: i
             positions.append((variant, s["start"], list(s["moves"])))
             labels.append(f"{run}:{s['game']}:{len(s['moves'])}:{ROLES[mover]}")
         if positions:
-            rows = CE.solve_batch(positions, seconds, snapshot=run, trace_path=log, threads=threads, prior=prior, ties=ties, reason=reason, wdl=wdl, wdl_table=wdl_table, store=store, specs=specs or {}, labels=labels)
+            rows = CE.solve_batch(positions, seconds, snapshot=run, trace_path=log, threads=threads, prior=prior, ties=ties, reason=reason, wdl=wdl, wdl_table=wdl_table, store=store, specs=specs or {}, labels=labels, **({} if claims else {"claims": False}))
             for s, (mv, _proved, _nodes, _secs, err) in zip(engine, rows):
                 if mv is None:
                     s["over"], s["unfinished"] = True, True

@@ -5,7 +5,8 @@
   rules/learned/<game>/vocabulary.<name>.json  (plan 78.24) a NAMED vocabulary: the same keys plus `concepts` (rules-delta path(s) composed onto the description); a lemma records
                                             the vocabulary it was written in (`meta.vocabulary`) and a snapshot of that vocabulary holds only those.
   rules/learned/<game>/words.json           (plan 78.35) the store's WORDS (word_registry.py), composed as rules when the vocabulary file says `"words": true`
-  rules/learned/<game>/lemmas/<name>.json   one learned lemma per file (the source of truth, committed): its body and response in the lemma language
+  rules/learned/<game>/lemmas/<name>.json   (plan 78.36: a rule may carry a `claim` {"class"} in place of the `response`: a statement about the position, not a move)
+                                            one learned lemma per file (the source of truth, committed): its body and response in the lemma language
                                             (rust/engine/memory/src/lemma.rs), what verification measured, where it came from.
   data/derived/snapshots/<game>/<id>.json   a SNAPSHOT: vocabulary + judge + lemmas + parent, immutable, named by the first 16 hex digits of the SHA-256 of its bytes
                                             (the Rust core refuses a file that does not hash to its name). `HEAD` holds the id of the latest.
@@ -148,9 +149,11 @@ def remove_lemma(game: str, name: str) -> bool:
 ANY = object()          # `read_lemmas(vocabulary=ANY)`: every lemma of the game, whatever vocabulary it was written in
 
 
-def read_lemmas(game: str, vocabulary: "str | None | object" = None) -> list:
+def read_lemmas(game: str, vocabulary: "str | None | object" = None, *, include_claims: bool = False) -> list:
     """The game's lemma sources. `vocabulary` selects the vocabulary they were written in (`meta.vocabulary`; absent or None = the default one): None (the default argument)
-    returns the lemmas of the DEFAULT vocabulary, which for a store with only default lemmas is all of them, as before; a name returns that vocabulary's; `ANY` returns all."""
+    returns the lemmas of the DEFAULT vocabulary, which for a store with only default lemmas is all of them, as before; a name returns that vocabulary's; `ANY` returns all.
+    Plan 78.36: a CLAIM rule (a `claim` in the place of the `response`) is a source file of the same directory but is left out here -- every reader of the lemmas reads responses -- unless
+    `include_claims` (the snapshot's `build` asks for it; `read_claims` returns the claims alone)."""
     d = lemma_dir(game)
     out = []
     for p in sorted(d.glob("*.json")) if d.is_dir() else []:
@@ -158,9 +161,21 @@ def read_lemmas(game: str, vocabulary: "str | None | object" = None) -> list:
         if p.stem != slug(e["name"]):
             raise ValueError(f"{p.name}: the file is named {slug(e['name'])}.json by the lemma's name")
         check_lemma(e)
+        if "claim" in e and not include_claims:
+            continue
         if vocabulary is ANY or (e.get("meta") or {}).get("vocabulary") == vocabulary:
             out.append(e)
     return out
+
+
+def is_claim(rule: dict) -> bool:
+    """Plan 78.36: a rule that claims a result for the position (`claim`: {"class": "win" | "draw" | "loss"}) instead of naming the effect of a move (`response`)."""
+    return "claim" in rule
+
+
+def read_claims(game: str, vocabulary: "str | None | object" = None) -> list:
+    """The game's claim rules (plan 78.36), selected by vocabulary as `read_lemmas` does."""
+    return [r for r in read_lemmas(game, vocabulary, include_claims=True) if is_claim(r)]
 
 
 # ---------------------------------------------------------------------------------------------------------------- snapshots
@@ -185,7 +200,7 @@ def build(game: str, *, parent: "str | None" = None, teacher_used: bool = False,
     """The canonical bytes of the game's next snapshot: its vocabulary, judge and lemma sources. Canonical: sorted keys, no spaces, so the same content is the same
     bytes and the same id. `vocabulary` (plan 78.24) names the lemma vocabulary: the snapshot carries it and only the lemmas written in it (a lemma of another vocabulary would
     never fire); None is the default vocabulary, byte for byte as before."""
-    lemmas = read_lemmas(game, vocabulary)
+    lemmas = read_lemmas(game, vocabulary, include_claims=True)          # (claims stand in the same list; with none, the bytes are what they were)
     snap = {"format": 1, "game": game, "parent": parent, "vocabulary": _vocabulary(game, vocabulary),
             "judge": judge_of(game) if judge == "store" else judge, "teacher_used": bool(teacher_used) or any((l.get("meta") or {}).get("teacher") for l in lemmas),
             "lemmas": lemmas}

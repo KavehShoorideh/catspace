@@ -36578,3 +36578,14 @@ word is named from the words it is made of and its meaning composed from their p
 the same admissions. Lines in docs/ANALYST_PLAN.md 78.35.
 
 OBS gate engine: files 76, passed 1008, failed 0, xfailed 1, errors 0, wall 1363.9 s
+
+## 2026-11-12 04:00 -- plan 78.36: rules that claim a result and a search toward them; negative at the short clock; the exam at three units is a test of the clock
+
+USE, after Kaveh's direction: a second kind of rule claims a position's class (admitted by the drill like any rule), a game-free AND-OR search in the decision reads the game's
+outcome and the claims as leaves, a nearly-right rule can be kept as a suggestion used only where that search verifies its move, and a conversion exam plays positions out against
+the exact labeller's defence. Six hand claims pass the drill. In two designs the step makes the engine worse at 0.2 s a move and gains no failed position: reading the claims costs
+about a millisecond a position and few positions are within two plies of one. The check that should have been made earlier: with no rule at all the exam rises from the short
+clock's score to nearly full at one and three seconds, so the rules of 78.32 to 78.35 buy at three units what a longer search buys. The conversion exam shows a third of the won
+games unfinished in 80 plies with or without claims. Lines in docs/ANALYST_PLAN.md 78.36. The step has no effect on a store without claims.
+
+OBS gate engine: files 77, passed 1027, failed 0, xfailed 1, errors 0, wall 1363.2 s

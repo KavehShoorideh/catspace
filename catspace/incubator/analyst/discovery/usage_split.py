@@ -17,6 +17,8 @@ say which moves each rule NAMES; the labeller says which moves keep the position
             of them with a rule also naming a losing move UC; rules named only losing moves W; no rule named a move N)
         and, with `layers` ({relation: "general" | "game"}, word_registry.layers), of the decisions where a rule named the move played
         OBS usage split by rule kind <label>: a rule named the move played in A decisions: named by a general rule G (only by game rules C), by a hand rule H (only by machine rules M)
+  PLAN 78.36: a SUGGESTION rule (`suggest`: true) is left out of `rules` and of every count above; the result gains `suggestion_rules` (how many the snapshot holds) and `suggestions_named_played`
+  (decisions whose move a suggestion rule named), and where the snapshot holds a suggestion the first OBS line ends `; suggestions named the move played S`.
   rules_by_kind(lemmas, layers) -> {general {hand, machine}, game {hand, machine}};  say_rules_by_kind(lemmas, layers, say) -> prints
         OBS rules by kind: general G (hand a, machine b), game C (hand c, machine d)
 """
@@ -33,18 +35,26 @@ from catspace.incubator.analyst.discovery import word_registry as WR
 
 def split(exam: dict, graded: dict, *, variant: str, snapshot_path: str, specs: dict, labeller) -> dict:
     snap = json.loads(open(snapshot_path, "rb").read())
-    lemmas = snap["lemmas"]
+    lemmas = [l for l in snap["lemmas"] if "claim" not in l and not l.get("suggest")]          # (plan 78.36: a claim rule names no move; a SUGGESTION's moves are counted apart, below)
+    sugg = [l for l in snap["lemmas"] if "claim" not in l and l.get("suggest")]
     vocab = json.dumps(snap["vocabulary"])
     kept, failed, by_group, rows = Counter(), Counter(), Counter(), []
+    sug_played = 0
     for p, d in zip(exam["positions"], graded["decisions"]):
         keep = labeller.moves_keep(variant, p["start"], p["moves"]) or {}
         named = {}
-        if lemmas:
+        sug_named = {}
+        if lemmas or sugg:
             cs = CE.build_cards([(variant, p["start"], list(p["moves"]), "x", "x")], specs, vocab, 1)
             for l in lemmas:
                 pr = AU.proposals(cs, l)
                 if pr:
                     named[l["name"]] = pr
+            for l in sugg:
+                pr = AU.proposals(cs, l)
+                if pr:
+                    sug_named[l["name"]] = pr
+        sug_played += any(d["move"] in ms for ms in sug_named.values())
         any_good = any(keep.get(m) for ms in named.values() for m in ms)
         any_bad = any(not keep.get(m) for ms in named.values() for m in ms)
         if d["keeps"]:
@@ -65,7 +75,8 @@ def split(exam: dict, graded: dict, *, variant: str, snapshot_path: str, specs: 
         rows.append({"i": d["i"], "group": p.get("group"), "before": p.get("before"), "move": d["move"], "keeps": d["keeps"], "bucket": b + ("_conflict" if b == "usage" and any_bad else ""),
                      "named": named, "keeping": sorted(m for m, k in keep.items() if k)})
     return {"kept": {k: kept[k] for k in ("named_played", "named_other", "no_rule")}, "failed": {k: failed[k] for k in ("usage", "usage_conflict", "wrong_rule", "no_rule")},
-            "rows": rows, "rules": {l["name"]: l for l in lemmas}, "by_group": dict(by_group)}
+            "rows": rows, "rules": {l["name"]: l for l in lemmas}, "by_group": dict(by_group),
+            "suggestion_rules": len(sugg), "suggestions_named_played": sug_played}
 
 
 def by_kind(result: dict, layers: dict) -> dict:
@@ -85,7 +96,8 @@ def say_split(label: str, result: dict, layers: "dict | None" = None, say=print)
     k, f = result["kept"], result["failed"]
     say(f"OBS usage split {label}: kept {sum(k.values())} (a rule named the move played {k['named_played']}, rules named other moves only {k['named_other']}, no rule named a move {k['no_rule']}); "
         f"failed {f['usage'] + f['wrong_rule'] + f['no_rule']} (a rule named a keeping move and another was played {f['usage']}, of them with a rule also naming a losing move {f['usage_conflict']}; "
-        f"rules named only losing moves {f['wrong_rule']}; no rule named a move {f['no_rule']})")
+        f"rules named only losing moves {f['wrong_rule']}; no rule named a move {f['no_rule']})"
+        + (f"; suggestions named the move played {result['suggestions_named_played']}" if result.get("suggestion_rules") else ""))          # (plan 78.36: only where the snapshot holds a suggestion)
     if layers is not None:
         b = by_kind(result, layers)
         say(f"OBS usage split by rule kind {label}: a rule named the move played in {b['decisions']} decisions: named by a general rule {b['general']} (only by game rules {b['game_only']}), "

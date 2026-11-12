@@ -37,7 +37,7 @@ impl<'a> Prior for LemmaPrior<'a> {
         let mut deltas: Option<Vec<(FactIndex, FactIndex)>> = None;
         let mut out = uniform;
         let mut steps = 0u64;
-        for lemma in &self.snapshot.lemmas {
+        for lemma in self.snapshot.lemmas.iter().filter(|l| !l.suggest) {          // (plan 78.36: a suggestion never acts unverified: the playout prior leaves it out)
             let (bs, _cut) = bindings_fused(&lemma.body, &Binding::new(), &idx, MAX_BINDINGS, &mut steps, STEP_FUSE);
             if bs.is_empty() { continue; }
             if deltas.is_none() {

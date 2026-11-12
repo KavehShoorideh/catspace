@@ -89,6 +89,7 @@ impl<'a, G: Game> Operator<G> for LemmaOp<'a> {
         let mut deltas: Option<Vec<(FactIndex, FactIndex)>> = None;
         let mut steps_total = 0u64;
         let mut hit: BTreeSet<usize> = BTreeSet::new();
+        let mut suggested: Vec<(String, BTreeSet<usize>)> = vec![];          // plan 78.36: the moves of SUGGESTION rules, apart from the candidates
         for lemma in self.lemmas() {
             let t1 = std::time::Instant::now();
             let mut steps = 0u64;
@@ -110,13 +111,14 @@ impl<'a, G: Game> Operator<G> for LemmaOp<'a> {
                 for (i, (r, a)) in ds.iter().enumerate() {
                     if bs.iter().any(|b| response_matches(lemma, b, r, a, &mut steps)) { mine.insert(i); }
                 }
-                o.evidence.push(format!("lemma {}: {} binding(s), {} move(s) proposed", lemma.name, bs.len(), mine.len()));
+                o.evidence.push(format!("lemma {}: {} binding(s), {} move(s) {}", lemma.name, bs.len(), mine.len(), if lemma.suggest { "suggested (a suggestion: used only where a claim search classes the move a win)" } else { "proposed" }));
                 o.facts.push(Fact { relation: "fired".into(), args: vec![lemma.name.clone(), bs.len().to_string(), mine.len().to_string()] });
-                hit.extend(mine);
+                if lemma.suggest { suggested.push((lemma.name.clone(), mine)); } else { hit.extend(mine); }
             }
             o.part(format!("match {}", lemma.name), steps, t1.elapsed().as_secs_f64());
             steps_total += steps;
         }
+        for (rule, moves) in &suggested { for i in moves { o.facts.push(Fact { relation: "suggested".into(), args: vec![rule.clone(), i.to_string()] }); } }
         o.candidates = hit.into_iter().collect();
         if !o.candidates.is_empty() { o.status = Status::Read; }
         o.cost.nodes = steps_total + facts.len() as u64;

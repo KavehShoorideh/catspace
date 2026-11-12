@@ -36,11 +36,11 @@ fn a_depth_cap_ends_the_ledger_reading_by_depth_and_reports_it() {
     let (g, s) = at("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
     let j = Count;
     let op = LedgerOp::new(&j);
-    let o = op.run(&g, &s, &Goal::Ledger { role: 0, ties: None, prefer: vec![] }, Budget::new(60.0, 50_000_000).depth(3));
+    let o = op.run(&g, &s, &Goal::Ledger { role: 0, ties: None, prefer: vec![], avoid: vec![] }, Budget::new(60.0, 50_000_000).depth(3));
     assert_eq!(o.status, Status::Read);
     assert_eq!(o.depth, Some(3));
     assert!(o.cost.nodes > 0 && o.value.is_some() && o.mv.is_some() && o.candidates.is_empty());
-    let o2 = op.run(&g, &s, &Goal::Ledger { role: 0, ties: Some(0.3), prefer: vec![] }, Budget::new(60.0, 50_000_000).depth(3));
+    let o2 = op.run(&g, &s, &Goal::Ledger { role: 0, ties: Some(0.3), prefer: vec![], avoid: vec![] }, Budget::new(60.0, 50_000_000).depth(3));
     assert!(!o2.candidates.is_empty() && o2.cost.nodes >= o.cost.nodes);
 }
 
@@ -127,7 +127,7 @@ fn every_operator_reports_its_cost_in_parts_that_add_up_to_the_total() {
     // ledger: one part per depth, and the ties
     let (g, s) = at("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
     let op = LedgerOp::new(&j);
-    let o = op.run(&g, &s, &Goal::Ledger { role: 0, ties: Some(0.3), prefer: vec![] }, Budget::new(60.0, 50_000_000).depth(3));
+    let o = op.run(&g, &s, &Goal::Ledger { role: 0, ties: Some(0.3), prefer: vec![], avoid: vec![] }, Budget::new(60.0, 50_000_000).depth(3));
     assert_eq!(o.parts.iter().filter(|p| p.name.starts_with("depth")).count(), 3);
     assert!(o.parts.iter().any(|p| p.name == "ties"));
     assert_eq!(parts_nodes(&o), o.cost.nodes, "ledger {:?}", o.parts);

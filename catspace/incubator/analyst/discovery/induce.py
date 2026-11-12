@@ -395,20 +395,36 @@ def induce(problem: dict, corpus: "CP.Corpus", *, reader: "TG.Reader", max_liter
 # ------------------------------------------------------------------------------------------------------------------------------------ the loop over the problems
 
 
-def drill_admit(lemmas: list, corpus, spec: dict, vocab_json: str, *, max_bindings: int = 256, say=print) -> tuple:
+def drill_admit(lemmas: list, corpus, spec: dict, vocab_json: str, *, max_bindings: int = 256, say=print, suggest_bar: "float | None" = None, suggest_min_right: int = 20) -> tuple:
     """The full drill as the admission test of rules that came from ANOTHER miner (the lemma sleep's): each rule is run over both parts of the exact corpus and kept only with zero
-    wrong firings on each. -> (kept, dropped) lists of lemma dicts; one OBS line per rule. Nothing of the drill is written into a lemma."""
+    wrong firings on each. A CLAIM rule (plan 78.36) is kept with zero wrong on each part and at least one right in all (the exact class of the position is the judge). PLAN 78.36 SUGGESTIONS: with `suggest_bar` given, a RESPONSE rule that fails zero-wrong but whose right / (right + wrong) over both parts together
+    is at least `suggest_bar`, with at least `suggest_min_right` right, is not dropped but returned in a THIRD list as a copy with `"suggest": true` (a suggestion never acts unverified: the engine
+    uses its moves only where the claim search classes them a win) and printed `...; SUGGESTION (right R, wrong W, share S)`; the return is then a 3-tuple (kept, dropped, suggested), and it is
+    the 2-tuple it always was when `suggest_bar` is not given. -> (kept, dropped) lists of lemma dicts; one OBS line per rule. Nothing of the drill is written into a lemma."""
     corpus.cards(spec, vocab_json)
-    kept, dropped = [], []
+    kept, dropped, suggested = [], [], []
     for lem in lemmas:
         dev = CP.drill(lem, corpus, part="dev", max_bindings=max_bindings)
         held = CP.drill(lem, corpus, part="held", max_bindings=max_bindings)
+        if CP.is_claim(lem):
+            # plan 78.36: a CLAIM is admitted with zero wrong on both parts and at least one right (a claim that never binds says nothing, and is not kept)
+            ok = dev["wrong"] == 0 and held["wrong"] == 0 and dev["right"] + held["right"] >= 1
+            (kept if ok else dropped).append(lem)
+            say(f"OBS drill admit {lem['name']} (claim {lem['claim']['class']}): dev binds/right/wrong {dev['binds']}/{dev['right']}/{dev['wrong']}, held {held['binds']}/{held['right']}/{held['wrong']}; "
+                + ("KEPT" if ok else "DROPPED: " + ("wrong claims on the exact corpus" if dev["wrong"] or held["wrong"] else "it is never right on the exact corpus")))
+            continue
         ok = dev["wrong"] == 0 and held["wrong"] == 0
-        (kept if ok else dropped).append(lem)
+        right, wrong = dev["right"] + held["right"], dev["wrong"] + held["wrong"]
+        share = right / (right + wrong) if right + wrong else 0.0
+        sug = (not ok) and suggest_bar is not None and right >= suggest_min_right and share >= suggest_bar
+        (kept if ok else suggested if sug else dropped).append({**lem, "suggest": True} if sug else lem)
         say(f"OBS drill admit {lem['name']}: dev binds/right/wrong/trivial {dev['binds']}/{dev['right']}/{dev['wrong']}/{dev['trivial']}, held {held['binds']}/{held['right']}/{held['wrong']}/{held['trivial']}; "
-            + ("KEPT" if ok else "DROPPED: wrong firings on the exact corpus"))
-    say(f"OBS drill admit total: rules {len(lemmas)}, kept {len(kept)}, dropped {len(dropped)}")
-    return kept, dropped
+            + ("KEPT" if ok else f"SUGGESTION (right {right}, wrong {wrong}, share {share:.3f})" if sug else "DROPPED: wrong firings on the exact corpus"))
+    if suggest_bar is None:
+        say(f"OBS drill admit total: rules {len(lemmas)}, kept {len(kept)}, dropped {len(dropped)}")
+        return kept, dropped
+    say(f"OBS drill admit total: rules {len(lemmas)}, kept {len(kept)}, dropped {len(dropped)}, suggestions {len(suggested)}")
+    return kept, dropped, suggested
 
 
 def trial_snapshot(game: str, lemma: dict, directory, vocabulary: "str | None" = None, judge: "str | None" = None) -> str:

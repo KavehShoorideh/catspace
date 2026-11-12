@@ -103,6 +103,17 @@ pub struct Eval {
     pub trivial: usize,
 }
 
+/// Plan 78.36: where a BODY binds on a corpus (what a claim is drilled by: the drill's own judge is the corpus row's exact class, read by the caller).
+#[derive(Debug, Clone, Default)]
+pub struct Binds {
+    /// The indices of the cards where the body binds, in order.
+    pub at: Vec<usize>,
+    /// A card's matching was cut by the step fuse: the reading stopped there and is partial.
+    pub truncated: bool,
+    /// The rows the matcher examined.
+    pub steps: u64,
+}
+
 impl CardSet {
     pub fn new(cards: Vec<Card>) -> CardSet {
         let facts = cards.iter().map(|c| FactIndex::new(&c.facts)).collect();
@@ -115,6 +126,21 @@ impl CardSet {
 
     /// Evaluate `lemma` on the cards at `indices` (all when None).
     pub fn eval(&self, lemma: &Lemma, indices: Option<&[usize]>, max_bindings: usize) -> Eval { self.eval_bounded(lemma, indices, max_bindings, None) }
+
+    /// THE CARDS WHERE `body` BINDS (all when `indices` is None), by the same matcher, the same step fuse and the same card facts as `eval`: a claim is drilled by it, so the
+    /// drill and the wake bind identically.
+    pub fn binds(&self, body: &[crate::lemma::Lit], indices: Option<&[usize]>, max_bindings: usize) -> Binds {
+        let all: Vec<usize> = (0..self.cards.len()).collect();
+        let mut out = Binds::default();
+        for &ci in indices.unwrap_or(&all) {
+            if self.cards[ci].moves.is_empty() { continue; }
+            let (bs, cut) = bindings_fused(body, &Binding::new(), &self.facts[ci], max_bindings, &mut out.steps, STEP_FUSE);
+            out.truncated |= cut;
+            if cut { break; }
+            if !bs.is_empty() { out.at.push(ci); }
+        }
+        out
+    }
 
     /// `eval` that stops reading as soon as a matching is cut, or as soon as more cards than `max_refuted` have refuted the lemma (a gate that allows none stops at the
     /// first): the verdict "not admissible" is then certain and the rest of the corpus need not be read.
@@ -227,7 +253,7 @@ mod tests {
     fn lemma(neg_free: bool) -> Lemma {
         let _ = neg_free;
         Lemma { name: "away".into(), body: vec![Lit::pos("piece", &["?x", "?s"]), Lit::pos("threat", &["?o", "?y", "?x"])],
-                response: Response { removed: vec![Lit::pos("piece", &["?x", "?s"])], added: vec![Lit::pos("piece", &["?z", "?s"])] }, stats: Value::Null, meta: Value::Null }
+                response: Response { removed: vec![Lit::pos("piece", &["?x", "?s"])], added: vec![Lit::pos("piece", &["?z", "?s"])] }, stats: Value::Null, meta: Value::Null, suggest: false }
     }
 
     #[test]
@@ -271,6 +297,17 @@ mod tests {
         let ev = set.eval(&broad, None, 100);
         assert_eq!(ev.fires, 12);
         assert!(ev.excess < 0.2, "a body that says nothing earns no excess over chance ({})", ev.excess);
+    }
+
+    #[test]
+    fn binds_lists_the_cards_where_a_body_binds_as_eval_fires() {
+        let set = CardSet::new(corpus());
+        let l = lemma(true);
+        let b = set.binds(&l.body, None, 64);
+        assert_eq!(b.at, vec![0, 2, 4, 6, 8, 10]);
+        assert_eq!(b.at.len(), set.eval(&l, None, 64).fires, "the cards the body binds on are the cards the lemma fires on");
+        assert_eq!(set.binds(&l.body, Some(&[1, 2, 3]), 64).at, vec![2]);
+        assert!(!b.truncated);
     }
 
     #[test]

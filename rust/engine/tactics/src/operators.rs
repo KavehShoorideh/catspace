@@ -72,7 +72,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
     fn name(&self) -> String { "ledger".into() }
     fn accepts(&self, goal: &Goal) -> bool { matches!(goal, Goal::Ledger { .. }) }
     fn run(&self, g: &G, s: &G::State, goal: &Goal, b: Budget) -> Outcome<G::Move> {
-        let Goal::Ledger { role, ties, prefer } = goal else { return Outcome::unsupported("ledger", goal) };
+        let Goal::Ledger { role, ties, prefer, avoid } = goal else { return Outcome::unsupported("ledger", goal) };
         let t0 = std::time::Instant::now();
         let mut ls = Search::new(g, self.judge, *role, b.seconds_left());
         ls.set_fuse(b.max_nodes);
@@ -81,6 +81,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         ls.prune = self.prune;
         ls.extend = self.extend;
         ls.root_first = prefer.clone();
+        ls.root_last = avoid.clone();
         let ln = ls.run(s, b.max_depth.map_or(LEDGER_DEPTH, |d| d as i32));
         let moves = g.moves(s);
         let Some(i) = ln.first_index else {
@@ -102,6 +103,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         let lost: Vec<String> = ln.lost.iter().map(|(owner, k)| format!("{} {k}", who(*owner))).collect();
         o.evidence.push(format!("ledger search [{}]: {} at depth {} ({} nodes): the line {} -- {}; value {}", self.judge.name(), g.move_name(s, &moves[i]), ln.depth, ln.nodes,
                                 ln.line.join(" "), if lost.is_empty() { "nobody loses a unit".to_string() } else { lost.join(", ") }, ln.value));
+        if !avoid.is_empty() { o.evidence.push(format!("ledger search: {} root move(s) the claim search puts last (refuted, or not a win where a win is claimed) are read last (a move of equal value that is not among them is kept)", avoid.len())); }
         let mut nodes = ln.nodes;
         if let Some(share) = ties {
             if ln.value.abs() < WIN - 1000 {
@@ -109,6 +111,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
                 let n0 = ls.nodes;
                 let t1 = std::time::Instant::now();
                 o.candidates = ls.ties(s, ln.depth, ln.value);
+                if !avoid.is_empty() { o.candidates.sort_by_key(|i| avoid.contains(i)); }          // (plan 78.36: the avoided moves are named last)
                 nodes += ls.nodes - n0;
                 o.part("ties", ls.nodes - n0, t1.elapsed().as_secs_f64());
             }

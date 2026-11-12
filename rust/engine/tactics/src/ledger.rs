@@ -100,6 +100,9 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// ROOT PRIOR (plan 78.14): indices of the root's legal moves a learned lemma proposes; read first (after the table's best), in this order. An order, never a
     /// verdict: an exact search returns the same value whatever the order.
     pub root_first: Vec<usize>,
+    /// ROOT LAST (plan 78.36): indices of the root's legal moves a claim search refutes; read after every other root move, so a move of equal value that is not refuted comes first
+    /// (the search keeps the first of equal values). A move of strictly better value is still kept: an order, never a verdict.
+    pub root_last: Vec<usize>,
     /// The deepening steps of the runs so far, as measured (the granular cost of the search).
     pub reads: Vec<DepthRead>,
 }
@@ -114,13 +117,13 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
         Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true,
-                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], reads: vec![] }
+                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], reads: vec![] }
     }
 
     /// The node fuse (a named cap; the interface's budget sets it).
@@ -226,12 +229,16 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// `ordered` at a node of the main search (ply `ply`): the previous best first, then the moves that gain (best gain first), then the killers of this ply, then
     /// the quiet moves by their history.
     fn ordered_at(&self, s: &G::State, maxing: bool, hint: Option<usize>, ply: i32) -> Vec<(usize, G::Move, i64)> {
-        if !self.ordering { return self.ordered(s, maxing, hint); }
+        if !self.ordering {
+            let mut v = self.ordered(s, maxing, hint);
+            if ply == 0 && !self.root_last.is_empty() { v.sort_by_key(|(i, _, _)| self.root_last.contains(i)); }          // (stable: the rest keeps its order)
+            return v;
+        }
         let mover = self.g.mover(s).unwrap_or(self.me);
         let k = self.killers.get(ply as usize);
         let mut v: Vec<(usize, G::Move, i64, i64)> = self.g.moves(s).into_iter().enumerate().map(|(i, m)| {
             let d = self.gain(s, &m);
-            let rank = if Some(i) == hint { i64::MIN } else if ply == 0 && self.root_first.contains(&i) { i64::MIN / 2 + self.root_first.iter().position(|x| *x == i).unwrap() as i64 } else if d != 0 { -(1 << 40) + if maxing { -d } else { d } }
+            let rank = if Some(i) == hint { i64::MIN } else if ply == 0 && self.root_last.contains(&i) { i64::MAX / 2 } else if ply == 0 && self.root_first.contains(&i) { i64::MIN / 2 + self.root_first.iter().position(|x| *x == i).unwrap() as i64 } else if d != 0 { -(1 << 40) + if maxing { -d } else { d } }
                        else if k.is_some_and(|k| k.iter().any(|x| x.as_ref() == Some(&m))) { -(1 << 30) }
                        else { -*self.hist.get(&(mover, m.clone())).unwrap_or(&0) };
             (i, m, d, rank)

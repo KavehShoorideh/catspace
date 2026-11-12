@@ -4,8 +4,10 @@
 //!   `matcher`   the one join that binds a lemma's body to facts.
 //!   `snapshot`  an immutable, content-addressed store state: the game's vocabulary, its judge, its lemmas, its parent.
 //!   `cards`     the corpus a lemma is verified on: positions with their facts and the exact value of every legal move; the evaluation of a lemma over it.
+//!   `claim`     (plan 78.36) the claim rule -- a position's class for the side to move -- and the reader the decision's search uses at its leaves.
 //!   `op`        the lemma operator: binds the snapshot's lemmas to the position and proposes moves (a prior, never a verdict).
 pub mod cards;
+pub mod claim;
 pub mod lemma;
 pub mod matcher;
 pub mod op;

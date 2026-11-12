@@ -5,6 +5,7 @@
 //!
 //! JSON: {"format": 1, "game", "parent": id or null, "vocabulary": {"derived": [...], "delta": [...], "units": null | {"relation", "owner", "kind"}},
 //!        "judge": null | {"name", "worth": {kind: n}, "ours_first"}, "teacher_used": bool, "lemmas": [lemma...]}
+use crate::claim::{Claim, Rule};
 use crate::lemma::Lemma;
 use crate::sha::content_id;
 use cs_game::{UnitDecl, Vocabulary};
@@ -24,7 +25,11 @@ pub struct Snapshot {
     pub parent: Option<String>,
     pub vocabulary: Vocabulary,
     pub judge: Option<Judge>,
+    /// The RESPONSE rules (the lemma operator and the priors read these only).
     pub lemmas: Vec<Lemma>,
+    /// Plan 78.36: the CLAIM rules (a position's class for the side to move; read by the claim search only). They stand in the same JSON list as the lemmas, so a snapshot with
+    /// no claim is byte for byte what it was.
+    pub claims: Vec<Claim>,
     /// Whether a teacher's labels went into any lemma (the results can be reported with and without it).
     pub teacher_used: bool,
 }
@@ -64,8 +69,15 @@ impl Snapshot {
                 ours_first: j.get("ours_first").and_then(|x| x.as_bool()).unwrap_or(false),
             }),
         };
-        let lemmas = v.get("lemmas").and_then(|x| x.as_array()).ok_or("a snapshot has lemmas")?.iter().map(Lemma::from_json).collect::<Result<Vec<_>, _>>()?;
+        let rules = v.get("lemmas").and_then(|x| x.as_array()).ok_or("a snapshot has lemmas")?.iter().map(Rule::from_json).collect::<Result<Vec<_>, _>>()?;
         let mut names = std::collections::BTreeSet::new();
+        let (mut lemmas, mut claims) = (vec![], vec![]);
+        for r in rules {
+            match r { Rule::Response(l) => lemmas.push(l), Rule::Claim(c) => claims.push(c) }
+        }
+        for c in &claims {
+            if !names.insert(c.name.clone()) { return Err(format!("two rules are named {}", c.name)); }
+        }
         for l in &lemmas {
             if !names.insert(l.name.clone()) { return Err(format!("two lemmas are named {}", l.name)); }
             for r in l.response.removed.iter().chain(l.response.added.iter()) {
@@ -76,7 +88,7 @@ impl Snapshot {
                 // a body may also read a state relation outside the delta list (control, castling_right ...): the fact view knows them, the snapshot cannot
             }
         }
-        Ok(Snapshot { id, game, parent, vocabulary, judge, lemmas, teacher_used: v.get("teacher_used").and_then(|x| x.as_bool()).unwrap_or(false) })
+        Ok(Snapshot { id, game, parent, vocabulary, judge, lemmas, claims, teacher_used: v.get("teacher_used").and_then(|x| x.as_bool()).unwrap_or(false) })
     }
 
     /// Read `<id>.json`: the file must hash to its name.
@@ -103,6 +115,41 @@ mod tests {
         assert!(s.judge.unwrap().ours_first);
         let changed = TEXT.replace("step-away", "step-aside");
         assert_ne!(Snapshot::parse(changed.as_bytes()).unwrap().id, s.id);
+    }
+    #[test]
+    fn a_snapshot_without_claims_keeps_its_address() {
+        // the id is the address of the bytes: pinned (the SHA-256 of TEXT, computed outside), and a snapshot of response rules only holds no claim
+        let s = Snapshot::parse(TEXT.as_bytes()).unwrap();
+        assert_eq!(s.id, "3e874a092878bd16");
+        assert!(s.claims.is_empty());
+        assert_eq!(s.lemmas.len(), 1);
+    }
+    #[test]
+    fn a_suggestion_is_content_and_a_snapshot_without_one_is_unchanged() {
+        let sug = TEXT.replace(r#""name":"step-away","body""#, r#""name":"step-away","suggest":true,"body""#);
+        let s = Snapshot::parse(sug.as_bytes()).unwrap();
+        assert!(s.lemmas[0].suggest);
+        assert_ne!(s.id, Snapshot::parse(TEXT.as_bytes()).unwrap().id);
+        assert!(!Snapshot::parse(TEXT.as_bytes()).unwrap().lemmas[0].suggest);
+        assert_eq!(Snapshot::parse(TEXT.as_bytes()).unwrap().id, "3e874a092878bd16");
+        let on_claim = r#","suggest":true,"claim":{"class":"loss"}"#;
+        let bad = TEXT.trim_end_matches("]}").to_string() + r#",{"name":"c","body":[{"relation":"threat","args":["?o","?x","?y"],"neg":false}]"# + on_claim + r#","stats":{},"meta":{}}]}"#;
+        assert!(Snapshot::parse(bad.as_bytes()).unwrap_err().contains("suggest"));
+    }
+    #[test]
+    fn claims_stand_in_the_lemma_list_and_are_kept_apart() {
+        let claim = r#",{"name":"threatened-is-lost","body":[{"relation":"threat","args":["?o","?x","?y"],"neg":false}],"claim":{"class":"loss"},"stats":{},"meta":{}}]}"#;
+        let text = TEXT.trim_end_matches("]}").to_string() + claim;
+        let s = Snapshot::parse(text.as_bytes()).unwrap();
+        assert_eq!((s.lemmas.len(), s.claims.len()), (1, 1));
+        assert_eq!(s.claims[0].class, crate::claim::Class::Loss);
+        assert_ne!(s.id, Snapshot::parse(TEXT.as_bytes()).unwrap().id, "a claim is content: the address changes");
+        // two rules of one name, one of each kind: refused
+        let twin = text.replace("threatened-is-lost", "step-away");
+        assert!(Snapshot::parse(twin.as_bytes()).unwrap_err().contains("named"));
+        // a rule that is both: refused
+        let both = text.replace(r#""claim":{"class":"loss"}"#, r#""claim":{"class":"loss"},"response":{"removed":[{"relation":"piece","args":["?y","?s"],"neg":false}],"added":[]}"#);
+        assert!(Snapshot::parse(both.as_bytes()).unwrap_err().contains("not both"));
     }
     #[test]
     fn a_response_outside_the_delta_relations_is_refused() {
