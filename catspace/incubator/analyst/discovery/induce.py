@@ -24,7 +24,7 @@
          lemma records `meta.head_tier`. The `head_tiers` setting orders / stops them. `max_problems` caps the problems attempted per call (the oldest open first; the rest are printed as left).
 
   NAMING (plan 78.35)  the setting `name_bodies` (default 0 = off): with N > 0 an ADMITTED rule whose body has N literals or more has its body defined as one word (word_registry.define, origin
-         "mined"; body_term / name_body) and the lemma's meta gains `word` and `word_expansion`; what the rule matches is unchanged. `OBS word named <name>: <term> (rule <rule name>, size N)`.
+         "mined"; body_term / name_body) and the lemma's meta gains `word` and `word_expansion`; what the rule matches is unchanged. `OBS word named <name>: <gloss> (rule <rule name>, size N)`.
 
 Game-free: the variant string, the store's vocabulary, objects passed in (corpus, labeller); no game object is named here.
 
@@ -461,7 +461,7 @@ def name_body(game: str, lemma: dict, vocabulary: "str | None", *, say=print) ->
         say(f"OBS word not named (rule {lemma['name']}): {e}")
         return None
     lemma.setdefault("meta", {}).update({"word": entry["name"], "word_expansion": entry["expansion"]})
-    say(f"OBS word {'named' if created else 'reused'} {entry['name']}: {entry['term']} (rule {lemma['name']}, size {entry['size']})")
+    say(f"OBS word {'named' if created else 'reused'} {entry['name']}: {WR.gloss_of(entry)} (rule {lemma['name']}, size {entry['size']})")
     return entry
 
 

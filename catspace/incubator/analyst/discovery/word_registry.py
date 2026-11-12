@@ -2,12 +2,15 @@
 
 THE REGISTRY  `game_store.learned_dir(game) / "words.json"` (so a sandbox store has its own; format "words-1"): {"format": "words-1", "words": [entry ..]} in definition order, an entry
   {name, term (text), signature [sort ..], rules (the compiled text, word_terms.compile), size (word_terms.size), origin ("hand" | "generated" | "mined"), layer ("general" | "game"),
-   expansion (the term with every earlier word replaced by its own term: the expansion in base words), note}.
+   expansion (the term with every earlier word replaced by its own term: the expansion in base words), note, gloss (the meaning in plain words: a hand word's `note`, else word_terms.gloss of
+   its term with the vocabulary record's `"glosses": {relation: template}`; an old entry with no `gloss` reads as its `note`: gloss_of(entry))}.
   load(game) / save(game, reg)
   define_new(game, term_text, *, origin, name=None, note="", vocabulary=None) -> (entry, created)       define(...) -> entry
-        compiles the term on the vocabulary's composed description (earlier words included: a word may use them), names it `name` or the next name of the static list (word_names) that is
-        neither a word nor a relation of that description, and records it. A term equal to an existing word's -- after expansion and a canonical renaming of the variables -- is NOT defined again:
+        compiles the term on the vocabulary's composed description (earlier words included: a word may use them) and records it. NAMES: origin "hand" REQUIRES an explicit `name` (a descriptive
+        name given by its author) and a non-empty `note` (its meaning in plain words, kept as the gloss); for the other origins `name=None` is word_names.composed_name (built from the relations
+        the term is made of). An explicit name is word_names.check_name'd: legal, and neither a word nor a relation of the description. A term equal to an existing word's -- after expansion and a canonical renaming of the variables -- is NOT defined again:
         the existing entry is returned (created False): one definition, one name. A term that is a single literal of one relation (distinct variables) is refused: it is that relation already.
+  gloss_of(entry) -> the entry's gloss (its note when it has none)
   delta(game) -> the rules text of all words in definition order
   WIRING (game_store): a vocabulary record with `"words": true` composes delta(game) after the concept deltas and before the structure delta, and appends the registry's names to the
         vocabulary's `derived`. Absent (the default) or false: nothing changes, byte for byte. The vocabulary record's `"word_delta": [names]` lists words appended to the vocabulary's `delta`
@@ -32,7 +35,8 @@ GENERAL OR GAME, BY A PROGRAM (the rule, precisely)
   rule_layer(lemma, layers) -> "general" when every relation the lemma's body and head name is general (a relation not in `layers` is the description's own: general), else "game"
   origin_of(lemma) -> "hand" when meta.origin == "hand", else "machine"
 
-  .venv/bin/python -m catspace.incubator.analyst.discovery.word_registry <game> --vocabulary NAME [--store-root DIR]
+  .venv/bin/python -m catspace.incubator.analyst.discovery.word_registry <game> --vocabulary NAME [--store-root DIR] [--expand]
+  prints `OBS word <name> (<origin>, <layer>, size N): <gloss>` and, with --expand, `    = <term>` on the next line
 """
 from __future__ import annotations
 
@@ -78,6 +82,10 @@ def save(game: str, reg: dict) -> Path:
     tmp.write_text(json.dumps({"format": FORMAT, "words": reg["words"]}, indent=1) + "\n")
     tmp.replace(p)
     return p
+
+
+def gloss_of(entry: dict) -> str:
+    return entry.get("gloss") or entry.get("note", "")
 
 
 def names_of(game: str) -> list:
@@ -226,6 +234,11 @@ def _relations_of(text: str) -> set:
 def define_new(game: str, term_text: str, *, origin: str, name: "str | None" = None, note: str = "", vocabulary: "str | None" = None) -> tuple:
     if origin not in ORIGINS:
         raise ValueError(f"origin is one of {ORIGINS}, not {origin!r}")
+    if origin == "hand":
+        if not name:
+            raise ValueError("a hand-written word is named by its author with a descriptive name: pass name=")
+        if not (note or "").strip():
+            raise ValueError("a hand-written word needs a note: its meaning in plain words (it is kept as the gloss)")
     term = WT.parse(term_text)
     reg = load(game)
     text, base, vf = _context(game, vocabulary)
@@ -240,14 +253,15 @@ def define_new(game: str, term_text: str, *, origin: str, name: "str | None" = N
         raise ValueError(f"{WT.show(term)} is the relation {term[1]} itself: nothing to define")
     used = set(registry) | _relations_of(text)
     if name is None:
-        name = WN.next_name(used)
-    elif name in used:
-        raise ValueError(f"the name {name} is already a word or a relation of the description")
+        name = WN.composed_name(term, used)
+    else:
+        WN.check_name(name, used)
     rules = WT.compile(name, term, desc.signatures, fluents=desc.fluents, sorts=desc.sorts)
     full = CE.compose(text, rules)
     layer = layer_of(name, full, distance_sort=vf.get("distance_sort", "distance"), base_text=base, generated=BS.relation_names(vf))
+    gloss = note.strip() if origin == "hand" else WT.gloss(term, vf.get("glosses") or {}, {e["name"]: gloss_of(e) for e in reg["words"]})
     entry = {"name": name, "term": WT.show(term), "signature": list(WT.sort_of(term, desc.signatures, desc.sorts)), "rules": rules, "size": WT.size(term), "origin": origin,
-             "layer": layer, "expansion": WT.show(exp), "note": note}
+             "layer": layer, "expansion": WT.show(exp), "note": note, "gloss": gloss}
     reg["words"].append(entry)
     save(game, reg)
     return entry, True
@@ -259,7 +273,7 @@ def define(game: str, term_text: str, *, origin: str, name: "str | None" = None,
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ the CLI
 
-def say_words(game: str, vocabulary: "str | None", say=print) -> dict:
+def say_words(game: str, vocabulary: "str | None", say=print, *, expand: bool = False) -> dict:
     lay = layers(game, vocabulary, why=True)
     gen = sorted(r for r, (l, _w) in lay.items() if l == "general")
     gm = sorted(r for r, (l, _w) in lay.items() if l == "game")
@@ -267,7 +281,9 @@ def say_words(game: str, vocabulary: "str | None", say=print) -> dict:
     for r in gm:
         say(f"OBS words game because {r}: {lay[r][1]}")
     for e in load(game)["words"]:
-        say(f"OBS word {e['name']} ({e['origin']}, {lay.get(e['name'], (e['layer'],))[0]}, size {e['size']}): {e['term']} = {e['expansion']}")
+        say(f"OBS word {e['name']} ({e['origin']}, {lay.get(e['name'], (e['layer'],))[0]}, size {e['size']}): {gloss_of(e)}")
+        if expand:
+            say(f"    = {e['term']}")
     return lay
 
 
@@ -276,11 +292,12 @@ def main(argv: list) -> int:
     ap.add_argument("game")
     ap.add_argument("--vocabulary", default=None)
     ap.add_argument("--store-root", default=None, help="a sandbox store root (its learned/ is used for the vocabulary records and words.json)")
+    ap.add_argument("--expand", action="store_true", help="also print each word's term on the next line")
     a = ap.parse_args(argv)
     GS = _gs()
     if a.store_root:
         GS.LEARNED_ROOT = Path(a.store_root) / "learned"
-    say_words(a.game, a.vocabulary)
+    say_words(a.game, a.vocabulary, expand=a.expand)
     return 0
 
 

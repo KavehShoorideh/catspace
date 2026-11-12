@@ -36570,3 +36570,11 @@ knowledge; the edge-pawn positions sit only in the held-out part. The names from
 point is settled as a difference of standard (a repetition the exact labeller does not see). Lines in docs/ANALYST_PLAN.md 78.35.
 
 OBS gate engine: files 76, passed 1000, failed 0, xfailed 1, errors 0, wall 1338.7 s
+
+## 2026-11-12 00:30 -- plan 78.35: the names changed to descriptive ones with meanings in plain words
+
+Kaveh found the words named from a fixed list unclear. The list is removed: a hand-written word must carry a descriptive name and its meaning from its author, a machine-defined
+word is named from the words it is made of and its meaning composed from their plain-words templates (the vocabulary file's glosses entry). The hand test run again with such names:
+the same admissions. Lines in docs/ANALYST_PLAN.md 78.35.
+
+OBS gate engine: files 76, passed 1008, failed 0, xfailed 1, errors 0, wall 1363.9 s

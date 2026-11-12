@@ -5841,3 +5841,23 @@ DESIGN (answers 78.26's first open decision: the table is filled by the engine's
   5 The family of the side WITH the pawn (pushing where the king must lead while its king is not the nearer) was not attempted here.
   NEXT   USE: a rule's named move as a suggestion checked by search, and a rule as a goal the search works toward over several moves (the exam asks one decision);
          the general layer: the distance and attack words rewritten over units by variable so that they carry no unit kind; then stage 5.
+
+  THE NAMES, CHANGED (2026-11-11, later; Kaveh: the names from the list are not clear at all, more confusing than before)
+         The fixed list of names is removed (rules/concepts/names.txt deleted). A word written BY HAND must be given a descriptive name and its meaning in plain words by its
+         author (word_registry.define refuses it otherwise); a word the machine defines is named from the words it is made of (word_names.composed_name: the relation names
+         of its term joined, a number on a collision) and its meaning is composed from the plain-words templates of those words (word_terms.gloss; the templates are the
+         vocabulary file's `glosses`, written for the keys vocabulary). Every word is printed with its meaning. A word is defined only where a flat body cannot say it.
+         The hand test above run again with such names (same sandbox rebuilt from run M's store; the admissions are the same, the exam within the clock's spread):
+    OBS word edge_pawn_corner (hand, game, size 9): the squares within one of an edge pawn's file and within one rank of where it promotes
+    OBS word king_to_corner_steps (hand, game, size 8): the defending king's steps to a square of edge_pawn_corner
+    OBS word king_to_corner (hand, game, size 7): the defending king's fewest steps to a square of edge_pawn_corner
+    OBS word edge_pawn_corner_wide (hand, game, size 10): the squares within two of an edge pawn's file and within one rank of where it promotes
+    OBS word king_to_corner_wide_steps (hand, game, size 8): the defending king's steps to a square of edge_pawn_corner_wide
+    OBS word king_to_corner_wide (hand, game, size 7): the defending king's fewest steps to a square of edge_pawn_corner_wide
+    OBS drill admit hand-king_to_corner-nearer: dev binds/right/wrong/trivial 0/0/0/0, held 2230/622/9/1591; DROPPED: wrong firings on the exact corpus
+    OBS drill admit hand-king_to_corner-reached: dev binds/right/wrong/trivial 0/0/0/0, held 2484/52/0/1844; KEPT
+    OBS drill admit hand-king_to_corner_wide-nearer: dev binds/right/wrong/trivial 0/0/0/0, held 1985/564/33/1386; DROPPED: wrong firings on the exact corpus
+    OBS drill admit hand-king_to_corner_wide-reached: dev binds/right/wrong/trivial 0/0/0/0, held 2484/111/3/1844; DROPPED: wrong firings on the exact corpus
+    OBS drill admit total: rules 4, kept 1, dropped 3
+    OBS exam hand step 2: run M's rules, words switched on: kept 282 of 300 (win-keeping 142 of 150, draw-keeping 140 of 150), gained 0, lost 0
+    OBS exam hand step 2: with 1 rule(s) on the new words: kept 281 of 300 (win-keeping 141 of 150, draw-keeping 140 of 150), gained 0, lost 1

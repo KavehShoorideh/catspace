@@ -43,6 +43,27 @@
   "key_guard",
   "king_in_front"
  ],
+ "glosses": {
+  "attack": "a unit of {0} on ({1} {2}) attacks the square ({3} {4})",
+  "check": "the king of {0}, the side to move, is attacked",
+  "defended": "a unit of {0} on ({1} {2}) is defended by another unit of {0}",
+  "hanging": "a unit of {0} on ({1} {2}), not its king, is attacked and not defended",
+  "passed_pawn": "the pawn of {0} on ({1} {2}) has no opposing pawn ahead of it on its own or an adjacent file",
+  "apart": "a unit of {0} on ({1} {2}) and another unit of {3} on ({4} {5}) are {6} king-steps apart (one of the two is a king)",
+  "closer": "{0} is a smaller distance than {1}",
+  "flight": "the king of {0} could step to ({1} {2}): it is free of its own units and not attacked",
+  "opposition": "the two kings face each other with exactly one square between them in a line",
+  "diagonal_opposition": "the two kings face each other with exactly one square between them on a diagonal",
+  "to_promote": "the pawn of {0} on ({1} {2}) is {3} forward steps from promoting",
+  "king_ahead": "the king of {0} stands ahead of its own pawn on ({1} {2}), on its file or an adjacent one",
+  "in_square": "the opposing king is inside the square of the pawn of {0} on ({1} {2}), near enough to catch it",
+  "key_gap": "the king of {0} is {3} king-steps from the nearest key square of its own pawn on ({1} {2})",
+  "key_guard": "the opposing king is {3} king-steps from the nearest key square of the pawn of {0} on ({1} {2})",
+  "king_in_front": "the opposing king stands right in front of the pawn of {0} on ({1} {2})",
+  "edge_gap_file": "the file {0} is {1} steps from the nearest edge of the board",
+  "edge_gap_rank": "the rank {0} is {1} steps from the nearest edge of the board",
+  "goal_gap_rank": "the rank {1} is {2} steps from the rank where {0} promotes"
+ },
  "units": null,
  "axes": [
   {"sort": "file", "succ": "file_succ"},

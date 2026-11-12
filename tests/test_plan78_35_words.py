@@ -1,4 +1,4 @@
-"""Plan 78.35: words built from words (word_terms.py), names (word_names.py, rules/concepts/names.txt), the registry of a store's words and the general / game labels (word_registry.py),
+"""Plan 78.35: words built from words (word_terms.py), names built from the words a term is made of, and glosses (word_names.py, word_terms.gloss), the registry of a store's words and the general / game labels (word_registry.py),
 naming a long admitted body (induce.name_bodies), the use / generation split (usage_split.py), the flags. Everything in a tmp sandbox; the real store is never written; no tablebase and no
 Stockfish. A term compiled to rules is evaluated by the Rust evaluator on chess positions and by the Python mirror of it (gdl.py) on a made-up game, each against a brute-force computation."""
 import inspect
@@ -297,26 +297,102 @@ def test_expand_replaces_every_word_by_its_term_and_canonical_names_variables_ap
 
 # ------------------------------------------------------------------------------------------------------------------------------ names
 
-def test_names_are_distinct_legal_pronounceable_and_collide_with_no_relation_or_symbol():
-    ns = WN.names()
-    assert 180 <= len(ns) <= 260 and len(set(ns)) == len(ns)
-    assert all(WN.LEGAL.match(n) and 3 <= len(n) <= 9 for n in ns)
-    assert ns[:3] == ["alba", "bruno", "celia"] and [n[0] for n in ns[:26]] == list("abcdefghijklmnopqrstuvwxyz")        # the alphabet cycles
-    symbols = set()
-    for vocab in (None, "relational", KEYS):
-        for text in GS.spec_texts("chess", vocab).values():
-            symbols |= set(re.findall(r"[^\s()]+", "\n".join(l.split(";", 1)[0] for l in text.splitlines())))
-    for p in (RULES / "chess.gdl", *(RULES / "concepts").glob("*.gdl"), *(RULES / "variants").glob("*.gdl")):
-        symbols |= set(re.findall(r"[^\s()]+", "\n".join(l.split(";", 1)[0] for l in p.read_text().splitlines())))
-    assert not set(ns) & (symbols | set(WT.KEYWORDS) | {"true", "next", "init", "does", "legal", "goal", "terminal", "role", "base", "input"})
+def test_composed_name_is_built_from_the_relations_in_order_of_first_occurrence():
+    t = WT.parse("(and (key_gap ?s ?f ?r ?d) (not (king_in_front ?s ?f ?r)) (key_gap ?s ?f ?r ?e))")
+    assert WT.relations(t) == ["key_gap", "king_in_front"]
+    assert WN.composed_name(t, set()) == "key_gap_king_in_front"
+    assert WN.composed_name(WT.parse("(or (b ?x) (a ?x) (c ?x) (d ?x) (e ?x))"), set()) == "b_a_c_d"                  # at most 4 parts, the first ones
+    assert WN.composed_name(WT.parse("(or (b ?x) (a ?x) (c ?x) (d ?x) (e ?x))"), set(), max_parts=2) == "b_a"
+    long = WT.parse("(and (" + "x" * 15 + " ?a) (" + "y" * 15 + " ?a) (" + "z" * 15 + " ?a))")
+    assert WN.composed_name(long, set()) == "x" * 15 + "_" + "y" * 15 and WN.composed_name(long, set(), max_len=10) == "x" * 15          # cut at a part boundary, at least one part
+    assert WN.composed_name(WT.parse("(exists (?y) (and (reach_to ?x ?y) (hanging ?y)))"), set()) == "reach_to_hanging"
+    assert WN.composed_name(WT.parse("(closure (step ?a ?b))"), set()) == "step"
 
 
-def test_next_name_is_the_first_unused_in_the_list_order_and_the_list_can_run_out():
-    ns = WN.names()
-    assert WN.next_name(set()) == ns[0] and WN.next_name({ns[0]}) == ns[1] and WN.next_name([ns[0], ns[2]]) == ns[1]
-    assert WN.next_name({ns[0], ns[1], ns[2]}) == ns[3] == WN.next_name({ns[2], ns[1], ns[0]})              # deterministic
-    with pytest.raises(WN.NamesExhausted):
-        WN.next_name(set(ns))
+def test_composed_name_suffix_on_collision_determinism_and_legal_symbol():
+    t = WT.parse("(and (a ?x) (b ?x))")
+    assert WN.composed_name(t, {"a_b"}) == "a_b_2" and WN.composed_name(t, {"a_b", "a_b_2"}) == "a_b_3" and WN.composed_name(t, {"a_b_2"}) == "a_b"
+    t1 = WT.parse("(and (a ?x) (a ?y))")
+    assert WN.composed_name(t1, {"a"}) == "a_2"                                    # the whole name is a relation: the suffix rule
+    assert WN.composed_name(t, {"a_b"}) == WN.composed_name(t, ["a_b"]) == WN.composed_name(t, {"a_b"})
+    for term in (t, long_term(), WT.parse("(not (a ?x))"), WT.parse("(a_1 ?x)")):
+        assert WN.LEGAL.match(WN.composed_name(term, {"a_b"}))
+    assert WN.composed_name(WT.parse("(and (alpha ?x) (beta ?x))"), set()) == "alpha_beta"                     # a registered word's name is one part, not expanded
+
+
+def long_term():
+    return WT.parse("(and (" + "q" * 30 + " ?a) (" + "r" * 30 + " ?a))")
+
+
+def test_check_name_refuses_an_illegal_or_used_name():
+    WN.check_name("key_pawn_2", {"x"})
+    for bad in ("Key", "1abc", "a-b", "", "a b", "a?"):
+        with pytest.raises(ValueError, match="legal"):
+            WN.check_name(bad, set())
+    with pytest.raises(ValueError, match="already"):
+        WN.check_name("x", {"x"})
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ glosses
+
+GL = {"near": "{0} is next to {1}", "mark": "{0} has a mark on ({1} {2})", "wall": "there is a wall at ({0} {1})", "link": "{0} may go from {1} to {2}"}
+
+
+def test_gloss_of_each_constructor_on_a_made_up_vocabulary():
+    g = lambda text, words=None: WT.gloss(WT.parse(text), GL, words)          # noqa: E731
+    assert g("(near ?a ?b)") == "a is next to b"
+    assert g("(mark red ?x _)") == "red has a mark on (x anything)"            # a constant as written, `_` as anything
+    assert g("(unknown ?a 3)") == "unknown(a, 3)"                              # no template: name(a, b)
+    assert g("(and (near ?a ?b) (wall ?a ?b))") == "a is next to b, and there is a wall at (a b)"
+    assert g("(or (near ?a ?b) (near ?b ?a))") == "either a is next to b or b is next to a"
+    assert g("(and (near ?a ?b) (not (wall ?a ?b)))") == "a is next to b, and it is not so that there is a wall at (a b)"
+    assert g("(exists (?y ?z) (mark ?x ?y ?z))") == "for some y, z: ?x has a mark on (y z)".replace("?x", "x")
+    assert g("(and (near ?a ?b) (distinct ?a ?b))") == "a is next to b, and a is not b"
+    assert g("(compose (near ?x ?z) (near ?z ?y))") == "x is next to z then z is next to y"
+    assert g("(via (near ?x ?z) (near ?z ?y))") == "x is next to z then z is next to y, through the middle"
+    assert g("(reach (near ?x ?y) 3)") == "within 3 steps of: x is next to y"
+    assert g("(reach0 (near ?x ?y) 3)") == "within 3 steps (or none) of: x is next to y"
+    assert g("(closure (near ?x ?y))") == "any number of steps of: x is next to y"
+    assert g("(and (or (near ?a ?b) (wall ?a ?b)) (near ?b ?a))") == "(either a is next to b or there is a wall at (a b)), and b is next to a"
+    assert WT.gloss(WT.parse("(near ?a ?b)"), None) == "near(a, b)"
+
+
+def test_gloss_of_a_term_that_uses_a_registered_word_puts_its_gloss_in_brackets():
+    words = {"corner_walk": "the fewest steps to a corner"}
+    assert WT.gloss(WT.parse("(and (corner_walk ?a ?d) (near ?a ?b))"), GL, words) == "corner_walk(a, d) [the fewest steps to a corner], and a is next to b"
+
+
+def test_a_machine_word_is_glossed_from_the_vocabulary_files_templates_and_a_used_word_by_its_own_gloss(store):
+    vf = json.loads((GS.learned_dir("chess") / "vocabulary.keys.json").read_text())
+    assert vf["glosses"]["key_gap"]
+    a = WR.define("chess", ALBA, origin="generated", name="gap_not_blocked", vocabulary=KEYS)
+    assert a["gloss"] == "the king of s is d king-steps from the nearest key square of its own pawn on (f r), and it is not so that the opposing king stands right in front of the pawn of s on (f r)"
+    b = WR.define("chess", "(and (gap_not_blocked ?s ?f ?r ?d) (not (hanging ?s ?f ?r)))", origin="mined", vocabulary=KEYS)
+    assert b["name"] == "gap_not_blocked_hanging"
+    assert b["gloss"].startswith("gap_not_blocked(s, f, r, d) [the king of s is d king-steps") and "], and it is not so that a unit of s on (f r), not its king, is attacked and not defended" in b["gloss"]
+
+
+def test_the_chess_glosses_cover_every_derived_relation_with_the_right_number_of_slots():
+    vf = json.loads((RULES / "learned/chess/vocabulary.keys.json").read_text())
+    sigs = BS.signatures_of(GS.spec_texts("chess", KEYS)["chess"])
+    rels = list(vf["derived"]) + BS.relation_names(vf)
+    assert len(rels) == 19 and set(vf["glosses"]) == set(rels)
+    for r in rels:
+        slots = {int(m) for m in re.findall(r"\{(\d+)\}", vf["glosses"][r])}
+        assert slots <= set(range(len(sigs[r]))), r                                     # no slot the relation does not have
+        if r not in ("opposition", "diagonal_opposition", "check"):
+            assert slots == set(range(len(sigs[r]))), r                                 # and every slot of its signature is said
+        assert WT.gloss(WT.lit(r, *[f"?v{i}" for i in range(len(sigs[r]))]), vf["glosses"])
+
+
+def test_glosses_change_neither_spec_texts_nor_vocabulary():
+    vf = json.loads((RULES / "learned/chess/vocabulary.keys.json").read_text())
+    assert "glosses" in vf
+    t = (RULES / vf["spec"]).read_text()
+    for c in vf["concepts"]:
+        t = CE.compose(t, (RULES / c).read_text())
+    assert GS.spec_texts("chess", KEYS)["chess"] == CE.compose(t, BS.structure_delta(t, vf))
+    assert GS.vocabulary("chess", KEYS) == {"derived": vf["derived"] + BS.relation_names(vf), "delta": vf["delta"], "units": None}
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ the registry in a sandbox store
@@ -337,39 +413,64 @@ def store(tmp_path):
 
 
 ALBA = "(and (key_gap ?s ?f ?r ?d) (not (king_in_front ?s ?f ?r)))"
-BRUNO = "(and (alba ?s ?f ?r ?d) (not (hanging ?s ?f ?r)))"
+BRUNO = "(and (alba ?s ?f ?r ?d) (not (hanging ?s ?f ?r)))"                 # (the hand word below is named `alba` by this test: a hand word is named by its author)
+NOTE = "a key gap of a pawn that is not blocked"
 
 
-def test_define_names_in_list_order_dedupes_and_keeps_the_definition_order(store):
-    a = WR.define("chess", ALBA, origin="hand", vocabulary=KEYS, note="a key gap of a pawn that is not blocked")
+def test_define_names_from_the_term_dedupes_and_keeps_the_definition_order(store):
+    a = WR.define("chess", ALBA, origin="hand", name="alba", note=NOTE, vocabulary=KEYS)
     assert a["name"] == "alba" and a["origin"] == "hand" and a["size"] == 4 and a["signature"] == ["side", "file", "rank", "distance"] and a["expansion"] == WT.show(WT.parse(ALBA))
+    assert a["gloss"] == NOTE == a["note"]
     b = WR.define("chess", BRUNO, origin="generated", vocabulary=KEYS)
-    assert b["name"] == "bruno" and b["expansion"] == "(and (and (key_gap ?s ?f ?r ?d) (not (king_in_front ?s ?f ?r))) (not (hanging ?s ?f ?r)))" and b["size"] == 4
+    assert b["name"] == "alba_hanging" and b["expansion"] == "(and (and (key_gap ?s ?f ?r ?d) (not (king_in_front ?s ?f ?r))) (not (hanging ?s ?f ?r)))" and b["size"] == 4
     again, created = WR.define_new("chess", "(and (key_gap ?a ?b ?c ?e) (not (king_in_front ?a ?b ?c)))", origin="mined", vocabulary=KEYS)       # the same, other variable names
     assert again["name"] == "alba" and created is False
-    nested, created = WR.define_new("chess", "(and (and (key_gap ?s ?f ?r ?d) (not (king_in_front ?s ?f ?r))) (not (hanging ?s ?f ?r)))", origin="mined", vocabulary=KEYS)    # the expansion of bruno
-    assert nested["name"] == "bruno" and created is False
-    assert [e["name"] for e in WR.load("chess")["words"]] == ["alba", "bruno"]
+    nested, created = WR.define_new("chess", "(and (and (key_gap ?s ?f ?r ?d) (not (king_in_front ?s ?f ?r))) (not (hanging ?s ?f ?r)))", origin="mined", vocabulary=KEYS)    # the expansion of b
+    assert nested["name"] == "alba_hanging" and created is False
+    assert [e["name"] for e in WR.load("chess")["words"]] == ["alba", "alba_hanging"]
     d = WR.delta("chess")
-    assert d.index("(signature alba ") < d.index("(signature bruno ") and d.index("(<= (alba ") < d.index("(<= (bruno ")
+    assert d.index("(signature alba ") < d.index("(signature alba_hanging ") and d.index("(<= (alba ") < d.index("(<= (alba_hanging ")
     c = WR.define("chess", "(and (attack ?s ?a ?b ?c ?d) (not (defended ?s ?c ?d)))", origin="mined", vocabulary=KEYS)
-    assert c["name"] == "celia" and c["layer"] == "general"
+    assert c["name"] == "attack_defended" and c["layer"] == "general"
     with pytest.raises(ValueError, match="itself"):
-        WR.define("chess", "(key_gap ?a ?b ?c ?d)", origin="hand", vocabulary=KEYS)
+        WR.define("chess", "(key_gap ?a ?b ?c ?d)", origin="hand", name="kg", note="n", vocabulary=KEYS)
     with pytest.raises(ValueError, match="already"):
-        WR.define("chess", "(and (hanging ?s ?f ?r) (not (defended ?s ?f ?r)))", origin="hand", name="attack", vocabulary=KEYS)
+        WR.define("chess", "(and (hanging ?s ?f ?r) (not (defended ?s ?f ?r)))", origin="hand", name="attack", note="n", vocabulary=KEYS)
+    with pytest.raises(ValueError, match="legal"):
+        WR.define("chess", "(and (hanging ?s ?f ?r) (not (defended ?s ?f ?r)))", origin="mined", name="Bad Name", vocabulary=KEYS)
     with pytest.raises(ValueError):
         WR.define("chess", "(and (hanging ?s ?f ?r) (not (defended ?s ?f ?r)))", origin="made up", vocabulary=KEYS)
     assert (GS.learned_dir("chess") / "words.json").is_file() and not (RULES / "learned/chess/words.json").exists()
 
 
+def test_a_hand_word_requires_a_name_and_a_note_and_the_others_are_named_for_what_they_are_made_of(store):
+    t = "(and (hanging ?s ?f ?r) (not (defended ?s ?f ?r)))"
+    with pytest.raises(ValueError, match="named by its author"):
+        WR.define("chess", t, origin="hand", note="a loose unit", vocabulary=KEYS)
+    for note in ("", "   "):
+        with pytest.raises(ValueError, match="note"):
+            WR.define("chess", t, origin="hand", name="loose", note=note, vocabulary=KEYS)
+    assert not (GS.learned_dir("chess") / "words.json").exists()                 # nothing was recorded
+    e = WR.define("chess", t, origin="hand", name="loose_unit", note="a unit that is attacked and not defended", vocabulary=KEYS)
+    assert e["name"] == "loose_unit" and e["gloss"] == "a unit that is attacked and not defended"
+    m = WR.define("chess", "(and (attack ?s ?a ?b ?c ?d) (not (defended ?s ?c ?d)))", origin="mined", vocabulary=KEYS)
+    assert m["name"] == "attack_defended" and m["note"] == ""
+    assert m["gloss"] == "a unit of s on (a b) attacks the square (c d), and it is not so that a unit of s on (c d) is defended by another unit of s"
+
+
 def test_a_name_is_never_a_relation_of_the_description(store):
     used = WR._relations_of(GS.spec_texts("chess", KEYS)["chess"])
     assert "attack" in used and "key_gap" in used and "edge_gap_file" in used
-    ns = WN.names()
-    d = WR.define("chess", ALBA, origin="hand", vocabulary=KEYS)
-    assert d["name"] == ns[0]
-    assert WR.define("chess", "(and (hanging ?s ?f ?r) (not (defended ?s ?f ?r)))", origin="hand", vocabulary=KEYS)["name"] == ns[1]
+    d = WR.define("chess", ALBA, origin="hand", name="alba", note=NOTE, vocabulary=KEYS)
+    assert d["name"] == "alba"
+    # a composed name equal to a relation of the description gets the suffix
+    t = "(and (attack ?s ?a ?b ?c ?d) (attack ?s ?c ?d ?a ?b))"
+    assert WR.define("chess", t, origin="mined", vocabulary=KEYS)["name"] == "attack_2"
+    assert WR.define("chess", "(and (hanging ?s ?f ?r) (not (defended ?s ?f ?r)))", origin="mined", vocabulary=KEYS)["name"] == "hanging_defended"
+
+
+def test_gloss_of_an_old_entry_reads_as_its_note():
+    assert WR.gloss_of({"name": "w", "note": "old words"}) == "old words" and WR.gloss_of({"name": "w", "note": "n", "gloss": "g"}) == "g"
 
 
 def test_spec_texts_and_vocabulary_are_unchanged_without_words(store):
@@ -396,8 +497,8 @@ def test_spec_texts_and_vocabulary_are_unchanged_without_words(store):
 
 
 def test_a_word_is_a_derived_relation_the_engine_reads_and_a_lemma_with_it_matches(store):
-    WR.define("chess", ALBA, origin="hand", vocabulary=KEYS)
-    WR.define("chess", BRUNO, origin="hand", vocabulary=KEYS)
+    WR.define("chess", ALBA, origin="hand", name="alba", note=NOTE, vocabulary=KEYS)
+    WR.define("chess", BRUNO, origin="hand", name="bruno", note="alba, and the pawn is not hanging", vocabulary=KEYS)
     specs, vocab = GS.spec_texts("chess", KEYS), GS.vocabulary("chess", KEYS)
     assert "(signature alba side file rank distance)" in specs["chess"] and vocab["derived"][-2:] == ["alba", "bruno"] and "alba" not in vocab["delta"]
     rows = CE.facts("chess", specs["chess"], json.dumps(vocab), START, [])
@@ -421,13 +522,17 @@ def test_a_word_is_a_derived_relation_the_engine_reads_and_a_lemma_with_it_match
 
 
 def test_the_cli_prints_the_labels_and_the_words(store, capsys):
-    WR.define("chess", ALBA, origin="hand", vocabulary=KEYS)
+    WR.define("chess", ALBA, origin="hand", name="alba", note=NOTE, vocabulary=KEYS)
     WR.define("chess", "(and (attack ?s ?a ?b ?c ?d) (not (defended ?s ?c ?d)))", origin="mined", vocabulary=KEYS)
     WR.main(["chess", "--vocabulary", KEYS, "--store-root", str(store)])
     out = capsys.readouterr().out
+    assert "    = " not in out
+    WR.main(["chess", "--vocabulary", KEYS, "--store-root", str(store), "--expand"])
+    out2 = capsys.readouterr().out
+    assert f"OBS word alba (hand, game, size 4): {NOTE}\n    = {ALBA}\n" in out2
     assert re.search(r"^OBS words layer chess keys: general \[.*'attack'.*\] game \[.*'hanging'.*\]$", out, re.M)
-    assert f"OBS word alba (hand, game, size 4): {ALBA} = {ALBA}" in out
-    assert re.search(r"^OBS word bruno \(mined, general, size 4\): ", out, re.M)
+    assert f"OBS word alba (hand, game, size 4): {NOTE}" in out.splitlines()
+    assert re.search(r"^OBS word attack_defended \(mined, general, size 4\): a unit of s on \(a b\) attacks", out, re.M)
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ general or game
@@ -550,17 +655,20 @@ def test_name_bodies_is_off_by_default_and_names_the_body_of_an_admitted_rule_wi
     assert "word" not in lem["meta"] and not (root / "learned/chess/words.json").exists()
     lines, lem, stored, orig = run({"name_bodies": len(hand["body"])})
     reg = json.loads((root / "learned/chess/words.json").read_text())["words"]
-    assert len(reg) == 1 and reg[0]["origin"] == "mined" and reg[0]["name"] == "alba" and lem["meta"]["word"] == "alba" and lem["meta"]["word_expansion"] == reg[0]["expansion"]
+    assert len(reg) == 1 and reg[0]["origin"] == "mined" and lem["meta"]["word"] == reg[0]["name"] and lem["meta"]["word_expansion"] == reg[0]["expansion"]
     assert lem["body"] == orig["body"] and lem["response"] == orig["response"]                              # what the rule matches is not changed
-    assert [l for l in stored if l["name"] == lem["name"]][0]["meta"]["word"] == "alba"
-    line = [l for l in lines if l.startswith("OBS word named alba:")]
-    assert line and f"(rule {lem['name']}, size {reg[0]['size']})" in line[0]
+    nm = reg[0]["name"]
+    rels = WT.relations(IND.body_term(lem))
+    assert WN.LEGAL.match(nm) and nm.startswith("_".join(rels[:4])) and not (RULES / "concepts/names.txt").exists()          # named from the relations of the body
+    assert [l for l in stored if l["name"] == lem["name"]][0]["meta"]["word"] == nm
+    line = [l for l in lines if l.startswith(f"OBS word named {nm}:")]
+    assert line and line[0] == f"OBS word named {nm}: {reg[0]['gloss']} (rule {lem['name']}, size {reg[0]['size']})" and reg[0]["gloss"] and reg[0]["gloss"] != reg[0]["term"]
     with TG.sandbox(root):
-        assert "alba" in GS.vocabulary("chess", KEYS)["derived"] and "(signature alba " in GS.spec_texts("chess", KEYS)["chess"]      # available to the later rules (words: true)
+        assert nm in GS.vocabulary("chess", KEYS)["derived"] and f"(signature {nm} " in GS.spec_texts("chess", KEYS)["chess"]      # available to the later rules (words: true)
         lines2 = []
         lem2 = json.loads(json.dumps(hand))
         lem2["name"] = "again"
-        assert IND.name_body("chess", lem2, KEYS, say=lines2.append)["name"] == "alba" and lines2[0].startswith("OBS word reused alba:")       # one definition, one name
+        assert IND.name_body("chess", lem2, KEYS, say=lines2.append)["name"] == nm and lines2[0].startswith(f"OBS word reused {nm}:")       # one definition, one name
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ the use / generation split
@@ -662,13 +770,12 @@ def test_the_new_modules_name_no_game_object_and_the_wake_never_reads_them():
     for p in sorted((ROOT / "rust/engine").glob("*/src/**/*.rs")):
         t = p.read_text()
         assert "word_terms" not in t and "words.json" not in t
-    names_text = (RULES / "concepts/names.txt").read_text()
-    assert "chess" not in names_text
+    assert not (RULES / "concepts/names.txt").exists()
     assert "terms import" not in (DISC / "word_terms.py").read_text() and "terms as" not in (DISC / "word_terms.py").read_text()          # October's evaluator is not on the path
 
 
 def test_the_new_files_are_in_the_gate_and_in_repo_structure():
     assert "test_plan78_35_words" in (ROOT / "scripts/gate.py").read_text()
     rs = (ROOT / "repo_structure.md").read_text()
-    for f in ("word_terms.py", "word_names.py", "word_registry.py", "usage_split.py", "names.txt", "name_body", "layer_of", "test_plan78_35_words.py"):
+    for f in ("word_terms.py", "word_names.py", "word_registry.py", "usage_split.py", "composed_name", "check_name", "gloss", "name_body", "layer_of", "test_plan78_35_words.py"):
         assert f in rs

@@ -33,6 +33,11 @@ PRICE `size(term)`: every constructor and every literal one (a word's name used 
                      picks and orders the head's variables from the free ones (the others are projected away)
   expand(term, registry) -> the term with every registered word's name replaced by its own term (down to relations the registry does not hold): the expansion in base words
   canonical(term) -> the term with its variables renamed ?v0 ?v1 .. by first occurrence (equality of words modulo the names of variables)
+  relations(term) -> [name ..]               the distinct relation names of the term's literals, in order of first occurrence (a registered word's name is one of them: not expanded)
+  gloss(term, glosses, words=None) -> str    the term in plain English. `glosses` {relation: template} with `{0} {1} ..` for the slots (variables written without the `?`, constants as written,
+                     `_` as "anything"); a relation with no template is written `name(a, b)`. and: parts joined by ", and "; or: "either A or B"; not: "it is not so that A"; exists: "for some x, y: A";
+                     distinct: "a is not b"; compose: "A then B"; via: "A then B, through the middle"; reach: "within k steps of: A"; reach0: "within k steps (or none) of: A"; closure: "any number of
+                     steps of: A". `words` {name: gloss} of the registered words: a literal of one is written `name(a, b) [its gloss]`
 """
 from __future__ import annotations
 
@@ -637,3 +642,61 @@ def compile(name: str, term: tuple, signatures: dict, *, head_vars: "list | None
     for _h, _sig, rs in c.rules:
         out += rs
     return "\n".join(out + rules) + "\n"
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ relations and gloss
+
+def relations(t: tuple) -> list:
+    """The distinct relation names of the literals of `t`, in order of first occurrence."""
+    out: list = []
+
+    def walk(x):
+        if x[0] == "lit":
+            out.append(x[1])
+        for c in _children(x):
+            walk(c)
+    walk(t)
+    return _uniq(out)
+
+
+def _word(a: str) -> str:
+    return "anything" if a == "_" else a.lstrip("?")
+
+
+def gloss(t: tuple, glosses: "dict | None", words: "dict | None" = None) -> str:
+    """The term in plain English (see the module's docstring)."""
+    glosses = glosses or {}
+    words = words or {}
+
+    def wrap(x: tuple) -> str:
+        s = g(x)
+        return f"({s})" if x[0] in ("and", "or", "compose", "via") else s
+
+    def g(x: tuple) -> str:
+        k = x[0]
+        if k == "lit":
+            args = [_word(a) for a in x[2]]
+            if x[1] in words:
+                return f"{x[1]}({', '.join(args)}) [{words[x[1]]}]"
+            tpl = glosses.get(x[1])
+            if tpl is None:
+                return f"{x[1]}({', '.join(args)})"
+            return tpl.format(*args)
+        if k == "and":
+            return ", and ".join(g(c) if c[0] != "or" else wrap(c) for c in x[1])
+        if k == "or":
+            return "either " + " or ".join(wrap(c) for c in x[1])
+        if k == "not":
+            return f"it is not so that {wrap(x[1])}"
+        if k == "exists":
+            return f"for some {', '.join(_word(v) for v in x[1])}: {g(x[2])}"
+        if k == "distinct":
+            return f"{_word(x[1])} is not {_word(x[2])}"
+        if k == "compose":
+            return f"{wrap(x[1])} then {wrap(x[2])}"
+        if k == "via":
+            return f"{wrap(x[1])} then {wrap(x[2])}, through the middle"
+        if k == "reach":
+            return f"within {x[2]} steps{' (or none)' if x[4] else ''} of: {g(x[1])}"
+        return f"any number of steps of: {g(x[1])}"
+    return g(t)
