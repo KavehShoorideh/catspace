@@ -34,6 +34,15 @@ class PositionCodec(Protocol):
     def keep(self, position: str, units: list) -> str:
         """The same position with only `units` left, everything that depended on a removed unit made consistent."""
 
+    def describe(self, position: str) -> list:
+        """(side, kind) of each unit of `units(position)`, in the same order: the side named as the kernel names it (a mover), the kind as the description's own constant."""
+
+    def unit_term(self, side: str, kind: str, tag: str) -> tuple:
+        """(term text, [place variables]): the word-term literal "a unit of `side` (a variable or a constant) and `kind` stands at a place", its place variables named with `tag`."""
+
+    def opposed_term(self, a: str, b: str) -> str:
+        """The word-term literal "side `a` and side `b` are opposed"."""
+
     # optional: `kinds(position) -> list`, the kind of each unit (hashable), so a change of the kinds' multiset (a capture, a promotion) can be told from a move
 
 
@@ -47,9 +56,29 @@ class ChessCodec:
         import chess
         return [chess.square_name(sq) for sq in sorted(chess.Board(position).piece_map())]
 
+    SIDES = {True: "white", False: "black"}
+    KINDS = {"k": "king", "q": "queen", "r": "rook", "b": "bishop", "n": "knight", "p": "pawn"}
+
+    def describe(self, position: str) -> list:
+        import chess
+        b = chess.Board(position)
+        return [(self.SIDES[b.piece_map()[sq].color], self.KINDS[b.piece_map()[sq].symbol().lower()]) for sq in sorted(b.piece_map())]
+
+    def unit_term(self, side: str, kind: str, tag: str) -> tuple:
+        f, r = f"?f{tag}", f"?r{tag}"
+        return f"(cell {f} {r} {side} {kind})", [f, r]
+
+    def opposed_term(self, a: str, b: str) -> str:
+        return f"(opponent {a} {b})"
+
     def kinds(self, position: str) -> list:
         import chess
         return sorted(p.symbol() for p in chess.Board(position).piece_map().values())
+
+    def owned(self, position: str) -> list:
+        """(side, kind as the kernel and a valuation record name it) of each unit: what a material balance is summed over (plan 78.37)."""
+        import chess
+        return [(self.SIDES[p.color], p.symbol().lower()) for p in chess.Board(position).piece_map().values()]
 
     def keep(self, position: str, units: list) -> str:
         import chess

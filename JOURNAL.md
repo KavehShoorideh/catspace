@@ -36589,3 +36589,16 @@ clock's score to nearly full at one and three seconds, so the rules of 78.32 to 
 games unfinished in 80 plies with or without claims. Lines in docs/ANALYST_PLAN.md 78.36. The step has no effect on a store without claims.
 
 OBS gate engine: files 77, passed 1027, failed 0, xfailed 1, errors 0, wall 1363.2 s
+
+## 2026-11-12 -- plans 78.37 to 78.39, stage 1: surprise on full games as the measure, learning by construction, a goal taken apart backward
+
+After Kaveh's direction (the rate of surprise against an outside judge on full games, not a held-out exam; learning from one unit upward; a goal taken apart into what is
+missing and which unit could supply it). Three pieces built side by side by Sonnet subagents and joined by hand. The surprise meter reads every position of the engine's own
+full games twice (our decision's reading, the judge's) and counts the moves where one jumps and the other does not; at integration our reading turned out to be a change, not
+a level, and the balance of the units was added. The rate is steady across fresh games and moves little with five times the clock; nearly all surprises are the judge moving
+while we see nothing. The construction ladder observes the unit sets in order of size from exact labels and states whole-set claims where one result holds, the exceptions
+kept; "exactly this set" is said in the term language. The scenario report reads the goal's target from the description and lists holes, supply and scenarios; it is a report
+only and costs tens of milliseconds a position. The exact labeller's endless recursion on positions that keep castling rights is capped. Lines in docs/ANALYST_PLAN.md after
+the 78.37 to 78.39 design. The first gate run failed one test (a variable named like a square in goal_target.rs); renamed, rerun:
+
+OBS gate engine: files 80, passed 1058, failed 0, xfailed 1, errors 0, wall 1386.4 s

@@ -1,0 +1,102 @@
+{
+ "spec": "chess.gdl",
+ "variants": {
+  "chess": null,
+  "kingofthehill": "variants/kingofthehill.gdl",
+  "3check": "variants/3check.gdl"
+ },
+ "concepts": [
+  "concepts/chess.gdl",
+  "concepts/chess_units.gdl",
+  "concepts/chess_scenario.gdl"
+ ],
+ "derived": [
+  "attack",
+  "check",
+  "defended",
+  "hanging",
+  "passed_pawn",
+  "apart",
+  "closer",
+  "flight",
+  "opposition",
+  "diagonal_opposition",
+  "to_promote",
+  "king_ahead",
+  "in_square",
+  "strike",
+  "go",
+  "go_within2",
+  "go_within3"
+ ],
+ "delta": [
+  "cell",
+  "apart",
+  "flight",
+  "opposition",
+  "diagonal_opposition",
+  "hanging",
+  "to_promote",
+  "king_ahead",
+  "in_square",
+  "check"
+ ],
+ "units": null,
+ "note": "Plan 78.39 stage 1 (the scenario report): the move relations of rules/concepts/chess_scenario.gdl, composed after the relational concepts -- strike (a unit of a kind and side standing on a square bears on another, by geometry and the board's blockers) and go (it may move there), with go_within2 and go_within3 (the reach words of plan 78.35). `scenario` names the relations by their roles (kind, owner, from, to argument positions); a Rust consumer names no relation itself. The derived and delta lists are the relational vocabulary's, the four relations added to derived.",
+ "scenario": {
+  "acts_on": {
+   "relation": "strike",
+   "kind": 0,
+   "owner": 1,
+   "from": [
+    2,
+    3
+   ],
+   "to": [
+    4,
+    5
+   ]
+  },
+  "can_go": [
+   {
+    "relation": "go",
+    "kind": 0,
+    "owner": 1,
+    "from": [
+     2,
+     3
+    ],
+    "to": [
+     4,
+     5
+    ]
+   },
+   {
+    "relation": "go_within2",
+    "kind": 0,
+    "owner": 1,
+    "from": [
+     2,
+     3
+    ],
+    "to": [
+     4,
+     5
+    ]
+   },
+   {
+    "relation": "go_within3",
+    "kind": 0,
+    "owner": 1,
+    "from": [
+     2,
+     3
+    ],
+    "to": [
+     4,
+     5
+    ]
+   }
+  ]
+ }
+}

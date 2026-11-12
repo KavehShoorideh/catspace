@@ -130,7 +130,7 @@ fn show(v: i64) -> String { if v >= WIN - GOAL_BAND { "goal".into() } else if v 
 fn show_stake(v: i64) -> String { if v >= WIN - GOAL_BAND { "goal".into() } else { v.to_string() } }
 
 /// The facts a move removes and adds (between the base facts of the two states).
-fn effect<G: Game>(g: &G, s: &G::State, m: &G::Move) -> (BTreeSet<Fact>, BTreeSet<Fact>) {
+pub fn effect<G: Game>(g: &G, s: &G::State, m: &G::Move) -> (BTreeSet<Fact>, BTreeSet<Fact>) {
     let before: BTreeSet<Fact> = g.base_facts(s).into_iter().collect();
     let after: BTreeSet<Fact> = g.base_facts(&g.apply(s, m)).into_iter().collect();
     (before.difference(&after).cloned().collect(), after.difference(&before).cloned().collect())

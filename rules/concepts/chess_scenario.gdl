@@ -1,0 +1,34 @@
+;;; rules/concepts/chess_scenario.gdl -- plan 78.39 (stage 1): THE MOVE RELATIONS A SCENARIO READS. A DELTA composed AFTER rules/concepts/chess.gdl and chess_units.gdl onto rules/chess.gdl,
+;;; ADDITIVE ONLY: it changes no rule of the game. Both relations are about a unit of a kind and a side STANDING ON A GIVEN SQUARE, not about the units now on the board (so a
+;;; unit's second step can be read from where its first one lands), and neither depends on whose turn it is. The board is read as it stands: a blocker that could move away is
+;;; not considered, and the square a unit leaves is not freed for its own later steps.
+;;;   (strike ?k ?c ?f1 ?r1 ?f2 ?r2)  a unit of kind ?k and side ?c standing on (f1 r1) would bear on (f2 r2) by its geometry (the board's blockers stop a line)
+;;;   (go ?k ?c ?f1 ?r1 ?f2 ?r2)      such a unit may move to (f2 r2) in one move: onto an empty square or a unit of the other side that is not its king; a pawn by its single
+;;;                                   forward step onto an empty square or its diagonal onto a unit of the other side (the double step and en passant are not read)
+;;;   (go_within2 ..) (go_within3 ..) the squares reached in at least one and at most 2 (3) moves of `go` -- the `reach` words of plan 78.35, compiled to rules
+(signature strike kind side file rank file rank) (signature go kind side file rank file rank)
+
+(<= (strike ?k ?c ?f1 ?r1 ?f2 ?r2) (role ?c) (line_of ?k ?d) (slide ?d ?f1 ?r1 ?f2 ?r2))
+(<= (strike knight ?c ?f1 ?r1 ?f2 ?r2) (role ?c) (knight_jump ?f1 ?r1 ?f2 ?r2))
+(<= (strike king ?c ?f1 ?r1 ?f2 ?r2) (role ?c) (king_step ?f1 ?r1 ?f2 ?r2))
+(<= (strike pawn ?c ?f1 ?r1 ?f2 ?r2) (pawn_diagonal ?c ?d) (step ?d ?f1 ?r1 ?f2 ?r2))
+
+(<= (go ?k ?c ?f1 ?r1 ?f2 ?r2) (strike ?k ?c ?f1 ?r1 ?f2 ?r2) (distinct ?k pawn) (may_land ?c ?f2 ?r2))
+(<= (go pawn ?c ?f ?r1 ?f ?r2) (forward ?c ?d) (step ?d ?f ?r1 ?f ?r2) (empty ?f ?r2))
+(<= (go pawn ?c ?f1 ?r1 ?f2 ?r2) (strike pawn ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f2 ?r2 ?o ?j)) (opponent ?c ?o) (distinct ?j king))
+
+;;; the reach words, as compiled by catspace/incubator/analyst/discovery/word_terms.py from (reach (go ?k ?c ?a ?b ?x ?y) N 2), N = 2 and 3 (generated: do not edit by hand)
+(signature go_within2 kind side file rank file rank)
+(signature go_within2__1 kind side file rank file rank)
+(<= (go_within2__1 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go ?p0 ?p1 ?x0 ?x1 ?y0 ?y1))
+(<= (go_within2 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go ?p0 ?p1 ?x0 ?x1 ?y0 ?y1))
+(<= (go_within2 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go_within2__1 ?p0 ?p1 ?x0 ?x1 ?w0 ?w1) (go ?p0 ?p1 ?w0 ?w1 ?y0 ?y1))
+(signature go_within3 kind side file rank file rank)
+(signature go_within3__1 kind side file rank file rank)
+(signature go_within3__2 kind side file rank file rank)
+(<= (go_within3__1 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go ?p0 ?p1 ?x0 ?x1 ?y0 ?y1))
+(<= (go_within3__2 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go ?p0 ?p1 ?x0 ?x1 ?y0 ?y1))
+(<= (go_within3__2 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go_within3__1 ?p0 ?p1 ?x0 ?x1 ?w0 ?w1) (go ?p0 ?p1 ?w0 ?w1 ?y0 ?y1))
+(<= (go_within3 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go ?p0 ?p1 ?x0 ?x1 ?y0 ?y1))
+(<= (go_within3 ?p0 ?p1 ?x0 ?x1 ?y0 ?y1) (go_within3__2 ?p0 ?p1 ?x0 ?x1 ?w0 ?w1) (go ?p0 ?p1 ?w0 ?w1 ?y0 ?y1))
+

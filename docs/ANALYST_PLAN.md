@@ -6003,3 +6003,90 @@ WHY NOW. 78.36 reading 3: the exam at three units is a test of the clock. The po
   STAGES     1 holes, supply, contest and scenarios for the game's goal as a report, in Rust beside the census (speed), measured for cost per position; 2 the scenario as a
              search target; 3 other goals (a unit won).
 ORDER OF WORK. 78.37 stage 1 and 78.38 stage 1 are built side by side (different files); 78.39 starts with a reading of the census and the chain to see what stage 1 can reuse.
+
+78.37 to 78.39 STAGE 1 BUILT (2026-11-12; three Sonnet subagents side by side, one piece each; integration, the level of our reading and the labeller fix by hand at integration)
+78.37 BUILT: catspace/incubator/analyst/discovery/surprise_meter.py, tests/test_plan78_37_surprise_meter.py; `UciWdlJudge.read` (wdl_sleep.py) gives the judge's centipawns and
+  win / draw / loss together. INTEGRATION FINDING: the search's value in a decision's trace is a CHANGE from the position as it stands (units won less units lost along the line
+  read, our losses weighted when the judge is ours-first), not a level. The meter's first form read it as a level; OUR LEVEL is now the balance of the units by the judge in use
+  plus the search's net gain (`add_balance`, `net_of`, `level_of`). The store's judge counts every unit as one: the engine has no values for the kinds in use.
+  RUNS: 16 games each from the game's start, the engine against itself, the head store (no rule speaks in full games), judge depth 10, jump threshold 0.15, the scale fitted on
+  seed 11 at 0.2 s and passed to the others.
+  seed 11, clock 0.2 s:
+    OBS surprise meter: 16 games, 1425 positions read, side None, jump threshold 0.15
+    OBS surprises per 100 positions: MISSED 27.23, FALSE 1.05, OPPOSITE 0.07, all 28.35
+    OBS weighted rate per 100 positions: 11.174; standing gaps per 100: 29.54
+    OBS mean loss of the mover's moves: 83.4 judge centipawns (cap 1000 a move), 0.1260 expected result
+    OBS scale 2.26464 (fitted on these positions): pass it back with --scale to stay comparable
+  seed 12, clock 0.2 s:
+    OBS surprise meter: 16 games, 1426 positions read, side None, jump threshold 0.15
+    OBS surprises per 100 positions: MISSED 26.65, FALSE 0.98, OPPOSITE 0.00, all 27.63
+    OBS weighted rate per 100 positions: 10.198; standing gaps per 100: 18.72
+    OBS mean loss of the mover's moves: 73.3 judge centipawns (cap 1000 a move), 0.1133 expected result
+  seed 13, clock 0.2 s:
+    OBS surprise meter: 16 games, 1257 positions read, side None, jump threshold 0.15
+    OBS surprises per 100 positions: MISSED 29.99, FALSE 0.64, OPPOSITE 0.08, all 30.71
+    OBS weighted rate per 100 positions: 11.237; standing gaps per 100: 22.91
+    OBS mean loss of the mover's moves: 75.4 judge centipawns (cap 1000 a move), 0.1268 expected result
+  seed 11, clock 1.0 s:
+    OBS surprise meter: 16 games, 1264 positions read, side None, jump threshold 0.15
+    OBS surprises per 100 positions: MISSED 24.29, FALSE 0.95, OPPOSITE 0.00, all 25.24
+    OBS weighted rate per 100 positions: 9.326; standing gaps per 100: 28.09
+    OBS mean loss of the mover's moves: 78.4 judge centipawns (cap 1000 a move), 0.1082 expected result
+  the MISSED surprises of the three 0.2 s runs, by what the mover's unit balance did afterwards:
+    OBS missed surprises, seeds 11 12 13, clock 0.2 s, n 1145: the judge's reading rose across the move: 12 (1.0% of the count, 0.8% of the weight)
+    OBS missed surprises, seeds 11 12 13, clock 0.2 s, n 1145: the mover's unit balance fell 6 to 12 plies later: 360 (31.4% of the count, 30.9% of the weight)
+    OBS missed surprises, seeds 11 12 13, clock 0.2 s, n 1145: the mover's unit balance fell within 4 plies: 299 (26.1% of the count, 26.2% of the weight)
+    OBS missed surprises, seeds 11 12 13, clock 0.2 s, n 1145: the mover's unit balance had not fallen 12 plies later: 474 (41.4% of the count, 42.1% of the weight)
+  READING (directional: one run per setting)
+  1 The rate is steady across fresh games at the short clock (the three `all` figures), so a change larger than their spread can be read without a held-out exam.
+  2 Nearly every surprise is MISSED: the judge's reading moves and ours does not. FALSE is rare once our reading is a level.
+  3 The longer clock's line is beside the short clock's: compare them before reading any later gain as a gain of rules (78.36 reading 3).
+  4 A large part of the missed weight is followed by no fall of the unit balance within 12 plies (the split lines; a later fall may be unrelated, so the split is a guide):
+    that part is not reached by reading captures deeper.
+  OPEN  our reading has no values for the kinds and nothing between captures; the scale is one number fitted on one run; the judge at depth 10 is itself noisy near the
+        threshold; the games are the engine's own (the records source takes any file of games; the human files stay unread until Kaveh says so).
+78.38 BUILT: catspace/incubator/analyst/discovery/construction.py, tests/test_plan78_38_construction.py; the codec gained describe, unit_term, opposed_term, owned.
+  "The units on the board are exactly this set" is SAID IN THE TERM LANGUAGE of 78.35 (at least c of a kind by distinct places, not one more, none of a kind the side lacks);
+  the word is defined in a sandbox store only. RUN to four units (n 2000 a set, seed 1, bar 0.98; the whole output is local, scratch c38_size4.txt). Some of its lines:
+    OBS set [bishop+king v king] size 3: positions 0, labelled 0, skipped 0, no live position (every sub-position of the set is over or refused by the kernel)
+    OBS set [king+knight v king] size 3: positions 0, labelled 0, skipped 0, no live position (every sub-position of the set is over or refused by the kernel)
+    OBS set [king+queen v king] size 3: positions 2000, labelled 2000, skipped 0; mover holder n 960 win 100.0% draw 0.0% loss 0.0%; mover other n 1040 win 0.0% draw 7.8% loss 92.2%; decisive result exists: True
+    OBS   [king+queen v king] claim set-exactly-king-queen-against-king-holder-win (win, mover holder): binds 960, right 960, wrong 0 (exceptions kept: 0)
+    OBS set [king+rook v king] size 3: positions 2000, labelled 2000, skipped 0; mover holder n 980 win 100.0% draw 0.0% loss 0.0%; mover other n 1020 win 0.0% draw 6.0% loss 94.0%; decisive result exists: True
+    OBS   [king+rook v king] claim set-exactly-king-rook-against-king-holder-win (win, mover holder): binds 980, right 980, wrong 0 (exceptions kept: 0)
+    OBS set [king+pawn v king] size 3: positions 2000, labelled 2000, skipped 0; mover holder n 998 win 45.7% draw 54.3% loss 0.0%; mover other n 1002 win 0.0% draw 76.0% loss 24.0%; decisive result exists: True
+    OBS   [king+knight+pawn v king] claim set-exactly-king-knight-pawn-against-king-holder-win (win, mover holder): binds 991, right 980, wrong 11 (exceptions kept: 11)
+    OBS   [king+pawn v bishop+king] claim set-exactly-king-pawn-against-bishop-king-holder-draw (draw, mover holder): binds 1002, right 990, wrong 12 (exceptions kept: 12)
+    OBS   [king+pawn+pawn v king] claim set-exactly-king-pawn-pawn-against-king-holder-win (win, mover holder): binds 993, right 989, wrong 4 (exceptions kept: 4)
+    OBS   [king+queen v bishop+king] claim set-exactly-king-queen-against-bishop-king-holder-win (win, mover holder): binds 979, right 978, wrong 1 (exceptions kept: 1)
+    OBS   [king+queen v king+knight] claim set-exactly-king-queen-against-king-knight-holder-win (win, mover holder): binds 978, right 977, wrong 1 (exceptions kept: 1)
+    OBS   [king+rook v bishop+king] claim set-exactly-king-rook-against-bishop-king-other-draw (draw, mover other): binds 1008, right 1003, wrong 5 (exceptions kept: 5)
+    OBS   [king+rook v king+knight] claim set-exactly-king-rook-against-king-knight-other-draw (draw, mover other): binds 1019, right 1001, wrong 18 (exceptions kept: 18)
+    OBS   [king+pawn v king+knight] claim set-exactly-king-pawn-against-king-knight-other-draw (draw, mover other): binds 1004, right 1002, wrong 2 (exceptions kept: 2)
+    OBS   [king+rook v king+queen] claim set-exactly-king-rook-against-king-queen-other-win (win, mover other): binds 991, right 976, wrong 15 (exceptions kept: 15)
+  READING
+  1 The ladder OBSERVES what Kaveh described: the sets below a mating unit have no live position (the kernel ends them at once), and the first sets with a decisive result are
+    the ones with a queen, a rook or a pawn.
+  2 Whole-set claims hold without exception for the holder to move in the queen and rook sets; the pawn sets do not reach the bar: they are the sets that need conditions
+    (the rules of 78.32 to 78.34).
+  3 The claims with a few wrong cases keep their exceptions: those are the next problems of the set.
+  FIXED AT INTEGRATION: the exact labeller recursed without end on a position that keeps castling rights (a sub-position of the start with a rook at home); the best-successor
+    reading now goes RIGHTS_DEPTH moves deep and says NOT COVERED beyond (exact.py). The run above was made before the fix: its sets with a rook show skipped positions.
+  OPEN  no set needing a promotion to be sampled (two queens); a count above three of a kind is refused; stage 2 (the cycle per set with the claims below as leaves) not built.
+78.39 BUILT (stage 1, a report; no decision step): rust/engine/game/src/goal_target.rs, rust/engine/tactics/src/scenario.rs and tests/scenario.rs, `cs_engine.scenario`,
+  rules/concepts/chess_scenario.gdl, rules/learned/chess/vocabulary.scenario.json, tests/test_plan78_39_scenario.py.
+  THE TARGET IS READ FROM THE DESCRIPTION: from the goal clause of highest value down its positive conditions to a state fact with one constant (the kind) that a derived
+  relation holds by its place; no Rust source names it. A description without one reads `unreadable`.
+  CHANGED FROM THE DESIGN: the reach is over a HYPOTHETICAL placement (`go`: a unit of this kind and side standing here may move there; `strike`: it bears on there), since the
+  description's own relations need the unit to stand on the starting place and so cannot be iterated; and a unit that alone covers a place is not counted as free to leave
+  unless its new place still covers it.
+  THE COST, from the Rust test's timing line and the Python test:
+    OBS scenario positions=10 load_s=0.006 mean_ms=72.0 max_ms=99.9 holes=[1, 2, 2, 3, 9, 2, 4, 3, 4, 6] scenarios=[0, 8, 5, 0, 0, 7, 0, 0, 9, 0] nodes=[1, 11, 11, 8, 0, 29, 1, 1, 54, 1]
+    OBS 78.39 report seconds 0.0939 holes 2 scenarios 7
+  READING  the report says what the census could not (what is missing, and which unit could supply it), and reads a diagonal mover as no supply for the other colour and a
+           side with no supplier as leaving the target safe (the tests). At this cost it cannot sit in a decision at the short clock: nearly all of it is deriving the
+           three-move reach for every kind, side and place.
+  OPEN   CONTEST (the other side's denial and the exchange of equals) unread; the board read as it stands; more than eight holes not searched; the cost.
+NEXT  (a) 78.37 stage 2: the heaviest surprises as the sleep's problems, the rate on fresh games as the gate; (b) values for the kinds (the valuation miner of 76.5) so our
+      level is not a count; (c) 78.38 stage 2: the set claims as leaves, measured by the meter and by conversion at four units; (d) 78.39: the reach made cheap (two moves,
+      or kept per unit), then contest, then the scenario as a search target.

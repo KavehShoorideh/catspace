@@ -119,8 +119,11 @@ class SyzygyChess(ExactLabeller):
             b.push_uci(m)
         return b
 
-    def _terminal_or_probe(self, b) -> "str | None":
-        """The class for the side to move on board `b`: the game's end, else the table (castling rights: the best successor)."""
+    RIGHTS_DEPTH = 2          # how many moves deep the best-successor reading goes while the rights stand; deeper is NOT COVERED (None), never a guess
+
+    def _terminal_or_probe(self, b, depth: int = 0) -> "str | None":
+        """The class for the side to move on board `b`: the game's end, else the table (castling rights: the best successor, at most RIGHTS_DEPTH moves deep:
+        a line that keeps the rights longer has no end to read, so the position is not covered)."""
         import chess
         if b.is_checkmate():
             return "loss"
@@ -131,10 +134,12 @@ class SyzygyChess(ExactLabeller):
         if sym is not None:
             return {v: k for k, v in self.SYMBOL.items()}[sym]
         if b.castling_rights:
+            if depth >= self.RIGHTS_DEPTH:
+                return None
             best, ok = -1, True
             for mv in list(b.legal_moves):
                 b.push(mv)
-                c = self._terminal_or_probe(b)
+                c = self._terminal_or_probe(b, depth + 1)
                 b.pop()
                 if c is None:
                     ok = False

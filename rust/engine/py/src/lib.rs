@@ -275,6 +275,109 @@ fn census(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, 
     Ok((out, st.into()))
 }
 
+type RelArg = (String, usize, usize, Vec<usize>, Vec<usize>);
+
+fn relspec_json(v: &serde_json::Value) -> Result<cs_tactics::scenario::RelSpec, String> {
+    let ix = |k: &str| -> Result<Vec<usize>, String> { v.get(k).and_then(|x| x.as_array()).ok_or(format!("scenario relation: {k} is a list"))?.iter().map(|x| x.as_u64().map(|n| n as usize).ok_or(format!("{k} holds numbers"))).collect() };
+    let n = |k: &str| -> Result<usize, String> { v.get(k).and_then(|x| x.as_u64()).map(|n| n as usize).ok_or(format!("scenario relation: {k} is a number")) };
+    Ok(cs_tactics::scenario::RelSpec { relation: v.get("relation").and_then(|x| x.as_str()).ok_or("scenario relation: relation is a name")?.to_string(), kind: n("kind")?, owner: n("owner")?, from: ix("from")?, to: ix("to")? })
+}
+
+fn relspec_arg(a: RelArg) -> cs_tactics::scenario::RelSpec { cs_tactics::scenario::RelSpec { relation: a.0, kind: a.1, owner: a.2, from: a.3, to: a.4 } }
+
+thread_local! {
+    /// The goal's target per description text (reading the description's goal costs a load of the program).
+    static GOAL_TARGETS: std::cell::RefCell<HashMap<String, Result<cs_game::goal_target::GoalTarget, String>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn goal_target_for(spec: &str) -> Result<cs_game::goal_target::GoalTarget, String> {
+    let key = cs_memory::sha::sha256_hex(spec.as_bytes());
+    GOAL_TARGETS.with(|m| m.borrow_mut().entry(key).or_insert_with(|| cs_game::goal_target::goal_target(spec)).clone())
+}
+
+fn loc_text(l: &[String]) -> String { cs_tactics::scenario::show_loc(&l.to_vec()) }
+
+/// scenario(variant, spec, vocabulary, fen=None, moves=[], role="mover", k=2, acts_on=None, can_go=None, max_holes=8, max_units=16, max_scenarios=20, max_nodes=200000, demand=True) -> dict:
+/// plan 78.39 stage 1, A GOAL TAKEN APART BACKWARD (cs_tactics::scenario), as a report. `spec` is the description text (composed with the vocabulary's concepts), `vocabulary` its JSON.
+/// `role`: "mover", "other" or a role's name -- the side that wants the goal. The target is read from the description's goal (unreadable: {"unreadable": why}). The two relations are
+/// named by the roles of their arguments, as (relation, kind, owner, [from], [to]) positions: `acts_on` and `can_go` (one per move count, 1.. in order); left out, they are read from
+/// the vocabulary JSON's "scenario" entry ({"acts_on": {relation, kind, owner, from, to}, "can_go": [..]}). -> {role, target: {kind, owner, at}, unreadable, goal_holds, exits_from,
+/// holes: [{at, kind}], covered: [{at, own, by: [{kind, at}]}], units: [{kind, at}], supply: [[{unit, kind, from, to, moves}]] (per hole), scenarios: [{moves, placements: [{kind, from,
+/// to, moves}]}], safe (True: no scenario exists; False: one does; None: not decided), notes, contest (None: unread), evidence: [lines], nodes, seconds}. A report, not a verdict.
+#[pyfunction]
+#[pyo3(signature = (variant, spec, vocabulary, fen=None, moves=vec![], role="mover", k=2, acts_on=None, can_go=None, max_holes=8, max_units=16, max_scenarios=20, max_nodes=200000, demand=true))]
+#[allow(clippy::too_many_arguments)]
+fn scenario(py: Python<'_>, variant: &str, spec: &str, vocabulary: &str, fen: Option<&str>, moves: Vec<String>, role: &str, k: u32, acts_on: Option<RelArg>, can_go: Option<Vec<RelArg>>,
+            max_holes: usize, max_units: usize, max_scenarios: usize, max_nodes: u64, demand: bool) -> PyResult<PyObject> {
+    let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+    let (g, s) = state_of(variant, fen, 518, &moves)?;
+    let view = facts_view_for(spec, vocabulary, demand)?;
+    let d = pyo3::types::PyDict::new(py);
+    let target = match goal_target_for(spec) { Ok(t) => t, Err(e) => { d.set_item("unreadable", e)?; return Ok(d.into()); } };
+    let vj: serde_json::Value = serde_json::from_str(vocabulary).map_err(|e| bad(format!("vocabulary: {e}")))?;
+    let named = vj.get("scenario");
+    let acts = match acts_on { Some(a) => relspec_arg(a), None => relspec_json(named.and_then(|n| n.get("acts_on")).ok_or_else(|| bad("no acts_on: name it, or give the vocabulary a scenario entry".into()))?).map_err(bad)? };
+    let go = match can_go {
+        Some(v) => v.into_iter().map(relspec_arg).collect(),
+        None => named.and_then(|n| n.get("can_go")).and_then(|x| x.as_array()).ok_or_else(|| bad("no can_go: name them, or give the vocabulary a scenario entry".into()))?.iter().map(relspec_json).collect::<Result<Vec<_>, _>>().map_err(bad)?,
+    };
+    let me = cs_tactics::scenario::resolve_role(&g, &s, role).map_err(bad)?;
+    let p = cs_tactics::scenario::Params { k, max_holes, max_units, max_scenarios, max_nodes };
+    let r = cs_tactics::scenario::scenario(&g, &s, &view, &target, &cs_tactics::scenario::Relations { acts_on: acts, can_go: go }, me, &p).map_err(bad)?;
+    let unit = |u: &cs_tactics::scenario::UnitAt| -> PyResult<PyObject> { let x = pyo3::types::PyDict::new(py); x.set_item("kind", u.kind.clone())?; x.set_item("at", loc_text(&u.at))?; Ok(x.into()) };
+    d.set_item("role", r.role.clone())?;
+    match &r.target {
+        Some(t) => { let x = pyo3::types::PyDict::new(py); x.set_item("kind", t.kind.clone())?; x.set_item("owner", t.owner.clone())?; x.set_item("at", loc_text(&t.at))?; d.set_item("target", x)?; }
+        None => d.set_item("target", py.None())?,
+    }
+    d.set_item("unreadable", r.unreadable.clone())?;
+    d.set_item("goal_holds", r.goal_holds)?;
+    d.set_item("exits_from", r.exits_from.clone())?;
+    let mut holes = vec![];
+    for h in &r.holes { let x = pyo3::types::PyDict::new(py); x.set_item("at", loc_text(&h.at))?; x.set_item("kind", h.kind.word())?; holes.push(x); }
+    d.set_item("holes", holes)?;
+    let mut covered = vec![];
+    for c in &r.covered {
+        let x = pyo3::types::PyDict::new(py);
+        x.set_item("at", loc_text(&c.at))?; x.set_item("own", c.own)?;
+        x.set_item("by", c.by.iter().map(&unit).collect::<PyResult<Vec<_>>>()?)?;
+        covered.push(x);
+    }
+    d.set_item("covered", covered)?;
+    d.set_item("units", r.units.iter().map(&unit).collect::<PyResult<Vec<_>>>()?)?;
+    let mut supply = vec![];
+    for per in &r.supply {
+        let mut row = vec![];
+        for x in per {
+            let y = pyo3::types::PyDict::new(py);
+            y.set_item("unit", x.unit)?; y.set_item("kind", r.units[x.unit].kind.clone())?; y.set_item("from", loc_text(&r.units[x.unit].at))?; y.set_item("to", loc_text(&x.to))?; y.set_item("moves", x.moves)?;
+            row.push(y);
+        }
+        supply.push(row);
+    }
+    d.set_item("supply", supply)?;
+    let mut scenarios = vec![];
+    for sc in &r.scenarios {
+        let x = pyo3::types::PyDict::new(py);
+        x.set_item("moves", sc.total_moves)?;
+        let mut pl = vec![];
+        for q in &sc.placements {
+            let y = pyo3::types::PyDict::new(py);
+            y.set_item("kind", q.unit.kind.clone())?; y.set_item("from", loc_text(&q.unit.at))?; y.set_item("to", loc_text(&q.to))?; y.set_item("moves", q.moves)?;
+            pl.push(y);
+        }
+        x.set_item("placements", pl)?;
+        scenarios.push(x);
+    }
+    d.set_item("scenarios", scenarios)?;
+    d.set_item("safe", r.safe)?;
+    d.set_item("notes", r.notes.clone())?;
+    d.set_item("contest", r.contest.clone())?;
+    d.set_item("evidence", cs_tactics::scenario::explain(&r))?;
+    d.set_item("nodes", r.nodes)?; d.set_item("seconds", r.seconds)?;
+    Ok(d.into())
+}
+
 /// reason(variant, fen=None, moves=[], depth=2, fuse=200000, worth={}, ours_first=false, valuation="") -> dict: plan 78.25 THE REASONING CHAIN (cs_tactics::reason) of the
 /// side to move -- {must_answer, threats: [{stake, goal, targets, line, frame}], answers: [{index, move, kind, net, line}], irrelevant: [{facts, moves}], unread: [move
 /// names], leaving, ours: [{defects, free, line, targets, value}], candidates: [indices], candidate_moves: [names], evidence: [lines], readings, cut, nodes}. The judge:
@@ -994,6 +1097,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(watch, m)?)?;
     m.add_function(wrap_pyfunction!(census, m)?)?;
     m.add_function(wrap_pyfunction!(reason, m)?)?;
+    m.add_function(wrap_pyfunction!(scenario, m)?)?;
     m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
     Ok(())
 }

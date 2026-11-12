@@ -133,6 +133,9 @@ def gaps(log_path, *, pick_margin: float = 0.02, surprise: float = 0.5) -> dict:
 
 # ------------------------------------------------------------------------------------------------------------------------------------ the judge of readings (training only)
 
+MATE_CP = 10000          # the centipawn value a forced mate is read as (plan 78.37)
+
+
 class WdlJudge:
     """The interface of a judge of readings: TRAINING ONLY. `wdl(variant, moves, start=None) -> (win, draw, loss)` probabilities for the side to move."""
     training_only = True
@@ -183,6 +186,33 @@ class UciWdlJudge(WdlJudge):
         tot = float(p.wins + p.draws + p.losses) or 1.0
         out = (p.wins / tot, p.draws / tot, p.losses / tot)
         self.memory[key] = list(out)
+        self.unsaved += 1
+        return out
+
+    def read(self, variant: str, start: "str | None", moves: list) -> dict:
+        """PLAN 78.37 the surprise meter's reading: {"cp": int or None, "wdl": (win, draw, loss)} for the side to move, at the judge's depth. A forced mate is read as a
+        large centipawn value (MATE_CP) with the sign of the side that mates. Remembered in the same file as `wdl`, under its own key."""
+        key = json.dumps(["read", variant, start, list(moves), self.depth])
+        self.asked += 1
+        if key in self.memory:
+            self.hits += 1
+            e = self.memory[key]
+            return {"cp": e["cp"], "wdl": tuple(e["wdl"])}
+        import chess.engine
+        board = self._board(variant, list(moves), start)
+        if self._engine is None:
+            self._engine = chess.engine.SimpleEngine.popen_uci(self.path)
+            self._engine.configure({"UCI_ShowWDL": True, **self.options})
+        info = self._engine.analyse(board, chess.engine.Limit(depth=self.depth))
+        w = info.get("wdl")
+        if w is None:
+            raise RuntimeError(f"{self.path} reported no win / draw / loss (UCI_ShowWDL)")
+        p = w.pov(board.turn)
+        tot = float(p.wins + p.draws + p.losses) or 1.0
+        sc = info.get("score")
+        cp = sc.pov(board.turn).score(mate_score=MATE_CP) if sc is not None else None
+        out = {"cp": cp, "wdl": (p.wins / tot, p.draws / tot, p.losses / tot)}
+        self.memory[key] = {"cp": cp, "wdl": list(out["wdl"])}
         self.unsaved += 1
         return out
 
