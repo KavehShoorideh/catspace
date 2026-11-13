@@ -89,19 +89,20 @@ class ChessCodec:
         return found[0].uci() if found else None
 
     def taken_within(self, start: "str | None", moves: list, ply: int, place: str, k: int) -> "bool | None":
-        """Is the unit standing on handle `place` after `moves[:ply]` taken by a move of the other side within the next `k` plies of the same game? The unit is followed when its
-        own side moves it. None when the game has no move left after `ply`."""
+        """Is the unit standing on handle `place` after `moves[:ply]` (of either side) taken by a move of the other side within the next `k` plies of the same game? The unit is followed
+        when its own side moves it. None when the game has no move left after `ply` or no unit stands there."""
         import chess
         board = chess.Board(start) if start else chess.Board()
         for u in moves[:ply]:
             board.push_uci(u)
-        sq, mover = chess.parse_square(place), board.turn
+        sq = chess.parse_square(place)
+        owner = board.color_at(sq)
         rest = moves[ply:ply + k]
-        if not rest:
+        if not rest or owner is None:
             return None
         for u in rest:
             m = chess.Move.from_uci(u)
-            if board.turn == mover:
+            if board.turn == owner:
                 if m.from_square == sq:
                     sq = m.to_square
             elif m.to_square == sq:

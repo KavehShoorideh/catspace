@@ -354,6 +354,16 @@ def _link_check(r: Reading, t: Unit, u: Unit, to: tuple, moved: bool, what: str,
 
 
 def level1(q: Question, r: Reading, params: Params) -> tuple:
+    status, text, detail = _level1(q, r, params)
+    if q.goal:
+        rep = r.scenario(_role_of(q.asker))
+        if rep.get("target") and not rep.get("unreadable"):
+            detail["suppliers"] = len({(x["kind"], x["from"]) for per in rep["supply"] for x in per})
+            detail["total_moves"] = min((sc["moves"] for sc in rep["scenarios"]), default=None)
+    return status, text, detail
+
+
+def _level1(q: Question, r: Reading, params: Params) -> tuple:
     t, k = q.target, params.reach_k
     side = side_word(q.asker)
     if q.goal:
@@ -739,10 +749,11 @@ class Record:
     alt_share: "float | None" = None   # share of the other legal moves the sheet does not object to at level 0
     ways: tuple = (0, 0, 0)            # level 2 search: ways confirmed, refuted, not settled
     answered: int = 0                  # questions closed by "every way is answered"
+    units: list = field(default_factory=list)   # (owner, group, level 2 result, taken) of each weighty non-goal unit; group: flagged (open after level 1), closed1, other
 
 
-def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, moved: "str | None" = None, taken_of=None, weight: float = 0.0) -> Record:
-    ranks, ways, answered = [], [0, 0, 0], 0
+def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, moved: "str | None" = None, taken_of=None, weight: float = 0.0, follow_all: bool = False) -> Record:
+    ranks, ways, answered, units = [], [0, 0, 0], 0, []
     for q in sheet.questions:
         if q.quiet:
             continue
@@ -754,6 +765,11 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
         taken = taken_of(place) if (taken_of and q.owner == SELF) else None
         ranks.append(Row(q.owner, q.live_by_level1, closed1, live0, live0 or one, q.target.kind, place, bool(sheet.reading and sheet.reading.weighty(q.target)),
                          1 in f and f[1].status == LIVE, f[1].detail.get("failed_at", 0) if (closed1 and 1 in f) else 0, taken))
+        if follow_all and not q.goal and ranks[-1].weighty:
+            group = "flagged" if q.live_by_level1 else ("closed1" if closed1 else "other")
+            l2 = f.get(2)
+            result = "" if l2 is None else {LIVE: "confirmed", CLOSED: "refuted", IDLE: "not settled"}[l2.status]
+            units.append((q.owner, group, result, taken_of(place) if taken_of else None))
         for x in q.findings:
             if x.detail.get("mode") == "search":
                 ways[0] += x.detail["confirmed"]
@@ -763,7 +779,7 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
     quiet = next((q for q in sheet.questions if q.quiet and q.findings), None)
     quiet_at = place_text(quiet.findings[0].detail["unit"].at) if quiet else None
     costs = [(f"{s.level}" + (f" ({s.mode})" if s.mode else ""), s.cost) for s in sheet.steps if not s.question.quiet]
-    return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered)
+    return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered, units=units)
 
 
 class Item(NamedTuple):
@@ -957,7 +973,7 @@ def alternatives_share(env: Env, worth: dict, params: Params, position: str, liv
     return free / len(legal)
 
 
-def measure(items: list, runner, samples: int = 3, codec=None, objector=None, alternatives=None, alt_limit: int = 100) -> tuple:
+def measure(items: list, runner, samples: int = 3, codec=None, objector=None, alternatives=None, alt_limit: int = 100, follow_all: bool = False) -> tuple:
     """items from `load_positions`; `runner(variant, start, moves) -> Sheet`. `codec.taken_within` follows my units in the game; `objector(item, live_before) -> (obj0, obj2)` and
     `alternatives(item, live_before) -> share` are the (e) readings. -> (records, sample explanation lines, number unreadable)."""
     records, unreadable, picked, n_alt = [], 0, [], 0
@@ -971,7 +987,7 @@ def measure(items: list, runner, samples: int = 3, codec=None, objector=None, al
             continue
         variant, start, moves = it.pos
         taken_of = (lambda place, it=it: codec.taken_within(start, it.full, it.key[1], place, 4)) if codec else None
-        rec = summarize_sheet(it.key, it.bad, it.fell, sheet, it.moved, taken_of, it.weight)
+        rec = summarize_sheet(it.key, it.bad, it.fell, sheet, it.moved, taken_of, it.weight, follow_all)
         live_before = live0_places(sheet)
         if objector is not None:
             try:
@@ -994,6 +1010,174 @@ def measure(items: list, runner, samples: int = 3, codec=None, objector=None, al
     return records, text, unreadable
 
 
+def settle_flagged(sheet: Sheet, params: Params = Params()) -> None:
+    """Step to level 2 every non-goal unit above the lowest worth whose question is open after level 1 (the measure G reads the level 2 result of the flagged units)."""
+    costs = _Costs(params)
+    for q in sheet.questions:
+        if not q.quiet and not q.goal and q.state == "open" and q.level == 2 and q.live_by_level1 and sheet.reading.weighty(q.target):
+            _record(sheet, step(q, sheet.reading, params), costs, params)
+
+
+def format_flagged(records: list) -> list:
+    """OBS lines of measure G: for the units above the lowest worth (not the goal unit) of each side, the share taken within 4 plies by group and by the level 2 result. Mine are read as
+    if it were their turn (the census), theirs with the asker to move (the search)."""
+    out = []
+    for side, word, mode in ((SELF, "mine", "level 2 read as if it were their turn"), (OTHER, "theirs", "level 2 read with the asker to move, by search")):
+        rows = [u for r in records for u in r.units if u[0] == side and u[3] is not None]
+
+        def cell(pick):
+            sel = [u for u in rows if pick(u)]
+            k = sum(u[3] for u in sel)
+            return f"{k} of {len(sel)} ({_pct(k, len(sel))})"
+        flagged = [u for u in rows if u[1] == "flagged"]
+        out.append(f"OBS (G) {word} ({mode}): units read {len(rows)}; flagged (open after level 1) {len(flagged)}: taken {cell(lambda u: u[1] == 'flagged')}")
+        for res in ("confirmed", "refuted", "not settled", ""):
+            label = res or "no level 2 step"
+            out.append(f"OBS (G) {word}, flagged, level 2 {label}: taken {cell(lambda u, res=res: u[1] == 'flagged' and u[2] == res)}")
+        out.append(f"OBS (G) {word}, closed at level 1: taken {cell(lambda u: u[1] == 'closed1')}")
+        out.append(f"OBS (G) {word}, neither flagged nor closed at level 1: taken {cell(lambda u: u[1] == 'other')}")
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- F: the goal unit's verdict against how games ended
+
+BANDS = ((1, 2), (3, 4), (5, 8), (9, 16), (17, 32), (33, 10 ** 9))
+SIGNS = (("live (level 0 or 1)", "live"), ("open exits at most 1", "exits1"), ("a scenario exists", "scenario"))
+
+
+def band_of(plies_to_end: int) -> int:
+    return next(i for i, (lo, hi) in enumerate(BANDS) if lo <= plies_to_end <= hi)
+
+
+def band_name(i: int) -> str:
+    lo, hi = BANDS[i]
+    return f"{lo}-{hi}" if hi < 10 ** 8 else f"{lo}+"
+
+
+def roles_of(variant: str) -> list:
+    """The roles in the order the outcome lists them: the side to move at the start, then the other."""
+    first = CE.state(variant, None, [])
+    return [first[1], CE.state(variant, None, [first[2][0]])[1]]
+
+
+def game_ending(variant: str, game: dict, roles: list) -> tuple:
+    """(kind, index of the role that won or None): kind is decisive (the outcome field names a winner, `outcome` [100, 0] or [0, 100], and the kernel's final position is over with that
+    outcome: the goal is met), draw (the outcome is [50, 50]), ply cap (`unfinished`), or other."""
+    out = game.get("outcome")
+    if game.get("unfinished") or not out:
+        return "ply cap", None
+    final = CE.state(variant, game.get("start"), game["moves"])
+    if final[3] is not None and list(final[3]) == list(out):
+        if sorted(out) == [0, 100]:
+            return "decisive", out.index(100)
+        if list(out) == [50, 50]:
+            return "draw", None
+    return "other", None
+
+
+def goal_reading(env: Env, position: str, worth: dict, params: Params) -> dict:
+    """{side: reading of the goal-unit question of that side} at levels 0 and 1 only: live (level 0 or 1), open exits, whether a scenario exists and its total moves, suppliers."""
+    r = Reading(env, position, worth)
+    out = {"mover": r.mover}
+    for q in first_order(r, params):
+        if not q.goal:
+            continue
+        lv0 = step(q, r, params)
+        lv1 = step(q, r, params)
+        exits = lv0.detail.get("open_exits")
+        out[q.target.side] = {"live": q.live_by_level1, "live0": lv0.status == LIVE, "open_exits": exits, "exits1": exits is not None and exits <= 1,
+                              "scenario": lv1.detail.get("scenarios", 0) > 0, "total_moves": lv1.detail.get("total_moves"), "suppliers": lv1.detail.get("suppliers")}
+    return out
+
+
+def goal_rows(variant: str, game: dict, roles: list, readings: list, ending: tuple) -> list:
+    """The rows of one game: one per goal unit per position, with its group (loser, winner, undecided), whether it is read as mine (its owner to move) or as theirs, and the plies before the end."""
+    kind, winner = ending
+    rows = []
+    n = len(game["moves"])
+    for ply, rd in enumerate(readings):
+        if rd is None:
+            continue
+        for side in (SELF, OTHER):
+            g = rd.get(side)
+            if g is None:
+                continue
+            owner = rd["mover"] if side == SELF else next(x for x in roles if x != rd["mover"])
+            group = "undecided" if kind != "decisive" else ("winner" if roles.index(owner) == winner else "loser")
+            rows.append({"game": game["game"], "ply": ply, "to_end": n - ply, "group": group, "read": "mine" if side == SELF else "theirs", **g})
+    return rows
+
+
+def _quartiles(xs: list) -> tuple:
+    xs = sorted(xs)
+    pick = lambda q: xs[min(len(xs) - 1, int(q * (len(xs) - 1) + 0.5))]
+    return pick(0.25), pick(0.5), pick(0.75)
+
+
+def format_goal_verdict(rows: list, endings: dict, positions: int) -> list:
+    """The OBS lines of F. `endings` is {(directory, game): (kind, winner)}."""
+    kinds: dict = {}
+    for k, w in endings.values():
+        kinds[k] = kinds.get(k, 0) + 1
+    out = [f"OBS (F) games read {len(endings)}, positions {positions}; endings: " + ", ".join(f"{k} {n}" for k, n in sorted(kinds.items()))
+           + "; decisive means the games file's `outcome` is [100, 0] or [0, 100] and the kernel's final position is over with it (the goal met)"]
+    for group, label in (("loser", "the goal unit of the side that LOST a decisive game"), ("winner", "the goal unit of the side that WON a decisive game"),
+                         ("undecided", "both goal units in games not decided (false alarm rate)")):
+        for read, rlabel in (("mine", "read as mine (its owner to move)"), ("theirs", "read as theirs (the attacker to move)")):
+            sel = [x for x in rows if x["group"] == group and x["read"] == read]
+            for sname, key in SIGNS:
+                cells = []
+                for i in range(len(BANDS)):
+                    b = [x for x in sel if band_of(x["to_end"]) == i]
+                    k = sum(1 for x in b if x[key])
+                    cells.append(f"{band_name(i)}: {k}/{len(b)} ({_pct(k, len(b))})")
+                out.append(f"OBS (F) {label}, {rlabel}, sign {sname}, by plies before the end: " + "; ".join(cells))
+    for sname, key in SIGNS:
+        runs, none = [], 0
+        by_game: dict = {}
+        for x in rows:
+            if x["group"] == "loser":
+                by_game.setdefault(x["game"], {})[x["to_end"]] = x[key]
+        for g, series in by_game.items():
+            n = 0
+            while series.get(n + 1):
+                n += 1
+            (runs.append(n) if n else None)
+            none += n == 0
+        if runs:
+            q1, med, q3 = _quartiles(runs)
+            out.append(f"OBS (F) losing goal unit, sign {sname}: live from the end back to {med} plies before the end (median; quartiles {q1} and {q3}) in {len(runs)} games; not live at the last position in {none}")
+        else:
+            out.append(f"OBS (F) losing goal unit, sign {sname}: never live at the last position in {none} games")
+    return out
+
+
+def goal_verdict(dirs: list, env: Env, worth: dict, params: Params, limit: "int | None" = None) -> tuple:
+    """(rows, endings, positions): the goal-unit readings of every position of every game in the directories."""
+    roles = roles_of(env.variant)
+    rows, endings, positions = [], {}, 0
+    for d in dirs:
+        for line in (Path(d) / "games.jsonl").read_text().splitlines():
+            if not line.strip():
+                continue
+            g = json.loads(line)
+            g["game"] = f"{Path(d).name}:{g['game']}"
+            v = g.get("variant") or env.variant
+            ending = game_ending(v, g, roles)
+            endings[(d, g["game"])] = ending
+            readings = []
+            for ply in range(len(g["moves"])):
+                try:
+                    readings.append(goal_reading(env, CE.state(v, g.get("start"), g["moves"][:ply])[0], worth, params))
+                except ValueError:
+                    readings.append(None)
+                positions += 1
+            rows += goal_rows(v, g, roles, readings, ending)
+            if limit and len(endings) >= limit:
+                return rows, endings, positions
+    return rows, endings, positions
+
+
 def store_worth(game: str) -> dict:
     """The worth table of the game's HEAD snapshot (its judge), empty when there is none."""
     from catspace.incubator.analyst.discovery import game_store as GS
@@ -1006,7 +1190,7 @@ def store_worth(game: str) -> dict:
 def main(argv: list) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("game")
-    ap.add_argument("--games-dir", required=True)
+    ap.add_argument("--games-dir", required=True, action="append", help="a surprise meter directory; with --goal-verdict the flag may repeat")
     ap.add_argument("--max-steps", type=int, default=None)
     ap.add_argument("--seconds", type=float, default=None)
     ap.add_argument("--limit", type=int, default=None)
@@ -1014,18 +1198,34 @@ def main(argv: list) -> int:
     ap.add_argument("--no-search", action="store_true", help="level 2 by the census alone (the first version)")
     ap.add_argument("--alternatives", type=int, default=100, help="bad-move positions whose other legal moves are read for the sheet's objection (0: none)")
     ap.add_argument("--no-objection", action="store_true", help="skip measure (e)")
+    ap.add_argument("--goal-verdict", action="store_true", help="measure F: the goal unit's question against how the games ended (levels 0 and 1 only)")
+    ap.add_argument("--flagged", action="store_true", help="measure G: the level 2 result on the flagged units of both sides, followed for 4 plies")
+    ap.add_argument("--search-depth", type=int, default=None, help="the deepest level and the deepest search (default: the Params'); 2 keeps G to depth 2")
+    ap.add_argument("--games", type=int, default=None, help="with --goal-verdict: at most this many games")
     ap.add_argument("--out", default=None, help="a name under the derived data directory to write the OBS lines to")
     a = ap.parse_args(argv)
     env = Env(a.game)
     worth = store_worth(a.game)
-    items = load_positions(a.games_dir, a.game, a.limit, game=a.game)
     params = Params(links=not a.no_links, search=not a.no_search)
+    if a.search_depth:
+        params.max_level = params.search_depth_cap = a.search_depth
     t0 = time.perf_counter()
+    if a.goal_verdict:
+        rows, endings, positions = goal_verdict(a.games_dir, env, worth, params, a.games)
+        lines = format_goal_verdict(rows, endings, positions) + [f"OBS question sheet: goal verdict {time.perf_counter() - t0:.1f} s for {len(endings)} games, {positions} positions"]
+        for ln in lines:
+            print(ln)
+        return 0
+    if len(a.games_dir) != 1:
+        ap.error("several --games-dir only with --goal-verdict")
+    items = load_positions(a.games_dir[0], a.game, a.limit, game=a.game)
 
     def runner(variant, start, moves):
         position = CE.state(variant, start, list(moves))[0]
         sheet = run(position, worth, max_steps=a.max_steps, budget_seconds=a.seconds, env=env, params=params)
         finish_levels(sheet, 1, params)
+        if a.flagged:
+            settle_flagged(sheet, params)
         return sheet
 
     def objector(it, live_before):
@@ -1038,8 +1238,8 @@ def main(argv: list) -> int:
         return alternatives_share(env, worth, params, CE.state(variant, start, list(moves))[0], live_before, it.played)
 
     records, text, unreadable = measure(items, runner, codec=env.codec, objector=None if a.no_objection else objector,
-                                        alternatives=None if (a.no_objection or not a.alternatives) else alternatives, alt_limit=a.alternatives)
-    lines = format_obs(records, unreadable) + text
+                                        alternatives=None if (a.no_objection or not a.alternatives) else alternatives, alt_limit=a.alternatives, follow_all=a.flagged)
+    lines = format_obs(records, unreadable) + (format_flagged(records) if a.flagged else []) + text
     lines.append(f"OBS question sheet: {time.perf_counter() - t0:.1f} s for {len(items)} positions, worth {worth}")
     for ln in lines:
         print(ln)

@@ -358,3 +358,49 @@ def test_the_module_names_no_object_of_one_game():
     text = SOURCE.read_text()
     hit = re.search(words, text, flags=re.I)
     assert hit is None, hit and (hit.group(0), text[max(0, hit.start() - 40):hit.end() + 20])
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- F: the goal unit against how games ended; G: the search on flagged units
+
+def test_f_reads_how_a_short_game_ended_and_the_goal_unit_of_the_loser(tmp_path):
+    (tmp_path / "games.jsonl").write_text(json.dumps({"variant": "chess", "game": 0, "start": None, "moves": ["f2f3", "e7e5", "g2g4", "d8h4"], "outcome": [0, 100], "unfinished": False}) + "\n")
+    rows, endings, n = Q.goal_verdict([str(tmp_path)], Q.Env("chess"), WORTH, Q.Params())
+    assert n == 4 and list(endings.values()) == [("decisive", 1)]                          # the second role (black) won
+    loser = {(x["to_end"], x["read"]): x for x in rows if x["group"] == "loser"}
+    assert loser[(1, "theirs")]["live"] and loser[(1, "theirs")]["scenario"] and loser[(1, "theirs")]["total_moves"] == 1     # the attacker to move, one move from the end
+    assert loser[(2, "mine")]["live"] and not loser[(3, "theirs")]["live"]
+    lines = Q.format_goal_verdict(rows, endings, n)
+    assert "decisive 1" in lines[0]
+    assert any("LOST" in ln and "read as theirs" in ln and "sign live" in ln and "1-2: 1/1 (100.0%)" in ln for ln in lines)
+    assert any("sign live (level 0 or 1): live from the end back to 2 plies before the end (median; quartiles 2 and 2) in 1 games" in ln for ln in lines)
+    assert Q.game_ending("chess", {"outcome": None, "unfinished": True, "moves": []}, ["white", "black"]) == ("ply cap", None)
+
+
+def test_f_bands_cover_every_distance():
+    assert [Q.band_of(x) for x in (1, 2, 3, 4, 5, 8, 9, 16, 17, 32, 33, 500)] == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
+
+
+def test_g_follows_a_unit_of_either_side_and_reads_the_level_2_result_of_the_flagged(env):
+    from catspace.incubator.analyst.discovery import curriculum as CU
+    codec = CU.codec_of("chess")
+    moves = ["e2e4", "d7d5", "e4d5", "d8d5"]
+    assert codec.taken_within(None, moves, 2, "d5", 4) is True              # the unit is not the mover of ply 2 and is taken at once
+    assert codec.taken_within(None, moves, 2, "a7", 4) is False
+    sheet = Q.run(HANGING, WORTH, env=env, max_steps=0, params=Q.Params(max_level=2, search_depth_cap=2))
+    Q.finish_levels(sheet, 1, Q.Params(max_level=2, search_depth_cap=2))
+    Q.settle_flagged(sheet, Q.Params(max_level=2, search_depth_cap=2))
+    queen = next(q for q in sheet.questions if not q.quiet and q.target.kind == "queen")
+    assert len(queen.findings) == 3 and queen.findings[2].detail["mode"] == "search" and queen.findings[2].detail["depth"] == 2
+    rec = Q.summarize_sheet((0, 0), False, None, sheet, taken_of=lambda place: place == "d5", follow_all=True)
+    assert ("them", "flagged", "confirmed", True) in rec.units
+
+
+def test_g_lines_count_taken_by_side_and_result():
+    units = [("us", "flagged", "confirmed", True), ("us", "flagged", "refuted", False), ("us", "closed1", "", False), ("them", "flagged", "confirmed", True),
+             ("them", "flagged", "not settled", False), ("them", "other", "", True)]
+    lines = Q.format_flagged([Q.Record((0, 0), False, [], None, [], units=units)])
+    get = lambda s: next(ln for ln in lines if s in ln)
+    assert "mine (level 2 read as if it were their turn): units read 3; flagged (open after level 1) 2: taken 1 of 2 (50.0%)" in get("OBS (G) mine (")
+    assert "theirs, flagged, level 2 confirmed: taken 1 of 1 (100.0%)" in get("theirs, flagged, level 2 confirmed")
+    assert "mine, closed at level 1: taken 0 of 1 (0.0%)" in get("mine, closed at level 1")
+    assert "theirs, neither flagged nor closed at level 1: taken 1 of 1" in get("theirs, neither")
