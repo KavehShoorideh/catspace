@@ -93,6 +93,7 @@ class Params:
     chances: "str | None" = None       # a table of chances fitted at sleep (a path, see `fit_chances`): every question and node then carries `chance`; None: left empty, as before
     chance_horizon: int = 4            # the table's horizon (plies within which the exact unit is taken): 4 or 8
     clock: str = "present"             # the order of steps in `run`: "present" (stake x urgency over cost), "chance" (chance x stake at risk over cost), "plain" (the first order, each question to full depth in turn)
+    move_question: bool = False        # after the questions, the question of each legal move (`move_sheet`) is asked and kept on the sheet (False: as before)
     risk: float = 1.0                  # THE TOLERANCE FOR RISK: the stake at risk of my own unit is risk x its high bound + (1 - risk) x the midpoint of its bounds; 1 = the worst case, 0 = the expected value
 
 
@@ -134,6 +135,14 @@ class Env:
         self.spec = GS.spec_texts(game, vocabulary)[self.variant]
         self.codec = CU.codec_of(game)
         self._medium: "Medium | None | bool" = None
+
+    def worth_fn(self, worth: dict):
+        """kind (the description's word) -> its worth in the table, the same reading as `Reading.worth_of` but for any kind of the game, whatever the position holds (the keys are read once from the
+        initial position)."""
+        if not hasattr(self, "_kind_key"):
+            self._kind_key = kind_keys(self.codec, CE.state(self.variant, None, [])[0])
+        table, keys = dict(worth), self._kind_key
+        return lambda kind: float(table.get(kind, table.get(keys.get(kind, kind), 0)))
 
     def medium(self) -> "Medium | None":
         """The medium of movement of the game (the one-move relations on the empty board), read once per game from the initial position and from the position after one move (so both
@@ -2582,6 +2591,7 @@ class Sheet:
     seconds: float = 0.0
     read_seconds: float = 0.0
     reading: "Reading | None" = None
+    moves: "MoveSheet | None" = None       # the question of each move, when `Params.move_question` is on
 
     @property
     def graph(self) -> Graph:
@@ -2709,6 +2719,9 @@ def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_se
         else:
             q = max(pool, key=lambda x: (priority(x, costs), -x.rank))
         take(q)
+    if params.move_question:
+        left = None if budget_seconds is None else max(0.0, budget_seconds - (time.perf_counter() - t0))
+        sheet.moves = move_sheet(env, r, params, budget_seconds=left)
     sheet.seconds = time.perf_counter() - t0
     return sheet
 
@@ -2754,6 +2767,11 @@ def explain(sheet: Sheet) -> list:
             if x["status"] == WAITING_V:
                 line += "; waits on " + "; ".join(c[2] for c in x.get("alts", [])) + "; broken by " + ("; ".join(b.words for b in x.get("breaks", []) if hasattr(b, "words")) or "nothing seen")
             out.append(line)
+    if sheet.moves is not None:
+        out.append(f"the question of the move: {len(sheet.moves.results)} of {len(sheet.moves.order)} moves asked in {sheet.moves.seconds:.3f} s")
+        for res in sheet.moves.results:
+            if res["verdict"] != SAFE_V:
+                out += explain_move(res)
     return out
 
 
@@ -2763,6 +2781,257 @@ def explain_chain(sheet: Sheet, question: Question) -> list:
     if question.node is None:
         return [f"{question.label()}: nothing recorded yet"]
     return chain_lines(g, g.nodes[question.node])
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- the question of the move
+
+SAFE_V, LOSES_V, MOVE_UNSETTLED = "SAFE", "LOSES", "NOT SETTLED"
+
+
+def child_reading(r: Reading, child: str, params: Params) -> Reading:
+    """The reading of the position `child` reached from `r`'s position by one move, made once and shared (the goal's kind is the game's, not the position's)."""
+    got = r._frames.get(("reading", child))
+    if got is None:
+        got = Reading(r.env, child, r.worth)
+        got._goal_kind = r._goal_kind if r._goal_kind is not None else (r.goal_kind(),)
+        r._frames[("reading", child)] = got
+    got.params_k, got.passes = params.reach_k, params.passes
+    return got
+
+
+def _taken_by(r: Reading, child_r: Reading) -> list:
+    """The units of the other side that the move took: the other side's units before the move that are not the child's units of the side to move (a multiset difference, so every kind of taking is
+    found, the place of a taken unit need not be the place the move ended on)."""
+    have: dict = {}
+    for u in child_r.units:
+        if u.side == SELF:
+            have[(u.kind, u.at)] = have.get((u.kind, u.at), 0) + 1
+    out = []
+    for u in r.units:
+        if u.side != OTHER:
+            continue
+        if have.get((u.kind, u.at), 0) > 0:
+            have[(u.kind, u.at)] -= 1
+        else:
+            out.append(u)
+    return out
+
+
+def _threat(unit: Unit, at_before: str, part: str, kind: str, value: float, line: tuple, open_: bool, words: str) -> dict:
+    return {"unit": unit, "place": at_before, "part": part, "kind": kind, "value": float(value), "line": tuple(line), "open": bool(open_), "words": words}
+
+
+def move_question(env: Env, reading: Reading, move: str, params: Params = Params()) -> dict:
+    """THE QUESTION OF THE MOVE (plan 78.42): the side to move plays `move`; is something of its own lost for it? Three answers, each a node of the graph with stake bounds, asked in this order:
+      a. WHAT IT LEAVES: the cost of leaving (narrow form) for the moving unit and this step: which of the mover's units are newly lost where they stand, or the goal unit newly under the sign,
+         because the unit is no longer where it was.
+      b. WHERE IT LANDS: on the position after the move (real move through the kernel), the other side to move: is the moved unit lost where it now stands (the exchange frame as it stands, real
+         moves)? When the move took something, the answer is the balance: what it took minus what the frame says is lost.
+      c. WHAT THE OTHER SIDE THEN HAS: of the mover's other units, those on places whose count of units bearing on them (or whose content) changed and that the other side now strikes, not read by (a),
+         and not lost before: the frame on each; and the goal unit's sign when it or its exits are on a changed place.
+    The verdict: SAFE (nothing is lost), LOSES (the unit, and the amount as bounds: the worst single exchange less what the move took, up to the sum of the exchanges less what it took, with the line of real
+    moves the frame found), or NOT SETTLED (a frame left open by its node budget, the goal unit newly under the sign without a loss, or the move or position refused by the kernel).
+    -> {move, unit, dest, took, took_units, answers: {a, b, c}, threats, verdict, named, low, high, line, because, ms: {a, read, b, c, total}, nodes}"""
+    t_all = time.perf_counter()
+    r = reading
+    r.params, r.params_k, r.passes = params, params.reach_k, params.passes
+    origin, dest = env.codec.move_ends(move)
+    u = next((x for x in r.units if x.side == SELF and place_text(x.at) == origin), None)
+    if u is None:
+        raise ValueError(f"{move} is not a move of a unit of the side to move")
+    ms = {"a": 0.0, "read": 0.0, "b": 0.0, "c": 0.0, "total": 0.0}
+    out = {"move": move, "unit": u, "dest": dest, "took": 0.0, "took_units": [], "answers": {"a": "", "b": "", "c": ""}, "threats": [], "verdict": SAFE_V, "named": None, "low": 0.0, "high": 0.0,
+           "line": (), "because": "", "ms": ms, "nodes": {}, "unsettled": []}
+    st = r.try_state(r.position, move)
+    if st is None:
+        out.update(verdict=MOVE_UNSETTLED, because="the kernel does not accept the move")
+        ms["total"] = 1000 * (time.perf_counter() - t_all)
+        return out
+    if st[3] is not None:
+        out.update(because="the move ends the game; nothing is left to lose", answers={"a": "not read: the game is over", "b": "not read: the game is over", "c": "not read: the game is over"})
+        ms["total"] = 1000 * (time.perf_counter() - t_all)
+        return out
+    child = st[0]
+    weight = r.weight(u)
+    top = max([r.weight(x) for x in r.units if x.side == SELF] + [params.min_stake])
+    g = r.graph
+    root = g.node("move", f"is the move {move} of {unit_words(u)} safe for {side_word(SELF)}", key=("m", move), target=u, asker=SELF, stake_high=top)
+
+    # the position after the move, read once for the answers that need it (and the goal sign of a)
+    t0 = time.perf_counter()
+    try:
+        child_r = child_reading(r, child, params)
+    except ValueError:
+        out.update(verdict=MOVE_UNSETTLED, because="the position after the move cannot be read")
+        ms["total"] = 1000 * (time.perf_counter() - t_all)
+        return out
+    mine_now = {place_text(x.at): x for x in child_r.units if x.side == OTHER}
+    took_units = _taken_by(r, child_r)
+    took = sum(r.worth_of(x.kind) for x in took_units)
+    out["took"], out["took_units"] = took, took_units
+    ms["read"] = 1000 * (time.perf_counter() - t0)
+
+    # a. what it leaves
+    t0 = time.perf_counter()
+    q = Question(u, SELF, weight, 0)
+    leave = cost_of_leaving(r, q, u, move, r.position, params)
+    cands = _leaving_candidates(r, q, u, move, params)[0] if leave["read"] else set()
+    threats, unsettled = [], []
+    for d in leave["duties"]:
+        v = d["unit"]
+        if d["kind"] == "newly lost":
+            threats.append(_threat(v, place_text(v.at), "a", "left unguarded", d["value"], (), False, f"{unit_words(v)} is lost where it stands once {unit_words(u)} has gone"))
+        else:
+            unsettled.append({"unit": v, "part": "a", "words": f"{unit_words(v)} comes newly under the sign once {unit_words(u)} has gone", "stake": d["stake"]})
+    out["answers"]["a"] = ("; ".join(t["words"] for t in threats + [dict(words=x["words"]) for x in unsettled]) or f"leaving its place newly loses nothing ({len(cands)} unit{'s' if len(cands) != 1 else ''} it held were read)") if leave["read"] else "not read"
+    ms["a"] = 1000 * (time.perf_counter() - t0)
+
+    # b. where it lands
+    t0 = time.perf_counter()
+    land = mine_now.get(dest)
+    if land is None:
+        out["answers"]["b"] = "not read: the moved unit is not where the move ends"
+    elif not child_r.weighty(land):
+        out["answers"]["b"] = f"my {land.kind} on {dest} is worth the least of all, not asked" + (f"; it took {_names(took_units)} worth {took:g}" if took_units else "")
+    else:
+        ex = exchange_stands(child_r, land, SELF, params)
+        mine = f"my {land.kind} on {dest}"
+        where = f"the other side's exchange on {mine} is worth {ex['value']:g} to it" if ex["value"] > 0 else f"{mine} is not lost where it lands"
+        if took_units:
+            where += f"; the move took {_names(took_units)} worth {took:g}, so the balance is {took - ex['value']:+g}"
+        out["answers"]["b"] = where + f" ({SOURCE_WORDS[ex['source']]})"
+        if ex["value"] > 0:
+            threats.append(_threat(u, origin, "b", "lands", ex["value"], ex["line"], ex["open"], where))
+        elif ex["open"]:
+            unsettled.append({"unit": u, "part": "b", "words": f"the exchange where it lands was not read to its end (node cap)", "stake": weight})
+    ms["b"] = 1000 * (time.perf_counter() - t0)
+
+    # c. what the other side then has
+    t0 = time.perf_counter()
+    changed = env.codec.changed_places(r.position, child)
+    read_units, newly = [], []
+    for v in r.units:
+        if v.side != SELF or v == u or v in cands or not r.weighty(v) or v == r.goal_unit(SELF) or place_text(v.at) not in changed:
+            continue
+        vc = mine_now.get(place_text(v.at))
+        if vc is None or not child_r.strikers_of(vc, SELF):
+            continue
+        read_units.append(v)
+        if exchange_stands(r, v, OTHER, params)["value"] > 0:
+            continue                                                   # lost before the move: not newly
+        ex = exchange_stands(child_r, vc, SELF, params)
+        if ex["value"] > 0:
+            words = f"{unit_words(v)} is lost where it stands after the move: worth {ex['value']:g} to the other side"
+            threats.append(_threat(v, place_text(v.at), "c", "newly struck", ex["value"], ex["line"], ex["open"], words))
+            newly.append(words)
+        elif ex["open"]:
+            unsettled.append({"unit": v, "part": "c", "words": f"the exchange on {unit_words(v)} was not read to its end (node cap)", "stake": r.weight(v)})
+    goal = r.goal_unit(SELF)
+    if goal is not None and goal != u and not any(x["unit"] == goal for x in unsettled) and changed & ({place_text(goal.at)} | {place_text(x) for x in r.exits_of(goal)}):
+        if _goal_newly_under_sign(r, q, child, params):
+            unsettled.append({"unit": goal, "part": "c", "words": f"{unit_words(goal)} comes newly under the sign", "stake": r.weight(goal)})
+    out["answers"]["c"] = ("; ".join(newly + [x["words"] for x in unsettled if x["part"] == "c"])
+                           or f"{len(read_units)} unit{'s' if len(read_units) != 1 else ''} on changed places read; none newly lost ({len(changed)} places changed)")
+    ms["c"] = 1000 * (time.perf_counter() - t0)
+
+    # the verdict
+    out["threats"], out["unsettled"] = threats, unsettled
+    sure = sorted((t for t in threats if t["value"] - took > 0), key=lambda t: (-t["value"], t["part"]))
+    if sure:
+        worst = sure[0]
+        lo = worst["value"] - took
+        hi = max(lo, sum(t["value"] for t in threats) - took)
+        out.update(verdict=LOSES_V, named=worst, low=lo, high=hi, line=worst["line"],
+                   because=f"{worst['words']}" + (f"; the move took {_names(took_units)} worth {took:g}, which leaves {lo:g}" if took_units else ""))
+    elif unsettled:
+        first = unsettled[0]
+        out.update(verdict=MOVE_UNSETTLED, named={"unit": first["unit"], "place": place_text(first["unit"].at), "part": first["part"], "words": first["words"]},
+                   low=0.0, high=max(x["stake"] for x in unsettled), because=first["words"])
+    else:
+        out.update(because="nothing of its own is lost: " + "; ".join(out["answers"][k] for k in "abc"))
+    # the nodes: one question, three answers, each with its bounds
+    ans_nodes = {}
+    for key, asks in (("a", f"what does {unit_words(u)} leave by going to {dest}"), ("b", f"is it lost where it lands on {dest}"), ("c", "what does the other side then have")):
+        n = g.node("answer", asks, key=("m" + key, move), answer=out["answers"][key])
+        g.link(root, n, "needs", because=out["answers"][key])
+        part_threats = [t for t in threats if t["part"] == key]
+        part_open = [x for x in unsettled if x["part"] == key]
+        hi = sum(t["value"] for t in part_threats) + sum(x["stake"] for x in part_open)
+        n.stake_high = hi
+        bound(n, low=max([t["value"] for t in part_threats] + [0.0]), high=hi)
+        ans_nodes[key] = n.id
+    root.answer, root.verdict = out["because"], out["verdict"]
+    bound(root, low=out["low"], high=out["high"] if out["verdict"] != SAFE_V else 0.0)
+    out["nodes"] = {"move": root.id, **ans_nodes}
+    ms["total"] = 1000 * (time.perf_counter() - t_all)
+    return out
+
+
+def explain_move(res: dict) -> list:
+    """The verdict of one move in plain words, every line with its "because": the move, what it leaves, where it lands, what the other side then has, and the verdict with the unit, the bounds and the line."""
+    u = res["unit"]
+    taking = f", taking {_names(res['took_units'])} (worth {res['took']:g})" if res["took_units"] else ""
+    out = [f"the move {res['move']}: {unit_words(u)} goes to {res['dest']}{taking}: {res['verdict']}"]
+    out.append(f"  what it leaves -- because {res['answers']['a']}")
+    out.append(f"  where it lands -- because {res['answers']['b']}")
+    out.append(f"  what the other side then has -- because {res['answers']['c']}")
+    if res["verdict"] == LOSES_V:
+        n = res["named"]
+        out.append(f"  it LOSES {unit_words(n['unit'])} -- because {res['because']}; worth to lose between {res['low']:g} and {res['high']:g}" + (f"; the line: {' '.join(res['line'])}" if res["line"] else ""))
+    elif res["verdict"] == MOVE_UNSETTLED:
+        out.append(f"  NOT SETTLED -- because {res['because']}" + (f"; at stake up to {res['high']:g}" if res["high"] else ""))
+    else:
+        out.append(f"  SAFE -- because {res['because']}")
+    return out
+
+
+@dataclass
+class MoveSheet:
+    """The verdicts of a position's moves: `results` in the order asked, `unread` the moves not reached (cut by the budget), `order` the whole order planned."""
+    position: str
+    results: list
+    unread: list
+    order: list
+    seconds: float = 0.0
+
+    def verdicts(self) -> dict:
+        return {x["move"]: x["verdict"] for x in self.results}
+
+    def loses(self) -> list:
+        return [x for x in self.results if x["verdict"] == LOSES_V]
+
+
+def move_order(reading: Reading, moves: list, params: Params = Params()) -> list:
+    """The moves in the order they are asked: by the stake of the moving unit times whether its landing place is struck by the other side in the present reading (struck places first, the heavier
+    unit first), then the rest, the heavier unit first; ties in the kernel's own order."""
+    r = reading
+    struck = {place_text(x) for x in r.struck_by(OTHER)}
+    codec = r.env.codec
+    by_place = {place_text(x.at): x for x in r.units if x.side == SELF}
+
+    def key(item):
+        i, m = item
+        o, d = codec.move_ends(m)
+        stake = r.weight(by_place[o]) if o in by_place else 0.0
+        return (-(stake * (1 if d in struck else 0)), -stake, i)
+    return [m for _, m in sorted(enumerate(moves), key=key)]
+
+
+def move_sheet(env: Env, reading: Reading, params: Params = Params(), moves: "list | None" = None, budget_seconds: "float | None" = None, budget_cost: "float | None" = None,
+               max_moves: "int | None" = None) -> MoveSheet:
+    """The question of the move for each legal move of the position (or for the given list), in `move_order`, stopped when the wall-clock budget, the budget in summed measured cost (seconds)
+    or the number of moves is used up; one move already begun is finished. The moves not reached are `unread`."""
+    t0 = time.perf_counter()
+    moves = list(reading.legal if moves is None else moves)
+    order = move_order(reading, moves, params)
+    results, spent = [], 0.0
+    for n, m in enumerate(order):
+        if ((budget_seconds is not None and time.perf_counter() - t0 >= budget_seconds) or (budget_cost is not None and spent >= budget_cost) or (max_moves is not None and n >= max_moves)):
+            break
+        res = move_question(env, reading, m, params)
+        results.append(res)
+        spent += res["ms"]["total"] / 1000.0
+    return MoveSheet(reading.position, results, order[len(results):], order, time.perf_counter() - t0)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- the measures
@@ -3658,6 +3927,27 @@ class Games:
         g = self.games[di][gi]
         return CE.state(g["variant"] or self.env.variant, g["start"], g["moves"][:ply])[0]
 
+    def events(self, di: int, gi: int) -> list:
+        """The game's moves as events (see `unit_loss`), read once."""
+        if ("events", di, gi) not in self._tracks:
+            g = self.games[di][gi]
+            self._tracks[("events", di, gi)] = self.env.codec.events(g["start"], g["moves"])
+        return self._tracks[("events", di, gi)]
+
+    def losses(self, di: int, gi: int, ply: int, place: str, worth_of, horizons: tuple = HORIZONS) -> "dict | None":
+        """The outcome by LOSS: {horizon: was the exact unit that stands on `place` LOST (by `unit_loss`) within that many plies (True/False; an even exchange or a gain is False), None when it was not
+        taken and the game ended before the horizon}, None for no unit there. The same shape as `outcomes`."""
+        got = self.tracks(di, gi)[0][ply].get(place)
+        if got is None:
+            return None
+        n = len(self.games[di][gi]["moves"])
+        ev = self.events(di, gi)
+        out = {}
+        for h in horizons:
+            res = unit_loss(ev, got[0], ply, h, worth_of)
+            out[h] = (res["status"] == LOST) if res else (None if ply + h > n else False)
+        return out
+
     def outcomes(self, di: int, gi: int, ply: int, place: str, horizons: tuple = HORIZONS) -> "dict | None":
         """{horizon: was the exact unit that stands on `place` taken within that many plies (True/False), None when not taken and the game ended before the horizon}, None for no unit there."""
         by_ply, taken = self.tracks(di, gi)
@@ -3670,6 +3960,45 @@ class Games:
             hit = any(i in taken and taken[i][0] == got[0] for i in range(ply, min(ply + h, n)))
             out[h] = True if hit else (None if ply + h > n else False)
         return out
+
+
+LOST, EVEN, GAINED = "lost", "even", "gained"
+
+
+def unit_loss(events: list, unit_id, start: int, horizon: int, worth_of) -> "dict | None":
+    """THE LOSS OF A UNIT, followed through a game's real moves (plan 78.42, replacing "was it taken" as the outcome).
+    `events[i]` is the i-th move of the game: {mover: (id, side, kind), dest, taken: (id, side, kind) | None, taken_at}. The unit `unit_id` is looked for among the takings of the plies
+    `start` .. `start + horizon - 1`. None when it is not taken there. Otherwise let X be the place it was taken on, and the RUN be
+      (1) the plies, from the one that takes the unit back to `start` and forward to the end of the game, that are consecutive takings on X (the exchange on that place: the forward end is not
+          cut by the horizon, the horizon decides only when the unit goes), and
+      (2) the unit's own arriving capture: when the last move of the unit before it was taken ended on X and took something, that move too, wherever its ply lies (not before `start`).
+    The BALANCE is, over the run, (worth of the units taken that belong to the unit's side) minus (worth of the units taken that belong to the other side), by `worth_of(kind)`.
+    The unit is LOST when the balance is above 0, EVEN when it is 0, GAINED when it is below 0.
+    -> {status, balance, place, ply (the ply it was taken), run (the plies, in order), arrival (the ply of its own arriving capture or None)}"""
+    end = min(start + horizon, len(events))
+    hit = next((i for i in range(max(start, 0), end) if events[i]["taken"] and events[i]["taken"][0] == unit_id), None)
+    if hit is None:
+        return None
+    side, place = events[hit]["taken"][1], events[hit]["taken_at"]
+    run = [hit]
+    j = hit - 1
+    while j >= start and events[j]["taken"] and events[j]["taken_at"] == place:
+        run.insert(0, j)
+        j -= 1
+    k = hit + 1
+    while k < len(events) and events[k]["taken"] and events[k]["taken_at"] == place:
+        run.append(k)
+        k += 1
+    arrival = None
+    for j in range(hit - 1, start - 1, -1):
+        if events[j]["mover"][0] == unit_id:
+            if events[j]["dest"] == place and events[j]["taken"]:
+                arrival = j
+                if j not in run:
+                    run = sorted(run + [j])
+            break
+    balance = sum((1 if events[i]["taken"][1] == side else -1) * worth_of(events[i]["taken"][2]) for i in run)
+    return {"status": LOST if balance > 0 else (EVEN if balance == 0 else GAINED), "balance": balance, "place": place, "ply": hit, "run": run, "arrival": arrival}
 
 
 def question_records(sheet: Sheet, outcomes_of) -> list:
@@ -3688,9 +4017,13 @@ def question_records(sheet: Sheet, outcomes_of) -> list:
     return out
 
 
-def fit_chances(dirs: list, env: Env, worth: dict, params: Params, *, stride: int = 1, limit: "int | None" = None, shard: tuple = (0, 1), say=print) -> tuple:
+def fit_chances(dirs: list, env: Env, worth: dict, params: Params, *, stride: int = 1, limit: "int | None" = None, shard: tuple = (0, 1), say=print, outcome: str = "taken") -> tuple:
     """THE SLEEP SIDE. Read the positions of our own games (every `stride`-th, at most `limit`, those whose index is `shard[0]` modulo `shard[1]`), run the sheet as the measures do (no table,
-    the present order), and for every question record its key and whether the exact unit was taken within 4 and within 8 plies. Nothing from a teacher or a judge is read. -> (cells, header)."""
+    the present order), and for every question record its key and whether the exact unit was taken within 4 and within 8 plies (`outcome` "taken", the default) or LOST within them
+    (`outcome` "loss": the balance of worth over the exchange on the place, see `unit_loss`). Nothing from a teacher or a judge is read. -> (cells, header)."""
+    if outcome not in ("taken", "loss"):
+        raise ValueError(f"outcome must be taken or loss, not {outcome!r}")
+    worth_of = env.worth_fn(worth)
     params = Params(**{**params.__dict__, "chances": None, "clock": "present"})
     games = Games(dirs, env)
     todo = pick_positions(dirs, stride, limit)
@@ -3702,12 +4035,15 @@ def fit_chances(dirs: list, env: Env, worth: dict, params: Params, *, stride: in
         except ValueError:
             unreadable += 1
             continue
-        records += question_records(sheet, lambda place, di=di, gi=gi, ply=ply: games.outcomes(di, gi, ply, place))
+        if outcome == "loss":
+            records += question_records(sheet, lambda place, di=di, gi=gi, ply=ply: games.losses(di, gi, ply, place, worth_of))
+        else:
+            records += question_records(sheet, lambda place, di=di, gi=gi, ply=ply: games.outcomes(di, gi, ply, place))
         if say and (n + 1) % 25 == 0:
             say(f"OBS fit progress: shard {shard[0]}/{shard[1]}: {n + 1} of {len(todo)} positions, {len(records)} records, {time.perf_counter() - t0:.0f} s")
     header = {"format": CHANCE_FORMAT, "key": list(KEY_NAMES), "horizons": list(HORIZONS), "smoothing": SMOOTH, "directories": [Path(d).name for d in dirs], "stride": stride, "limit": limit,
-              "positions": len(todo) - unreadable, "unreadable": unreadable, "records": len(records), "seconds": time.perf_counter() - t0, "shards": [list(shard)],
-              "source": "our own engine's games: the moves only; the outcome is whether the exact unit was taken in the game; no teacher number"}
+              "positions": len(todo) - unreadable, "unreadable": unreadable, "records": len(records), "seconds": time.perf_counter() - t0, "shards": [list(shard)], "outcome": outcome,
+              "source": "our own engine's games: the moves only; the outcome is whether the exact unit was " + ("lost (balance of worth over the exchange on its place)" if outcome == "loss" else "taken") + " in the game; no teacher number"}
     return cells_from_records(records), header
 
 
@@ -3794,12 +4130,14 @@ J_TIMES = (0.02, 0.05, 0.2, 1.0)       # seconds a position, the reading of the 
 J_STEPS = (10, 20, 40, 80)             # steps: read off the one unbudgeted run, exactly
 J_COSTS = (0.02, 0.05, 0.2, 1.0)       # summed measured cost of the steps taken, seconds: read off the one unbudgeted run, exactly
 J_FIELDS = ("positions", "seconds", "steps", "mine_units", "mine_taken", "mine_taken_flagged", "mine_flagged", "mine_flagged_taken",
-            "theirs_units", "theirs_taken", "theirs_taken_flagged", "theirs_flagged", "theirs_flagged_taken")
+            "theirs_units", "theirs_taken", "theirs_taken_flagged", "theirs_flagged", "theirs_flagged_taken",
+            "mine_lost", "mine_lost_flagged", "mine_flagged_lost", "theirs_lost", "theirs_lost_flagged", "theirs_flagged_lost")
 
 
-def _j_tally(acc: dict, cfg: str, kinds: dict, sheet: Sheet, outcome_of, seconds: float, steps: int) -> None:
+def _j_tally(acc: dict, cfg: str, kinds: dict, sheet: Sheet, outcome_of, seconds: float, steps: int, loss_of=None) -> None:
     """Add one position read under one configuration: for each non-goal question of a unit above the lowest worth whose unit's fate in 4 plies is known, the verdict kind it had when the
-    budget ran out (`kinds`, by question), whether it says danger, and whether the exact unit was taken within 4 plies."""
+    budget ran out (`kinds`, by question), whether it says danger, and whether the exact unit was taken within 4 plies. With `loss_of` (place -> {horizon: LOST or not}, see `Games.losses`) the
+    columns `*_lost`, `*_lost_flagged`, `*_flagged_lost` are the same counts with LOST in place of taken."""
     a = acc.setdefault(cfg, {f: 0 for f in J_FIELDS})
     a["positions"] += 1
     a["seconds"] += seconds
@@ -3818,16 +4156,22 @@ def _j_tally(acc: dict, cfg: str, kinds: dict, sheet: Sheet, outcome_of, seconds
         a[f"{side}_taken_flagged"] += taken and flagged
         a[f"{side}_flagged"] += flagged
         a[f"{side}_flagged_taken"] += taken and flagged
+        lo = loss_of(place_text(q.target.at)) if loss_of is not None else None
+        if lo is not None and lo.get(4) is not None:
+            lost = bool(lo[4])
+            a[f"{side}_lost"] += lost
+            a[f"{side}_lost_flagged"] += lost and flagged
+            a[f"{side}_flagged_lost"] += lost and flagged
 
 
-def j_position(env: Env, worth: dict, params: Params, position: str, outcome_of, acc: dict, table_path: "str | None", orders: tuple = J_ORDERS, timed: bool = True) -> None:
+def j_position(env: Env, worth: dict, params: Params, position: str, outcome_of, acc: dict, table_path: "str | None", orders: tuple = J_ORDERS, timed: bool = True, loss_of=None) -> None:
     """Measure J on one position: for each order, the real runs under the time budgets, then one unbudgeted run whose every step is logged, from which the unbudgeted row and the rows
     for budgets counted in steps and in summed measured step cost are read exactly."""
     for order in orders:
         p = Params(**{**params.__dict__, "clock": order, "chances": table_path if order == "chance" else None})
         for b in (J_TIMES if timed else ()):
             sheet = run(position, worth, budget_seconds=b, env=env, params=p)
-            _j_tally(acc, f"{order}|time|{b * 1000:g} ms", {id(q): verdict_kind(q) for q in sheet.questions if not q.quiet}, sheet, outcome_of, sheet.seconds, len(sheet.steps))
+            _j_tally(acc, f"{order}|time|{b * 1000:g} ms", {id(q): verdict_kind(q) for q in sheet.questions if not q.quiet}, sheet, outcome_of, sheet.seconds, len(sheet.steps), loss_of)
         log, cur = [], {}
         cost = [0.0]
 
@@ -3838,23 +4182,25 @@ def j_position(env: Env, worth: dict, params: Params, position: str, outcome_of,
         sheet = run(position, worth, max_steps=10 ** 6, env=env, params=p, on_step=on_step)
         first = (sheet.read_seconds, 0.0, 0, {})
         log = [first] + log
-        _j_tally(acc, f"{order}|none|unbudgeted", log[-1][3], sheet, outcome_of, sheet.seconds, len(sheet.steps))
+        _j_tally(acc, f"{order}|none|unbudgeted", log[-1][3], sheet, outcome_of, sheet.seconds, len(sheet.steps), loss_of)
         for n in J_STEPS:
             e = log[min(n, len(log) - 1)]
-            _j_tally(acc, f"{order}|steps|{n} steps", e[3], sheet, outcome_of, e[0], e[2])
+            _j_tally(acc, f"{order}|steps|{n} steps", e[3], sheet, outcome_of, e[0], e[2], loss_of)
         for b in J_COSTS:
             e = next((x for x in log if x[1] >= b), log[-1])
-            _j_tally(acc, f"{order}|cost|{b * 1000:g} ms of step cost", e[3], sheet, outcome_of, e[0], e[2])
+            _j_tally(acc, f"{order}|cost|{b * 1000:g} ms of step cost", e[3], sheet, outcome_of, e[0], e[2], loss_of)
 
 
 def measure_j(dirs: list, env: Env, worth: dict, params: Params, table_path: str, *, stride: int = 1, limit: "int | None" = None, shard: tuple = (0, 1), say=print, orders: tuple = J_ORDERS, timed: bool = True) -> dict:
     games = Games(dirs, env)
+    worth_of = env.worth_fn(worth)
     todo = [x for i, x in enumerate(pick_positions(dirs, stride, limit)) if i % shard[1] == shard[0]]
     acc: dict = {}
     t0 = time.perf_counter()
     for n, (di, gi, ply) in enumerate(todo):
         try:
-            j_position(env, worth, params, games.position(di, gi, ply), lambda place, di=di, gi=gi, ply=ply: games.outcomes(di, gi, ply, place), acc, table_path, orders, timed)
+            j_position(env, worth, params, games.position(di, gi, ply), lambda place, di=di, gi=gi, ply=ply: games.outcomes(di, gi, ply, place), acc, table_path, orders, timed,
+                       loss_of=lambda place, di=di, gi=gi, ply=ply: games.losses(di, gi, ply, place, worth_of))
         except ValueError:
             continue
         if say and (n + 1) % 10 == 0:
@@ -3869,7 +4215,7 @@ def merge_counts(parts: list) -> dict:
         for cfg, a in acc.items():
             slot = out.setdefault(cfg, {f: 0 for f in J_FIELDS})
             for f in J_FIELDS:
-                slot[f] += a[f]
+                slot[f] += a.get(f, 0)
     return out
 
 
@@ -3893,6 +4239,178 @@ def format_j(acc: dict) -> list:
                     return (f"{side}: taken in 4 plies {a[side + '_taken']} of {a[side + '_units']} units, with a danger verdict {a[side + '_taken_flagged']} ({_pct(a[side + '_taken_flagged'], a[side + '_taken'])}); "
                             f"danger verdicts {a[side + '_flagged']} ({a[side + '_flagged'] / n:.3f} a position), followed by a taking {a[side + '_flagged_taken']} ({_pct(a[side + '_flagged_taken'], a[side + '_flagged'])})")
                 out.append(f"OBS (J) {budget}, order {order}: positions {a['positions']}; {part('mine')}; {part('theirs')}; steps {a['steps'] / n:.1f} and time {1000 * a['seconds'] / n:.1f} ms a position")
+    out.append("OBS (J, by LOSS) the same tables with LOST in place of taken (the balance of worth over the exchange on the place where the unit was taken, see `unit_loss`; an even exchange or a gain is not a loss):")
+    for fam, title in families:
+        cfgs = sorted({c.split("|", 2)[2] for c in acc if c.split("|")[1] == fam}, key=lambda x: float(x.split()[0]) if x[0].isdigit() else 0.0)
+        for budget in cfgs:
+            for order in J_ORDERS:
+                a = acc.get(f"{order}|{fam}|{budget}")
+                if a is None:
+                    continue
+
+                def lpart(side):
+                    return (f"{side}: LOST in 4 plies {a.get(side + '_lost', 0)} of {a[side + '_units']} units, with a danger verdict {a.get(side + '_lost_flagged', 0)} ({_pct(a.get(side + '_lost_flagged', 0), a.get(side + '_lost', 0))}); "
+                            f"danger verdicts {a[side + '_flagged']}, followed by a loss {a.get(side + '_flagged_lost', 0)} ({_pct(a.get(side + '_flagged_lost', 0), a[side + '_flagged'])})")
+                out.append(f"OBS (J, by LOSS) {budget}, order {order}: positions {a['positions']}; {lpart('mine')}; {lpart('theirs')}")
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- K: the question of the move against what the game did
+
+K_HORIZON = 4                          # plies within which a unit of the mover is LOST (counted from the move played)
+
+
+def bad_move_labels(directory: str) -> set:
+    """REPORTING ONLY. {(game index, ply)} of the plies the judge's file marks as a bad move (a missed surprise whose jump is below 0). The label is never read by a decision or a fit; measure K prints
+    the share of bad moves among the verdicts and nothing more."""
+    d = Path(directory)
+    ids = [json.loads(ln).get("game") for ln in (d / "games.jsonl").read_text().splitlines() if ln.strip()]
+    index = {gid: gi for gi, gid in enumerate(ids)}
+    out = set()
+    for line in (d / "surprises.jsonl").read_text().splitlines():
+        if line.strip():
+            sv = json.loads(line)
+            if sv.get("kind") == "MISSED" and (sv.get("judge") or {}).get("jump", 0) < 0 and sv.get("game") in index:
+                out.add((index[sv["game"]], sv["ply"]))
+    return out
+
+
+def lost_units_of_mover(games: Games, r: Reading, di: int, gi: int, ply: int, worth_of, horizon: int = K_HORIZON) -> dict:
+    """{handle before the move: the `unit_loss` result} of the mover's units above the least worth (not the goal unit) that are taken within `horizon` plies of the game from `ply`."""
+    by_ply = games.tracks(di, gi)[0][ply]
+    events = games.events(di, gi)
+    out = {}
+    for u in r.units:
+        if u.side != SELF or not r.weighty(u) or u == r.goal_unit(SELF):
+            continue
+        got = by_ply.get(place_text(u.at))
+        if got is None:
+            continue
+        res = unit_loss(events, got[0], ply, horizon, worth_of)
+        if res is not None:
+            out[place_text(u.at)] = res
+    return out
+
+
+def k_position(env: Env, worth: dict, params: Params, games: Games, di: int, gi: int, ply: int, bad: "set | None" = None) -> "dict | None":
+    """Measure K on one position: the move sheet of every legal move, and for the move played in the game its verdict against what the game then did. None when the position cannot be read."""
+    pos = games.position(di, gi, ply)
+    t0 = time.perf_counter()
+    try:
+        r = Reading(env, pos, worth)
+    except ValueError:
+        return None
+    r.params_k, r.passes = params.reach_k, params.passes
+    read_ms = 1000 * (time.perf_counter() - t0)
+    played = games.games[di][gi]["moves"][ply]
+    sheet = move_sheet(env, r, params)
+    by_move = {x["move"]: x for x in sheet.results}
+    if played not in by_move:
+        return None
+    res = by_move[played]
+    by_ply = games.tracks(di, gi)[0][ply]
+    lost = lost_units_of_mover(games, r, di, gi, ply, env.worth_fn(worth))
+    status = {h: v["status"] for h, v in lost.items()}
+    lost_h = sorted(h for h, v in status.items() if v == LOST)
+    origin = env.codec.move_ends(played)[0]
+    named_h = res["named"]["place"] if res["named"] else None
+    parts = {k: sum(x["ms"][k] for x in sheet.results) for k in ("a", "read", "b", "c", "total")}
+    return {"di": di, "gi": gi, "ply": ply, "played": played, "verdict": res["verdict"], "named": named_h, "named_part": res["named"]["part"] if res["named"] else None,
+            "named_lost": bool(named_h and by_ply.get(named_h) and by_ply[named_h][0] in {by_ply[h][0] for h in lost_h}),
+            "lost": lost_h, "statuses": status, "moved": origin, "moved_lost": origin in lost_h, "other_lost": any(h != origin for h in lost_h),
+            "bad": None if bad is None else (gi, ply) in bad, "legal": len(r.legal), "loses": len(sheet.loses()), "played_in_loses": res["verdict"] == LOSES_V,
+            "verdicts": dict(sheet.verdicts()), "read_ms": read_ms, "sheet_ms": parts["total"], "parts_ms": parts, "max_move_ms": max(x["ms"]["total"] for x in sheet.results),
+            "answer": " | ".join(res["answers"].values())[:300]}
+
+
+def measure_k(dirs: list, env: Env, worth: dict, params: Params, *, stride: int = 1, limit: "int | None" = None, shard: tuple = (0, 1), say=print) -> list:
+    games = Games(dirs, env)
+    bad = bad_move_labels(dirs[0]) if len(dirs) == 1 else None
+    todo = [x for i, x in enumerate(pick_positions(dirs, stride, limit)) if i % shard[1] == shard[0]]
+    out, t0 = [], time.perf_counter()
+    for n, (di, gi, ply) in enumerate(todo):
+        rec = k_position(env, worth, params, games, di, gi, ply, bad)
+        if rec is not None:
+            out.append(rec)
+        if say and (n + 1) % 10 == 0:
+            say(f"OBS K progress: shard {shard[0]}/{shard[1]}: {n + 1} of {len(todo)} positions, {time.perf_counter() - t0:.0f} s")
+    return out
+
+
+def _mean(xs: list) -> float:
+    return sum(xs) / len(xs) if xs else 0.0
+
+
+def format_k(records: list) -> list:
+    """OBS lines of measure K: the verdict on the move played against whether a unit of the mover was LOST within 4 plies, by which unit, the bad-move share, the move sheet's counts and the costs."""
+    n = len(records)
+    out = [f"OBS (K) positions {n}; the verdict of the question of the move on the move actually played, against whether a unit of the mover above the least worth was LOST (see `unit_loss`) within {K_HORIZON} plies"]
+    verdicts = (LOSES_V, SAFE_V, MOVE_UNSETTLED)
+    out.append("OBS (K) table: verdict | a unit of the mover LOST | none lost | total")
+    for v in verdicts:
+        rows = [x for x in records if x["verdict"] == v]
+        out.append(f"OBS (K)   {v}: {sum(1 for x in rows if x['lost'])} | {sum(1 for x in rows if not x['lost'])} | {len(rows)}")
+    out.append("OBS (K) the same split by which unit was lost (positions with a loss): verdict | the moved unit only | another unit only | both | the verdict named a unit that was lost | named a unit that was not lost | named none")
+    for v in verdicts:
+        rows = [x for x in records if x["verdict"] == v and x["lost"]]
+        both = sum(1 for x in rows if x["moved_lost"] and x["other_lost"])
+        out.append(f"OBS (K)   {v}: {sum(1 for x in rows if x['moved_lost'] and not x['other_lost'])} | {sum(1 for x in rows if x['other_lost'] and not x['moved_lost'])} | {both} | "
+                   f"{sum(1 for x in rows if x['named_lost'])} | {sum(1 for x in rows if x['named'] and not x['named_lost'])} | {sum(1 for x in rows if not x['named'])}")
+    out.append("OBS (K) by which part named the unit (LOSES): " + ", ".join(f"{p}: {sum(1 for x in records if x['verdict'] == LOSES_V and x['named_part'] == p)} named, of which lost in the game "
+               f"{sum(1 for x in records if x['verdict'] == LOSES_V and x['named_part'] == p and x['named_lost'])}" for p in "abc"))
+    judged = [x for x in records if x["bad"] is not None]
+    allbad = sum(1 for x in judged if x["bad"])
+    out.append(f"OBS (K) against the judge's bad-move label (reporting only; never used by a decision): bad moves {allbad} of {len(judged)} ({_pct(allbad, len(judged))}); " + "; ".join(
+        f"among {v} {sum(1 for x in judged if x['verdict'] == v and x['bad'])} of {sum(1 for x in judged if x['verdict'] == v)} ({_pct(sum(1 for x in judged if x['verdict'] == v and x['bad']), sum(1 for x in judged if x['verdict'] == v))})"
+        for v in verdicts))
+    out.append(f"OBS (K) the move sheet: legal moves a position {_mean([x['legal'] for x in records]):.1f}; moves it calls LOSES a position {_mean([x['loses'] for x in records]):.2f}; "
+               f"positions with at least one LOSES {sum(1 for x in records if x['loses'])} ({_pct(sum(1 for x in records if x['loses']), n)}); the move played is among them in {sum(1 for x in records if x['played_in_loses'])} positions; "
+               f"of the positions with at least one LOSES the move played is among them in {sum(1 for x in records if x['loses'] and x['played_in_loses'])} ({_pct(sum(1 for x in records if x['loses'] and x['played_in_loses']), sum(1 for x in records if x['loses']))})")
+    legal = sum(x["legal"] for x in records)
+    tot = sum(x["parts_ms"]["total"] for x in records)
+    out.append(f"OBS (K) cost: a move question mean {tot / max(legal, 1):.1f} ms, max {max([x['max_move_ms'] for x in records] or [0]):.1f} ms ({legal} questions); a whole move sheet mean {_mean([x['sheet_ms'] for x in records]):.0f} ms, "
+               f"max {max([x['sheet_ms'] for x in records] or [0]):.0f} ms; the reading of the position itself mean {_mean([x['read_ms'] for x in records]):.1f} ms")
+    out.append("OBS (K) cost split of a move question, mean ms a question (share of the total): " + ", ".join(
+        f"{k} {sum(x['parts_ms'][k] for x in records) / max(legal, 1):.1f} ({100.0 * sum(x['parts_ms'][k] for x in records) / tot if tot else 0.0:.0f}%)" for k in ("a", "read", "b", "c")) + " (read = the position after the move, read once)")
+    return out
+
+
+def k_missed(env: Env, worth: dict, params: Params, dirs: list, files: list, examples: int = 5, say=print) -> list:
+    """The mover's units that the earlier study found taken within 4 plies after having moved, and that no danger verdict foresaw (rows of its `missed_out*.json`): for each, the question of the move on
+    the move played at that position. OBS lines: how many the question calls LOSES, how many SAFE where part 1's rule says EVEN or GAINED (not a miss at all), how many remain SAFE yet LOST (true misses),
+    with `examples` of the last group explained."""
+    games = Games(dirs, env)
+    wf = env.worth_fn(worth)
+    rows = [e for f in files for e in json.loads(Path(f).read_text())]
+    mine = [e for e in rows if e["side"] == "mine" and e["moved"] and not e["flagged"]]
+    out = [f"OBS (K, missed) rows read {len(rows)}; mine, no danger verdict foresaw it, the unit had moved, then was taken: {len(mine)}"]
+    table: dict = {}
+    true_misses, own_first, named_it, not_taken = [], 0, 0, 0
+    for e in mine:
+        gi, ply = e["game"], e["ply"]
+        played = games.games[0][gi]["moves"][ply]
+        r = Reading(env, games.position(0, gi, ply), worth)
+        r.params_k, r.passes = params.reach_k, params.passes
+        res = move_question(env, r, played, params)
+        by_ply = games.tracks(0, gi)[0][ply]
+        uid = by_ply[e["unit_place"]][0]
+        loss = unit_loss(games.events(0, gi), uid, ply, K_HORIZON, wf)
+        st = loss["status"] if loss else "not taken"
+        table[(res["verdict"], st)] = table.get((res["verdict"], st), 0) + 1
+        own_first += played[:2] == e["unit_place"]
+        if res["verdict"] == LOSES_V and res["named"] and by_ply.get(res["named"]["place"]) and by_ply[res["named"]["place"]][0] == uid:
+            named_it += 1
+        if res["verdict"] == SAFE_V and st == LOST:
+            true_misses.append((e, res))
+    out.append("OBS (K, missed) verdict of the question of the move on the move played | part 1's rule on the unit taken in the game: " + ", ".join(sorted(f"{v}/{s}: {c}" for (v, s), c in table.items())))
+    total = len(mine)
+    calls = lambda v: sum(c for (vv, _s), c in table.items() if vv == v)       # noqa: E731
+    not_miss = sum(c for (vv, s), c in table.items() if vv == SAFE_V and s in (EVEN, GAINED))
+    out.append(f"OBS (K, missed) of {total}: called LOSES {calls(LOSES_V)} (it named the very unit in {named_it}); called SAFE {calls(SAFE_V)}, of which the taking was EVEN or GAINED by part 1's rule (not a miss at all) {not_miss}, "
+               f"and LOST (true misses) {len(true_misses)}; NOT SETTLED {calls(MOVE_UNSETTLED)}; the move played at that ply was the unit's own move in {own_first}")
+    for e, res in true_misses[:examples]:
+        out.append(f"OBS (K, missed) example: game {e['game']} ply {e['ply']}, the unit {e['unit_place']} ({e['unit_kind']}) taken after {' '.join(e['seq'])}; position {e['pos']}")
+        out += [f"OBS (K, missed)   {ln}" for ln in explain_move(res)]
     return out
 
 
@@ -4079,6 +4597,7 @@ def main(argv: list) -> int:
     ap.add_argument("--merge-chances", metavar="TAG", default=None, help="sum the TAG.shard*.json tables into TAG.json and print them")
     ap.add_argument("--show-chances", metavar="PATH", default=None, help="print a table as OBS lines")
     ap.add_argument("--chances", metavar="PATH", default=None, help="wake: the table of chances every question and node reads its chance from")
+    ap.add_argument("--chance-outcome", choices=("taken", "loss"), default="taken", help="with --fit-chances: the outcome the table is fitted on: the exact unit taken (default) or LOST (balance of worth over the exchange on its place)")
     ap.add_argument("--chance-horizon", type=int, default=4, help="the horizon (4 or 8 plies) the chance is read at")
     ap.add_argument("--shard", default="0/1", help="K/N: this process reads the positions whose index is K modulo N")
     ap.add_argument("--stride", type=int, default=1, help="every n-th ply of the games is read (fit, calibrate, measure J)")
@@ -4092,6 +4611,11 @@ def main(argv: list) -> int:
     ap.add_argument("--j-no-time", action="store_true", help="with --measure-j: skip the real runs under wall-clock budgets")
     ap.add_argument("--j-out", default=None, help="with --measure-j: write the raw tallies (JSON) here")
     ap.add_argument("--j-merge", nargs="+", default=None, help="tally files written by --j-out: merge them and print the tables")
+    ap.add_argument("--measure-k", action="store_true", help="measure K on the --games-dir game: the question of the move on the move played, against what the game then did; --k-out writes the raw records")
+    ap.add_argument("--k-out", default=None, help="with --measure-k: write the raw records (JSON) here")
+    ap.add_argument("--k-merge", nargs="+", default=None, help="record files written by --k-out: merge them and print the tables")
+    ap.add_argument("--k-missed", nargs="+", default=None, help="the study's missed-unit files (missed_out*.json): the question of the move on each mover's unit that moved and was taken, with the --games-dir game")
+    ap.add_argument("--move-question", action="store_true", help="the question of each legal move is asked after the questions and kept on the sheet")
     a = ap.parse_args(argv)
     shard = tuple(int(x) for x in a.shard.split("/"))
     env = Env(a.game)
@@ -4111,6 +4635,11 @@ def main(argv: list) -> int:
     if a.search_depth:
         params.max_level = params.search_depth_cap = a.search_depth
     t0 = time.perf_counter()
+    params.move_question = a.move_question
+    if a.k_merge:
+        for ln in format_k([x for f in a.k_merge for x in json.loads(Path(f).read_text())]):
+            print(ln)
+        return 0
     if a.merge_chances or a.show_chances or a.j_merge or a.calibrate_merge:
         if a.merge_chances:
             parts = sorted(Path(chances_path(a.merge_chances)).parent.glob(f"{a.merge_chances}.shard*.json"))
@@ -4135,7 +4664,7 @@ def main(argv: list) -> int:
     if not a.games_dir:
         ap.error("--games-dir is needed")
     if a.fit_chances:
-        cells, header = fit_chances(a.games_dir, env, worth, params, stride=a.stride, limit=a.limit, shard=shard, say=lambda m: print(m, flush=True))
+        cells, header = fit_chances(a.games_dir, env, worth, params, stride=a.stride, limit=a.limit, shard=shard, say=lambda m: print(m, flush=True), outcome=a.chance_outcome)
         tag = a.fit_chances if shard[1] == 1 else f"{a.fit_chances}.shard{shard[0]}of{shard[1]}"
         header["params"] = {"max_joint": params.max_joint, "joint": params.joint, "reach_k": params.reach_k}
         save_chances(chances_path(tag), cells, header)
@@ -4160,6 +4689,18 @@ def main(argv: list) -> int:
         for h in HORIZONS:
             for ln in format_calibration(recs, load_chances(a.calibrate), h, "on the test games"):
                 print(ln)
+        return 0
+    if a.measure_k:
+        recs = measure_k(a.games_dir, env, worth, params, stride=a.stride, limit=a.limit, shard=shard, say=lambda m: print(m, flush=True))
+        if a.k_out:
+            Path(a.k_out).write_text(json.dumps(recs))
+        for ln in format_k(recs):
+            print(ln)
+        print(f"OBS (K) {time.perf_counter() - t0:.1f} s, shard {shard[0]}/{shard[1]}")
+        return 0
+    if a.k_missed:
+        for ln in k_missed(env, worth, params, a.games_dir, a.k_missed):
+            print(ln)
         return 0
     if a.measure_j:
         if not a.chances:

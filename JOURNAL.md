@@ -36628,3 +36628,7 @@ A goal unit standing on a route is moved aside in place of removed. The cost of 
 ## 2026-11-13 -- plan 78.42 third form: several blockers, fitted chances, the clock measured
 
 The chance of a question, fitted from our own games, separates and holds on unseen games. Ordering by chance times stake did not beat the present order. The ceiling is low: most takings are foreseen by no danger verdict. Numbers in docs/ANALYST_PLAN.md 78.42 THIRD FORM.
+
+## 2026-11-13 -- plan 78.42 fourth form: loss in place of taking, the question of the move
+
+By loss, the sheet foresees most of the other side's losses and few of the mover's own. The question of the move agrees with the search and adds little on these games. Numbers in docs/ANALYST_PLAN.md 78.42 FOURTH FORM.

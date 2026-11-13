@@ -285,6 +285,23 @@ class ChessCodec:
             by_ply.append(snap())
         return by_ply, taken
 
+    def events(self, start: "str | None", moves: list) -> list:
+        """One dict per move of the game: {mover: (unit id, side, kind) of the unit that moves, origin, dest: its handles, taken: (unit id, side, kind) of the unit the move takes or None,
+        taken_at: the handle that unit stood on or None}. The ids are those of `tracks` (an id follows its unit through moves, a castling, a promotion)."""
+        import chess
+        by_ply, taken = self.tracks(start, moves)
+        board = chess.Board(start) if start else chess.Board()
+        out = []
+        for i, u in enumerate(moves):
+            m = chess.Move.from_uci(u)
+            origin, dest = chess.square_name(m.from_square), chess.square_name(m.to_square)
+            at = None
+            if i in taken:
+                at = chess.square_name(chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square))) if board.is_en_passant(m) else dest
+            out.append({"mover": by_ply[i][origin], "origin": origin, "dest": dest, "taken": taken.get(i), "taken_at": at})
+            board.push(m)
+        return out
+
     def keep(self, position: str, units: list) -> str:
         import chess
         board = chess.Board(position)

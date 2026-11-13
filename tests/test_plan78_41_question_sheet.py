@@ -1273,3 +1273,211 @@ def test_measure_j_can_be_limited_to_one_order_and_skip_the_wall_clock_runs(env,
     acc: dict = {}
     Q.j_position(env, WORTH, Q.Params(risk=0.0), games.position(0, 0, 2), lambda place: games.outcomes(0, 0, 2, place), acc, path, ("chance",), False)
     assert {c.split("|")[0] for c in acc} == {"chance"} and not any("|time|" in c for c in acc)
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- plan 78.42: the outcome is the loss; the question of the move
+
+def _events(env, start, moves):
+    return env.codec.events(start, moves)
+
+
+def _loss(env, start, moves, unit_place, horizon=4, ply=0):
+    """unit_loss of the unit standing on `unit_place` before move number `ply`."""
+    by_ply, _ = env.codec.tracks(start, moves)
+    uid = by_ply[ply][unit_place][0]
+    return Q.unit_loss(_events(env, start, moves), uid, ply, horizon, env.worth_fn(WORTH))
+
+
+def test_the_loss_of_an_even_exchange_is_even(env):
+    res = _loss(env, "4k3/8/2p5/3p4/4P3/8/8/4K3 w - - 0 1", ["e4d5", "c6d5"], "e4")           # a pawn takes a pawn and is taken back
+    assert res["status"] == Q.EVEN and res["balance"] == 0 and res["run"] == [0, 1] and res["arrival"] == 0
+
+
+def test_a_unit_that_takes_a_heavier_unit_and_is_retaken_gained(env):
+    res = _loss(env, "3qk3/8/8/8/8/8/8/3RK3 w - - 0 1", ["d1d8", "e8d8"], "d1")               # a rook takes a queen, the king takes the rook
+    assert res["status"] == Q.GAINED and res["balance"] == 8 - 14
+
+
+def test_a_plain_loss_is_the_worth_of_the_unit(env):
+    res = _loss(env, "4k3/8/8/3p4/4P3/8/8/4K3 b - - 0 1", ["d5e4"], "e4")                      # their pawn takes my pawn and nothing is taken back
+    assert res["status"] == Q.LOST and res["balance"] == 2 and res["run"] == [0] and res["arrival"] is None
+
+
+def test_a_unit_that_moves_and_is_then_taken_for_nothing_is_lost_at_its_worth(env):
+    res = _loss(env, "4k3/8/8/4b3/8/8/8/1N2K3 w - - 0 1", ["b1c3", "e5c3"], "b1")
+    assert res["status"] == Q.LOST and res["balance"] == 4 and res["place"] == "c3" and res["run"] == [1] and res["arrival"] is None
+
+
+def test_the_units_own_arriving_capture_counts_even_when_the_taking_back_comes_later(env):
+    start = "4r1k1/8/8/4p3/8/3N4/8/4K3 w - - 0 1"
+    res = _loss(env, start, ["d3e5", "e8e5"], "d3")                                           # takes a pawn, is taken at once
+    assert res["status"] == Q.LOST and res["balance"] == 4 - 2 and res["run"] == [0, 1]
+    late = _loss(env, start, ["d3e5", "g8g7", "e1d1", "e8e5"], "d3")                          # the same, the taking back two plies later
+    assert late["status"] == Q.LOST and late["balance"] == 2 and late["run"] == [0, 3] and late["arrival"] == 0
+    assert _loss(env, start, ["d3e5", "g8g7", "e1d1", "e8e5"], "d3", horizon=3) is None       # not taken inside the horizon
+
+
+def test_a_run_that_began_before_the_start_ply_is_not_counted(env):
+    start = "4k3/8/2p5/3p4/4P3/8/8/4K3 w - - 0 1"
+    by_ply, _ = env.codec.tracks(start, ["e4d5", "c6d5"])
+    res = Q.unit_loss(_events(env, start, ["e4d5", "c6d5"]), by_ply[1]["d5"][0], 1, 4, env.worth_fn(WORTH))        # the pawn that stands on d5 after the first move
+    assert res["status"] == Q.LOST and res["balance"] == 2 and res["run"] == [1]
+
+
+def test_the_game_outcome_by_loss_is_false_for_an_even_exchange_and_the_fit_can_use_it(env, tmp_path):
+    d = _game_dir(tmp_path, ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"])
+    g = Q.Games([d], env)
+    wf = env.worth_fn(WORTH)
+    assert g.outcomes(0, 0, 0, "e2") == {4: True, 8: True}                                      # taken
+    assert g.losses(0, 0, 0, "e2", wf) == {4: False, 8: False}                                   # but an even exchange: the pawn took a pawn
+    assert g.outcomes(0, 0, 2, "d5") == {4: True, 8: True} and g.losses(0, 0, 2, "d5", wf) == {4: False, 8: False}      # their pawn is taken and the queen takes back: even
+    d2 = _game_dir_named(tmp_path, "g2", ["b1c3", "d7d5", "c3d5", "d8d5"])
+    g2 = Q.Games([d2], env)
+    assert g2.losses(0, 0, 2, "c3", wf) == {4: True, 8: True}                                   # my knight takes a pawn (2) and is taken by the queen for nothing: 4 - 2 is lost
+    assert g.losses(0, 0, 0, "h5", wf) is None
+    cells, header = Q.fit_chances([d], env, WORTH, Q.Params(), stride=3, say=None, outcome="loss")
+    assert header["outcome"] == "loss" and "lost" in header["source"] and header["records"] > 0
+    with pytest.raises(ValueError):
+        Q.fit_chances([d], env, WORTH, Q.Params(), say=None, outcome="nonsense")
+
+
+def test_measure_j_has_the_loss_columns_and_old_tallies_still_merge(env, tmp_path):
+    d = _game_dir(tmp_path, ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"])
+    path = str(tmp_path / "c.json")
+    Q.save_chances(path, Q.cells_from_records(RECORDS), {})
+    games = Q.Games([d], env)
+    wf = env.worth_fn(WORTH)
+    acc: dict = {}
+    Q.j_position(env, WORTH, Q.Params(), games.position(0, 0, 2), lambda place: games.outcomes(0, 0, 2, place), acc, path, ("plain",), False, loss_of=lambda place: games.losses(0, 0, 2, place, wf))
+    free = acc["plain|none|unbudgeted"]
+    assert free["theirs_lost"] == 0 and free["mine_lost"] == 0                                 # the pawn taken and taken back is no loss (and a pawn is no unit above the least worth)
+    d2 = _game_dir_named(tmp_path, "g2", ["b1c3", "d7d5", "c3d5", "d8d5"])
+    g2 = Q.Games([d2], env)
+    acc2: dict = {}
+    Q.j_position(env, WORTH, Q.Params(), g2.position(0, 0, 2), lambda place: g2.outcomes(0, 0, 2, place), acc2, path, ("plain",), False, loss_of=lambda place: g2.losses(0, 0, 2, place, wf))
+    free2 = acc2["plain|none|unbudgeted"]
+    assert free2["mine_taken"] >= 1 and 1 <= free2["mine_lost"] <= free2["mine_taken"]
+    free = {k: free[k] + free2[k] for k in free}
+    acc = {"plain|none|unbudgeted": free}
+    old = {k: {f: v for f, v in a.items() if "lost" not in f} for k, a in acc.items()}
+    assert Q.merge_counts([old, acc])["plain|none|unbudgeted"]["theirs_lost"] == free["theirs_lost"]
+    assert any(ln.startswith("OBS (J, by LOSS) unbudgeted, order plain") for ln in Q.format_j(acc))
+
+
+# ---- the question of the move
+
+HUNG = "4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1"                 # their queen strikes the d-file; my rook on d2 strikes it back
+GUARDED_QUEEN = "4k3/8/4p3/3q4/8/8/3R4/4K3 w - - 0 1"     # their queen on d5 is guarded by a pawn
+GUARDED_PAWN = "4k3/8/4p3/3p4/8/8/3R4/4K3 w - - 0 1"      # their pawn on d5 is guarded by a pawn, and worth less than my rook
+
+
+def _game_dir_named(tmp_path, name, moves):
+    d = tmp_path / name
+    d.mkdir()
+    (d / "games.jsonl").write_text(json.dumps({"variant": "chess", "game": 0, "start": None, "moves": moves}) + "\n")
+    return str(d)
+
+
+def _move(env, fen, mv, params=None):
+    r = Q.Reading(env, fen, WORTH)
+    return Q.move_question(env, r, mv, params or Q.Params())
+
+
+def test_a_unit_that_moves_onto_a_struck_unguarded_place_loses_it_and_the_line_is_named(env):
+    res = _move(env, HUNG, "d2d3")
+    assert res["verdict"] == Q.LOSES_V and res["named"]["part"] == "b" and res["named"]["unit"].kind == "rook"
+    assert (res["low"], res["high"]) == (8.0, 8.0) and res["line"] == ("d5d3",)
+    assert res["took"] == 0.0 and res["threats"][0]["kind"] == "lands"
+
+
+def test_a_taking_that_wins_more_than_it_loses_is_safe_and_one_that_loses_more_is_not(env):
+    win = _move(env, GUARDED_QUEEN, "d2d5")                    # the rook (8) takes the queen (14) and is taken by the pawn
+    assert win["took"] == 14.0 and win["verdict"] == Q.SAFE_V and win["threats"][0]["value"] == 8.0 and "the balance is +6" in win["answers"]["b"]
+    lose = _move(env, GUARDED_PAWN, "d2d5")                    # the rook (8) takes a pawn (2) and is taken by the pawn
+    assert lose["took"] == 2.0 and lose["verdict"] == Q.LOSES_V and (lose["low"], lose["high"]) == (6.0, 6.0) and "the balance is -6" in lose["answers"]["b"]
+
+
+def test_a_move_that_uncovers_another_unit_loses_it_and_names_that_unit(env):
+    res = _move(env, DUTY, "b3a5")                              # the knight guarded the rook that their rook strikes
+    assert res["verdict"] == Q.LOSES_V and res["named"]["part"] == "a" and res["named"]["unit"].kind == "rook" and res["named"]["place"] == "d4"
+    assert res["threats"][0]["kind"] == "left unguarded" and res["answers"]["b"].endswith("is not lost where it lands (real moves)")
+
+
+def test_a_move_that_leaves_everything_guarded_is_safe_with_every_answer_given(env):
+    res = _move(env, DUTY_GUARDED, "b3a5")                      # a second guard stays
+    assert res["verdict"] == Q.SAFE_V and res["threats"] == [] and res["named"] is None and res["low"] == res["high"] == 0.0
+    assert all(res["answers"][k] for k in "abc") and set(res["ms"]) == {"a", "read", "b", "c", "total"} and res["ms"]["total"] > 0
+    ok = _move(env, DUTY, "d4c4")                              # the rook steps aside: nothing is lost
+    assert ok["verdict"] == Q.SAFE_V
+
+
+def test_c_reads_the_units_on_changed_places_that_a_did_not(env, monkeypatch):
+    blind = {"read": True, "mark": "", "duties": []}
+    monkeypatch.setattr(Q, "cost_of_leaving", lambda *a, **k: blind)
+    monkeypatch.setattr(Q, "_leaving_candidates", lambda *a, **k: (set(), False))
+    res = _move(env, DUTY, "b3a5")
+    assert res["verdict"] == Q.LOSES_V and res["named"]["part"] == "c" and res["named"]["unit"].kind == "rook" and res["threats"][0]["kind"] == "newly struck"
+    assert "is lost where it stands after the move" in res["answers"]["c"]
+
+
+def test_a_unit_lost_before_the_move_is_not_newly_lost(env):
+    res = _move(env, "7k/3r4/8/6p1/3R4/1N6/8/6K1 b - - 0 1".replace(" b ", " w "), "g1f2")     # a king step: the rook stays guarded as before
+    assert res["verdict"] == Q.SAFE_V
+
+
+def test_the_move_graph_has_a_node_per_answer_with_bounds(env):
+    r = Q.Reading(env, DUTY, WORTH)
+    res = Q.move_question(env, r, "b3a5", Q.Params())
+    nodes = r.graph.nodes
+    root, a, b, c = (nodes[res["nodes"][k]] for k in ("move", "a", "b", "c"))
+    assert root.verdict == Q.LOSES_V and (root.stake_low, root.stake_high) == (8.0, 8.0)
+    assert (a.stake_low, a.stake_high) == (8.0, 8.0) and (b.stake_low, b.stake_high) == (0.0, 0.0) and c.stake_high == 0.0
+    assert [n.id for _e, n in r.graph.out(root)] == [a.id, b.id, c.id]
+
+
+def test_explain_move_says_because_and_names_the_unit_the_bounds_and_the_line(env):
+    text = "\n".join(Q.explain_move(_move(env, HUNG, "d2d3")))
+    assert text.startswith("the move d2d3: my rook on d2 goes to d3: LOSES")
+    assert text.count("because") >= 4 and "it LOSES my rook on d2" in text and "between 8 and 8" in text and "the line: d5d3" in text
+    safe = "\n".join(Q.explain_move(_move(env, DUTY, "d4c4")))
+    assert "SAFE -- because nothing of its own is lost" in safe
+    take = "\n".join(Q.explain_move(_move(env, GUARDED_QUEEN, "d2d5")))
+    assert "taking their queen on d5 (worth 14)" in take
+
+
+def test_the_move_sheet_asks_struck_landing_places_first_and_the_heavier_unit_first(env):
+    r = Q.Reading(env, HUNG, WORTH)
+    order = Q.move_order(r, r.legal)
+    struck = {Q.place_text(x) for x in r.struck_by("them")}
+    flags = [m[2:4] in struck for m in order]
+    assert any(flags) and not all(flags) and flags == sorted(flags, reverse=True)           # every move that lands on a struck place comes before every one that does not
+    assert sorted(order) == sorted(r.legal)
+    first_struck = [m for m in order if m[2:4] in struck]
+    stakes = [r.weight(next(u for u in r.units if u.side == "us" and Q.place_text(u.at) == m[:2])) for m in first_struck]
+    assert stakes == sorted(stakes, reverse=True)
+
+
+def test_the_move_sheet_gives_a_verdict_to_every_move_and_a_budget_cuts_it(env):
+    r = Q.Reading(env, HUNG, WORTH)
+    full = Q.move_sheet(env, r, Q.Params())
+    assert len(full.results) == len(r.legal) and full.unread == [] and set(full.verdicts()) == set(r.legal)
+    assert "d2d3" in {x["move"] for x in full.loses()} and full.verdicts()["d2d5"] == Q.SAFE_V
+    cut = Q.move_sheet(env, r, Q.Params(), max_moves=3)
+    assert [x["move"] for x in cut.results] == full.order[:3] and cut.unread == full.order[3:]
+    none = Q.move_sheet(env, r, Q.Params(), budget_seconds=0.0)
+    assert none.results == [] and none.unread == full.order
+    one = Q.move_sheet(env, r, Q.Params(), budget_cost=1e-9)                                  # the cost used up after the first move
+    assert len(one.results) == 1 and one.results[0]["move"] == full.order[0]
+    given = Q.move_sheet(env, r, Q.Params(), moves=["d2d3", "e1e2"])
+    assert set(given.verdicts()) == {"d2d3", "e1e2"}
+
+
+def test_the_move_question_is_off_by_default_and_on_it_is_kept_on_the_sheet_and_explained(env):
+    plain = Q.run(HUNG, WORTH, env=env, max_steps=3)
+    assert plain.moves is None and not any("question of the move" in ln for ln in Q.explain(plain))
+    sheet = Q.run(HUNG, WORTH, env=env, max_steps=3, params=Q.Params(move_question=True))
+    assert sheet.moves is not None and len(sheet.moves.results) == len(sheet.reading.legal)
+    text = "\n".join(Q.explain(sheet))
+    assert "the question of the move:" in text and "the move d2d3" in text and "LOSES" in text
+    gone = Q.run(HUNG, WORTH, env=env, max_steps=3, budget_seconds=0.0, params=Q.Params(move_question=True))
+    assert gone.moves.results == []
