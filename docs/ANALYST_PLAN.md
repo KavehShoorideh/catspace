@@ -6199,3 +6199,43 @@ READING: (1) LEVEL 1 AS BUILT CLOSES NOTHING. On a full board some unit of the o
 FOUND AND FIXED: curriculum's `owned` listed units in the opposite order to `describe`; now the same order (sums were unaffected).
 WANTED IN RUST (not done): the 78.39 report for any target unit; a search restricted to named first moves; the goal kind without a report.
 NEXT: level 1 as three links (reach, a place to stand, a strike that gains), re-measured on the same positions; the quiet question measured against the positions where nothing is live.
+
+78.41 STAGE 1, SECOND FORM: LEVEL 1 AS THREE LINKS (2026-11-12; reach, a place to stand, a strike that gains; Params.links, --no-links keeps the first form; tests 20). The same 400 positions:
+    OBS question sheet: positions read 400 (unreadable 0); bad moves 115 (28.8% of positions)
+    OBS (a) [open = a step of level 0 or 1 found it live] no question open: 4 of 400 positions (1.0%); bad move follows 29.0% when at least one is open (396 positions), 0.0% when none is (4); the none-open positions hold 0.0% of the bad moves
+    OBS (a) [open = not closed by level 1] no question open: 4 of 400 positions (1.0%); bad move follows 29.0% when at least one is open (396 positions), 0.0% when none is (4); the none-open positions hold 0.0% of the bad moves
+    OBS (a) [open = live at level 0] no question open: 223 of 400 positions (55.8%); bad move follows 18.1% when at least one is open (177 positions), 37.2% when none is (223); the none-open positions hold 72.2% of the bad moves
+    OBS (a) [open = live at level 0 or a plan of one move at level 1] no question open: 28 of 400 positions (7.0%); bad move follows 29.3% when at least one is open (372 positions), 21.4% when none is (28); the none-open positions hold 5.2% of the bad moves
+    OBS (a) rank 1 (the unit asked about is mine in the first position): open (level 0 or 1) in 72.2% of positions; bad move follows 30.4% when open, 24.3% when not; open ones hold 76.5% of the bad moves; live at level 0 in 8.8%, bad move follows 11.4% when live, 30.4% when not
+    OBS (a) rank 2 (the unit asked about is theirs in the first position): open (level 0 or 1) in 70.5% of positions; bad move follows 32.3% when open, 20.3% when not; open ones hold 79.1% of the bad moves; live at level 0 in 0.0%, bad move follows n/a when live, 28.8% when not
+    OBS (a) rank 3 (the unit asked about is theirs in the first position): open (level 0 or 1) in 62.2% of positions; bad move follows 23.7% when open, 37.1% when not; open ones hold 51.3% of the bad moves; live at level 0 in 4.0%, bad move follows 0.0% when live, 29.9% when not
+    OBS (a) rank 4 (the unit asked about is mine in the first position): open (level 0 or 1) in 61.7% of positions; bad move follows 26.4% when open, 32.7% when not; open ones hold 56.5% of the bad moves; live at level 0 in 6.3%, bad move follows 8.0% when live, 30.2% when not
+    OBS (a) rank 5 (the unit asked about is mine in the first position): open (level 0 or 1) in 58.9% of positions; bad move follows 27.7% when open, 30.5% when not; open ones hold 56.5% of the bad moves; live at level 0 in 6.0%, bad move follows 25.0% when live, 29.1% when not
+    OBS (a) rank 6 (the unit asked about is theirs in the first position): open (level 0 or 1) in 61.3% of positions; bad move follows 27.8% when open, 31.6% when not; open ones hold 58.3% of the bad moves; live at level 0 in 3.8%, bad move follows 20.0% when live, 29.6% when not
+    OBS (a) rank 7 (the unit asked about is theirs in the first position): open (level 0 or 1) in 42.4% of positions; bad move follows 28.7% when open, 30.5% when not; open ones hold 40.9% of the bad moves; live at level 0 in 7.2%, bad move follows 10.7% when live, 31.2% when not
+    OBS (a) rank 8 (the unit asked about is mine in the first position): open (level 0 or 1) in 41.5% of positions; bad move follows 30.1% when open, 30.9% when not; open ones hold 40.9% of the bad moves; live at level 0 in 5.1%, bad move follows 15.8% when live, 31.4% when not
+    OBS (b) level 1 closed on a unit of mine in 395 positions (98.8%); of those with the balance read (393) the mover's balance fell within 4 plies in 92 (23.4%); in all positions with the balance read (398): 93 (23.4%)
+    OBS (b) all my units closed at level 1 in 16 positions; the balance fell within 4 plies in 5 (31.2%)
+    OBS (b) questions on my units that closed at level 1: 2613; that unit's kind had fewer units 4 plies later in 534 (20.4%)
+    OBS (b) questions on my units that stayed open: 1262; that unit's kind had fewer units 4 plies later in 143 (11.3%)
+    OBS (d) positions with nothing live at level 0 or 1: 4 (1.0%); with the quiet question named and the move read: 4; the move played was a move of the unit it names in 0 (0.0%); bad move follows n/a when it was (0), 0.0% when it was not (4); bad-move rate in all positions 28.8%
+    OBS (c) level 0: 7954 steps, mean 3.71 ms, max 107.76 ms
+    OBS (c) level 1: 7954 steps, mean 0.25 ms, max 1.37 ms
+    OBS (c) level 2: 2607 steps, mean 6.31 ms, max 300.48 ms
+    OBS (c) level 3: 2466 steps, mean 11.45 ms, max 379.10 ms
+    OBS (c) level 4: 1873 steps, mean 63.17 ms, max 3006.42 ms
+    OBS question sheet: 286.9 s for 400 positions, worth {'b': 5, 'k': 0, 'n': 4, 'p': 2, 'q': 14, 'r': 8}
+MY CHECK OF THE SAFE VERDICT (scratch script, the exact unit followed move by move for 4 plies with a general chess library; the module's own measure (b) counts by kind and is misled by the many low units):
+    OBS safe check: positions 400, questions on my units other than the goal unit, the exact unit followed for 4 plies
+    OBS ALL     live at level 0: taken 39 of 124 (31.5%); open after level 1: taken 47 of 902 (5.2%); closed at level 1: taken 108 of 2525 (4.3%)
+    OBS bishop  live at level 0: taken 6 of 24 (25.0%); open after level 1: taken 8 of 196 (4.1%); closed at level 1: taken 7 of 354 (2.0%)
+    OBS knight  live at level 0: taken 4 of 22 (18.2%); open after level 1: taken 8 of 115 (7.0%); closed at level 1: taken 7 of 451 (1.6%)
+    OBS pawn    live at level 0: taken 16 of 40 (40.0%); open after level 1: taken 9 of 151 (6.0%); closed at level 1: taken 89 of 1340 (6.6%)
+    OBS queen   live at level 0: taken 5 of 13 (38.5%); open after level 1: taken 9 of 141 (6.4%); closed at level 1: taken 2 of 101 (2.0%)
+    OBS rook    live at level 0: taken 8 of 25 (32.0%); open after level 1: taken 13 of 299 (4.3%); closed at level 1: taken 3 of 279 (1.1%)
+    OBS closed at the link '1': taken 0 of 56 (0.0%)
+    OBS closed at the link '2': taken 5 of 613 (0.8%)
+    OBS closed at the link '3': taken 103 of 1856 (5.5%)
+READING: (1) with the links the questions on the lower ranks close in more than half the positions (ranks 7 and 8 open in about 42 of 100, from 98), so the sheet now has something to ration the clock by. (2) THE SAFE VERDICT HOLDS FOR THE UNIT ITSELF: a unit live at level 0 is taken within 4 plies in 31.5% of cases, open after level 1 in 5.2%, closed at level 1 in 4.3%; above the lowest kind the closed ones are taken in 1.1% to 2.0% against 4.1% to 7.0% for the open ones. Closed for want of reach: 0 of 56 taken; closed for want of a place to stand: 5 of 613; closed because the strike does not gain: 103 of 1856, nearly all of the lowest kind, which is exchanged rather than won. The module's measure (b) by kind said the reverse and is wrong for this purpose; it should follow the unit. (3) "No question open" is still rare (4 of 400), so the quiet question was not measured; with twenty units a side something is nearly always open at level 1. The question that separates is not whether anything is open but WHERE the clock goes first.
+OPEN: link 2 reads the board as it stands (no line opened or shut by the arrival) and has no count of the exchange; link 3 calls an even exchange no gain, which is right for a win of material and wrong for "will this unit leave the board"; the goal unit's question still rests on the 78.39 report at its cost; measure (b) to follow the unit in the module itself.
+NEXT: the sheet's open questions as the search's first moves (stage 2, in the wake, measured by the surprise rate of 78.37 at 0.2 s and 1.0 s beside the plain search), which needs the Rust additions listed above; and the mined worths as the judge, which the sheet already uses and the search does not.

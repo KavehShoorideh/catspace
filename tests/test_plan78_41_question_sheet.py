@@ -184,3 +184,88 @@ def test_the_module_names_no_object_of_one_game():
     text = SOURCE.read_text()
     hit = re.search(words, text, flags=re.I)
     assert hit is None, hit and (hit.group(0), text[max(0, hit.start() - 40):hit.end() + 20])
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- level 1 as a chain of three links
+
+NO_PLACE = "7k/8/1p6/3q4/8/8/2p5/R6K w - - 0 1"        # every place from which my rook would strike their queen is struck by a cheaper unit of theirs
+NO_GAIN = "7k/8/4p3/3p4/8/8/8/R3K3 w - - 0 1"          # their pawn is guarded and worth less than my rook
+
+
+def _level1(env, fen, side, kind, params=None):
+    r, qs = _first_order(env, fen)
+    q = _find(qs, side, kind)
+    params = params or Q.Params()
+    Q.step(q, r, params)
+    return Q.step(q, r, params), q
+
+
+def test_link_1_reach_fails_when_no_unit_can_come(env):
+    f, q = _level1(env, SPARSE, "them", "pawn")
+    assert f.status == Q.CLOSED and f.detail["failed_at"] == 1 and "can reach it within 2 moves" in f.text
+
+
+def test_link_2_a_place_to_stand_fails_where_a_cheaper_unit_strikes_the_arrival_place(env):
+    f, q = _level1(env, NO_PLACE, "them", "queen")
+    assert f.status == Q.CLOSED and f.detail["failed_at"] == 2
+    assert "none passes all three links" in f.text and "a place to stand" in f.text and "worth less" in f.text
+    old, _ = _level1(env, NO_PLACE, "them", "queen", Q.Params(links=False))                 # reach alone calls it live
+    assert old.status == Q.LIVE
+
+
+def test_link_3_a_strike_that_gains_fails_on_a_guarded_target_worth_less(env):
+    f, q = _level1(env, NO_GAIN, "them", "pawn")
+    assert f.status == Q.CLOSED and f.detail["failed_at"] == 3
+    assert "a strike that gains" in f.text and "guarded by their pawn" in f.text
+    assert _level1(env, NO_GAIN, "them", "pawn", Q.Params(links=False))[0].status == Q.LIVE
+
+
+def test_all_three_links_hold_for_an_unguarded_target(env):
+    f, q = _level1(env, HANGING.replace("3R4", "R7").replace("w - - 0 1", "w - - 0 1"), "them", "queen")
+    assert f.status == Q.LIVE and f.detail["links"][2] >= 1 and "pass reach, a place to stand and a strike that gains" in f.text
+
+
+def test_explain_names_the_link_that_failed(env):
+    sheet = Q.run(NO_PLACE, WORTH, env=env, max_steps=30)
+    text = "\n".join(Q.explain(sheet))
+    assert "fails at a place to stand" in text
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- measures (b) by unit and (d) the quiet question
+
+def test_load_positions_reads_the_units_lost_and_the_unit_moved(tmp_path):
+    moves = ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"]
+    ours = {str(p): {"balance": 0} for p in range(6)}
+    (tmp_path / "games.jsonl").write_text(json.dumps({"variant": "chess", "game": 0, "start": None, "moves": moves, "ours": ours}) + "\n")
+    (tmp_path / "surprises.jsonl").write_text("")
+    items = {i[0][1]: i for i in Q.load_positions(str(tmp_path), "chess", game="chess")}
+    assert items[1][4] == {"pawn"}                      # black had 8 pawns at ply 1 and 7 at ply 5
+    assert items[0][4] == {"pawn"}                      # white's pawn is taken at ply 3
+    assert items[0][5] == "e2" and items[1][5] == "d7" and items[2][5] == "e4"
+    assert items[3][4] is None                          # the game ends before ply 7
+
+
+def _rec(bad, rows, lost=None, quiet_at=None, moved=None):
+    return Q.Record((0, 0), bad, rows, None, [(0, 0.001)], lost=lost, quiet_at=quiet_at, moved=moved)
+
+
+def test_measure_b_by_unit_and_measure_d_on_hand_made_records():
+    row = lambda kind, closed, live=False, owner="us": Q.Row(owner, live, closed, kind=kind)
+    records = [
+        _rec(False, [row("pawn", True), row("rook", False)], lost={"pawn"}),
+        _rec(False, [row("pawn", True), row("rook", False)], lost=set()),
+        _rec(False, [row("pawn", True), row("rook", False, owner="them")], lost={"rook"}),
+        _rec(True, [row("pawn", True)], lost=set(), quiet_at="a2", moved="a2"),
+        _rec(False, [row("pawn", True)], lost=set(), quiet_at="a2", moved="b1"),
+        _rec(True, [row("pawn", True)], lost=set(), quiet_at="a2", moved="b1"),
+        _rec(False, [row("pawn", False, live=True)], lost=set(), quiet_at="a2", moved="a2"),    # a question is live: not a quiet position
+    ]
+    lines = Q.format_obs(records)
+    closed = next(ln for ln in lines if "my units that closed at level 1" in ln)
+    stayed = next(ln for ln in lines if "my units that stayed open" in ln)
+    assert "closed at level 1: 6; " in closed and "in 1 (16.7%)" in closed                    # pawn closed in 6 rows, lost in the first only
+    assert "stayed open: 3; " in stayed and "in 0 (0.0%)" in stayed                              # the rook's two rows of mine and the live pawn; none of those kinds lost
+    d = next(ln for ln in lines if ln.startswith("OBS (d)"))
+    assert "nothing live at level 0 or 1: 6 " in d and "the quiet question named and the move read: 3" in d
+    assert "a move of the unit it names in 1 (33.3%)" in d
+    assert "bad move follows 100.0% when it was (1), 50.0% when it was not (2)" in d
