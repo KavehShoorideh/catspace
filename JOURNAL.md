@@ -36602,3 +36602,10 @@ only and costs tens of milliseconds a position. The exact labeller's endless rec
 the 78.37 to 78.39 design. The first gate run failed one test (a variable named like a square in goal_target.rs); renamed, rerun:
 
 OBS gate engine: files 80, passed 1058, failed 0, xfailed 1, errors 0, wall 1386.4 s
+
+## 2026-11-12 -- plan 78.40: a forward operator on the facts, a probe after Kaveh's direction
+
+Kaveh asked for a predict-the-future step in the spirit of the summer's Koopman work. A read-only review of that work: the operator on the dense learned state was barely
+above copying, did not order the moves of one position, and the project paused on it; predicting named future events held up better. A probe of the same idea on the engine's
+own fact counts, from its own games, copying beside every line: no gain over copying at two and four plies, a gain at eight, a bounded roll, event readouts near the best
+single column, a weak ordering of sibling moves. Lines in docs/ANALYST_PLAN.md 78.40. The full gate was not rerun for this additive module; its own test file passes (8).

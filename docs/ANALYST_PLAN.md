@@ -6090,3 +6090,58 @@ ORDER OF WORK. 78.37 stage 1 and 78.38 stage 1 are built side by side (different
 NEXT  (a) 78.37 stage 2: the heaviest surprises as the sleep's problems, the rate on fresh games as the gate; (b) values for the kinds (the valuation miner of 76.5) so our
       level is not a count; (c) 78.38 stage 2: the set claims as leaves, measured by the meter and by conversion at four units; (d) 78.39: the reach made cheap (two moves,
       or kept per unit), then contest, then the scenario as a search target.
+
+#### 78.40 A FORWARD OPERATOR ON THE FACTS: A PROBE (2026-11-12; Kaveh: "some sort of predicting the future, like a rolling, like a Koopman operator forward in time ... roll forward to evaluate the potential of some attacks ... then I can do the actual hard calculation reasoning to make sure it works")
+THE LOOK BACK (a read-only review of JOURNAL.md, lines given there). The July and August work rolled a dense learned state forward with a linear operator (the probes of
+2026-07-31; gko1 to gko4, koopman_ops.py, koopman_search.py). Its own record: the operator was barely above copying the starting state (the correction of 2026-08-26), the
+rolled value did not order the moves of one position, play from the rolled state alone failed, and the cause given was that one move changed most of the state. What held up
+from that period was predicting NAMED FUTURE EVENTS directly. One operator checkpoint remains on disk (artifacts/experiments/gko4b_latest.pt); it is not reused.
+THE PROBE asks the same question on the engine's own observables, with COPY beside every line: the state is the vector of fact counts of a position from the mover's side
+(per relation, and split by the small-valued argument positions; 200 columns kept), from the engine's own games only (no outside engine, no human game). Models: COPY,
+DIRECT (ridge at the horizon), ROLLED (the two-ply operator applied again and again), and at one ply a model that is also told the kind of the unit moved.
+BUILT (a Sonnet subagent): catspace/incubator/analyst/discovery/fact_forward.py, tests/test_plan78_40_fact_forward.py. One run, seed 1 (the whole output is local, scratch
+fact_forward_run.txt; the lists of columns are left out here):
+    OBS games 120 plies 5176 dir /Users/kav/code/remote/github/catspace/data/derived/fact_forward_chess_120g_0.05s_s1 seconds 0.0015
+    OBS positions 5296 fact_read_ms_per_position 0.942
+    OBS split games train 90 held 30
+    OBS observables dim 200 encode_ms_per_position 0.3055
+    OBS h2 COPY mean_R2 0.6627 columns 196 share_beating_COPY_by_0.02 -
+    OBS h2 DIRECT mean_R2 0.6439 columns 196 share_beating_COPY_by_0.02 0.3265
+    OBS h2 DIRECT mean_gain_by_column_kind material +0.008 (n=1); split -0.025 (n=182); total +0.061 (n=13)
+    OBS h2 ROLLED mean_R2 0.6439 columns 196 share_beating_COPY_by_0.02 0.3265
+    OBS h2 ROLLED mean_gain_by_column_kind material +0.008 (n=1); split -0.025 (n=182); total +0.061 (n=13)
+    OBS h4 COPY mean_R2 0.5303 columns 196 share_beating_COPY_by_0.02 -
+    OBS h4 DIRECT mean_R2 0.5038 columns 196 share_beating_COPY_by_0.02 0.4439
+    OBS h4 DIRECT mean_gain_by_column_kind material -0.145 (n=1); split -0.040 (n=182); total +0.168 (n=13)
+    OBS h4 ROLLED mean_R2 0.5287 columns 196 share_beating_COPY_by_0.02 0.4949
+    OBS h4 ROLLED mean_gain_by_column_kind material -0.004 (n=1); split -0.015 (n=182); total +0.183 (n=13)
+    OBS h8 COPY mean_R2 0.2049 columns 196 share_beating_COPY_by_0.02 -
+    OBS h8 DIRECT mean_R2 0.3451 columns 196 share_beating_COPY_by_0.02 0.6582
+    OBS h8 DIRECT mean_gain_by_column_kind material -0.085 (n=1); split +0.120 (n=182); total +0.436 (n=13)
+    OBS h8 ROLLED mean_R2 0.3587 columns 196 share_beating_COPY_by_0.02 0.6633
+    OBS h8 ROLLED mean_gain_by_column_kind material -0.008 (n=1); split +0.134 (n=182); total +0.445 (n=13)
+    OBS operator h2 spectral_radius 1.0134 mean_norm_ratio_after_1_2_3_4_rolls 0.9905 0.9839 0.9781 0.9727 true_norm_ratio_h8 0.9864
+    OBS h1 COPY mean_R2 0.6945 columns 196 share_beating_COPY_by_0.02 -
+    OBS h1 DIRECT mean_R2 0.7375 columns 196 share_beating_COPY_by_0.02 0.1531
+    OBS h1 DIRECT mean_gain_by_column_kind material +3.588 (n=1); split +0.020 (n=182); total +0.087 (n=13)
+    OBS h1 MOVE_CONDITIONED mean_R2 0.8395 columns 196 share_beating_COPY_by_0.02 0.199
+    OBS h1 MOVE_CONDITIONED mean_gain_by_column_kind material +3.604 (n=1); split +0.125 (n=182); total +0.158 (n=13)
+    OBS event a_material_lower_in_8 held_n 1109 base_rate 0.0992 AUC_logistic_readout 0.598 AUC_best_single_column_chosen_on_train 0.584 column count:defended[arg1=d] AUC_best_single_column_chosen_on_held_out 0.6672 column count:to_promote[arg0=them]
+    OBS event b_check_in_next_8 held_n 1109 base_rate 0.3868 AUC_logistic_readout 0.6954 AUC_best_single_column_chosen_on_train 0.669 column count:defended AUC_best_single_column_chosen_on_held_out 0.6843 column count:apart
+    OBS event c_hanging_rises_in_4 held_n 1109 base_rate 0.2399 AUC_logistic_readout 0.5277 AUC_best_single_column_chosen_on_train 0.5454 column count:apart[arg6=d2] AUC_best_single_column_chosen_on_held_out 0.5838 column count:attack[arg2=4]
+    OBS siblings positions 300 moves 8102 prepare_seconds 10.6201
+    OBS siblings exact_seconds 39.0232 moves_with_value 8047 of 8102
+    OBS siblings positions_scored 290 mean_spearman_operator_h2 0.2261 mean_spearman_copy_after_move -0.279 mean_spearman_operator_predicted_change_only 0.3294 positions_scored_change 290
+  READING (directional: one seed, 120 short games)
+  1 At two and four plies the operator does not beat copying; at eight it does (the mean_R2 lines), and the two-ply operator rolled four times is as good as the direct fit
+    and stays bounded (the spectral radius line). The state is slow enough that copying is hard to beat close in.
+  2 The gain is in the totals of the relations and the counts about threats; the counts of units by kind are predicted worse than by copying.
+  3 The event readouts are near the best single column: the whole vector adds little for "units lost within eight plies", and nothing for the third event.
+  4 Within a position the operator orders the moves weakly (the siblings line). The yardstick there is the search value after the move, which leaves out the move's own gain
+    (the copy line is negative for that reason), so the figure is a first sign, not a measure.
+  5 At one ply, telling the operator the kind of the moved unit helps (the h1 lines; COPY at one ply is handicapped by the change of side, so that pair is not a clean
+    comparison).
+  OPEN  counts lose WHERE things are: a potential of an attack needs the state near the target (the holes and supply of 78.39), not board totals; events chosen by us were
+        generic. NEXT if pursued: the state made of the 78.39 report's own quantities per side (holes open, supply per hole, moves of the nearest scenario), the events
+        "a scenario's placement is reached within k plies" and "the holes fall to none", the operator conditioned on the move's kind and target, and the use as an ORDER of
+        plans for the exact search, never as a verdict.
