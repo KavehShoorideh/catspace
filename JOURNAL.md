@@ -36609,3 +36609,7 @@ Kaveh asked for a predict-the-future step in the spirit of the summer's Koopman 
 above copying, did not order the moves of one position, and the project paused on it; predicting named future events held up better. A probe of the same idea on the engine's
 own fact counts, from its own games, copying beside every line: no gain over copying at two and four plies, a gain at eight, a bounded roll, event readouts near the best
 single column, a weak ordering of sibling moves. Lines in docs/ANALYST_PLAN.md 78.40. The full gate was not rerun for this additive module; its own test file passes (8).
+
+## 2026-11-12 -- plan 78.41: the question sheet, stage 1, after Kaveh's direction
+Kaveh: questions first between us and the board, then with the opponent's reply; the order matters most; first order my top unit, theirs, their next, mine, and depth by stake and fact, a little here and a little there.
+A scratch probe and then question_sheet.py (a measure, not in the wake). Result: positions with nothing in contact hold most of the bad moves; "a unit can reach the target within two moves" is open everywhere and separates nothing, so the breakdown needs a place to stand and a strike that gains. Lines in docs/ANALYST_PLAN.md 78.41. The full gate was not rerun; the new test file passes (13).

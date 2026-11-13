@@ -78,7 +78,7 @@ class ChessCodec:
     def owned(self, position: str) -> list:
         """(side, kind as the kernel and a valuation record name it) of each unit: what a material balance is summed over (plan 78.37)."""
         import chess
-        return [(self.SIDES[p.color], p.symbol().lower()) for p in chess.Board(position).piece_map().values()]
+        return [(self.SIDES[p.color], p.symbol().lower()) for _, p in sorted(chess.Board(position).piece_map().items())]
 
     def keep(self, position: str, units: list) -> str:
         import chess
