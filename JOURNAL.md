@@ -36624,3 +36624,7 @@ Built on October's frame search and fact store, unedited. The frozen board had h
 ## 2026-11-13 -- plan 78.42 second form: goal unit moved aside, narrow cost of leaving
 
 A goal unit standing on a route is moved aside in place of removed. The cost of leaving reads only what the leaving unit guarded or shielded. Verdicts unchanged; time per position down; numbers and what is still wrong in docs/ANALYST_PLAN.md 78.42 SECOND FORM.
+
+## 2026-11-13 -- plan 78.42 third form: several blockers, fitted chances, the clock measured
+
+The chance of a question, fitted from our own games, separates and holds on unseen games. Ordering by chance times stake did not beat the present order. The ceiling is low: most takings are foreseen by no danger verdict. Numbers in docs/ANALYST_PLAN.md 78.42 THIRD FORM.

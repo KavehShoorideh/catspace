@@ -952,3 +952,324 @@ def test_every_node_carries_a_stake_bound_that_closes_as_answers_arrive_and_expl
     r3, q3, f3 = _deep(env, KING_ROUTE, "them", "pawn", "h7", Q.Params(route_nodes=3))
     capped = next(n for n in r3.graph.nodes if n.kind == "way" and n.cut == 1)
     assert capped.stake_low == 0.0 and capped.stake_high == q3.stake and capped.tried >= 3     # cut by the cap: the bounds stay as they were, the tries are on the node
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- 78.42 third form: a step blocked by several units, the chance of a node, the clock
+
+TWO_IN_LINE = "7k/8/8/7n/1p6/p7/p7/R3K3 w - - 0 1"       # my rook a1 -> a5: their pawns on a2 and a3 both stand on the line
+
+
+def _two_in_line(env, params=None):
+    r = Q.Reading(env, TWO_IN_LINE, WORTH)
+    q = next(x for x in Q.first_order(r) if x.target.side == "them" and x.target.kind == "knight")
+    Q.step(q, r)
+    f1 = Q.step(q, r)
+    way = next(w for w in f1.detail["supply"] if w[1].kind == "rook" and Q.place_text(w[2]) == "a5")
+    return r, q, way, f1.detail["routes"][way[:4]][0]
+
+
+def test_a_step_blocked_by_two_units_is_explained_by_removing_both_and_each_must_go(env):
+    r, q, way, route = _two_in_line(env)
+    obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(), r.position)
+    assert [(Q.place_text(o.unit.at), o.kind, o.joint, o.dead) for o in obs] == [("a2", "one of several units, each of which must go", ("a2", "a3"), False), ("a3", "one of several units, each of which must go", ("a2", "a3"), False)]
+    assert "only with all 2 of their pawn on a2, their pawn on a3 out of the way" in obs[0].note and obs[0].hypothetical
+    assert r.cf_log[-1]["found"] == 0 and r.cf_log[-1]["joint"] == 2 and r.cf_log[-1]["joint_state"] == "joint"
+
+
+def test_the_earlier_none_is_reachable_by_a_flag(env):
+    r, q, way, route = _two_in_line(env)
+    obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(joint=False), r.position)
+    assert len(obs) == 1 and obs[0].kind == "none" and obs[0].dead and r.cf_log[-1]["joint_state"] == ""
+
+
+def test_more_units_than_the_cap_is_a_refutation_by_cost_said_in_words(env):
+    r, q, way, route = _two_in_line(env)
+    obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(max_joint=1), r.position)
+    assert len(obs) == 1 and obs[0].dead and obs[0].unit is None and "more than 1 units in the way" in obs[0].note and "refuted by cost" in obs[0].note
+    assert r.cf_log[-1]["joint_state"] == "cap"
+    assert Q.Params().max_joint == 3
+
+
+def test_the_set_is_asked_cheapest_first_and_a_dead_member_kills_the_route_and_is_named(env):
+    r, q, f = _deep(env, TWO_IN_LINE, "them", "knight")
+    got = _ways(f, "rook", "a5")[0]
+    assert got["status"] == Q.REFUTED_V and "their pawn on a3 will not move for us and cannot be taken" in got["answer"]
+    assert r.joint_log and all(x["dead"] and x["members"] == 2 for x in r.joint_log)
+    assert any(n.kind == "obstacle" and n.asks.startswith("several units in the way, each of which must go") for n in r.graph.nodes)
+    ask = [n for n in r.graph.nodes if n.kind == "follow_up" and n.target is not None and Q.place_text(n.target.at) in ("a2", "a3")]
+    assert {Q.place_text(n.target.at): n.verdict for n in ask} == {"a2": "takeable", "a3": "dead"}
+
+
+def test_the_moves_to_clear_a_set_add_up(env):
+    fen = "7k/8/8/7n/8/N7/N7/R3K3 w - - 0 1"                  # my own knights on a2 and a3 stand on the rook's line: each must move away
+    r = Q.Reading(env, fen, WORTH)
+    q = next(x for x in Q.first_order(r) if x.target.side == "them" and x.target.kind == "knight")
+    Q.step(q, r)
+    f1 = Q.step(q, r)
+    way = next(w for w in f1.detail["supply"] if w[1].kind == "rook" and Q.place_text(w[2]) == "a5")
+    route = f1.detail["routes"][way[:4]][0]
+    obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(), r.position)
+    assert [o.joint for o in obs] == [("a2", "a3")] * 2 and not any(o.dead for o in obs)
+    r2, q2, f = _deep(env, fen, "them", "knight")
+    assert r2.joint_log and any(x["moves_more"] == 2 and not x["dead"] for x in r2.joint_log)
+    assert any("the moves add up" in e.then for e in r2.graph.edges)
+
+
+def test_the_format_counts_the_former_none_steps_by_what_explains_them(env):
+    r, q, way, route = _two_in_line(env)
+    Q.counterfactual_obstacles(r, q, way, route, Q.Params(), r.position)
+    rec = Q.Record(("g", 0), False, [], None, [], cf=list(r.cf_log), joint=list(r.joint_log))
+    text = "\n".join(Q.format_counterfactual([rec]))
+    assert "(the former \"none\"): 1; explained by removing the set of units the first layer names together 1 (100.0%, by size 2 units 1)" in text
+
+
+# ---- the key, the fit, the merge, the smoothing
+
+def _fake_question(owner_side, stake=10.0, rank=1, kind="rook", place=("a", "1")):
+    return Q.Question(Q.Unit(owner_side, kind, place), Q.OTHER if owner_side == Q.SELF else Q.SELF, stake, rank)
+
+
+def _finding(q, level, status, detail=None):
+    f = Q.Finding(q, level, status, "", 0.0, detail=detail or {})
+    q.findings.append(f)
+    return f
+
+
+def test_the_key_is_owner_verdict_moves_route_and_reads_the_deepest_level():
+    q = _fake_question(Q.SELF)
+    assert Q.question_key(q) == ("mine", "unread", "-", "-")
+    _finding(q, 0, Q.LIVE)
+    assert Q.question_key(q)[:2] == ("mine", "live0")
+    shut = _finding(q, 1, Q.CLOSED, {"failed_at": 2, "supply": []})
+    assert Q.question_key(q, 1) == ("mine", "live0", "-", "-") and Q.question_key(q, -1)[1] == "unread"
+    q2 = _fake_question(Q.OTHER)
+    _finding(q2, 0, Q.IDLE)
+    _finding(q2, 1, Q.CLOSED, {"failed_at": 3, "supply": []})
+    assert Q.question_key(q2) == ("theirs", "closed3", "-", "-")
+    way = (2, Q.Unit(Q.SELF, "rook", ("a", "1")), ("a", "5"), 0)
+    q3 = _fake_question(Q.OTHER)
+    _finding(q3, 0, Q.IDLE)
+    _finding(q3, 1, Q.LIVE, {"supply": [way], "routes": {way[:4]: []}})
+    assert Q.question_key(q3) == ("theirs", "live1", "2", "clear")
+    results = [{"way": None, "status": Q.REFUTED_V}, {"way": way, "status": Q.WAITING_V}]
+    _finding(q3, 2, Q.IDLE, {"results": results})
+    assert Q.question_key(q3) == ("theirs", "waiting", "2", "clear") and Q.question_key(q3, 1)[1] == "live1"
+    q3.findings[-1].detail["results"] = [{"way": None, "status": Q.CONFIRMED_V}, {"way": way, "status": Q.REFUTED_V}]
+    assert Q.question_key(q3)[1:3] == ("lost", "0")
+    q3.findings[-1].detail["results"] = [{"way": None, "status": Q.REFUTED_V}, {"way": way, "status": Q.CONFIRMED_V}]
+    assert Q.question_key(q3)[1:3] == ("confirmed", "2")
+    q3.findings[-1].detail["results"] = [{"way": None, "status": Q.REFUTED_V}, {"way": way, "status": Q.REFUTED_V}]
+    assert Q.question_key(q3)[1] == "refuted"
+
+
+def test_the_route_word_is_clear_own_or_theirs():
+    way = (1, Q.Unit(Q.SELF, "rook", ("a", "1")), ("a", "5"), 0)
+    mine, theirs = Q.Obstacle("other", Q.Unit(Q.SELF, "pawn", ("a", "2")), "a2", 0), Q.Obstacle("other", Q.Unit(Q.OTHER, "pawn", ("a", "3")), "a3", 0)
+    for obstacles, word in (((), "clear"), ((mine,), "own"), ((mine, theirs), "theirs")):
+        q = _fake_question(Q.OTHER)
+        _finding(q, 1, Q.LIVE, {"supply": [way], "routes": {way[:4]: [Q.Route(way[1], (("a", "5"),), ((True, ""),), "strike", (), obstacles)]}})
+        assert Q.question_key(q)[3] == word
+    q = _fake_question(Q.OTHER)
+    _finding(q, 1, Q.LIVE, {"supply": [way], "routes": {way[:4]: [Q.Route(way[1], (("a", "5"),), ((True, ""),), "strike", (), (Q.Obstacle("no unit", None, "a5", 0, dead=True),))]}})
+    assert Q.question_key(q)[3] == "theirs"
+
+
+RECORDS = [{"keys": [["mine", "unread", "-", "-"], ["mine", "waiting", "2", "clear"]], "out": {4: True, 8: True}},
+           {"keys": [["mine", "unread", "-", "-"], ["mine", "waiting", "2", "clear"]], "out": {4: False, 8: True}},
+           {"keys": [["mine", "unread", "-", "-"], ["mine", "lost", "0", "clear"]], "out": {4: True, 8: None}},
+           {"keys": [["theirs", "unread", "-", "-"]], "out": {"4": False, "8": False}}]
+
+
+def test_the_fit_counts_taken_and_total_per_key_and_horizon_and_skips_what_the_game_did_not_say():
+    cells = Q.cells_from_records(RECORDS)
+    assert cells[("mine", "unread", "-", "-")] == {4: [2, 3], 8: [2, 2]}
+    assert cells[("mine", "waiting", "2", "clear")] == {4: [1, 2], 8: [2, 2]}
+    assert cells[("mine", "lost", "0", "clear")] == {4: [1, 1], 8: [0, 0]}
+    assert cells[("theirs", "unread", "-", "-")] == {4: [0, 1], 8: [0, 1]}
+
+
+def test_the_merge_of_two_fits_is_the_sum_and_equals_the_fit_of_both():
+    a, b = Q.cells_from_records(RECORDS[:2]), Q.cells_from_records(RECORDS[2:])
+    assert Q.merge_cells([a, b]) == Q.cells_from_records(RECORDS)
+    assert Q.merge_cells([]) == {}
+    h = Q.merge_headers([{"positions": 3, "unreadable": 1, "records": 5, "seconds": 2.0, "shards": [[0, 2]]}, {"positions": 4, "unreadable": 0, "records": 6, "seconds": 3.0, "shards": [[1, 2]]}])
+    assert (h["positions"], h["unreadable"], h["records"], h["seconds"], h["shards"]) == (7, 1, 11, 5.0, [[0, 2], [1, 2]])
+
+
+def test_the_chance_is_smoothed_toward_the_next_coarser_key_and_an_unseen_key_takes_the_coarser_chance():
+    t = Q.Chances(Q.cells_from_records(RECORDS))
+    root = (4 + 1) / (7 + 2)                                                       # taken 4 of the 7 states counted at horizon 4
+    assert t.counts((), 4) == (4, 7) and abs(t.chance((), 4) - root) < 1e-12
+    mine = (4 + 2.0 * root) / (6 + 2.0)
+    assert abs(t.chance(("mine",), 4) - mine) < 1e-12
+    unread = (2 + 2.0 * mine) / (3 + 2.0)
+    assert abs(t.chance(("mine", "unread"), 4) - unread) < 1e-12
+    third = (2 + 2.0 * unread) / (3 + 2.0)                                                   # each finer key with the same counts is smoothed once more toward the one above
+    assert abs(t.chance(("mine", "unread", "-"), 4) - third) < 1e-12 and abs(t.chance(("mine", "unread", "-", "-"), 4) - (2 + 2.0 * third) / (3 + 2.0)) < 1e-12
+    assert t.chance(("mine", "refuted", "1", "own"), 4) == t.chance(("mine",), 4) or abs(t.chance(("mine", "refuted", "1", "own"), 4) - mine) < 1e-12   # never seen: the coarser key's
+    assert 0.0 < t.chance(("theirs", "unread", "-", "-"), 4) < root                  # none of three taken: below the base rate, above 0
+
+
+def test_a_table_is_saved_with_its_header_and_loaded_and_a_node_gets_its_chance(env, tmp_path):
+    cells = Q.cells_from_records(RECORDS)
+    path = str(tmp_path / "t.json")
+    Q.save_chances(path, cells, {"directories": ["x"], "positions": 3})
+    blob = json.loads(Path(path).read_text())
+    assert blob["format"] == Q.CHANCE_FORMAT and blob["header"]["positions"] == 3 and "mine|unread|-|-" in blob["cells"]
+    t = Q.load_chances(path)
+    assert t.counts(("mine", "unread", "-", "-"), 4) == (2, 3)
+    sheet = Q.run(HANGING, WORTH, env=env, max_steps=12, params=Q.Params(chances=path))
+    qn = [n for n in sheet.graph.nodes if n.kind == "question"]
+    assert qn and all(n.chance is not None for n in qn)
+    q = sheet.questions[0]
+    assert abs(sheet.graph.nodes[q.node].chance - t.chance(Q.question_key(q), 4)) < 1e-12
+    below = [n for n in sheet.graph.nodes if n.kind not in ("question",)]
+    assert all(n.chance is not None for n in below if any(e.dst == n.id for e in sheet.graph.edges))        # a node with a parent takes the parent's
+    plain = Q.run(HANGING, WORTH, env=env, max_steps=12)
+    assert all(n.chance is None for n in plain.graph.nodes)                                              # no table: as before
+
+
+def test_the_calibration_bands_compare_predicted_with_observed():
+    t = Q.Chances(Q.cells_from_records(RECORDS))
+    recs = [{"final": ["mine", "waiting", "2", "clear"], "out": {4: True}}, {"final": ["mine", "waiting", "2", "clear"], "out": {4: False}}, {"final": ["theirs", "unread", "-", "-"], "out": {4: None}}]
+    lines = Q.format_calibration(recs, t, 4, "x")
+    assert lines[0].startswith("OBS calibration x: 2 questions, horizon 4, taken 1 (50.0%)")
+    assert any("1 taken (50.0%)" in ln and "2 questions" in ln for ln in lines[1:])
+    assert any("Brier" in ln for ln in lines)
+
+
+def _game_dir(tmp_path, moves):
+    d = tmp_path / "games"
+    d.mkdir()
+    (d / "games.jsonl").write_text(json.dumps({"variant": "chess", "game": 0, "start": None, "moves": moves}) + "\n")
+    return str(d)
+
+
+def test_the_outcome_follows_the_exact_unit_and_is_none_when_the_game_ended_too_soon(env, tmp_path):
+    d = _game_dir(tmp_path, ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3"])
+    g = Q.Games([d], env)
+    assert g.outcomes(0, 0, 2, "d5") == {4: True, 8: True}              # their pawn on d5 is taken at once
+    assert g.outcomes(0, 0, 0, "e2") == {4: True, 8: True}              # my pawn is taken at the fourth ply: followed through its moves
+    assert g.outcomes(0, 0, 4, "b1") == {4: None, 8: None}              # not taken, and the game ends before the horizon
+    assert g.outcomes(0, 0, 0, "h5") is None                           # nothing stands there
+    assert Q.pick_positions([d], 2) == [(0, 0, 0), (0, 0, 2), (0, 0, 4)] and len(Q.pick_positions([d], 1, 2)) == 2
+
+
+def test_the_fit_records_the_keys_a_question_passed_through_and_never_reads_the_judge_files(env, tmp_path):
+    d = _game_dir(tmp_path, ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5", "f1b5", "c7c6", "b5c6", "b8c6"])
+    (tmp_path / "games" / "surprises.jsonl").write_text("not json at all")             # the judge's file: opening it would fail
+    cells, header = Q.fit_chances([d], env, WORTH, Q.Params(), stride=3, say=None)
+    assert header["positions"] == 4 and header["records"] > 0 and header["horizons"] == [4, 8] and "no teacher number" in header["source"]
+    assert any(k[1] == "unread" for k in cells) and sum(c[4][1] for c in cells.values()) > 0
+    again, _ = Q.fit_chances([d], env, WORTH, Q.Params(), stride=3, shard=(0, 2), say=None)
+    other, _ = Q.fit_chances([d], env, WORTH, Q.Params(), stride=3, shard=(1, 2), say=None)
+    assert Q.merge_cells([again, other]) == cells
+
+
+# ---- the clock
+
+def _table(tmp_path, cells):
+    path = str(tmp_path / "c.json")
+    Q.save_chances(path, cells, {})
+    return Q.load_chances(path)
+
+
+def test_the_chance_clock_puts_a_likely_small_stake_before_an_unlikely_large_one(tmp_path):
+    t = _table(tmp_path, {("theirs", "unread", "-", "-"): {4: [30, 40], 8: [30, 40]}, ("mine", "unread", "-", "-"): {4: [1, 40], 8: [1, 40]}})
+    p = Q.Params(clock="chance")
+    costs = Q._Costs(p)
+    likely_small, unlikely_large = _fake_question(Q.OTHER, stake=4.0), _fake_question(Q.SELF, stake=14.0)
+    assert Q.chance_priority(likely_small, costs, p, t, None) > Q.chance_priority(unlikely_large, costs, Q.Params(clock="chance"), t, None)
+    flat = Q.Params(clock="present")
+    assert Q.priority(unlikely_large, costs) > Q.priority(likely_small, costs)               # the present order goes by stake alone here
+
+
+def test_the_risk_dial_moves_the_stake_of_my_own_unit_between_the_worst_case_and_the_midpoint(tmp_path):
+    mine, theirs = _fake_question(Q.SELF, stake=12.0), _fake_question(Q.OTHER, stake=12.0)
+    assert Q.stake_at_risk(mine, None, Q.Params(risk=1.0)) == 12.0 and Q.stake_at_risk(mine, None, Q.Params(risk=0.0)) == 6.0 and Q.stake_at_risk(mine, None, Q.Params(risk=0.5)) == 9.0
+    assert Q.stake_at_risk(theirs, None, Q.Params(risk=1.0)) == 6.0 == Q.stake_at_risk(theirs, None, Q.Params(risk=0.0))        # theirs: always the expected size
+    t = _table(tmp_path, {("theirs", "unread", "-", "-"): {4: [20, 40], 8: [20, 40]}, ("mine", "unread", "-", "-"): {4: [20, 40], 8: [20, 40]}})
+    costs = Q._Costs(Q.Params())
+    other = _fake_question(Q.OTHER, stake=8.0)                                  # midpoint 4
+    worst, expected = Q.Params(clock="chance", risk=1.0), Q.Params(clock="chance", risk=0.0)
+    own = _fake_question(Q.SELF, stake=7.0)                                    # worst case 7, expected 3.5
+    assert Q.chance_priority(own, costs, worst, t, None) > Q.chance_priority(other, costs, worst, t, None)
+    assert Q.chance_priority(own, costs, expected, t, None) < Q.chance_priority(other, costs, expected, t, None)
+
+
+def test_a_question_that_waits_sinks_and_one_lost_where_it_stands_rises(tmp_path):
+    t = _table(tmp_path, {("mine", "waiting", "2", "clear"): {4: [1, 50], 8: [1, 50]}, ("mine", "lost", "0", "clear"): {4: [30, 40], 8: [30, 40]}})
+    p, costs = Q.Params(clock="chance"), Q._Costs(Q.Params())
+    waiting, lost = _fake_question(Q.SELF, stake=10.0), _fake_question(Q.SELF, stake=10.0)
+    way = (2, Q.Unit(Q.OTHER, "rook", ("a", "1")), ("a", "5"), 0)
+    for q, kind in ((waiting, Q.WAITING_V), (lost, Q.CONFIRMED_V)):
+        _finding(q, 0, Q.IDLE)
+        _finding(q, 1, Q.LIVE, {"supply": [way], "routes": {way[:4]: []}})
+        _finding(q, 2, Q.IDLE, {"results": [{"way": None, "status": Q.CONFIRMED_V if q is lost else Q.REFUTED_V}, {"way": way, "status": kind}]})
+        q.level = 3
+    assert Q.question_key(waiting)[1] == "waiting" and Q.question_key(lost)[1] == "lost"
+    assert Q.chance_priority(lost, costs, p, t, None) > 10 * Q.chance_priority(waiting, costs, p, t, None)
+
+
+def test_run_under_the_chance_clock_takes_first_the_question_the_table_favours(env, tmp_path):
+    cells = {("theirs", "unread", "-", "-"): {4: [39, 40], 8: [39, 40]}, ("mine", "unread", "-", "-"): {4: [0, 40], 8: [0, 40]}}
+    path = str(tmp_path / "c.json")
+    Q.save_chances(path, cells, {})
+    sheet = Q.run(PAWNS, WORTH, env=env, max_steps=1, params=Q.Params(clock="chance", chances=path))
+    assert len(sheet.steps) == 1 and sheet.steps[0].question.owner == Q.OTHER
+    flipped = {("theirs", "unread", "-", "-"): {4: [0, 40], 8: [0, 40]}, ("mine", "unread", "-", "-"): {4: [39, 40], 8: [39, 40]}}
+    Q.save_chances(path, flipped, {})
+    Q._TABLES.pop(path, None)
+    sheet = Q.run(PAWNS, WORTH, env=env, max_steps=1, params=Q.Params(clock="chance", chances=path))
+    assert sheet.steps[0].question.owner == Q.SELF
+
+
+def test_the_plain_order_takes_a_question_to_its_full_depth_before_the_next(env):
+    sheet = Q.run(PAWNS, WORTH, env=env, max_steps=8, params=Q.Params(clock="plain"))
+    firsts = [s.question.rank for s in sheet.steps]
+    assert firsts == sorted(firsts) and sheet.steps[0].question.rank == 1 and firsts.count(1) >= 2
+
+
+def test_the_budget_is_honoured_in_steps_in_summed_step_cost_and_in_time_and_the_order_decides_what_is_read(env, tmp_path):
+    assert len(Q.run(PAWNS, WORTH, env=env, max_steps=3).steps) == 3
+    one = Q.run(PAWNS, WORTH, env=env, budget_cost=1e-9)
+    assert len(one.steps) == 1                                                  # a step is started while the budget is not used up; the one begun is finished
+    zero = Q.run(PAWNS, WORTH, env=env, budget_seconds=0.0)
+    assert len(zero.steps) == 0
+    free = Q.run(PAWNS, WORTH, env=env, max_steps=10 ** 6)
+    capped = Q.run(PAWNS, WORTH, env=env, budget_cost=sum(s.cost for s in free.steps[:5]) * 0.999)
+    budget = sum(s.cost for s in free.steps[:5]) * 0.999
+    assert len(capped.steps) < len(free.steps) and sum(s.cost for s in capped.steps[:-1]) < budget                    # every step but the last began while the budget was not used up
+    seen = []
+    Q.run(PAWNS, WORTH, env=env, max_steps=4, on_step=lambda sheet, st, elapsed: seen.append((len(sheet.steps), st.question.rank, elapsed)))
+    assert [x[0] for x in seen] == [1, 2, 3, 4] and all(x[2] > 0 for x in seen)
+    path = str(tmp_path / "c.json")
+    Q.save_chances(path, {("theirs", "unread", "-", "-"): {4: [39, 40], 8: [39, 40]}, ("mine", "unread", "-", "-"): {4: [0, 40], 8: [0, 40]}}, {})
+    timed = Q.run(PAWNS, WORTH, env=env, budget_seconds=1.0, params=Q.Params(clock="chance", chances=path))
+    assert timed.steps and timed.steps[0].question.owner == Q.OTHER             # the first step is the favoured one even when the clock cuts the rest
+
+
+def test_measure_j_counts_what_a_hand_made_game_holds_and_the_tallies_merge(env, tmp_path):
+    d = _game_dir(tmp_path, ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"])
+    path = str(tmp_path / "c.json")
+    Q.save_chances(path, Q.cells_from_records(RECORDS), {})
+    games = Q.Games([d], env)
+    acc: dict = {}
+    Q.j_position(env, WORTH, Q.Params(), games.position(0, 0, 2), lambda place: games.outcomes(0, 0, 2, place), acc, path)
+    assert {c.split("|")[0] for c in acc} == set(Q.J_ORDERS) and all(a["positions"] == 1 for a in acc.values())
+    assert f"present|steps|{Q.J_STEPS[0]} steps" in acc and "chance|time|20 ms" in acc and "plain|none|unbudgeted" in acc
+    free = acc["plain|none|unbudgeted"]
+    assert free["mine_units"] + free["theirs_units"] > 0
+    both = Q.merge_counts([acc, acc])
+    assert both["plain|none|unbudgeted"]["positions"] == 2 and both["plain|none|unbudgeted"]["mine_units"] == 2 * free["mine_units"]
+    assert any(ln.startswith("OBS (J) unbudgeted, order plain") for ln in Q.format_j(acc))
+
+
+def test_measure_j_can_be_limited_to_one_order_and_skip_the_wall_clock_runs(env, tmp_path):
+    d = _game_dir(tmp_path, ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"])
+    path = str(tmp_path / "c.json")
+    Q.save_chances(path, Q.cells_from_records(RECORDS), {})
+    games = Q.Games([d], env)
+    acc: dict = {}
+    Q.j_position(env, WORTH, Q.Params(risk=0.0), games.position(0, 0, 2), lambda place: games.outcomes(0, 0, 2, place), acc, path, ("chance",), False)
+    assert {c.split("|")[0] for c in acc} == {"chance"} and not any("|time|" in c for c in acc)

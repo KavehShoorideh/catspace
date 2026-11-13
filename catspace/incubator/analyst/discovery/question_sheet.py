@@ -79,6 +79,8 @@ class Params:
     leaving_wide_sign: bool = False    # the goal sign of the cost of leaving is also read when the step touches any line to the goal unit (the audit's misses fall, the time doubles)
     leaving_full: bool = False         # the cost of leaving by a whole new reading of the child position (the earlier form); False: only what the leaving can change
     pair_cap: int = 0                  # pairs of units tried when no single removal makes a blocked step legal (0: off)
+    joint: bool = True                 # no single removal makes a blocked step legal and the first layer names two or more units on it: remove the whole set together (False: "none", the earlier form)
+    max_joint: int = 3                 # units in such a set; more is recorded as "more than N units in the way" (a refutation by cost, said in words)
     duties: bool = True                # the cost of leaving: what the travelling unit holds where it stands, read after its step
     refute_counterfactual: bool = True # a refuted route: would it be confirmed without the unit whose answer stopped it?
     max_obstacle_moves: int = 8        # moves of an own unit in the way tried when asking whether it can move away
@@ -88,6 +90,10 @@ class Params:
     max_routes: int = 3                # routes of a way the reasoner follows, the best-ordered first
     route_nodes: int = 2500            # nodes (an owner's answer examined, a frame node) one way may use over all its routes; past it the way is NOT SETTLED, never refuted
     waiting_urgency: float = 0.5       # a question left idle by a waiting way: its urgency is multiplied by this as well as by urgency_down
+    chances: "str | None" = None       # a table of chances fitted at sleep (a path, see `fit_chances`): every question and node then carries `chance`; None: left empty, as before
+    chance_horizon: int = 4            # the table's horizon (plies within which the exact unit is taken): 4 or 8
+    clock: str = "present"             # the order of steps in `run`: "present" (stake x urgency over cost), "chance" (chance x stake at risk over cost), "plain" (the first order, each question to full depth in turn)
+    risk: float = 1.0                  # THE TOLERANCE FOR RISK: the stake at risk of my own unit is risk x its high bound + (1 - risk) x the midpoint of its bounds; 1 = the worst case, 0 = the expected value
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- units and the reading
@@ -283,6 +289,7 @@ class Reading:
         self._states: dict = {}            # (position, move or None) -> the kernel's state: the route reasoner meets the same positions again and again
         self._other: "str | None" = None
         self.cf_cut = 0                    # blocked steps not examined because the question's cap was reached
+        self.joint_log: list = []          # one dict per set of units that must all go: members, asked, dead, moves more
         self.cf_log: list = []             # one dict per blocked step examined by the counterfactual: ms, kernel calls, units found, describing words
         self.questions: list = []          # the sheet's questions (set by run): the time obstacle reads what they already hold
         self.graph = Graph()               # the claims of every question of this position and how they follow from one another
@@ -715,6 +722,7 @@ class Obstacle:
     note: str = ""
     hypothetical: bool = False
     dead: bool = False
+    joint: tuple = ()                  # the places of the whole set, when this unit is one of several that must all go for the step to be made
 
 
 def _obstacle_words(o: Obstacle, side_of_asker: str = "") -> str:
@@ -1693,6 +1701,25 @@ def _move_aside(r: Reading, pos: str, h: str, avoid: set, v: "Unit | None", para
     return None, calls
 
 
+def _without_all(r: Reading, pos: str, group: list, avoid: set, by_place: dict, params: Params) -> tuple:
+    """The board with every unit of `group` (places) out of the way, as one hypothetical question to the kernel: each is removed, and a unit whose removal the kernel refuses as not a position
+    (a goal unit) is moved aside instead (the same machinery as the single removal). -> (position or None when one cannot be got out of the way, {place: where it was moved aside}, kernel calls)."""
+    codec, calls, aside = r.env.codec, 0, {}
+    for h in group:
+        gone = codec.without(pos, h)
+        calls += 1
+        if r.try_state(gone) is not None:
+            pos = gone
+            continue
+        moved_to, extra = _move_aside(r, pos, h, avoid | set(group), by_place.get(h), params)
+        calls += extra
+        if moved_to is None:
+            return None, aside, calls
+        aside[h] = moved_to[0]
+        pos = moved_to[1]
+    return pos, aside, calls
+
+
 def counterfactual_obstacles(r: Reading, q: Question, way: tuple, route: Route, params: Params, base: str) -> tuple:
     """The obstacles of a route, FOUND BY THE COUNTERFACTUAL, not listed by shape. Each step of the route (a hop, then the final strike on the goal place) is asked of the kernel on `base` (for a
     later step on a hypothetical board with the unit already on the step's first place). A step the kernel offers is not blocked. For a step it does not offer, every other unit is removed in
@@ -1764,6 +1791,32 @@ def counterfactual_obstacles(r: Reading, q: Question, way: tuple, route: Route, 
                 if st2[3] is None and codec.find_move(pos2, a_place, b_place) in list(st2[2]):
                     found = [first, second]
                     break
+        joint_n, joint_state = 0, ""
+        if not found and params.joint:
+            named = [h for h in dict.fromkeys(list(over) + ([b_place] if idx < len(route.places) else [])) if h in by_place and h != a_place]
+            if len(named) >= 2:
+                joint_n = len(named)
+                if joint_n > params.max_joint:
+                    joint_state = "cap"
+                    out.append(Obstacle("more units in the way than the cap", None, b_place, idx,
+                                        f"more than {params.max_joint} units in the way of the step from {a_place} to {b_place} ({joint_n}: {', '.join(unit_words(by_place[h]) for h in named)}); too costly to clear, so the route is refuted by cost", True, True))
+                    words = ["more than the cap"]
+                    r.cf_log.append({"ms": 1000 * (time.perf_counter() - t0), "calls": calls, "found": 0, "words": words, "pair": False, "rejected": rejected, "aside": len(aside), "joint": joint_n, "joint_state": joint_state})
+                    continue
+                gone_pos, moved_aside, extra = _without_all(r, pos, named, route_places, by_place, params)
+                calls += extra
+                st2 = r.try_state(gone_pos) if gone_pos is not None else None
+                if st2 is not None and st2[3] is None and codec.find_move(gone_pos, a_place, b_place) in list(st2[2]):
+                    joint_state = "joint"
+                    members = sorted(named, key=lambda h: (by_place[h].side != q.asker, r.worth_of(by_place[h].kind), h))        # cheapest first: my own units (a move) before theirs (a taking), the lighter first
+                    for h in members:
+                        v = by_place[h]
+                        how = f"moved aside to {moved_aside[h]}" if h in moved_aside else "removed"
+                        out.append(Obstacle("one of several units, each of which must go", v, h, idx,
+                                            f"the step from {a_place} to {b_place} can be made only with all {len(named)} of {', '.join(unit_words(by_place[x]) for x in members)} out of the way, read on the board with them {how}", True, False, tuple(members)))
+                    r.cf_log.append({"ms": 1000 * (time.perf_counter() - t0), "calls": calls, "found": 0, "words": ["several, each must go"] * len(named), "pair": False, "rejected": rejected, "aside": len(aside), "joint": joint_n, "joint_state": joint_state})
+                    continue
+                joint_state = "failed"
         words = []
         for h in found:
             v = by_place.get(h)
@@ -1785,7 +1838,8 @@ def counterfactual_obstacles(r: Reading, q: Question, way: tuple, route: Route, 
         if not words:
             out.append(Obstacle("none", None, b_place, idx, f"no single unit accounts for the step from {a_place} to {b_place}" + (" (pairs tried)" if params.pair_cap else "") + (f"; {rejected} removals were rejected by the kernel as not a position" if rejected else ""), True, True))
             words = ["none"]
-        r.cf_log.append({"ms": 1000 * (time.perf_counter() - t0), "calls": calls, "found": len(found) if found else 0, "words": words, "pair": len(found) == 2, "rejected": rejected, "aside": len(aside)})
+        r.cf_log.append({"ms": 1000 * (time.perf_counter() - t0), "calls": calls, "found": len(found) if found else 0, "words": words, "pair": len(found) == 2, "rejected": rejected, "aside": len(aside),
+                         "joint": joint_n, "joint_state": joint_state})
     return out, cut
 
 
@@ -2084,6 +2138,9 @@ def _settle_way(r: Reading, q: Question, way: tuple, params: Params) -> dict:
         answers = []
         for n, ob in enumerate(obs_list):
             on = obstacle_node(r, q, way, ob)
+            if ob.joint and any(other.joint == ob.joint and reply["verdict"] == "dead" for other, reply in answers):
+                on.verdict = "not asked"                                # a member of the set is dead: the route is dead, the rest of the set is not asked
+                continue
             ans = ask_obstacle(r, q, way, rt, ob, params, base)
             answers.append((ob, ans))
             fu = g.node("follow_up", "can it be taken" if ob.unit and ob.unit.side != asker else "can it move away", key=("f", id(q), ob.kind, ob.place), answer=ans["text"], verdict=ans["verdict"],
@@ -2093,6 +2150,17 @@ def _settle_way(r: Reading, q: Question, way: tuple, params: Params) -> dict:
                 bound(fu, 0.0, 0.0)
                 bound(on, 0.0, 0.0)
             followed.append((ob, ans))
+        for members in dict.fromkeys(o.joint for o in obs_list if o.joint):
+            asked = [(o, a) for o, a in answers if o.joint == members]
+            dead_one = next(((o, a) for o, a in asked if a["verdict"] == "dead"), None)
+            total = sum(a["more"] for _o, a in asked)
+            gn = g.node("obstacle", f"several units in the way, each of which must go: {', '.join(unit_words(o.unit) for o, _a in asked)}", key=("og", id(q), way[:4], members))
+            if dead_one:
+                g.link(wn, gn, "blocked_by", because=f"{unit_words(dead_one[0].unit)} cannot be cleared, so the route is dead: {dead_one[1]['text']}", gone="all of them", then="the route would be clear")
+                bound(gn, 0.0, 0.0)
+            elif len(asked) == len(members):
+                g.link(wn, gn, "blocked_by", because=f"{len(members)} units stand in the way and each must go", gone="all of them", then=f"the route holds in {way[0]} hops, {way[0] + total} moves with the ones that clear it (the moves add up)")
+            r.joint_log.append({"members": len(members), "asked": len(asked), "dead": dead_one is not None, "moves_more": total})
         if cut:
             cutob = Obstacle("other", None, "", len(rt.places), "blocked steps beyond the cap were not read")
             answers.append((cutob, {"verdict": UNREAD, "text": "not read: more blocked steps than the cap", "then": "", "cost": 0.0, "more": 0, "duties": []}))
@@ -2288,6 +2356,7 @@ def settle_way(r: Reading, q: Question, way: tuple, params: Params) -> dict:
         apply_duties(r, q, way, entry, params)
         if entry["status"] == CONFIRMED_V:
             time_obstacle(r, q, way, entry)
+        way_chance(r, q, way, entry, params)
         entry["seconds_total"] = time.perf_counter() - t0
         entry.setdefault("nodes", 0)
         r._frames[key] = entry
@@ -2480,6 +2549,7 @@ def step(q: Question, r: Reading, params: Params = Params()) -> Finding:
     q.findings.append(f)
     if not q.quiet:
         record_graph(q, r, f, params)
+        assign_chances(q, r, params)
     q.spent += cost
     q.level += 1
     q.status = status
@@ -2541,6 +2611,33 @@ def priority(q: Question, costs: _Costs) -> float:
     return q.stake * q.urgency / costs.expect(q.level)
 
 
+def stake_bounds(q: Question, r: "Reading | None") -> tuple:
+    """(low, high) of the question's stake: its node's bounds in the graph as they now stand (tightened as answers came), else 0 to the stake it was given."""
+    n = r.graph.nodes[q.node] if (r is not None and q.node is not None) else None
+    high = q.stake if (n is None or n.stake_high is None) else n.stake_high
+    low = 0.0 if n is None else min(n.stake_low, high)
+    return low, high
+
+
+def stake_at_risk(q: Question, r: "Reading | None", params: Params) -> float:
+    """THE TOLERANCE FOR RISK. The stake a question's next step is weighed by. A unit of the side to move (mine) is at risk of being lost: the stake is `risk` times the high bound plus
+    (1 - risk) times the midpoint of the bounds, so risk 1 is the worst case, 0 the expected value. A unit of the other side is a gain to be had, never a loss: the midpoint (the expected size
+    of the stake; the chance that it is real enters once, as the other factor of the priority, not twice)."""
+    low, high = stake_bounds(q, r)
+    mid = 0.5 * (low + high)
+    if q.owner == SELF:
+        return params.risk * high + (1.0 - params.risk) * mid
+    return mid
+
+
+def chance_priority(q: Question, costs: _Costs, params: Params, table: "Chances | None", r: "Reading | None") -> float:
+    """THE CLOCK BY CHANCE: chance that the next step finds something real x the stake at risk, over the expected cost of the step (the running mean of the measured costs of its level).
+    The chance is the table's, for the question as its last step left it (its verdict kind, so a question that waits sinks and one lost where it stands rises); with no table it is 1 (the
+    order is then stake at risk over cost). Urgency is not used: what it stood for is in the chance."""
+    chance = 1.0 if table is None else table.chance(question_key(q), params.chance_horizon)
+    return chance * stake_at_risk(q, r, params) / costs.expect(q.level)
+
+
 def _record(sheet: Sheet, f: Finding, costs: _Costs, params: Params) -> None:
     q = f.question
     sheet.steps.append(Step(q, f.level, f.status, f.text, f.cost, f.detail.get("mode", "")))
@@ -2555,9 +2652,13 @@ def _record(sheet: Sheet, f: Finding, costs: _Costs, params: Params) -> None:
         q.state, q.closed_at, q.reason = "closed", f.level, "asked to the deepest level"
 
 
-def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_seconds: "float | None" = None, env: "Env | None" = None, game: "str | None" = None,
-        params: Params = Params(), pool: "Pool | None" = None) -> Sheet:
-    """The anytime schedule over the position's questions (see the module). Stops at `max_steps` steps or `budget_seconds` (default 40 steps when neither is given)."""
+def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_seconds: "float | None" = None, budget_cost: "float | None" = None, env: "Env | None" = None, game: "str | None" = None,
+        params: Params = Params(), pool: "Pool | None" = None, on_step=None) -> Sheet:
+    """The anytime schedule over the position's questions (see the module). Stops at `max_steps` steps, at `budget_seconds` of wall time (the reading of the position counted), or when the
+    summed measured cost of the steps taken reaches `budget_cost` (seconds; the reproducible form of the budget); default 40 steps when none is given. A step is started only while
+    the budget is not used up; one step already begun is finished, so the time may overrun by that step. `params.clock` is the order: "present" (every question's level 0 first, then stake x
+    urgency over cost), "chance" (from the start by chance x stake at risk over cost, see `chance_priority`), "plain" (the first order, each question taken to its full depth before the next).
+    `on_step(sheet, step, elapsed)` is called after every step."""
     if env is None:
         if game is None:
             raise ValueError("run needs an Env or a game name")
@@ -2569,29 +2670,45 @@ def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_se
     questions = first_order(r, params)
     sheet = Sheet(position, questions, read_seconds=r.read_seconds, reading=r)
     r.questions = sheet.questions
-    if max_steps is None and budget_seconds is None:
+    if max_steps is None and budget_seconds is None and budget_cost is None:
         max_steps = 40
     costs = _Costs(params)
+    table = load_chances(params.chances) if params.chances else None
+    spent = [0.0]
 
     def over() -> bool:
-        return (max_steps is not None and len(sheet.steps) >= max_steps) or (budget_seconds is not None and time.perf_counter() - t0 >= budget_seconds)
+        return ((max_steps is not None and len(sheet.steps) >= max_steps) or (budget_seconds is not None and time.perf_counter() - t0 >= budget_seconds)
+                or (budget_cost is not None and spent[0] >= budget_cost))
 
-    for q in questions:                                      # every question's level 0 first, in the first order
-        if over():
-            break
-        _record(sheet, step(q, r, params), costs, params)
+    def take(q: Question) -> None:
+        f = step(q, r, params)
+        _record(sheet, f, costs, params)
+        spent[0] += f.cost
+        if on_step is not None:
+            on_step(sheet, sheet.steps[-1], time.perf_counter() - t0)
+
+    if params.clock == "present":
+        for q in questions:                                  # every question's level 0 first, in the first order
+            if over():
+                break
+            take(q)
     quiet: "Question | None" = None
     lowest = min((q.stake for q in questions), default=params.min_stake)
     while not over():
-        if quiet is None and questions and all(q.state == "closed" or q.status == IDLE for q in questions):
+        if quiet is None and questions and all(q.level > 0 and (q.state == "closed" or q.status == IDLE) for q in questions):
             quiet = quiet_question(r, len(questions) + 1, params, lowest)
             if quiet is not None:
                 sheet.questions.append(quiet)
         pool = [q for q in sheet.questions if q.state == "open"]
         if not pool:
             break
-        q = max(pool, key=lambda x: (priority(x, costs), -x.rank))
-        _record(sheet, step(q, r, params), costs, params)
+        if params.clock == "chance":
+            q = max(pool, key=lambda x: (chance_priority(x, costs, params, table, r), -x.rank))
+        elif params.clock == "plain":
+            q = min(pool, key=lambda x: x.rank)
+        else:
+            q = max(pool, key=lambda x: (priority(x, costs), -x.rank))
+        take(q)
     sheet.seconds = time.perf_counter() - t0
     return sheet
 
@@ -2693,6 +2810,7 @@ class Record:
     chains: list = field(default_factory=list)  # printed chains (lines) of questions with an obstacle and its follow-up
     cf: list = field(default_factory=list)      # the counterfactual's log, one dict per blocked step; and the number cut by the cap in `cf_cut`
     cf_cut: int = 0
+    joint: list = field(default_factory=list)   # the sets of units that must all go: one dict per set (members, asked, dead, moves more)
     leaving_audit: list = field(default_factory=list)   # the audited costs of leaving: narrow reading against the whole reread
     duty_rows: list = field(default_factory=list)   # one dict per way held back by a duty (or read for one): skipped, traveller moved in the game, held unit taken within 4 plies
     bounds: dict = field(default_factory=dict)  # node kind -> [nodes whose bound closed (low = high), nodes]
@@ -2729,8 +2847,8 @@ def format_counterfactual(records: list) -> list:
     cf = [x for r in records for x in r.cf]
     if cf:
         one = sum(1 for x in cf if x["found"] == 1)
-        many = sum(1 for x in cf if x["found"] > 1)
-        none = sum(1 for x in cf if x["found"] == 0)
+        many = sum(1 for x in cf if x["found"] > 1 or x.get("joint_state") == "joint")
+        none = sum(1 for x in cf if x["found"] == 0 and x.get("joint_state") != "joint")
         words: dict = {}
         for x in cf:
             for w in x["words"]:
@@ -2739,6 +2857,17 @@ def format_counterfactual(records: list) -> list:
         calls = [x["calls"] for x in cf]
         out.append(f"OBS (H) counterfactual: blocked steps examined {len(cf)} (in {sum(1 for r in records if r.cf)} of {len(records)} positions); explained by one unit {one} ({_pct(one, len(cf))}), by several {many} ({_pct(many, len(cf))}), "
                    f"by none (no single unit) {none} ({_pct(none, len(cf))}); not examined because of the cap {sum(r.cf_cut for r in records)}; removals rejected as not a position {sum(x['rejected'] for x in cf)}; of those, the unit moved aside instead and the step then made {sum(x.get('aside', 0) for x in cf)}")
+        former = [x for x in cf if x["found"] == 0]
+        sized = {}
+        for x in former:
+            if x.get("joint_state") == "joint":
+                sized[x["joint"]] = sized.get(x["joint"], 0) + 1
+        sets = [x for r in records for x in r.joint]
+        out.append(f"OBS (H) steps no single removal explains (the former \"none\"): {len(former)}; explained by removing the set of units the first layer names together {sum(sized.values())} ({_pct(sum(sized.values()), len(former))}"
+                   + (", by size " + ", ".join(f"{k} units {v}" for k, v in sorted(sized.items())) if sized else "") + f"); more than the cap of units in the way {sum(1 for x in former if x.get('joint_state') == 'cap')}; "
+                   f"a set named but the step still not possible {sum(1 for x in former if x.get('joint_state') == 'failed')}; fewer than two units named (still none) {sum(1 for x in former if not x.get('joint_state'))}")
+        out.append(f"OBS (H) sets of units that must all go: {len(sets)}; follow-ups asked {sum(x['asked'] for x in sets)} of {sum(x['members'] for x in sets)} members; sets killed by a dead member {sum(1 for x in sets if x['dead'])}; "
+                   f"sets all asked and none dead {sum(1 for x in sets if not x['dead'] and x['asked'] == x['members'])}, moves more (summed over those) {sum(x['moves_more'] for x in sets if not x['dead'] and x['asked'] == x['members'])}")
         out.append("OBS (H) counterfactual, describing words of the units found: " + ", ".join(f"{w} {n}" for w, n in sorted(words.items(), key=lambda kv: -kv[1])))
         out.append(f"OBS (H) counterfactual cost per blocked step: mean {sum(ms) / len(ms):.2f} ms, max {max(ms):.2f} ms; kernel calls mean {sum(calls) / len(calls):.1f}, max {max(calls)}")
     audit = [x for r in records for x in r.leaving_audit]
@@ -2861,7 +2990,7 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
     quiet_at = place_text(quiet.findings[0].detail["unit"].at) if quiet else None
     costs = [(f"{s.level}" + (f" ({s.mode})" if s.mode else ""), s.cost) for s in sheet.steps if not s.question.quiet]
     return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered, units=units, lost_units=lost_units,
-                  frames=list(sheet.reading.frame_log) if sheet.reading else [], passes=list(sheet.reading.pass_log) if sheet.reading else [], routes=routes, reach=reach, too_far=too_far, way_costs=way_costs, duty_rows=duty_rows, cf=list(sheet.reading.cf_log) if sheet.reading else [], cf_cut=sheet.reading.cf_cut if sheet.reading else 0, leaving_audit=list(sheet.reading.leaving_audit) if sheet.reading else [],
+                  frames=list(sheet.reading.frame_log) if sheet.reading else [], passes=list(sheet.reading.pass_log) if sheet.reading else [], routes=routes, reach=reach, too_far=too_far, way_costs=way_costs, duty_rows=duty_rows, joint=list(sheet.reading.joint_log) if sheet.reading else [], cf=list(sheet.reading.cf_log) if sheet.reading else [], cf_cut=sheet.reading.cf_cut if sheet.reading else 0, leaving_audit=list(sheet.reading.leaving_audit) if sheet.reading else [],
                   bounds=node_bounds(sheet.graph) if sheet.reading else {},
                   graph=sheet.graph.size() if sheet.reading else (0, 0), chains=sample_chains(sheet) if follow_all else [])
 
@@ -3327,6 +3456,446 @@ def anticipation(directory: str, games: int, env: Env, worth: dict, params: Para
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------- B: the chance of a node, fitted at sleep from our own games, read at wake
+
+CHANCE_FORMAT = "question-chances-1"
+KEY_NAMES = ("owner", "verdict", "moves", "route")
+HORIZONS = (4, 8)                      # plies within which the exact unit is taken; both are counted, the table is read at `Params.chance_horizon`
+DANGER = ("live0", "lost", "confirmed")    # the verdict kinds that say danger: live at level 0, lost where it stands, confirmed after an arrival
+SMOOTH = 2.0                           # pseudo-observations a cell borrows from its next coarser key
+
+
+def verdict_kind(q: Question, upto: "int | None" = None) -> str:
+    """The kind of verdict the question has reached by its deepest finding up to level `upto` (None: all). Level 2 and on: `lost` (the exchange where it stands already wins), `confirmed`
+    (a way after an arrival wins), `waiting`, `unsettled`, `refuted`. Before that: `live0` (live at level 0, kept as the danger sign until a deeper level speaks), `closed1`..`closed3` (closed
+    at level 1 by which link failed), `live1`, `idle1`, `idle0`, and `unread` when nothing has been asked."""
+    fs = [f for f in q.findings if upto is None or f.level <= upto]
+    if not fs:
+        return "unread"
+    deep = next((f for f in reversed(fs) if f.level >= 2), None)
+    if deep is not None:
+        res = deep.detail.get("results")
+        if not res:
+            return {LIVE: "confirmed", CLOSED: "refuted"}.get(deep.status, "waiting")
+        if res[0].get("way") is None and res[0]["status"] == CONFIRMED_V:
+            return "lost"
+        states = [x["status"] for x in res if x.get("way") is not None]
+        for kind, word in ((CONFIRMED_V, "confirmed"), (WAITING_V, "waiting"), (UNSETTLED_V, "unsettled")):
+            if kind in states:
+                return word
+        return "refuted"
+    lv0 = next((f for f in fs if f.level == 0), None)
+    lv1 = next((f for f in fs if f.level == 1), None)
+    if lv0 is not None and lv0.status == LIVE:
+        return "live0"
+    if lv1 is not None:
+        if lv1.status == CLOSED:
+            return f"closed{lv1.detail.get('failed_at', 0)}"
+        return "live1" if lv1.status == LIVE else "idle1"
+    return "idle0"
+
+
+def _moves_word(q: Question, kind: str, upto: "int | None") -> str:
+    """The number of moves the way needs: 0 (lost where it stands), 1, 2, 3+ (the fewest among the ways that decided the verdict, else among those level 1 listed), `-` when no way is listed."""
+    if kind == "lost":
+        return "0"
+    fs = [f for f in q.findings if upto is None or f.level <= upto]
+    deep = next((f for f in reversed(fs) if f.level >= 2 and f.detail.get("results")), None)
+    ways = [x["way"] for x in deep.detail["results"] if x.get("way") is not None and x["status"] == kind] if (deep is not None and kind in (CONFIRMED_V, WAITING_V)) else []
+    if not ways:
+        lv1 = next((f for f in fs if f.level == 1), None)
+        ways = list(lv1.detail.get("supply") or []) if lv1 is not None else []
+    if not ways:
+        return "-"
+    n = min(w[0] for w in ways)
+    return str(n) if n < 3 else "3+"
+
+
+def _route_word(q: Question, upto: "int | None") -> str:
+    """`clear` (the best-ordered way's route has nothing in the way), `own` (an obstacle of the asker's own side only) or `theirs` (an obstacle of the other side, or one nothing can clear);
+    `-` before level 1 or with no way listed. The same grouping as measure H."""
+    lv1 = next((f for f in q.findings if f.level == 1 and (upto is None or f.level <= upto)), None)
+    supply = list(lv1.detail.get("supply") or []) if lv1 is not None else []
+    if not supply:
+        return "-"
+    rank = lv1.detail.get("rank", {})
+    first = sorted(supply, key=lambda w: (w[0], rank.get(w, 0), w[1].kind, w[1].at, w[2]))[0]
+    routes = (lv1.detail.get("routes") or {}).get(first[:4]) or []
+    obs = routes[0].obstacles if routes else ()
+    if not obs:
+        return "clear"
+    return "theirs" if any((o.unit is not None and o.unit.side != q.asker) or o.dead for o in obs) else "own"
+
+
+def question_key(q: Question, upto: "int | None" = None) -> tuple:
+    """The KEY of a question's record: (whose unit: mine = the side to move / theirs, the verdict kind, the moves the way needs, the route's group). Small on purpose: about 250 cells at most.
+    The coarser keys are its prefixes, in this order: (owner, verdict, moves), (owner, verdict), (owner), ()."""
+    kind = verdict_kind(q, upto)
+    return ("mine" if q.owner == SELF else "theirs", kind, _moves_word(q, kind, upto), _route_word(q, upto))
+
+
+class Chances:
+    """A table of counts key -> {horizon: [taken, total]} and the chance read from it. CHANCE = (taken + a) / (total + a + b), with a = SMOOTH x p and b = SMOOTH x (1 - p), where p is the chance of
+    the next coarser key (its prefix) computed the same way; at the root p is (taken + 1) / (total + 2). A key never seen has total 0 and so the chance of its coarser key."""
+
+    def __init__(self, cells: dict, header: "dict | None" = None, smooth: float = SMOOTH):
+        self.cells = {tuple(k): {int(h): list(v) for h, v in c.items()} for k, c in cells.items()}
+        self.header, self.smooth = header or {}, smooth
+        self.agg: dict = {}
+        for key, c in self.cells.items():
+            for n in range(len(key) + 1):
+                slot = self.agg.setdefault(key[:n], {})
+                for h, (taken, total) in c.items():
+                    t = slot.setdefault(h, [0, 0])
+                    t[0] += taken
+                    t[1] += total
+        self._memo: dict = {}
+
+    def counts(self, key: tuple, horizon: int = 4) -> tuple:
+        taken, total = self.agg.get(tuple(key), {}).get(horizon, (0, 0))
+        return taken, total
+
+    def chance(self, key: tuple, horizon: int = 4) -> float:
+        key = tuple(key)[:len(KEY_NAMES)]
+        memo = (key, horizon)
+        if memo not in self._memo:
+            p = 0.0
+            for n in range(len(key) + 1):
+                taken, total = self.counts(key[:n], horizon)
+                p = (taken + 1.0) / (total + 2.0) if n == 0 else (taken + self.smooth * p) / (total + self.smooth)
+            self._memo[memo] = p
+        return self._memo[memo]
+
+
+_TABLES: dict = {}
+
+
+def load_chances(path: str) -> Chances:
+    """The table written by `save_chances`, read once per path (a wake loads it; nothing in it came from a teacher)."""
+    if path not in _TABLES:
+        blob = json.loads(Path(path).read_text())
+        if blob.get("format") != CHANCE_FORMAT:
+            raise ValueError(f"{path} is not a chance table")
+        _TABLES[path] = Chances({tuple(k.split("|")): c for k, c in blob["cells"].items()}, blob.get("header"))
+    return _TABLES[path]
+
+
+def chances_path(tag: str) -> str:
+    return paths.derived("question_chances", f"{tag}.json")
+
+
+def save_chances(path: str, cells: dict, header: dict) -> None:
+    Path(path).write_text(json.dumps({"format": CHANCE_FORMAT, "header": header, "cells": {"|".join(k): {str(h): v for h, v in c.items()} for k, c in sorted(cells.items())}}, indent=1))
+
+
+def cells_from_records(records: list, horizons: tuple = HORIZONS) -> dict:
+    """Counts from records [{"keys": [key, ...], "out": {horizon: taken (True/False) or None when the game ended too soon to say}}]: every key a question passed through (one per distinct state)
+    adds one to the total of its cell and, when the exact unit was taken within the horizon, one to the taken. Outcomes None are not counted."""
+    cells: dict = {}
+    for rec in records:
+        for key in rec["keys"]:
+            c = cells.setdefault(tuple(key), {h: [0, 0] for h in horizons})
+            for h in horizons:
+                o = rec["out"].get(h, rec["out"].get(str(h)))
+                if o is None:
+                    continue
+                c[h][1] += 1
+                c[h][0] += bool(o)
+    return cells
+
+
+def merge_cells(parts: list) -> dict:
+    """The sum of several tables of counts (the fit run in several processes over different games)."""
+    out: dict = {}
+    for cells in parts:
+        for key, c in cells.items():
+            slot = out.setdefault(tuple(key), {})
+            for h, (taken, total) in c.items():
+                t = slot.setdefault(int(h), [0, 0])
+                t[0] += taken
+                t[1] += total
+    return out
+
+
+def load_games(directory: str) -> list:
+    """[{variant, start, moves}] of a directory's own games. Only the moves are read: the judge's labels and balances in the other files are not."""
+    out = []
+    for line in (Path(directory) / "games.jsonl").read_text().splitlines():
+        if line.strip():
+            g = json.loads(line)
+            out.append({"variant": g.get("variant"), "start": g.get("start"), "moves": g["moves"]})
+    return out
+
+
+def pick_positions(dirs: list, stride: int = 1, limit: "int | None" = None) -> list:
+    """[(directory index, game index, ply)] for every ply of every game, every `stride`-th, then at most `limit` evenly spread."""
+    allp = []
+    for di, d in enumerate(dirs):
+        for gi, g in enumerate(load_games(d)):
+            allp += [(di, gi, ply) for ply in range(len(g["moves"]))]
+    allp = allp[::max(1, stride)]
+    if limit is not None and limit < len(allp):
+        step_ = len(allp) / limit
+        allp = [allp[int(i * step_)] for i in range(limit)]
+    return allp
+
+
+class Games:
+    """The games of some directories with their unit tracks, each read once."""
+
+    def __init__(self, dirs: list, env: Env):
+        self.env, self.dirs = env, dirs
+        self.games = [load_games(d) for d in dirs]
+        self._tracks: dict = {}
+
+    def tracks(self, di: int, gi: int) -> tuple:
+        if (di, gi) not in self._tracks:
+            g = self.games[di][gi]
+            self._tracks[(di, gi)] = self.env.codec.tracks(g["start"], g["moves"])
+        return self._tracks[(di, gi)]
+
+    def position(self, di: int, gi: int, ply: int) -> str:
+        g = self.games[di][gi]
+        return CE.state(g["variant"] or self.env.variant, g["start"], g["moves"][:ply])[0]
+
+    def outcomes(self, di: int, gi: int, ply: int, place: str, horizons: tuple = HORIZONS) -> "dict | None":
+        """{horizon: was the exact unit that stands on `place` taken within that many plies (True/False), None when not taken and the game ended before the horizon}, None for no unit there."""
+        by_ply, taken = self.tracks(di, gi)
+        got = by_ply[ply].get(place)
+        if got is None:
+            return None
+        n = len(self.games[di][gi]["moves"])
+        out = {}
+        for h in horizons:
+            hit = any(i in taken and taken[i][0] == got[0] for i in range(ply, min(ply + h, n)))
+            out[h] = True if hit else (None if ply + h > n else False)
+        return out
+
+
+def question_records(sheet: Sheet, outcomes_of) -> list:
+    """The records of one read position: for every non-goal question of a unit above the lowest worth, the keys it passed through (before any step, and after each level) and the outcomes.
+    `outcomes_of(place) -> {horizon: bool|None} | None`. Each record also holds its final key, its owner and the unit's kind."""
+    out = []
+    for q in sheet.questions:
+        if q.quiet or q.goal or not sheet.reading.weighty(q.target):
+            continue
+        oc = outcomes_of(place_text(q.target.at))
+        if oc is None:
+            continue
+        keys = [question_key(q, -1)] + [question_key(q, f.level) for f in q.findings]
+        keys = [k for i, k in enumerate(keys) if i == 0 or k != keys[i - 1]]
+        out.append({"keys": [list(k) for k in keys], "final": list(keys[-1]), "owner": keys[-1][0], "unit": q.target.kind, "out": dict(oc)})
+    return out
+
+
+def fit_chances(dirs: list, env: Env, worth: dict, params: Params, *, stride: int = 1, limit: "int | None" = None, shard: tuple = (0, 1), say=print) -> tuple:
+    """THE SLEEP SIDE. Read the positions of our own games (every `stride`-th, at most `limit`, those whose index is `shard[0]` modulo `shard[1]`), run the sheet as the measures do (no table,
+    the present order), and for every question record its key and whether the exact unit was taken within 4 and within 8 plies. Nothing from a teacher or a judge is read. -> (cells, header)."""
+    params = Params(**{**params.__dict__, "chances": None, "clock": "present"})
+    games = Games(dirs, env)
+    todo = pick_positions(dirs, stride, limit)
+    todo = [x for i, x in enumerate(todo) if i % shard[1] == shard[0]]
+    records, unreadable, t0 = [], 0, time.perf_counter()
+    for n, (di, gi, ply) in enumerate(todo):
+        try:
+            sheet = read_position(env, worth, params, games.position(di, gi, ply))
+        except ValueError:
+            unreadable += 1
+            continue
+        records += question_records(sheet, lambda place, di=di, gi=gi, ply=ply: games.outcomes(di, gi, ply, place))
+        if say and (n + 1) % 25 == 0:
+            say(f"OBS fit progress: shard {shard[0]}/{shard[1]}: {n + 1} of {len(todo)} positions, {len(records)} records, {time.perf_counter() - t0:.0f} s")
+    header = {"format": CHANCE_FORMAT, "key": list(KEY_NAMES), "horizons": list(HORIZONS), "smoothing": SMOOTH, "directories": [Path(d).name for d in dirs], "stride": stride, "limit": limit,
+              "positions": len(todo) - unreadable, "unreadable": unreadable, "records": len(records), "seconds": time.perf_counter() - t0, "shards": [list(shard)],
+              "source": "our own engine's games: the moves only; the outcome is whether the exact unit was taken in the game; no teacher number"}
+    return cells_from_records(records), header
+
+
+def merge_headers(headers: list) -> dict:
+    out = dict(headers[0])
+    for h in headers[1:]:
+        for k in ("positions", "unreadable", "records", "seconds"):
+            out[k] = out.get(k, 0) + h.get(k, 0)
+        out["shards"] = out.get("shards", []) + h.get("shards", [])
+    return out
+
+
+def format_chances(table: Chances, horizon: int = 4) -> list:
+    """OBS lines: the fit's size and every cell of the table (key, taken, total, chance), the coarser keys after."""
+    h = table.header
+    out = [f"OBS chances: fit sample {h.get('positions', '?')} positions read ({h.get('unreadable', '?')} unreadable) of {h.get('directories')}, {h.get('records', '?')} question records, {sum(t for _k, c in table.cells.items() for t in [c[horizon][1]])} "
+           f"state records counted at horizon {horizon}; smoothing: chance = (taken + a) / (total + a + b), a = {table.smooth:g} x p, b = {table.smooth:g} x (1 - p), p the chance of the next coarser key (the root: (taken + 1) / (total + 2))"]
+    for n in range(len(KEY_NAMES), -1, -1):
+        keys = sorted({k[:n] for k in table.cells})
+        for key in keys:
+            taken, total = table.counts(key, horizon)
+            out.append(f"OBS chance {'(' + ', '.join(f'{a}={b}' for a, b in zip(KEY_NAMES, key)) + ')' if key else '(all)'} horizon {horizon}: taken {taken}, total {total}, chance {table.chance(key, horizon):.4f}"
+                       + (f"; horizon 8: taken {table.counts(key, 8)[0]}, total {table.counts(key, 8)[1]}, chance {table.chance(key, 8):.4f}" if 8 in HORIZONS and 8 != horizon else ""))
+    return out
+
+
+CALIBRATION_BANDS = ((0.0, 0.02), (0.02, 0.05), (0.05, 0.1), (0.1, 0.2), (0.2, 0.4), (0.4, 1.01))
+
+
+def format_calibration(records: list, table: Chances, horizon: int = 4, label: str = "") -> list:
+    """OBS lines: for each band of the predicted chance of the question's FINAL key, how many questions fell in it, the mean predicted chance and the share whose exact unit was taken. Brier score of the
+    table against the base rate of the fit (the same chance for every question)."""
+    rows = [(table.chance(tuple(r["final"]), horizon), r["out"].get(horizon, r["out"].get(str(horizon)))) for r in records]
+    rows = [(p, bool(o)) for p, o in rows if o is not None]
+    out = [f"OBS calibration {label}: {len(rows)} questions, horizon {horizon}, taken {sum(o for _p, o in rows)} ({_pct(sum(o for _p, o in rows), len(rows))})"]
+    for lo, hi in CALIBRATION_BANDS:
+        sel = [(p, o) for p, o in rows if lo <= p < hi]
+        if sel:
+            out.append(f"OBS calibration {label}: predicted {lo:g} to {min(hi, 1):g}: {len(sel)} questions, mean predicted {sum(p for p, _o in sel) / len(sel):.4f}, observed {sum(o for _p, o in sel)} taken ({_pct(sum(o for _p, o in sel), len(sel))})")
+        else:
+            out.append(f"OBS calibration {label}: predicted {lo:g} to {min(hi, 1):g}: 0 questions")
+    if rows:
+        base = table.chance((), horizon)
+        brier = sum((p - o) ** 2 for p, o in rows) / len(rows)
+        brier0 = sum((base - o) ** 2 for _p, o in rows) / len(rows)
+        out.append(f"OBS calibration {label}: Brier score of the table {brier:.5f}, of the base rate alone ({base:.4f}) {brier0:.5f}")
+    return out
+
+
+def inherit_chances(graph: Graph) -> None:
+    """A node with no chance of its own (an obstacle, a follow-up, an answer, a condition) takes the chance of the node it hangs from, in the order the edges were made."""
+    for e in graph.edges:
+        dst = graph.nodes[e.dst]
+        if dst.chance is None and graph.nodes[e.src].chance is not None:
+            dst.chance = graph.nodes[e.src].chance
+
+
+def assign_chances(q: Question, r: Reading, params: Params) -> None:
+    """With a table (`params.chances`): the question's node gets the chance of its key as the question now stands; every node below it that has none takes its parent's."""
+    if not params.chances or q.node is None or q.quiet:
+        return
+    table = load_chances(params.chances)
+    r.graph.nodes[q.node].chance = table.chance(question_key(q), params.chance_horizon)
+    inherit_chances(r.graph)
+
+
+def way_chance(r: Reading, q: Question, way: tuple, entry: dict, params: Params) -> None:
+    """A way node's chance: the table's, for (owner of the target, the way's verdict, its moves, its route's group)."""
+    if not params.chances:
+        return
+    table = load_chances(params.chances)
+    obs = entry.get("first_obstacles") or []
+    group = "clear" if not obs else ("theirs" if any((side is not None and side != q.asker) or dead for side, _k, dead in obs) else "own")
+    kind = {CONFIRMED_V: "confirmed", WAITING_V: "waiting", UNSETTLED_V: "unsettled"}.get(entry["status"], "refuted")
+    wn = way_node(r, q, way)
+    wn.chance = table.chance(("mine" if q.owner == SELF else "theirs", kind, str(way[0]) if way[0] < 3 else "3+", group), params.chance_horizon)
+    inherit_chances(r.graph)
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- J: the clock against a budget, on games the fit never saw
+
+J_ORDERS = ("plain", "present", "chance")
+J_TIMES = (0.02, 0.05, 0.2, 1.0)       # seconds a position, the reading of the position counted: real runs under the budget
+J_STEPS = (10, 20, 40, 80)             # steps: read off the one unbudgeted run, exactly
+J_COSTS = (0.02, 0.05, 0.2, 1.0)       # summed measured cost of the steps taken, seconds: read off the one unbudgeted run, exactly
+J_FIELDS = ("positions", "seconds", "steps", "mine_units", "mine_taken", "mine_taken_flagged", "mine_flagged", "mine_flagged_taken",
+            "theirs_units", "theirs_taken", "theirs_taken_flagged", "theirs_flagged", "theirs_flagged_taken")
+
+
+def _j_tally(acc: dict, cfg: str, kinds: dict, sheet: Sheet, outcome_of, seconds: float, steps: int) -> None:
+    """Add one position read under one configuration: for each non-goal question of a unit above the lowest worth whose unit's fate in 4 plies is known, the verdict kind it had when the
+    budget ran out (`kinds`, by question), whether it says danger, and whether the exact unit was taken within 4 plies."""
+    a = acc.setdefault(cfg, {f: 0 for f in J_FIELDS})
+    a["positions"] += 1
+    a["seconds"] += seconds
+    a["steps"] += steps
+    for q in sheet.questions:
+        if q.quiet or q.goal or not sheet.reading.weighty(q.target):
+            continue
+        oc = outcome_of(place_text(q.target.at))
+        if oc is None or oc.get(4) is None:
+            continue
+        side = "mine" if q.owner == SELF else "theirs"
+        flagged = kinds.get(id(q), "unread") in DANGER
+        taken = bool(oc[4])
+        a[f"{side}_units"] += 1
+        a[f"{side}_taken"] += taken
+        a[f"{side}_taken_flagged"] += taken and flagged
+        a[f"{side}_flagged"] += flagged
+        a[f"{side}_flagged_taken"] += taken and flagged
+
+
+def j_position(env: Env, worth: dict, params: Params, position: str, outcome_of, acc: dict, table_path: "str | None", orders: tuple = J_ORDERS, timed: bool = True) -> None:
+    """Measure J on one position: for each order, the real runs under the time budgets, then one unbudgeted run whose every step is logged, from which the unbudgeted row and the rows
+    for budgets counted in steps and in summed measured step cost are read exactly."""
+    for order in orders:
+        p = Params(**{**params.__dict__, "clock": order, "chances": table_path if order == "chance" else None})
+        for b in (J_TIMES if timed else ()):
+            sheet = run(position, worth, budget_seconds=b, env=env, params=p)
+            _j_tally(acc, f"{order}|time|{b * 1000:g} ms", {id(q): verdict_kind(q) for q in sheet.questions if not q.quiet}, sheet, outcome_of, sheet.seconds, len(sheet.steps))
+        log, cur = [], {}
+        cost = [0.0]
+
+        def on_step(sheet, st, elapsed, log=log, cur=cur, cost=cost):
+            cur[id(st.question)] = verdict_kind(st.question)
+            cost[0] += st.cost
+            log.append((elapsed, cost[0], len(sheet.steps), dict(cur)))
+        sheet = run(position, worth, max_steps=10 ** 6, env=env, params=p, on_step=on_step)
+        first = (sheet.read_seconds, 0.0, 0, {})
+        log = [first] + log
+        _j_tally(acc, f"{order}|none|unbudgeted", log[-1][3], sheet, outcome_of, sheet.seconds, len(sheet.steps))
+        for n in J_STEPS:
+            e = log[min(n, len(log) - 1)]
+            _j_tally(acc, f"{order}|steps|{n} steps", e[3], sheet, outcome_of, e[0], e[2])
+        for b in J_COSTS:
+            e = next((x for x in log if x[1] >= b), log[-1])
+            _j_tally(acc, f"{order}|cost|{b * 1000:g} ms of step cost", e[3], sheet, outcome_of, e[0], e[2])
+
+
+def measure_j(dirs: list, env: Env, worth: dict, params: Params, table_path: str, *, stride: int = 1, limit: "int | None" = None, shard: tuple = (0, 1), say=print, orders: tuple = J_ORDERS, timed: bool = True) -> dict:
+    games = Games(dirs, env)
+    todo = [x for i, x in enumerate(pick_positions(dirs, stride, limit)) if i % shard[1] == shard[0]]
+    acc: dict = {}
+    t0 = time.perf_counter()
+    for n, (di, gi, ply) in enumerate(todo):
+        try:
+            j_position(env, worth, params, games.position(di, gi, ply), lambda place, di=di, gi=gi, ply=ply: games.outcomes(di, gi, ply, place), acc, table_path, orders, timed)
+        except ValueError:
+            continue
+        if say and (n + 1) % 10 == 0:
+            say(f"OBS J progress: shard {shard[0]}/{shard[1]}: {n + 1} of {len(todo)} positions, {time.perf_counter() - t0:.0f} s")
+    return acc
+
+
+def merge_counts(parts: list) -> dict:
+    """The sum of several measure-J tallies (positions split over processes)."""
+    out: dict = {}
+    for acc in parts:
+        for cfg, a in acc.items():
+            slot = out.setdefault(cfg, {f: 0 for f in J_FIELDS})
+            for f in J_FIELDS:
+                slot[f] += a[f]
+    return out
+
+
+def format_j(acc: dict) -> list:
+    """OBS lines, one table per way of counting the budget: for each order and budget, of the units that were taken within 4 plies the share with a danger verdict (mine, theirs), the danger
+    verdicts raised a position and the share of them followed by a taking (mine, theirs), the steps and the time used a position."""
+    out = []
+    families = [("time", "budget in wall-clock time a position (the reading counted; real runs)"), ("steps", "budget counted in steps (read off the unbudgeted run)"),
+                ("cost", "budget counted in summed measured step cost (read off the unbudgeted run)"), ("none", "no budget")]
+    for fam, title in families:
+        out.append(f"OBS (J) {title}:")
+        cfgs = sorted({c.split("|", 2)[2] for c in acc if c.split("|")[1] == fam}, key=lambda x: float(x.split()[0]) if x[0].isdigit() else 0.0)
+        for budget in cfgs:
+            for order in J_ORDERS:
+                a = acc.get(f"{order}|{fam}|{budget}")
+                if a is None:
+                    continue
+                n = max(a["positions"], 1)
+
+                def part(side):
+                    return (f"{side}: taken in 4 plies {a[side + '_taken']} of {a[side + '_units']} units, with a danger verdict {a[side + '_taken_flagged']} ({_pct(a[side + '_taken_flagged'], a[side + '_taken'])}); "
+                            f"danger verdicts {a[side + '_flagged']} ({a[side + '_flagged'] / n:.3f} a position), followed by a taking {a[side + '_flagged_taken']} ({_pct(a[side + '_flagged_taken'], a[side + '_flagged'])})")
+                out.append(f"OBS (J) {budget}, order {order}: positions {a['positions']}; {part('mine')}; {part('theirs')}; steps {a['steps'] / n:.1f} and time {1000 * a['seconds'] / n:.1f} ms a position")
+    return out
+
+
 # ---------------------------------------------------------------------------------------------------------------------------------------------- F: the goal unit's verdict against how games ended
 
 BANDS = ((1, 2), (3, 4), (5, 8), (9, 16), (17, 32), (33, 10 ** 9))
@@ -3480,7 +4049,7 @@ def store_worth(game: str) -> dict:
 def main(argv: list) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("game")
-    ap.add_argument("--games-dir", required=True, action="append", help="a surprise meter directory; with --goal-verdict the flag may repeat")
+    ap.add_argument("--games-dir", action="append", default=[], help="a surprise meter directory; with --goal-verdict, --fit-chances, --calibrate and --measure-j the flag may repeat")
     ap.add_argument("--max-steps", type=int, default=None)
     ap.add_argument("--seconds", type=float, default=None)
     ap.add_argument("--limit", type=int, default=None)
@@ -3504,11 +4073,37 @@ def main(argv: list) -> int:
     ap.add_argument("--search-depth", type=int, default=None, help="the deepest level and the deepest search (default: the Params'); 2 keeps G to depth 2")
     ap.add_argument("--games", type=int, default=None, help="with --goal-verdict: at most this many games")
     ap.add_argument("--out", default=None, help="a name under the derived data directory to write the OBS lines to")
+    ap.add_argument("--no-joint", action="store_true", help="a step no single removal explains is recorded as \"none\" (the earlier form), not tried with the set of units the first layer names")
+    ap.add_argument("--max-joint", type=int, default=None, help="units in a set that must all go (default 3); more is refuted by cost")
+    ap.add_argument("--fit-chances", metavar="TAG", default=None, help="sleep: fit the table of chances from the games of every --games-dir and write it under the chances directory as TAG.json (with --shard: TAG.shardK.json)")
+    ap.add_argument("--merge-chances", metavar="TAG", default=None, help="sum the TAG.shard*.json tables into TAG.json and print them")
+    ap.add_argument("--show-chances", metavar="PATH", default=None, help="print a table as OBS lines")
+    ap.add_argument("--chances", metavar="PATH", default=None, help="wake: the table of chances every question and node reads its chance from")
+    ap.add_argument("--chance-horizon", type=int, default=4, help="the horizon (4 or 8 plies) the chance is read at")
+    ap.add_argument("--shard", default="0/1", help="K/N: this process reads the positions whose index is K modulo N")
+    ap.add_argument("--stride", type=int, default=1, help="every n-th ply of the games is read (fit, calibrate, measure J)")
+    ap.add_argument("--calibrate", metavar="PATH", default=None, help="read the --games-dir games' positions and print the table's predicted chance against what happened, by band; --records-out writes the records for merging")
+    ap.add_argument("--records-out", default=None, help="with --calibrate: write the records (final key and outcomes) to this file")
+    ap.add_argument("--calibrate-merge", nargs="+", default=None, help="records files written by --records-out: calibration over all of them, against --chances")
+    ap.add_argument("--clock", choices=("present", "chance", "plain"), default="present", help="the order of steps: present (stake x urgency over cost), chance (chance x stake at risk over cost), plain (first order, each question to full depth)")
+    ap.add_argument("--risk", type=float, default=None, help="tolerance for risk, 0 to 1: the stake at risk of my own unit is risk x worst case + (1 - risk) x expected (default 1)")
+    ap.add_argument("--measure-j", action="store_true", help="measure J on the --games-dir games: the three orders against budgets (needs --chances); --j-out writes the raw tallies")
+    ap.add_argument("--j-orders", default=",".join(J_ORDERS), help="with --measure-j: the orders to run, comma separated")
+    ap.add_argument("--j-no-time", action="store_true", help="with --measure-j: skip the real runs under wall-clock budgets")
+    ap.add_argument("--j-out", default=None, help="with --measure-j: write the raw tallies (JSON) here")
+    ap.add_argument("--j-merge", nargs="+", default=None, help="tally files written by --j-out: merge them and print the tables")
     a = ap.parse_args(argv)
+    shard = tuple(int(x) for x in a.shard.split("/"))
     env = Env(a.game)
     worth = store_worth(a.game)
     params = Params(links=not a.no_links, search=not a.no_search, frames=not a.no_frames, goal_near=not a.no_goal_near, passes=not a.no_pass, geometry=not a.no_geometry, routes=not a.no_routes)
     params.leaving_full, params.leaving_audit_every, params.leaving_wide_sign = a.leaving_full, a.leaving_audit, a.leaving_wide_sign
+    params.joint = not a.no_joint
+    if a.max_joint is not None:
+        params.max_joint = a.max_joint
+    params.chances, params.chance_horizon, params.clock = a.chances, a.chance_horizon, a.clock
+    if a.risk is not None:
+        params.risk = a.risk
     if a.reach_k:
         params.reach_k = a.reach_k
     if a.route_nodes:
@@ -3516,6 +4111,66 @@ def main(argv: list) -> int:
     if a.search_depth:
         params.max_level = params.search_depth_cap = a.search_depth
     t0 = time.perf_counter()
+    if a.merge_chances or a.show_chances or a.j_merge or a.calibrate_merge:
+        if a.merge_chances:
+            parts = sorted(Path(chances_path(a.merge_chances)).parent.glob(f"{a.merge_chances}.shard*.json"))
+            blobs = [json.loads(x.read_text()) for x in parts]
+            cells = merge_cells([{tuple(k.split("|")): {int(h): v for h, v in c.items()} for k, c in b["cells"].items()} for b in blobs])
+            header = merge_headers([b["header"] for b in blobs])
+            save_chances(chances_path(a.merge_chances), cells, header)
+            print(f"OBS chances: merged {len(parts)} shard files into {chances_path(a.merge_chances)}")
+            a.show_chances = chances_path(a.merge_chances)
+        if a.show_chances:
+            for ln in format_chances(load_chances(a.show_chances), a.chance_horizon):
+                print(ln)
+        if a.j_merge:
+            for ln in format_j(merge_counts([json.loads(Path(x).read_text()) for x in a.j_merge])):
+                print(ln)
+        if a.calibrate_merge:
+            recs = [r for x in a.calibrate_merge for r in json.loads(Path(x).read_text())]
+            for h in HORIZONS:
+                for ln in format_calibration(recs, load_chances(a.chances), h, "on the test games"):
+                    print(ln)
+        return 0
+    if not a.games_dir:
+        ap.error("--games-dir is needed")
+    if a.fit_chances:
+        cells, header = fit_chances(a.games_dir, env, worth, params, stride=a.stride, limit=a.limit, shard=shard, say=lambda m: print(m, flush=True))
+        tag = a.fit_chances if shard[1] == 1 else f"{a.fit_chances}.shard{shard[0]}of{shard[1]}"
+        header["params"] = {"max_joint": params.max_joint, "joint": params.joint, "reach_k": params.reach_k}
+        save_chances(chances_path(tag), cells, header)
+        print(f"OBS chances: fitted from {header['positions']} positions in {header['seconds']:.1f} s, {header['records']} question records, written to {chances_path(tag)}")
+        return 0
+    if a.calibrate:
+        games = Games(a.games_dir, env)
+        todo = [x for i, x in enumerate(pick_positions(a.games_dir, a.stride, a.limit)) if i % shard[1] == shard[0]]
+        recs, unreadable = [], 0
+        for n, (di, gi, ply) in enumerate(todo):
+            try:
+                sheet = read_position(env, worth, Params(**{**params.__dict__, "chances": None, "clock": "present"}), games.position(di, gi, ply))
+            except ValueError:
+                unreadable += 1
+                continue
+            recs += question_records(sheet, lambda place, di=di, gi=gi, ply=ply: games.outcomes(di, gi, ply, place))
+            if (n + 1) % 25 == 0:
+                print(f"OBS calibrate progress: {n + 1} of {len(todo)} positions, {time.perf_counter() - t0:.0f} s", flush=True)
+        if a.records_out:
+            Path(a.records_out).write_text(json.dumps(recs))
+        print(f"OBS calibration: {len(todo) - unreadable} positions read ({unreadable} unreadable), {len(recs)} question records")
+        for h in HORIZONS:
+            for ln in format_calibration(recs, load_chances(a.calibrate), h, "on the test games"):
+                print(ln)
+        return 0
+    if a.measure_j:
+        if not a.chances:
+            ap.error("--measure-j needs --chances (the table the chance order reads)")
+        acc = measure_j(a.games_dir, env, worth, params, a.chances, stride=a.stride, limit=a.limit, shard=shard, say=lambda m: print(m, flush=True), orders=tuple(a.j_orders.split(",")), timed=not a.j_no_time)
+        if a.j_out:
+            Path(a.j_out).write_text(json.dumps(acc))
+        for ln in format_j(acc):
+            print(ln)
+        print(f"OBS (J) {time.perf_counter() - t0:.1f} s, shard {shard[0]}/{shard[1]}")
+        return 0
     if a.goal_verdict:
         rows, endings, positions = goal_verdict(a.games_dir, env, worth, params, a.games)
         lines = format_goal_verdict(rows, endings, positions) + [f"OBS question sheet: goal verdict {time.perf_counter() - t0:.1f} s for {len(endings)} games, {positions} positions"]
