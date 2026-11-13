@@ -6660,3 +6660,81 @@ READ. (1) Several units together account for most of the former "none" steps; mo
 STILL WRONG: the takings no danger verdict foresaw have not been looked at one by one (which kind they are decides what comes next); the reading of a position is the floor of the cost; the chance of a way node borrows the question's table; the other side's answers are not yet ranked by the same sheet from their side; (a2), (b), (d), (e), (g), (h), (i) stand.
 
 NEXT: read the missed takings by kind (was the unit never flagged, flagged and refuted, or waiting) before more machinery; then the sheet on October's event kernel.
+
+
+78.42 THE TAKINGS NO DANGER VERDICT FORESAW, BY KIND (2026-11-13; a read-only study, scripts and rows in the session scratchpad as missed_*; the pool of measure J on sn_13_02, the unbudgeted sheet):
+
+    OBS mine: taken in 4 plies 90, missed 70, foreseen 20
+    OBS mine missed verdict class closed3: 9
+    OBS mine missed verdict class refuted: 33
+    OBS mine missed verdict class unsettled: 1
+    OBS mine missed verdict class waiting: 27
+    OBS mine missed refuted reason (no answer text): 6
+    OBS mine missed refuted reason None: 3
+    OBS mine missed refuted reason my bishop goes to a5 after the last step, and the exchange on the targ; my pawn on f4 will not move for us and cannot be taken: the exchange o; my rook takes on a4 after the first step, and the exchange on the targ; no single unit accounts for the step from e2 to d3; 1 removals were re: 1
+    OBS mine missed refuted reason my bishop on a6 will not move for us and cannot be taken: the exchange; my pawn on b4 will not move for us and cannot be taken: the exchange o; no single unit accounts for the step from a4 to b5; 2 removals were re: 1
+    OBS mine missed refuted reason my pawn on e4 will not move for us and cannot be taken: the exchange o; no single unit accounts for the step from f6 to e5; 2 removals were re: 1
+    OBS mine missed refuted reason no single unit accounts for the step from d4 to c5; 2 removals were re; no single unit accounts for the step from d4 to e5; 2 removals were re; no single unit accounts for the step from f4 to e5; 2 removals were re: 1
+    OBS mine missed refuted reason None; my knight on f3 will not move for us and cannot be taken: the exchange: 1
+    OBS mine missed refuted reason no single unit accounts for the step from a5 to b4; 2 removals were re; no single unit accounts for the step from d3 to e2; 2 removals were re; no single unit accounts for the step from f5 to e4; 2 removals were re: 1
+    OBS mine missed refuted reason my knight on c3 will not move for us and cannot be taken: the exchange: 1
+    OBS mine missed refuted reason None; my bishop takes on h3 after the last step, and the exchange on the tar; no single unit accounts for the step from f3 to e4; 2 removals were re; their pawn on h3 has no move that leaves the route clear: 1
+    OBS mine missed refuted reason my knight on d5 will not move for us and cannot be taken: the exchange; my pawn on a5 will not move for us and cannot be taken: the exchange o: 1
+    OBS mine missed refuted reason my bishop on b4 will not move for us and cannot be taken: the exchange; no single unit accounts for the step from b3 to c4; 2 removals were re: 1
+    OBS mine missed refuted reason my pawn on d5 will not move for us and cannot be taken: the exchange o; my queen takes on g5 after the first step, and nothing is taken back; their knight on g1 has no move that leaves the route clear; their pawn on h3 has no move that leaves the route clear: 1
+    OBS mine missed refuted reason my king goes to b7 after the last step, and the exchange on the target; my rook takes on a2 after the last step, and nothing is taken back; my rook takes on a3 after the last step, and nothing is taken back; my rook takes on a4 after the last step, and nothing is taken back: 1
+    OBS mine missed refuted reason my pawn on e4 will not move for us and cannot be taken: the exchange o; no single unit accounts for the step from e5 to d4; 2 removals were re: 1
+    OBS mine missed refuted reason no single unit accounts for it: 1
+    OBS mine missed refuted reason my pawn on h6 will not move for us and cannot be taken: the exchange o: 1
+    OBS mine missed refuted reason no single unit accounts for the step from c3 to d2; 3 removals were re; no single unit accounts for the step from d5 to c4; 3 removals were re: 1
+    OBS mine missed refuted reason no single unit accounts for the step from a4 to b5; 2 removals were re: 1
+    OBS mine missed refuted reason more than 3 units in the way of the step from h8 to d8 (4: their king ; my pawn on d2 will not move for us and cannot be taken: the exchange o; their pawn on a7 has no move that leaves the route clear; their pawn on h7 has no move that leaves the route clear: 1
+    OBS mine missed refuted reason more than 3 units in the way of the step from a8 to a1 (4: my pawn on ; more than 3 units in the way of the step from h8 to d8 (4: their king ; my pawn on d3 will not move for us and cannot be taken: the exchange o; their pawn on h7 has no move that leaves the route clear: 1
+    OBS mine missed refuted reason None; no single unit accounts for the step from c5 to d4; 2 removals were re: 1
+    OBS mine missed refuted reason no single unit accounts for the step from d5 to e4; 2 removals were re; no single unit accounts for the step from f5 to e4; 2 removals were re; no single unit accounts for the step from f5 to g4; 2 removals were re: 1
+    OBS mine missed refuted reason no single unit accounts for the step from d5 to c4; 2 removals were re; no single unit accounts for the step from d5 to e4; 2 removals were re; no single unit accounts for the step from f5 to e4; 2 removals were re: 1
+    OBS mine missed refuted reason no single unit accounts for the step from f4 to e5; 2 removals were re; no single unit accounts for the step from f4 to g5; 2 removals were re; no single unit accounts for the step from h4 to g5; 2 removals were re: 1
+    OBS mine missed refuted reason my knight takes on g4 after the first step, and nothing is taken back; no single unit accounts for the step from h4 to g5; 3 removals were re: 1
+    OBS mine missed unit by taker knight taken by bishop: 8
+    OBS mine missed unit by taker queen taken by king: 8
+    OBS mine missed unit by taker queen taken by queen: 7
+    OBS mine missed unit by taker bishop taken by rook: 6
+    OBS mine missed unit by taker rook taken by rook: 6
+    OBS mine missed unit by taker knight taken by knight: 5
+    OBS mine missed unit by taker knight taken by rook: 4
+    OBS mine missed unit by taker bishop taken by bishop: 4
+    OBS mine missed 2a plies: 2 27, 4 43
+    OBS mine foreseen 2a plies: 2 13, 4 7
+    OBS mine missed 2b exchange: even/exchange (taker retaken, taker worth >= unit worth) 27, plain loss 42, taker retaken but cheaper than unit 1
+    OBS mine foreseen 2b exchange: even/exchange (taker retaken, taker worth >= unit worth) 3, plain loss 14, taker retaken but cheaper than unit 3
+    OBS mine missed 2c moved: unit moved 52, unit stayed 18
+    OBS mine foreseen 2c moved: unit moved 11, unit stayed 9
+    OBS mine missed 2d can take at once: no taking available at once 48, taker could take at once 22
+    OBS mine foreseen 2d can take at once: no taking available at once 4, taker could take at once 16
+    OBS mine missed 2e guard proxy: guarded then unguarded 26, still guarded 24, unguarded all along 20
+    OBS mine foreseen 2e guard proxy: guarded then unguarded 3, still guarded 6, unguarded all along 11
+    OBS mine cross table: verdict class (missed) by 2b exchange
+    OBS   closed3                even/exchange (taker retaken, taker worth >= unit worth): 5, plain loss: 4, taker retaken but cheaper than unit: 0
+    OBS   refuted                even/exchange (taker retaken, taker worth >= unit worth): 13, plain loss: 20, taker retaken but cheaper than unit: 0
+    OBS   unsettled              even/exchange (taker retaken, taker worth >= unit worth): 1, plain loss: 0, taker retaken but cheaper than unit: 0
+    OBS   waiting                even/exchange (taker retaken, taker worth >= unit worth): 8, plain loss: 18, taker retaken but cheaper than unit: 1
+    OBS mine cross table: verdict class (missed) by 2c moved
+    OBS   closed3                unit moved: 7, unit stayed: 2
+    OBS   refuted                unit moved: 21, unit stayed: 12
+    OBS   unsettled              unit moved: 0, unit stayed: 1
+    OBS   waiting                unit moved: 24, unit stayed: 3
+    OBS mine cross table: verdict class (missed) by 2d can take at once
+    OBS   closed3                no taking available at once: 9, taker could take at once: 0
+    OBS   refuted                no taking available at once: 15, taker could take at once: 18
+    OBS   unsettled              no taking available at once: 1, taker could take at once: 0
+    OBS   waiting                no taking available at once: 23, taker could take at once: 4
+    OBS mine missed moved x exchange: {('unit moved', 'plain loss'): 36, ('unit stayed', 'even/exchange (taker retaken, taker worth >= unit worth)'): 12, ('unit moved', 'even/exchange (taker retaken, taker worth >= unit worth)'): 15, ('unit moved', 'taker retaken but cheaper than unit'): 1, ('unit stayed', 'plain loss'): 6}
+    OBS mine missed moved x can: {('unit moved', 'no taking available at once'): 36, ('unit stayed', 'no taking available at once'): 12, ('unit moved', 'taker could take at once'): 16, ('unit stayed', 'taker could take at once'): 6}
+    OBS mine missed own moves in between: {2: 43, 1: 27} foreseen: {1: 13, 2: 7}
+    OBS theirs: taken in 4 plies 88, missed 52, foreseen 36
+    OBS theirs missed verdict class closed3: 6
+    OBS theirs missed verdict class refuted: 27
+
+READ. Two things, and both are about the measure before they are about the reasoner. (1) "Taken" is not "lost". Of the other side's missed units most went in an exchange that was taken back at once: the sheet had read that exchange and called it worth nothing, and the game played it anyway; that verdict was right. Of my missed units most had MOVED before they were taken, many of them by taking something themselves, which the count calls a plain loss. (2) A question is asked about the place a unit stands on. A unit that walks to another place and is taken there is outside every question asked so far. That is the question of the move, not of the unit: "if this unit goes there, is it lost there", which the cornering frame already answers for one unit and nothing asks for the move about to be played.
+
+NEXT, replacing the NEXT above: (i) measure J with LOSS in place of taking: the balance of worth over the exchange on that place, by the mined worths, so that an even exchange is not a miss and a unit that took more than it cost is not a loss; (ii) the question of the move: for the move about to be played (and the best few), the frame on the place it lands on and on what it leaves, which is the cost of leaving read for my own move; (iii) then the event kernel.
