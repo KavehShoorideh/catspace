@@ -133,6 +133,158 @@ class ChessCodec:
             board.push(m)
         return False
 
+    # ---- plan 78.41 routes: what the reasoner that follows a whole route asks of the game (generic names, chess underneath)
+
+    def why_not(self, position: str, origin: str, destination: str) -> tuple:
+        """(reason, [places involved]) for why the unit on handle `origin` may not move to handle `destination` in `position` (its side to move): `unit_gone` (no unit of the mover there),
+        `place_taken` (the destination holds a unit it may not take), `line_shut` (units stand between), `may_not_move` (anything else: the move would leave its own goal unit struck, or
+        the goal unit is struck and the move does not answer it)."""
+        import chess
+        b = chess.Board(position)
+        f, t = chess.parse_square(origin), chess.parse_square(destination)
+        p, occ = b.piece_at(f), b.piece_at(t)
+        if p is None or p.color != b.turn:
+            return "unit_gone", []
+        if occ is not None and occ.color == p.color:
+            return "place_taken", [destination]
+        if p.piece_type == chess.PAWN and occ is not None and chess.square_file(f) == chess.square_file(t):
+            return "place_taken", [destination]
+        if p.piece_type in (chess.BISHOP, chess.ROOK, chess.QUEEN):
+            between = [chess.square_name(s) for s in chess.SquareSet(chess.between(f, t)) if b.piece_at(s) is not None]
+            if between:
+                return "line_shut", between
+        return "may_not_move", [origin]
+
+    def move_info(self, position: str, move: str) -> dict:
+        """{kind, origin, destination, captured}: the kind (the description's word) of the unit that plays `move` in `position`, its handles, and the kind it takes (None: nothing)."""
+        import chess
+        b = chess.Board(position)
+        m = chess.Move.from_uci(move)
+        p, occ = b.piece_at(m.from_square), b.piece_at(m.to_square)
+        if occ is None and b.is_en_passant(m):
+            occ = chess.Piece(chess.PAWN, not b.turn)
+        return {"kind": self.KINDS[p.symbol().lower()], "origin": move[:2], "destination": move[2:4], "captured": self.KINDS[occ.symbol().lower()] if occ else None}
+
+    def rank_answers(self, position: str, moves: list, unit_place: str, route_places: list, target_place: str) -> list:
+        """`moves` (the legal moves of the side to move in `position`) ordered so that the likely stoppers of a route come first: the move that takes the travelling unit on handle
+        `unit_place`, then one that lands on a place of the route, then one after which that side strikes the unit's place or a place of the route, then one that moves the target
+        standing on `target_place` or newly guards it, then the rest (each group in the move names' order)."""
+        import chess
+        b = chess.Board(position)
+        me = b.turn
+        unit_sq = chess.parse_square(unit_place)
+        route_sq = [chess.parse_square(x) for x in route_places]
+        tgt = chess.parse_square(target_place)
+        guarded_before = b.is_attacked_by(me, tgt)
+        scored = []
+        for u in sorted(moves):
+            m = chess.Move.from_uci(u)
+            if m.to_square == unit_sq:
+                score = 0
+            elif m.to_square in route_sq:
+                score = 1
+            else:
+                b.push(m)
+                try:
+                    if any(b.is_attacked_by(me, s) for s in [unit_sq] + route_sq):
+                        score = 2
+                    elif m.from_square == tgt or (not guarded_before and b.is_attacked_by(me, tgt)):
+                        score = 3
+                    else:
+                        score = 4
+                finally:
+                    b.pop()
+            scored.append((score, u))
+        scored.sort()
+        return [u for _s, u in scored]
+
+    def without(self, position: str, place: str) -> str:
+        """HYPOTHETICAL: the position with the unit on handle `place` removed (its side to move kept). Never a position of the game; the kernel may refuse it (a goal unit removed)."""
+        import chess
+        b = chess.Board(position)
+        b.remove_piece_at(chess.parse_square(place))
+        b.castling_rights = b.clean_castling_rights()
+        b.ep_square = None
+        return b.fen(en_passant="fen")
+
+    def relocate(self, position: str, origin: str, destination: str) -> "str | None":
+        """HYPOTHETICAL: the position with the unit on `origin` standing on `destination` instead (a unit there is removed), the side to move kept; None when nothing stands on `origin`."""
+        import chess
+        b = chess.Board(position)
+        p = b.remove_piece_at(chess.parse_square(origin))
+        if p is None:
+            return None
+        b.set_piece_at(chess.parse_square(destination), p)
+        b.castling_rights = b.clean_castling_rights()
+        b.ep_square = None
+        return b.fen(en_passant="fen")
+
+    def cell_reader(self, position: str):
+        """A function place -> (place, side, kind or None, units of the first side bearing on it, units of the second side bearing on it) for one position, memoised: what a fact's read set is
+        compared by (mirrors facts.board_cell: the unit on a place and the number of units of each side bearing on it)."""
+        import chess
+        b = chess.Board(position)
+        memo: dict = {}
+
+        def cell(place):
+            c = memo.get(place)
+            if c is None:
+                sq = chess.parse_square(place)
+                p = b.piece_at(sq)
+                c = memo[place] = (place, self.SIDES[p.color] if p else None, self.KINDS[p.symbol().lower()] if p else None, len(b.attackers(chess.WHITE, sq)), len(b.attackers(chess.BLACK, sq)))
+            return c
+        return cell
+
+    def changed_places(self, before: str, after: str) -> set:
+        """The handles whose content or whose count of units bearing on them (either side) differs between two positions: what a move changed (mirrors regress.diff_squares)."""
+        import chess
+        a, b = chess.Board(before), chess.Board(after)
+        out = set()
+        for sq in chess.SQUARES:
+            if (a.piece_at(sq) != b.piece_at(sq) or len(a.attackers(chess.WHITE, sq)) != len(b.attackers(chess.WHITE, sq))
+                    or len(a.attackers(chess.BLACK, sq)) != len(b.attackers(chess.BLACK, sq))):
+                out.add(chess.square_name(sq))
+        return out
+
+    def contents(self, position: str, places: list) -> tuple:
+        """What stands on each handle of `places` (in the order given): (side, kind) or None."""
+        import chess
+        b = chess.Board(position)
+        out = []
+        for x in places:
+            p = b.piece_at(chess.parse_square(x))
+            out.append((self.SIDES[p.color], self.KINDS[p.symbol().lower()]) if p else None)
+        return tuple(out)
+
+    def tracks(self, start: "str | None", moves: list) -> tuple:
+        """(by_ply, taken): `by_ply[i]` maps handle -> (unit id, side, kind) in the position after `moves[:i]` (an id follows its unit through moves, a castling, a promotion);
+        `taken[i]` = (unit id, side, kind) of the unit the move `moves[i]` takes, absent when it takes none."""
+        import chess
+        board = chess.Board(start) if start else chess.Board()
+        ids = {sq: n for n, sq in enumerate(sorted(board.piece_map()))}
+
+        def snap():
+            return {chess.square_name(sq): (ids[sq], self.SIDES[p.color], self.KINDS[p.symbol().lower()]) for sq, p in board.piece_map().items()}
+        by_ply, taken = [snap()], {}
+        for i, u in enumerate(moves):
+            m = chess.Move.from_uci(u)
+            gone = None
+            if board.is_en_passant(m):
+                gone = chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square))
+            elif board.piece_at(m.to_square) is not None:
+                gone = m.to_square
+            if gone is not None:
+                p = board.piece_at(gone)
+                taken[i] = (ids.pop(gone), self.SIDES[p.color], self.KINDS[p.symbol().lower()])
+            ids[m.to_square] = ids.pop(m.from_square)
+            if board.is_castling(m):
+                rook_from = chess.square(7 if chess.square_file(m.to_square) > chess.square_file(m.from_square) else 0, chess.square_rank(m.from_square))
+                rook_to = chess.square(5 if chess.square_file(m.to_square) > chess.square_file(m.from_square) else 3, chess.square_rank(m.from_square))
+                ids[rook_to] = ids.pop(rook_from)
+            board.push(m)
+            by_ply.append(snap())
+        return by_ply, taken
+
     def keep(self, position: str, units: list) -> str:
         import chess
         board = chess.Board(position)

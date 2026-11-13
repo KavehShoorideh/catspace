@@ -6397,3 +6397,95 @@ DESIGN
   THE CLOCK (next stage) the chance of a node from the measured base rates of its verdict kind in our own games (78.41 already printed them: lost where it stands 11 of 13 for theirs and 7 of 22 for mine; confirmed after an arrival 14 of 71 and 7 of 79; closed by reach 0 of 161), refit at sleep, no outside judge needed; a question's next step gets time in proportion to chance times stake over the cost of the step; for my own units the worst case (the high bound) leads, for theirs the expected value, the weight between the two a named parameter (the tolerance for risk). What the other side is likely to do is read from the same sheet from their side: their confirmed and waiting ways, by expected stake, are their likely moves, and those order the answers tried against my routes.
   REUSE                  October's frame search is in use; its fact store (read sets, stale flags) and waiting frames are to be used as they are where they fit, the game-bound parts behind the codec.
 BEING BUILT (one builder, amendments in the order above): routes and whole-route following, the three verdicts, the pool, layers one and two, the removal test, the cost of leaving, the graph, bounds on nodes. Measures H (two-move ways, by verdict and by kind of route) and I (how many plies before a taking the unit was first under watch).
+
+78.42 BUILT, FIRST FORM (2026-11-13; question_sheet.py; rules/concepts/chess_medium.gdl, the medium's relations hop / hop_take / hop_over, named by role in rules/learned/chess/vocabulary.scenario.json; the codec's why_not, without, relocate, cell_reader, changed_places and others; tests 70). In use as they stand: October's frame_search.FrameSearch (every exchange frame) and discovery/facts.py FactStore (the sheet's memory and the graph's store: a confirmed way a claim, a refuted one a kill, a waiting or cut one a gap with its resume; a move's changed places to `invalidate`). Not called: October's waiting frames (keyed by a seed move, not by a route; their words only). H on 150 positions of seed 11, I on 6 whole games (569 positions):
+    OBS (H) units read 136 (mine 79, theirs 57): units above the lowest worth with a way of exactly two moves and none shorter, level 2 read; reach_k 2, geometry True, routes True, max_routes 3, route_nodes 2500
+    OBS (H) mine, new (the routes followed whole), confirmed: 7 units (8.9%); taken within 4 plies 1 of 7 (14.3%); within 8 plies 1 of 7 (14.3%)
+    OBS (H) mine, new (the routes followed whole), refuted: 56 units (70.9%); taken within 4 plies 1 of 56 (1.8%); within 8 plies 3 of 56 (5.4%)
+    OBS (H) mine, new (the routes followed whole), waiting: 12 units (15.2%); taken within 4 plies 1 of 12 (8.3%); within 8 plies 3 of 12 (25.0%)
+    OBS (H) mine, new (the routes followed whole), not settled: 4 units (5.1%); taken within 4 plies 0 of 4 (0.0%); within 8 plies 0 of 4 (0.0%)
+    OBS (H) mine, present code (each way judged after its first move), confirmed: 50 units (63.3%); taken within 4 plies 1 of 50 (2.0%); within 8 plies 3 of 50 (6.0%)
+    OBS (H) mine, present code (each way judged after its first move), refuted: 29 units (36.7%); taken within 4 plies 2 of 29 (6.9%); within 8 plies 4 of 29 (13.8%)
+    OBS (H) theirs, new (the routes followed whole), confirmed: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, new (the routes followed whole), refuted: 45 units (78.9%); taken within 4 plies 0 of 45 (0.0%); within 8 plies 2 of 45 (4.4%)
+    OBS (H) theirs, new (the routes followed whole), waiting: 12 units (21.1%); taken within 4 plies 0 of 12 (0.0%); within 8 plies 0 of 12 (0.0%)
+    OBS (H) theirs, new (the routes followed whole), not settled: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, present code (each way judged after its first move), confirmed: 39 units (68.4%); taken within 4 plies 0 of 39 (0.0%); within 8 plies 1 of 39 (2.6%)
+    OBS (H) theirs, present code (each way judged after its first move), refuted: 18 units (31.6%); taken within 4 plies 0 of 18 (0.0%); within 8 plies 1 of 18 (5.6%)
+    OBS (H) mine, best-ordered route is a clear route: 47 units
+    OBS (H) mine, a clear route, new, confirmed: 7 units (14.9%); taken within 4 plies 1 of 7 (14.3%); within 8 plies 1 of 7 (14.3%)
+    OBS (H) mine, a clear route, new, refuted: 29 units (61.7%); taken within 4 plies 1 of 29 (3.4%); within 8 plies 2 of 29 (6.9%)
+    OBS (H) mine, a clear route, new, waiting: 11 units (23.4%); taken within 4 plies 1 of 11 (9.1%); within 8 plies 3 of 11 (27.3%)
+    OBS (H) mine, a clear route, new, not settled: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) mine, a clear route, present code, confirmed: 20 units (42.6%); taken within 4 plies 1 of 20 (5.0%); within 8 plies 2 of 20 (10.0%)
+    OBS (H) mine, a clear route, present code, refuted: 27 units (57.4%); taken within 4 plies 2 of 27 (7.4%); within 8 plies 4 of 27 (14.8%)
+    OBS (H) theirs, best-ordered route is a clear route: 31 units
+    OBS (H) theirs, a clear route, new, confirmed: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, a clear route, new, refuted: 21 units (67.7%); taken within 4 plies 0 of 21 (0.0%); within 8 plies 1 of 21 (4.8%)
+    OBS (H) theirs, a clear route, new, waiting: 10 units (32.3%); taken within 4 plies 0 of 10 (0.0%); within 8 plies 0 of 10 (0.0%)
+    OBS (H) theirs, a clear route, new, not settled: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, a clear route, present code, confirmed: 13 units (41.9%); taken within 4 plies 0 of 13 (0.0%); within 8 plies 0 of 13 (0.0%)
+    OBS (H) theirs, a clear route, present code, refuted: 18 units (58.1%); taken within 4 plies 0 of 18 (0.0%); within 8 plies 1 of 18 (5.6%)
+    OBS (H) mine, best-ordered route is a route with an obstacle of the asker's own: 1 units
+    OBS (H) mine, a route with an obstacle of the asker's own, new, confirmed: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) mine, a route with an obstacle of the asker's own, new, refuted: 1 units (100.0%); taken within 4 plies 0 of 1 (0.0%); within 8 plies 0 of 1 (0.0%)
+    OBS (H) mine, a route with an obstacle of the asker's own, new, waiting: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) mine, a route with an obstacle of the asker's own, new, not settled: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) mine, a route with an obstacle of the asker's own, present code, confirmed: 1 units (100.0%); taken within 4 plies 0 of 1 (0.0%); within 8 plies 0 of 1 (0.0%)
+    OBS (H) mine, a route with an obstacle of the asker's own, present code, refuted: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, best-ordered route is a route with an obstacle of the asker's own: 5 units
+    OBS (H) theirs, a route with an obstacle of the asker's own, new, confirmed: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, a route with an obstacle of the asker's own, new, refuted: 3 units (60.0%); taken within 4 plies 0 of 3 (0.0%); within 8 plies 0 of 3 (0.0%)
+    OBS (H) theirs, a route with an obstacle of the asker's own, new, waiting: 2 units (40.0%); taken within 4 plies 0 of 2 (0.0%); within 8 plies 0 of 2 (0.0%)
+    OBS (H) theirs, a route with an obstacle of the asker's own, new, not settled: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, a route with an obstacle of the asker's own, present code, confirmed: 5 units (100.0%); taken within 4 plies 0 of 5 (0.0%); within 8 plies 0 of 5 (0.0%)
+    OBS (H) theirs, a route with an obstacle of the asker's own, present code, refuted: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) mine, best-ordered route is a route with an obstacle of the other side: 31 units
+    OBS (H) mine, a route with an obstacle of the other side, new, confirmed: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) mine, a route with an obstacle of the other side, new, refuted: 26 units (83.9%); taken within 4 plies 0 of 26 (0.0%); within 8 plies 1 of 26 (3.8%)
+    OBS (H) mine, a route with an obstacle of the other side, new, waiting: 1 units (3.2%); taken within 4 plies 0 of 1 (0.0%); within 8 plies 0 of 1 (0.0%)
+    OBS (H) mine, a route with an obstacle of the other side, new, not settled: 4 units (12.9%); taken within 4 plies 0 of 4 (0.0%); within 8 plies 0 of 4 (0.0%)
+    OBS (H) mine, a route with an obstacle of the other side, present code, confirmed: 29 units (93.5%); taken within 4 plies 0 of 29 (0.0%); within 8 plies 1 of 29 (3.4%)
+    OBS (H) mine, a route with an obstacle of the other side, present code, refuted: 2 units (6.5%); taken within 4 plies 0 of 2 (0.0%); within 8 plies 0 of 2 (0.0%)
+    OBS (H) theirs, best-ordered route is a route with an obstacle of the other side: 21 units
+    OBS (H) theirs, a route with an obstacle of the other side, new, confirmed: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, a route with an obstacle of the other side, new, refuted: 21 units (100.0%); taken within 4 plies 0 of 21 (0.0%); within 8 plies 1 of 21 (4.8%)
+    OBS (H) theirs, a route with an obstacle of the other side, new, waiting: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, a route with an obstacle of the other side, new, not settled: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) theirs, a route with an obstacle of the other side, present code, confirmed: 21 units (100.0%); taken within 4 plies 0 of 21 (0.0%); within 8 plies 1 of 21 (4.8%)
+    OBS (H) theirs, a route with an obstacle of the other side, present code, refuted: 0 units (0.0%); taken within 4 plies 0 of 0 (n/a); within 8 plies 0 of 0 (n/a)
+    OBS (H) cost per two-move way, new: 259 ways, mean 229.82 ms, max 811.20 ms; nodes mean 6.8, max 211; present code: mean 0.26 ms, max 9.14 ms
+    OBS (H) two-move ways by verdict (new): confirmed 10, not settled 8, refuted 210, waiting 31
+    OBS (H) all ways of 2 moves settled by the routes (every unit, not only the group above): 724 ways, mean 223.97 ms, max 840.08 ms; nodes mean 8.8, max 338; not settled 30, refuted 597, waiting 97
+    OBS (H) reach within 2, the medium against the move tables: 2692 questions read; units reached by both 6959, by the medium only 6088 (what the frozen board hid), by the move tables only 414; questions where the two differ 2348 (87.2%)
+    OBS (H) questions closed at level 1 as too far in time (every unit of the asker farther than 2 hops): 2 of 2692 non-goal questions read
+    OBS (H) graph per position: nodes mean 178.5, max 346; edges mean 170.8, max 340 (150 positions)
+    OBS (H) counterfactual: blocked steps examined 4023 (in 148 of 150 positions); explained by one unit 2059 (51.2%), by several 0 (0.0%), by none (no single unit) 1964 (48.8%); not examined because of the cap 39; removals rejected as not a position 8325
+    OBS (H) counterfactual, describing words of the units found: none 1964, stands on a place passed over 1350, stands on the landing place 487, strikes the asker's goal unit 155, other 67
+    OBS (H) counterfactual cost per blocked step: mean 3.60 ms, max 9.34 ms; kernel calls mean 23.0, max 32
+    OBS (H) duties: ways with a duty found 46; held back 46 (route read and confirmed, then held back: 0; route not read because leaving drops more than the attack could win: 46); of the held-back ways, those where the travelling unit did move at that ply of the game and the held unit can be followed: 2, the held unit taken within 4 plies in 0 (0.0%); the count is too small to mean anything
+    OBS (H) bounds closed (stake low equals high) after the levels run, by node kind: answer 2539/3140 (80.9%), candidate 0/2402 (0.0%), condition 0/354 (0.0%), duty 74/74 (100.0%), follow_up 2208/3098 (71.3%), obstacle 2199/8514 (25.8%), question 868/2992 (29.0%), unit 0/70 (0.0%), way 2539/4802 (52.9%), weak_place 0/1331 (0.0%); all nodes 10427/26777
+    OBS (I) games 6, positions read 569 in 2417.2 s; takings of a unit above the lowest worth, not the goal unit: 61 (plus 74 of a unit not weighty or a position not readable)
+    OBS (I) plies before the taking that the unit was first under a confirmed or waiting verdict that stayed on until the taking, read as mine: never 46 (75.4%), 1-2 8 (13.1%), 3-4 2 (3.3%), 5-8 1 (1.6%), more 4 (6.6%)
+    OBS (I) plies before the taking that the unit was first under a confirmed or waiting verdict that stayed on until the taking, read as theirs: never 43 (70.5%), 1-2 9 (14.8%), 3-4 4 (6.6%), 5-8 0 (0.0%), more 5 (8.2%)
+    OBS (I) plies before the taking that the unit was first under a confirmed or waiting verdict that stayed on until the taking, read as either: never 43 (70.5%), 1-2 12 (19.7%), 3-4 3 (4.9%), 5-8 1 (1.6%), more 2 (3.3%)
+    OBS (I) plies before the taking that the unit was first under a confirmed or waiting verdict that stayed on until the taking, read as mine+stands: never 26 (42.6%), 1-2 19 (31.1%), 3-4 7 (11.5%), 5-8 4 (6.6%), more 5 (8.2%)
+    OBS (I) plies before the taking that the unit was first under a confirmed or waiting verdict that stayed on until the taking, read as theirs+stands: never 14 (23.0%), 1-2 26 (42.6%), 3-4 14 (23.0%), 5-8 1 (1.6%), more 6 (9.8%)
+    OBS (I) plies before the taking that the unit was first under a confirmed or waiting verdict that stayed on until the taking, read as either+stands: never 14 (23.0%), 1-2 30 (49.2%), 3-4 11 (18.0%), 5-8 3 (4.9%), more 3 (4.9%)
+    OBS (I) false alarms, records filed as confirmed: 1; the unit taken within 8 plies of the record's reading in 1 (100.0%); not taken (false alarm) 0 (0.0%)
+    OBS (I) false alarms, records filed as waiting: 450; the unit taken within 8 plies of the record's reading in 62 (13.8%); not taken (false alarm) 388 (86.2%)
+    OBS (I) memory (the fact store): ways asked for 2972: served as filed, not flagged by any move 1128 (38.0%); flagged stale but its read cells unchanged, served after the comparison 163 (5.5%); read again (flagged, cells changed) 785 (26.4%); new 896 (30.1%); facts flagged by moves 62753; offered by the queue in chain-stake order (counted at each move) 2734658; read again from the queue by a budgeted refresh 0 (not run: the live questions of the next position ask for what they need)
+    OBS (I) memory audit: every 5th served fact read afresh: 249 compared, the verdict differed in 2 (0.8%)
+    OBS (I) store size per game (facts filed in all, not superseded at the end, way facts live): 17959 / 13963 / 262; 12541 / 9734 / 84; 15989 / 12448 / 255; 23668 / 18322 / 332; 17697 / 13780 / 269; 16885 / 12821 / 422; stale at the ends 59100
+    OBS (I) graph per position: nodes mean 181.2, max 335; edges mean 173.4, max 335
+    OBS gate engine: files 82, passed 1136, failed 0, xfailed 1, errors 0, wall 1662.5 s
+A CHAIN AS PRINTED (their heaviest unit, asked by mine):
+    OBS   their queen on c6, asked by mine -> 1 ways wait and 0 are not settled, none confirmed; bishop to b5 waits: as the board stands: the first step cannot be made, the line to b5 is shut by c4 [idle] (worth between 0 and 14)
+    OBS     needs: can my bishop on f1 come to bear on their queen on c6 (1 hop to b5) -> as the board stands: the first step cannot be made, the line to b5 is shut by c4 [waiting] (worth between 0 and 14) -- because the attack needs my bishop on f1 to arrive
+    OBS       blocked_by: my pawn on c4 stands on a place passed over (worth between 0 and 14) -- because my pawn on c4 stands on a place passed over; if my pawn on c4 were gone then the route would take 1 hop
+    OBS         if_removed: can it move away -> my pawn on c4: it can move away, one move more, at a cost of at least 2 (c4d5) [movable] (worth between 0 and 14) -- because my pawn on c4: it can move away, one move more, at a cost of at least 2 (c4d5); if my pawn on c4 were gone then the route holds in 1 hops, 2 moves with the one that clears it
+    OBS       waits_on: the line is cleared: c4 empty (worth between 0 and 14) -- because it would hold if this were so
+    OBS       breaks: as the board stands: the first step cannot be made, the line to b5 is shut by c4 (worth between 0 and 14) -- because that answer stops it
+READING: (1) THE FROZEN BOARD HID MUCH: the medium and the move tables differ on 87.2% of questions; 6088 reaches seen by the medium only. (2) TWO-MOVE WAYS ON MY UNITS: the present code confirmed 50 (3 taken in 8 plies); followed whole, 7 confirmed, 56 refuted (3 taken), 12 waiting (3 taken), 4 not settled. Small counts; the direction is that the waiting ones are the ones that fall. On their units none is confirmed. (3) UNDER WATCH BEFORE A TAKING (61 takings): never 23.0%, 1 to 2 plies 49.2%, 3 to 4 plies 18.0%, more 9.8%, counting "lost where it stands"; by the route verdicts alone never 70.5%. (4) THE MEMORY: of 2972 ways asked for, 38.0% served untouched, 5.5% after comparing cells, 26.4% read again, 30.1% new; an audit of 249 served found 2 that differ.
+WRONG OR UNFINISHED: (a) about 4 s a position (0.5 s before): the cost of leaving reads a whole child position for each first step; (b) 86.2% of waiting records see no taking in 8 plies; (c) a goal unit standing on a route cannot be removed by the test, so the route reads dead where the unit could step aside (most of the 48.8% "no single unit"); (d) every duty that held a way back did so before the route was read, by the target's stake and not by what the way would win; untested for being too eager; (e) the weak places about the goal unit are counted and their candidates listed, the reasoner does not follow them; (f) too far by hops closes 2 of 2692 questions at reach 2; (g) the queue of stale facts is counted, not drained; graph nodes filed as facts swell the store (12.5 to 23.7 thousand a game); (h) the time obstacle and removal by pairs are coded and untested; (i) a one-move way listed clear is still judged by the earlier form.
+NEXT: (c) by moving the unit aside in place of removing it; (a) by reading only what the leaving unit struck or shielded (its read set) in place of the whole position; then the chance of a node from the measured rates and the clock by chance times stake (78.42 THE CLOCK); then the sheet on October's event kernel (rust/analyst_core/src/agenda.rs: a move is push, a verdict is found, blocked_by / stopped_by / holds are reason, a cut or waiting node is impasse; a condition on each opens the next question).

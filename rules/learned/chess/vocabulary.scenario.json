@@ -8,7 +8,8 @@
  "concepts": [
   "concepts/chess.gdl",
   "concepts/chess_units.gdl",
-  "concepts/chess_scenario.gdl"
+  "concepts/chess_scenario.gdl",
+  "concepts/chess_medium.gdl"
  ],
  "derived": [
   "attack",
@@ -27,7 +28,10 @@
   "strike",
   "go",
   "go_within2",
-  "go_within3"
+  "go_within3",
+  "hop",
+  "hop_take",
+  "hop_over"
  ],
  "delta": [
   "cell",
@@ -97,6 +101,49 @@
      5
     ]
    }
-  ]
+  ],
+  "hop": {
+   "relation": "hop",
+   "kind": 0,
+   "owner": 1,
+   "from": [
+    2,
+    3
+   ],
+   "to": [
+    4,
+    5
+   ]
+  },
+  "hop_take": {
+   "relation": "hop_take",
+   "kind": 0,
+   "owner": 1,
+   "from": [
+    2,
+    3
+   ],
+   "to": [
+    4,
+    5
+   ]
+  },
+  "hop_over": {
+   "relation": "hop_over",
+   "kind": 0,
+   "owner": 1,
+   "from": [
+    2,
+    3
+   ],
+   "to": [
+    4,
+    5
+   ],
+   "over": [
+    6,
+    7
+   ]
+  }
  }
 }

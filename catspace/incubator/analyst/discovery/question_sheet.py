@@ -70,6 +70,20 @@ class Params:
     frame_budget: int = 20_000         # nodes one frame search may expand
     passes: bool = True                # the asker not to move: hand it the move by the kernel's pass and run the frames by real moves (False: the static form, for comparison)
     goal_near: bool = True             # the goal unit is live at level 1 only when open exits are at most max_open_exits AND an asker unit is near (False: the earlier rule)
+    geometry: bool = True              # level 1 by the medium of movement (units ignored) then the obstacles on each route, as follow-up questions (False: the move tables, the board frozen)
+    obstacle_depth: int = 1            # follow-up questions asked on the obstacles of a route, this deep (0: none asked, the obstacles are reported as not read)
+    max_obstacles: int = 3             # obstacles of one route asked about; the rest are not read
+    max_blocked_steps: int = 12        # blocked steps one question may examine by the counterfactual (a kernel question per other unit); the rest are not read
+    pair_cap: int = 0                  # pairs of units tried when no single removal makes a blocked step legal (0: off)
+    duties: bool = True                # the cost of leaving: what the travelling unit holds where it stands, read after its step
+    refute_counterfactual: bool = True # a refuted route: would it be confirmed without the unit whose answer stopped it?
+    max_obstacle_moves: int = 8        # moves of an own unit in the way tried when asking whether it can move away
+    compare_old: bool = True           # level 1 also reads the move tables' reach, to count where the two readings disagree
+    weak_places: bool = True           # the goal unit's question names its weak places (guards not fewer than strikers) and asks what could be brought
+    routes: bool = True                # a way of more than one move is judged by following its whole route (False: after its first move only, the earlier form)
+    max_routes: int = 3                # routes of a way the reasoner follows, the best-ordered first
+    route_nodes: int = 2500            # nodes (an owner's answer examined, a frame node) one way may use over all its routes; past it the way is NOT SETTLED, never refuted
+    waiting_urgency: float = 0.5       # a question left idle by a waiting way: its urgency is multiplied by this as well as by urgency_down
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- units and the reading
@@ -102,10 +116,110 @@ class Env:
         self.game, self.variant = game, variant or game
         raw = GS.vocabulary_file(game, vocabulary)
         self.relations = raw["scenario"]
-        self.vocabulary = {**GS.vocabulary(game, vocabulary), "scenario": raw["scenario"]}
+        full = {**GS.vocabulary(game, vocabulary), "scenario": raw["scenario"]}
+        self.medium_names = [raw["scenario"][role]["relation"] for role in MEDIUM_ROLES if role in raw["scenario"]]
+        self.vocabulary = {**full, "derived": [x for x in full["derived"] if x not in self.medium_names]}          # the medium does not depend on the position: read once, not at every position
         self.vocabulary_json = json.dumps(self.vocabulary)
+        self.medium_json = json.dumps({**full, "derived": list(self.medium_names)})
         self.spec = GS.spec_texts(game, vocabulary)[self.variant]
         self.codec = CU.codec_of(game)
+        self._medium: "Medium | None | bool" = None
+
+    def medium(self) -> "Medium | None":
+        """The medium of movement of the game (the one-move relations on the empty board), read once per game from the initial position and from the position after one move (so both
+        sides are read as the mover); None when the vocabulary does not name the roles."""
+        if self._medium is None:
+            if len(self.medium_names) < len(MEDIUM_ROLES):
+                self._medium = False
+            else:
+                first = CE.state(self.variant, None, [])
+                second = CE.state(self.variant, None, [first[2][0]])
+                tables = {}
+                for st in (first, second):
+                    facts = CE.facts(self.variant, self.spec, self.medium_json, st[0], [], True)
+                    tables[st[1]] = [f for f in facts if f[0] in self.medium_names and f[2] == SELF]
+                self._medium = Medium(tables, self.relations)
+        return self._medium or None
+
+
+MEDIUM_ROLES = ("hop", "hop_take", "hop_over")
+
+
+class Medium:
+    """LAYER ONE: the medium of movement with every unit ignored. `hops(kind, side, place)` are the places one move reaches, `distance` the least number of hops (breadth first), `routes` the
+    shortest routes (the places landed on), `over` the places passed over by one hop along a line, `strike_places(kind, side, x)` the places from which a unit of that kind bears on `x`
+    (by the take-only hops where the kind has them, else by its hops). Sides are the kernel's own names; places are the texts the codec writes."""
+
+    def __init__(self, tables: dict, relations: dict):
+        self.hop: dict = {}                    # (kind, side, from) -> {to: take_only}
+        self.over_of: dict = {}                # (kind, side, from, to) -> places passed over
+        self.takes: set = set()                # (kind, side): kinds with take-only hops
+        self._dist: dict = {}
+        self._strike: dict = {}
+        for side, facts in tables.items():
+            for f in facts:
+                spec = relations[next(role for role in MEDIUM_ROLES if relations[role]["relation"] == f[0])]
+                a = f[1:]
+                kind, frm, to = a[spec["kind"]], "".join(a[i] for i in spec["from"]), "".join(a[i] for i in spec["to"])
+                if f[0] == relations["hop_over"]["relation"]:
+                    self.over_of.setdefault((kind, side, frm, to), []).append("".join(a[i] for i in spec["over"]))
+                else:
+                    take = f[0] == relations["hop_take"]["relation"]
+                    self.hop.setdefault((kind, side, frm), {})[to] = take
+                    if take:
+                        self.takes.add((kind, side))
+
+    def hops(self, kind: str, side: str, frm: str) -> dict:
+        return self.hop.get((kind, side, frm), {})
+
+    def over(self, kind: str, side: str, frm: str, to: str) -> tuple:
+        return tuple(sorted(self.over_of.get((kind, side, frm, to), ())))
+
+    def distances(self, kind: str, side: str, frm: str) -> dict:
+        key = (kind, side, frm)
+        if key not in self._dist:
+            dist, layer = {frm: 0}, [frm]
+            while layer:
+                nxt = []
+                for p in layer:
+                    for to in self.hops(kind, side, p):
+                        if to not in dist:
+                            dist[to] = dist[p] + 1
+                            nxt.append(to)
+                layer = nxt
+            self._dist[key] = dist
+        return self._dist[key]
+
+    def distance(self, kind: str, side: str, frm: str, to: str) -> "int | None":
+        return self.distances(kind, side, frm).get(to)
+
+    def routes(self, kind: str, side: str, frm: str, to: str, cap: int = 200) -> list:
+        """Every shortest route (the places landed on, in order) from `frm` to `to`, at most `cap`."""
+        n = self.distance(kind, side, frm, to)
+        out: list = []
+
+        def walk(p, left, path):
+            if len(out) >= cap:
+                return
+            if left == 0:
+                if p == to:
+                    out.append(tuple(path))
+                return
+            for y in sorted(self.hops(kind, side, p)):
+                if self.distance(kind, side, y, to) == left - 1:
+                    walk(y, left - 1, path + [y])
+        if n:
+            walk(frm, n, [])
+        return out
+
+    def strike_places(self, kind: str, side: str, x: str) -> set:
+        key = (kind, side, x)
+        if key not in self._strike:
+            take = (kind, side) in self.takes
+            self._strike[key] = {p for (k, sd, p), row in self.hop.items() if k == kind and sd == side and x in row and (row[x] if take else True)}
+        return self._strike[key]
+
+
 
 
 def _rows(facts: list, spec: dict) -> dict:
@@ -150,6 +264,28 @@ class Reading:
         self.passes = True                 # set by `step` from Params.passes
         self._pass: "tuple | None" = None  # (the passed position string or None when refused,) once asked
         self.pass_log: list = []           # True when the pass was given, False when refused, one entry per position asked
+        self._states: dict = {}            # (position, move or None) -> the kernel's state: the route reasoner meets the same positions again and again
+        self._other: "str | None" = None
+        self.cf_cut = 0                    # blocked steps not examined because the question's cap was reached
+        self.cf_log: list = []             # one dict per blocked step examined by the counterfactual: ms, kernel calls, units found, describing words
+        self.questions: list = []          # the sheet's questions (set by run): the time obstacle reads what they already hold
+        self.graph = Graph()               # the claims of every question of this position and how they follow from one another
+        self.pool: "Pool | None" = None    # set by `run`: the waiting pool that carries ways from one position of a game to the next
+
+    def state_of(self, position: str, move: "str | None" = None) -> tuple:
+        """The kernel's state of `position` (after `move` when given), cached."""
+        key = (position, move)
+        if key not in self._states:
+            self._states[key] = CE.state(self.env.variant, position, [move] if move else [])
+        return self._states[key]
+
+    def absolute(self, side: str) -> str:
+        """The side as the kernel names it (SELF is the mover; the other side is the mover after one move): the same name in every position of a game."""
+        if side == SELF:
+            return self.mover
+        if self._other is None:
+            self._other = self.state_of(self.position, self.legal[0])[1]
+        return self._other
 
     # ---- stakes
     def worth_of(self, kind: str) -> float:
@@ -233,6 +369,112 @@ class Reading:
         return out
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------- the graph of claims
+
+EDGE_KINDS = ("needs", "blocked_by", "if_removed", "stopped_by", "waits_on", "breaks", "holds")
+
+
+@dataclass
+class Node:
+    """A question or a claim: what is asked, the answer, the verdict. kind: question, way, obstacle, follow_up, weak_place, candidate, answer, condition."""
+    id: int
+    kind: str
+    asks: str
+    answer: str = ""
+    verdict: str = ""
+    target: "Unit | None" = None
+    asker: "str | None" = None
+    reads: frozenset = frozenset()
+    stake_low: float = 0.0             # what the node is worth to the asker, in the judge's units: a bound, tightened as answers arrive (nothing read: 0 to the target's stake)
+    stake_high: "float | None" = None  # None until a parent or the maker gives it
+    chance: "float | None" = None      # left empty: no probability is invented
+    tried: int = 0                     # route nodes: the owner's answers examined
+    cut: int = 0                       # route nodes: 1 when the node cap stopped the search
+    data: dict = field(default_factory=dict)   # what filing the node as a fact needs: a way's route, node cap, nodes used, what it waits on and what breaks it
+
+
+@dataclass
+class Edge:
+    """src -> dst. needs: the attack needs this unit to arrive; blocked_by: the route is stopped by that unit; if_removed: the follow-up question on an obstacle and what holds if it were gone;
+    stopped_by: the owner's answer that refutes; waits_on: what a waiting way waits on; breaks: an answer of the owner that would stop it."""
+    src: int
+    dst: int
+    kind: str
+    because: str = ""
+    gone: str = ""                     # the unit whose absence the counterfactual speaks of
+    then: str = ""                     # what would hold if it were gone
+
+
+class Graph:
+    """Plain lists of nodes and typed edges; every level of a question adds to it."""
+
+    def __init__(self):
+        self.nodes: list = []
+        self.edges: list = []
+        self.index: dict = {}              # a key the recorder chooses -> node id (a node is made once)
+
+    def node(self, kind: str, asks: str, key=None, **kw) -> Node:
+        if key is not None and key in self.index:
+            n = self.nodes[self.index[key]]
+            for name, value in kw.items():
+                if value not in ("", None, frozenset()):
+                    setattr(n, name, value)
+            return n
+        n = Node(len(self.nodes), kind, asks, **kw)
+        self.nodes.append(n)
+        if key is not None:
+            self.index[key] = n.id
+        return n
+
+    def link(self, src: Node, dst: Node, kind: str, because: str = "", gone: str = "", then: str = "") -> Edge:
+        assert kind in EDGE_KINDS, kind
+        for e in self.edges:
+            if e.src == src.id and e.dst == dst.id and e.kind == kind:
+                return e
+        e = Edge(src.id, dst.id, kind, because, gone, then)
+        self.edges.append(e)
+        if dst.stake_high is None:                                     # a node's bound starts as its parent's: nothing is known to be worth more
+            dst.stake_high = src.stake_high
+        return e
+
+    def out(self, node: Node) -> list:
+        return [(e, self.nodes[e.dst]) for e in self.edges if e.src == node.id]
+
+    def size(self) -> tuple:
+        return len(self.nodes), len(self.edges)
+
+
+def bound(n: Node, low: "float | None" = None, high: "float | None" = None) -> None:
+    """Tighten a node's stake bound (a bound only closes: low never falls, high never rises, unless the node was unset)."""
+    if low is not None:
+        n.stake_low = max(n.stake_low, low) if n.stake_high is not None else low
+    if high is not None:
+        n.stake_high = high if n.stake_high is None else min(n.stake_high, high)
+    if n.stake_high is not None and n.stake_low > n.stake_high:
+        n.stake_low = n.stake_high
+
+
+def chain_lines(graph: Graph, start: Node, depth: int = 8) -> list:
+    """The chain from a starting node down, each line saying "because ..." and, where there is one, "if ... were gone then ..."."""
+    out: list = []
+
+    def walk(n: Node, e: "Edge | None", pad: str, seen: tuple):
+        worth = "" if n.stake_high is None else (f" (worth between {n.stake_low:g} and {n.stake_high:g})" if n.stake_low != n.stake_high else f" (worth {n.stake_low:g})")
+        head = f"{n.asks}" + (f" -> {n.answer}" if n.answer else "") + (f" [{n.verdict}]" if n.verdict else "") + worth + (f" [{n.tried} answers tried{', cut by the node cap' if n.cut else ''}]" if n.tried else "")
+        line = f"{pad}{e.kind + ': ' if e else ''}{head}"
+        if e and e.because:
+            line += f" -- because {e.because}"
+        if e and e.then:
+            line += f"; if {e.gone or 'it'} were gone then {e.then}"
+        out.append(line)
+        if depth and len(pad) // 2 < depth:
+            for edge2, node2 in graph.out(n):
+                if node2.id not in seen:
+                    walk(node2, edge2, pad + "  ", seen + (n.id,))
+    walk(start, None, "", ())
+    return out
+
+
 # ---------------------------------------------------------------------------------------------------------------------------------------------- questions
 
 @dataclass
@@ -253,6 +495,9 @@ class Question:
     reason: str = ""
     best_value: "float | None" = None
     findings: list = field(default_factory=list)
+    node: "int | None" = None          # the question's starting node in the sheet's graph
+    blocked: int = 0                   # blocked steps the counterfactual has examined for this question
+    waiting: list = field(default_factory=list)   # the waiting ways (the records of what each waits on and what breaks it) of the last deep step
 
     @property
     def owner(self) -> str:
@@ -354,18 +599,75 @@ def level0(q: Question, r: Reading, params: Params) -> tuple:
 LINKS = {1: "reach", 2: "a place to stand", 3: "a strike that gains"}
 
 
+def _stand(r: Reading, t: Unit, u: Unit, to: tuple) -> tuple:
+    """(True, "") when a unit `u` of the asking side could stand on the place `to` (the target's side does not strike it with a cheaper unit, nor strike it while nothing of the asking side
+    guards it); else (False, why). The strikes of the other units are read on the board as it stands."""
+    hit = [v for v in r.units if v.side == t.side and to in r.strikes_of(v)]
+    cheaper = [v for v in hit if r.weight(v) < r.weight(u)]
+    backed = [w for w in r.units if w.side == u.side and w != u and to in r.strikes_of(w)]
+    if cheaper:
+        return False, f"{unit_words(u)} would stand on {place_text(to)}, struck by {unit_words(cheaper[0])}, which is worth less"
+    if hit and not backed:
+        return False, f"{unit_words(u)} would stand on {place_text(to)}, struck by {unit_words(hit[0])} and not guarded"
+    return True, ""
+
+
+@dataclass(frozen=True)
+class Route:
+    """The ordered places a unit passes to come to a way's arrival place, and for each the reading "a place to stand" (the same as the arrival place's)."""
+    unit: Unit
+    places: tuple                      # each a place as the description writes it; the last is the arrival place
+    stands: tuple                      # per place: (can stand there, why not)
+    what: str = "strike"
+    over: tuple = ()                   # per hop: the places passed over (layer one)
+    obstacles: tuple = ()              # layer two, as the board stands (a cheap listing; level 2 finds the obstacles by the counterfactual)
+    goal: str = ""                     # the place the final strike is on
+
+
+def routes_of(r: Reading, t: Unit, u: Unit, to: tuple, j: int, params: Params, what: str = "strike") -> list:
+    """Every route of exactly `j` moves of `u` to `to` (by the one-move relation, a place on the route read for any placement), the ones whose every place can be stood on first, at most
+    `params.max_routes` of them."""
+    one = r.go[0] if r.go else {}
+    step = lambda p: one.get((u.kind, u.side, p), ())
+    layers = [{u.at}]
+    for _ in range(j):
+        layers.append({y for p in layers[-1] for y in step(p)})
+    good: list = [set() for _ in range(j + 1)]
+    good[j] = {to} if to in layers[j] else set()
+    for i in range(j - 1, -1, -1):
+        good[i] = {p for p in layers[i] if set(step(p)) & good[i + 1]}
+    found: list = []
+
+    def walk(p, i, path):
+        if i == j:
+            found.append(tuple(path))
+            return
+        for y in sorted(step(p)):
+            if y in good[i + 1]:
+                walk(y, i + 1, path + [y])
+    if u.at in good[0]:
+        walk(u.at, 0, [])
+    out = [Route(u, path, tuple(_stand(r, t, u, p) for p in path), what, (), (), place_text(t.at)) for path in found]
+    out.sort(key=lambda x: (sum(1 for ok, _w in x.stands if not ok), [place_text(p) for p in x.places]))
+    return out[:params.max_routes]
+
+
+def route_words(route: Route, t: Unit) -> str:
+    """The route in plain words: "my <kind> on X to Y, then to Z, from where it strikes ..."."""
+    if not route.places:
+        return f"{unit_words(route.unit)} where it stands, from where it {'strikes' if route.what == 'strike' else 'covers an exit of'} {unit_words(t)}"
+    steps = " to " + place_text(route.places[0]) + "".join(f", then to {place_text(p)}" for p in route.places[1:])
+    return f"{unit_words(route.unit)}{steps}, from where it {'strikes' if route.what == 'strike' else 'covers an exit of'} {unit_words(t)}"
+
+
 def _link_check(r: Reading, t: Unit, u: Unit, to: tuple, moved: bool, what: str, struck_now: bool) -> tuple:
     """(link that fails or 0, why) for a unit `u` of the asking side that would stand on `to` and strike the target `t` (what = "strike") or cover one of its exits.
     The strikes of the other units are read on the board as it stands: the hypothetical arrival of `u` does not change what any other unit strikes (a line it blocks or opens
     is not followed). A unit that covers an exit gains only if the target is already struck by the asking side, so for it link 3 also asks that."""
     if moved:
-        hit = [v for v in r.units if v.side == t.side and to in r.strikes_of(v)]
-        cheaper = [v for v in hit if r.weight(v) < r.weight(u)]
-        backed = [w for w in r.units if w.side == u.side and w != u and to in r.strikes_of(w)]
-        if cheaper:
-            return 2, f"{unit_words(u)} would stand on {place_text(to)}, struck by {unit_words(cheaper[0])}, which is worth less"
-        if hit and not backed:
-            return 2, f"{unit_words(u)} would stand on {place_text(to)}, struck by {unit_words(hit[0])} and not guarded"
+        ok, why = _stand(r, t, u, to)
+        if not ok:
+            return 2, why
     if what != "strike" and not struck_now:
         return 3, f"{unit_words(u)} would only cover an exit of {unit_words(t)} and nothing strikes it yet"
     guards = [v for v in r.units if v.side == t.side and v != t and t.at in r.strikes_of(v)]
@@ -374,8 +676,187 @@ def _link_check(r: Reading, t: Unit, u: Unit, to: tuple, moved: bool, what: str,
     return 0, ""
 
 
+@dataclass(frozen=True)
+class Obstacle:
+    """Anything whose absence would let a step happen or succeed. `kind` is a describing word (open, not a list the code branches on): it stands on a place passed over; it stands on the landing
+    place; it strikes the asker's goal unit; time; other (the honest default); none (no single unit accounts for it). `note` is the fact found, e.g. "without X the step can be made"; `hypothetical`
+    marks a finding read on a board without a unit. `dead`: nothing the asker can ask about (no unit accounts for it)."""
+    kind: str
+    unit: "Unit | None"
+    place: str
+    hop: int                           # the number of the step (counted from 0); the final strike is one past the last hop
+    note: str = ""
+    hypothetical: bool = False
+    dead: bool = False
+
+
+def _obstacle_words(o: Obstacle, side_of_asker: str = "") -> str:
+    if o.unit is None:
+        return f"{o.kind}: {o.note}" if o.note else o.kind
+    return f"{unit_words(o.unit)} {o.kind}" + (f" ({o.note})" if o.note else "")
+
+
+def geometric_routes(r: Reading, t: Unit, u: Unit, arrival: str, goal_place: str, what: str, params: Params) -> list:
+    """LAYER TWO's first reading: the shortest geometric routes of `u` to `arrival` (the medium, units ignored), each with its obstacles as the board stands and the place-to-stand reading
+    of every landing; the routes with the fewest obstacles first."""
+    med = r.env.medium()
+    kind, side, a = u.kind, r.absolute(u.side), place_text(u.at)
+    at = {place_text(v.at): v for v in r.units if v != u}
+    takes = (kind, side) in med.takes
+    paths = med.routes(kind, side, a, arrival) if arrival != a else [()]
+    out = []
+    for path in paths:
+        obs, over, prev = [], [], a
+        for i, landing in enumerate(path):
+            ov = med.over(kind, side, prev, landing)
+            over.append(ov)
+            obs += [Obstacle("stands on a place passed over", at[x], x, i) for x in ov if x in at]
+            v, take_only = at.get(landing), med.hops(kind, side, prev)[landing]
+            if v is None:
+                obs += [Obstacle("no unit to take there", None, landing, i, dead=True)] if take_only else []
+            elif v.side == u.side:
+                obs.append(Obstacle("stands on the landing place", v, landing, i))
+            elif takes and not take_only:
+                obs.append(Obstacle("stands on the landing place and this step may not take it", v, landing, i, dead=True))
+            else:
+                obs.append(Obstacle("stands on the landing place", v, landing, i))
+            prev = landing
+        if not takes:
+            ov = med.over(kind, side, arrival, goal_place)
+            obs += [Obstacle("stands on a place passed over", at[x], x, len(path)) for x in ov if x in at]
+        places = tuple(tuple(x) for x in path)
+        out.append(Route(u, places, tuple(_stand(r, t, u, p) for p in places), what, tuple(over), tuple(obs), goal_place))
+    out.sort(key=lambda x: (sum(1 for o in x.obstacles if o.dead), len(x.obstacles), sum(1 for ok, _w in x.stands if not ok), [place_text(p) for p in x.places]))
+    return out
+
+
+def _old_reach(r: Reading, q: Question, params: Params) -> set:
+    """The units (kind, place) of the asking side that the move tables say can come within reach_k moves to a place that strikes the target (the board frozen): what level 1 read before the
+    medium; kept to count where the two readings disagree."""
+    t, out = q.target, set()
+    for u in r.units:
+        if u.side != q.asker:
+            continue
+        for table in r.go[:min(params.reach_k, len(r.go))]:
+            if any(t.at in r.acts.get((u.kind, u.side, to), ()) for to in table.get((u.kind, u.side, u.at), ())):
+                out.add((u.kind, place_text(u.at)))
+    return out
+
+
+def _level1_geometry(q: Question, r: Reading, params: Params) -> tuple:
+    """Level 1 by the medium. Layer one: for each unit of the asker, the places that would strike the target (units ignored) and the hops to each; farther than reach_k is too far in time.
+    Layer two: each way's routes with the obstacles on them (listed here, asked about at level 2). The three links then judge the arrival place as before."""
+    t, k, side = q.target, params.reach_k, side_word(q.asker)
+    med = r.env.medium()
+    now = r.strikers_of(t, q.asker)
+    exits = r.exits_of(t)
+    open_exits = exits - r.struck_by(q.asker)
+    goals = [(place_text(t.at), "strike")] + ([(place_text(e), "cover an exit") for e in sorted(open_exits)] if now else [])
+    supply: list = [(0, u, u.at, "strike") for u in now]
+    routes: dict = {}
+    far: list = []
+    reach: set = set()
+    seen_ways: set = set()
+    for u in r.units:
+        if u.side != q.asker or u in now:
+            continue
+        side_abs, a, nearest = r.absolute(u.side), place_text(u.at), None
+        for goal, what in goals:
+            for p in sorted(med.strike_places(u.kind, side_abs, goal)):
+                d = med.distance(u.kind, side_abs, a, p)
+                if d is None:
+                    continue
+                nearest = d if nearest is None or d < nearest else nearest
+                if d > k or (u, p, what) in seen_ways or (what == "cover an exit" and (u, p, "strike") in seen_ways):
+                    continue
+                seen_ways.add((u, p, what))
+                found = geometric_routes(r, t, u, p, goal, what, params)
+                way = (d, u, tuple(p), what)
+                if not found:
+                    continue
+                supply.append(way)
+                routes[way] = found
+                reach.add((u.kind, a))
+        if nearest is not None and nearest > k:
+            far.append((nearest, u))
+    detail: dict = {"reach_geo": reach, "reach_old": _old_reach(r, q, params) if params.compare_old else None, "far": sorted(far, key=lambda x: (x[0], x[1].kind, x[1].at))}
+    supply.sort(key=lambda x: (x[0], len(routes[x][0].obstacles) if x in routes else 0, x[1].kind, x[1].at, x[2]))
+    if len(supply) == len(now):
+        if now:
+            return IDLE, f"already struck by {_names(now)}; no other unit of {side} can join within {k} hops", {**detail, "supply": supply, "routes": {}}
+        if far:
+            hops, u = detail["far"][0]
+            return CLOSED, f"{unit_words(u)} is {hops} hops away: too far in time (reach is {k})", {**detail, "supply": [], "failed_at": 1, "too_far": hops}
+        return CLOSED, f"no unit of {side} can come to a place that strikes it", {**detail, "supply": [], "failed_at": 1}
+    passed, failed = [], []
+    for w in supply:
+        if w[0] == 0 and w not in routes:
+            passed.append(w)
+            continue
+        link, why = _link_check(r, t, w[1], w[2], w[0] > 0, w[3], bool(now))
+        (failed.append((link, why, w[3])) if link else passed.append(w))
+    detail.update(supply=passed, reach=len(supply), failed=failed, links=[len(supply), sum(1 for f in failed if f[0] > 2) + len(passed), len(passed)], routes={w: routes[w] for w in passed if w in routes},
+                  rank={w: n for n, w in enumerate(supply)})
+    if not passed:
+        pool = [f for f in failed if f[2] == "strike"] or failed
+        top = max(f[0] for f in pool)
+        link, why, _ = [f for f in pool if f[0] == top][-1]
+        detail["failed_at"] = link
+        return CLOSED, f"{len(supply)} ways for {side} reach it, none passes all three links; the last fails at {LINKS[link]}: {why}", detail
+
+    def way_words(w) -> str:
+        found = detail["routes"].get(w)
+        if not found:
+            return f"{unit_words(w[1])} could {w[3]} from {place_text(w[2])} in {w[0]}"
+        if w[0] == 0:
+            return f"{unit_words(w[1])} already bears on it, but {_obstacle_words(found[0].obstacles[0], side)}"
+        text = route_words(found[0], t)
+        if found[0].obstacles:
+            text += f" (in the way: {_obstacle_words(found[0].obstacles[0], side)}{' and ' + str(len(found[0].obstacles) - 1) + ' more' if len(found[0].obstacles) > 1 else ''})"
+        return text + (f" (and {len(found) - 1} more routes)" if len(found) > 1 else "")
+    shown = "; ".join(way_words(w) for w in passed[:4])
+    return LIVE, f"{len(passed)} of {len(supply)} ways for {side} pass reach, a place to stand and a strike that gains: {shown}", detail
+
+
+def weak_places(q: Question, r: Reading, params: Params) -> list:
+    """For the goal unit's own place and each place next to it (where it could move on the empty board, not held by its own side): the units of its side that guard the place and the units of
+    the asker that strike it now. Where the guards are not fewer than the strikers, the question is whether (guards - strikers + 1) more units can be brought to strike it: layer one names the
+    asker's units and their hops to a place that strikes it. -> [{place, guards, strikers, need, candidates: [(hops, unit, arrival)]}]."""
+    med = r.env.medium()
+    if med is None:
+        return []
+    t, k = q.target, params.reach_k
+    own = {u.at for u in r.units if u.side == t.side and u != t}
+    near = [place_text(t.at)] + sorted(med.hops(t.kind, r.absolute(t.side), place_text(t.at)))
+    out = []
+    for p in near:
+        pt = tuple(p)
+        if pt in own:
+            continue
+        guards = [u for u in r.units if u.side == t.side and u != t and pt in r.strikes_of(u)]
+        strikers = [u for u in r.units if u.side == q.asker and pt in r.strikes_of(u)]
+        if len(guards) < len(strikers):
+            continue
+        cands = []
+        for u in r.units:
+            if u.side != q.asker or u in strikers:
+                continue
+            best = None
+            for a in sorted(med.strike_places(u.kind, r.absolute(u.side), p)):
+                d = med.distance(u.kind, r.absolute(u.side), place_text(u.at), a)
+                if d is not None and 0 < d <= k and (best is None or d < best[0]):
+                    best = (d, a)
+            if best:
+                cands.append((best[0], u, best[1]))
+        cands.sort(key=lambda x: (x[0], x[1].kind, x[1].at))
+        out.append({"place": p, "guards": guards, "strikers": strikers, "need": len(guards) - len(strikers) + 1, "candidates": cands})
+    return out
+
+
 def level1(q: Question, r: Reading, params: Params) -> tuple:
     status, text, detail = _level1(q, r, params)
+    if q.goal and params.weak_places and r.env.medium() is not None:
+        detail["weak"] = weak_places(q, r, params)
     if q.goal:
         rep = r.scenario(_role_of(q.asker))
         if rep.get("target") and not rep.get("unreadable"):
@@ -432,6 +913,8 @@ def _level1(q: Question, r: Reading, params: Params) -> tuple:
                     return LIVE, f"no full plan read, but only {open_exits} of its exits are open", held
                 return CLOSED, f"no way for {side} passes all three links: it fails at {LINKS[3]}, {open_exits} of its exits are open and no plan covers them", {**held, "failed_at": 3}
             return IDLE, f"the supply was not fully read (caps hit); {side} not shown to reach it", held
+    if params.geometry and params.links and r.env.medium() is not None:
+        return _level1_geometry(q, r, params)
     now = r.strikers_of(t, q.asker)
     exits = r.exits_of(t)
     open_exits = exits - r.struck_by(q.asker)
@@ -472,7 +955,14 @@ def _level1(q: Question, r: Reading, params: Params) -> tuple:
         link, why, _ = max(pool, key=lambda f: f[0]) if len({f[0] for f in pool}) == 1 else [f for f in pool if f[0] == max(g[0] for g in pool)][-1]
         detail["failed_at"] = link
         return CLOSED, f"{len(supply)} ways for {side} reach it, none passes all three links; the last fails at {LINKS[link]}: {why}", detail
-    shown = "; ".join(f"{unit_words(u)} could {what} from {place_text(to)} in {j}" for j, u, to, what in passed[:4])
+    detail["routes"] = {w: routes_of(r, t, w[1], w[2], w[0], params, w[3]) for w in passed if w[0] >= 1}
+
+    def way_words(w) -> str:
+        found = detail["routes"].get(w)
+        if w[0] >= 2 and found:
+            return route_words(found[0], t) + (f" (and {len(found) - 1} more routes)" if len(found) > 1 else "")
+        return f"{unit_words(w[1])} could {w[3]} from {place_text(w[2])} in {w[0]}"
+    shown = "; ".join(way_words(w) for w in passed[:4])
     return LIVE, f"{len(passed)} of {len(supply)} ways for {side} pass reach, a place to stand and a strike that gains: {shown}", detail
 
 
@@ -668,7 +1158,7 @@ def _solve(r: Reading, frame, state, label, params: Params, source: str) -> dict
     value = fs.value(state)
     line = _line_of(fs, frame, state, label) if value >= 0 else ()
     r.frame_log.append((time.perf_counter() - t0, source))
-    return {"value": value, "line": line, "source": source, "open": fs.stopped > 0}
+    return {"value": value, "line": line, "source": source, "open": fs.stopped > 0, "nodes": fs.nodes}
 
 
 def _static_state(r: Reading, strikers: list, guards: list, occupant: float) -> tuple:
@@ -753,6 +1243,912 @@ def exchange_after(r: Reading, t: Unit, asker: str, way: tuple, params: Params =
     return exchange_static(r, t, asker, params, strikers=strikers, at=t.at, source="static")
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------- routes: the whole way, answer by answer
+
+WON, WAITING_V, CONFIRMED_V, REFUTED_V, UNSETTLED_V = "won", "waiting", "confirmed", "refuted", "not settled"
+ORDINALS = {1: "first", 2: "second", 3: "third", 4: "fourth"}
+
+
+class _Capped(Exception):
+    """The node cap of one way was reached: nothing more is read, the way is not settled."""
+
+
+@dataclass
+class Stop:
+    """One answer of the owner (or the board as it stands) that stops a route. `kind` hard: it costs the owner nothing (the unit is taken for nothing, the exchange at the end pays
+    nothing, the game ends); delay: the step cannot be made now (the place is taken, the line is shut, the unit may not move) but nothing is lost."""
+    kind: str
+    answer: "str | None"               # the owner's move; None: the board as it stands
+    after: int                         # steps made when the answer came
+    step: "int | None"                 # delay: the number of the step that cannot be made
+    reason: str                        # unit_taken, game_over, exchange_stopped, place_taken, line_shut, may_not_move
+    places: tuple                      # the places named by the reason
+    words: str
+    mover: tuple = ()                  # (origin, destination) of the answer
+
+
+@dataclass
+class RouteResult:
+    route: Route
+    verdict: str
+    value: float
+    line: tuple
+    stops: list
+    nodes: int
+    tried: int = 0
+    capped: bool = False
+
+
+class _Walk:
+    """Follow one route for real from `base` (the asker to move): the asker plays each step of the route, the owner answers every legal move (the likely stoppers first), and after the last
+    step and one more answer the asker's real exchange frame runs on the target (followed where it goes). Value to the asker: the least over the owner's answers; a step that cannot be
+    made after an answer is a DELAY (kept in `stops`, not counted in the least); an answer that brings the value to 0 or below is a HARD stop and ends that branch."""
+
+    def __init__(self, r: Reading, t: Unit, asker: str, route: Route, params: Params, base: str, cap: int):
+        self.r, self.t, self.asker, self.route, self.params, self.base, self.cap = r, t, asker, route, params, base, cap
+        self.codec = r.env.codec
+        self.places = [place_text(p) for p in route.places]
+        self.origin = place_text(route.unit.at)
+        self.unit_worth = r.worth_of(route.unit.kind)
+        self.stops: list = []
+        self.nodes = 0
+        self.tried = 0                                                 # the owner's answers examined
+        self.mine = "my" if t.side == SELF else "their"                  # the owner of the target answers: its units are "their" when the asker is me
+        self._frames: dict = {}
+
+    def tick(self, n: int = 1) -> None:
+        self.nodes += n
+        if self.nodes > self.cap:
+            raise _Capped()
+
+    def frame(self, where: str) -> "_RealExchange":
+        if where not in self._frames:
+            self._frames[where] = _RealExchange(self.r, tuple(where))
+        return self._frames[where]
+
+    def after_words(self, after: int) -> str:
+        return "after the last step" if after >= len(self.places) else f"after the {ORDINALS.get(after, str(after) + 'th')} step"
+
+    def answer_words(self, pos: str, move: str, after: int) -> str:
+        info = self.codec.move_info(pos, move)
+        verb = f"takes on {info['destination']}" if info["captured"] else f"goes to {info['destination']}"
+        return f"{self.mine} {info['kind']} {verb} {self.after_words(after)}"
+
+    def hard(self, pos: str, move: str, after: int, reason: str, text: str, places: tuple = ()) -> None:
+        self.stops.append(Stop("hard", move, after, None, reason, places, f"{self.answer_words(pos, move, after)}{text}", self.codec.move_ends(move)))
+
+    def run(self) -> RouteResult:
+        capped, value, line = False, None, ()
+        try:
+            value, line = self.step(self.base, 0, self.origin, place_text(self.t.at), None, ())
+        except _Capped:
+            capped = True
+        hard = [x for x in self.stops if x.kind == "hard"]
+        if hard:
+            verdict = REFUTED_V
+        elif capped:
+            verdict = UNSETTLED_V
+        elif self.stops:
+            verdict = WAITING_V
+        else:
+            verdict = CONFIRMED_V
+        return RouteResult(self.route, verdict, 0.0 if value is None or hard else value, line, self.stops, self.nodes, self.tried, capped)
+
+    def step(self, pos: str, i: int, at: str, where: str, by: "tuple | None", line: tuple) -> tuple:
+        """-> (value to the asker or None when the step cannot be made, the line). `pos`: the asker to move, its unit on `at`, the target on `where`; `by`: (position, move) of the answer that came before."""
+        r, codec, dest = self.r, self.codec, self.places[i]
+        mv = codec.find_move(pos, at, dest)
+        if mv is None:
+            reason, named = codec.why_not(pos, at, dest)
+            what = {"place_taken": f"the place {dest} is taken", "line_shut": f"the line to {dest} is shut by {', '.join(named)}", "may_not_move": f"the unit on {at} may not move",
+                    "unit_gone": f"no unit of mine stands on {at}"}[reason]
+            came = (self.answer_words(by[0], by[1], i) + ": ") if by else "as the board stands: "
+            self.stops.append(Stop("delay", by[1] if by else None, i, i + 1, reason, tuple(named), f"{came}the {ORDINALS.get(i + 1, str(i + 1) + 'th')} step cannot be made, {what}", codec.move_ends(by[1]) if by else ()))
+            return None, line
+        line = line + (mv,)
+        child = r.state_of(pos, mv)
+        if child[3] is not None:
+            return (float(BIG_VALUE) if 100 in list(child[3]) else 0.0), line
+        if dest == where:                                              # the step itself takes the target: the owner may take back
+            ex = _solve(r, self.frame(where), child[0], lambda p, m: m, self.params, "given")
+            r.frame_log.pop()
+            self.tick(ex["nodes"])
+            return max(0.0, r.worth_of(self.t.kind) - ex["value"]), line + tuple(ex["line"])
+        worst: "tuple | None" = None
+        for a in codec.rank_answers(child[0], list(child[2]), dest, self.places[i + 1:], where):
+            self.tried += 1
+            self.tick()
+            nxt = r.state_of(child[0], a)
+            ofrom, oto = codec.move_ends(a)
+            if nxt[3] is not None:
+                self.hard(child[0], a, i + 1, "game_over", ", and the game ends")
+                return 0.0, line + (a,)
+            if oto == dest:                                            # the travelling unit is taken: what does it cost the owner
+                ex = _solve(r, self.frame(dest), nxt[0], lambda p, m: m, self.params, "given")
+                r.frame_log.pop()
+                self.tick(ex["nodes"])
+                v, ln = ex["value"] - self.unit_worth, (a,) + tuple(ex["line"])
+                if v <= 0:
+                    self.hard(child[0], a, i + 1, "unit_taken", ", and nothing is taken back" if ex["value"] <= 0 else ", and what is taken back is worth less")
+                    return 0.0, line + ln
+            else:
+                where2 = oto if ofrom == where else where
+                if i + 1 < len(self.places):
+                    v, ln = self.step(nxt[0], i + 1, dest, where2, (child[0], a), line + (a,))
+                    if v is None:
+                        continue
+                    if v <= 0:
+                        return 0.0, ln
+                    ln = ln[len(line):]
+                elif codec.kind_at(nxt[0], where2) is None:
+                    self.hard(child[0], a, i + 1, "exchange_stopped", ", and the target is gone")
+                    return 0.0, line + (a,)
+                else:
+                    ex = _solve(r, self.frame(where2), nxt[0], lambda p, m: m, self.params, "given")
+                    r.frame_log.pop()
+                    self.tick(ex["nodes"])
+                    v, ln = ex["value"], (a,) + tuple(ex["line"])
+                    if v <= 0:
+                        pos0, mv0, after0 = child[0], a, i + 1
+                        if by is not None:                             # was the exchange already dead before this last answer (the kernel's pass gives the asker the move)? then the answer before it is the one that bites
+                            got = CE.passed(r.env.variant, child[0], [])
+                            if got:
+                                ex0 = _solve(r, self.frame(where), got[0], lambda p, m: m, self.params, "given")
+                                r.frame_log.pop()
+                                self.tick(ex0["nodes"])
+                                if ex0["value"] <= 0:
+                                    pos0, mv0, after0 = by[0], by[1], i
+                        self.hard(pos0, mv0, after0, "exchange_stopped", ", and the exchange on the target then pays nothing")
+                        return 0.0, line + ln
+            if worst is None or v < worst[0]:
+                worst = (v, ln)
+        if worst is None:
+            return None, line
+        return worst[0], line + worst[1]
+
+
+def _conditions(stops: list, route: Route) -> list:
+    """What a waiting route waits on, from the delays the search saw: [(kind, places, words)]. A place vacated, a line cleared, the unit able to move again, and for a later step the
+    steps before it made."""
+    out, seen = [], set()
+    for x in stops:
+        if x.kind != "delay":
+            continue
+        if x.reason == "place_taken":
+            cond = ("vacated", x.places, f"the place {', '.join(x.places)} is vacated")
+        elif x.reason == "line_shut":
+            cond = ("cleared", x.places, f"the line is cleared: {', '.join(x.places)} empty")
+        else:
+            cond = ("freed", x.places, f"the unit on {', '.join(x.places)} may move again")
+        for c in ([("step", (place_text(route.places[x.step - 2]),), f"the unit has made the first {x.step - 1} steps") ] if x.step and x.step > 1 else []) + [cond]:
+            if c[:2] not in seen:
+                seen.add(c[:2])
+                out.append(c)
+    return out
+
+
+def search_way(r: Reading, t: Unit, asker: str, way: tuple, routes: list, params: Params) -> "dict | None":
+    """Follow the routes of a way (at most `params.max_routes`, the best-ordered first) from the base position, within `params.route_nodes` nodes over all of them. None when the asker is
+    not to move and the kernel refuses its pass (the caller reads the way after its first move, marked). Otherwise a dict: verdict (CONFIRMED_V, REFUTED_V, WAITING_V or UNSETTLED_V),
+    value, line, route, the answer that stops it, `alts` (what it waits on), `breaks` (the answers that stop it), the places it read, nodes and seconds."""
+    base = r.position if asker == SELF else r.passed_position()
+    if base is None:
+        return None
+    t0, used, results = time.perf_counter(), 0, []
+    for route in routes[:params.max_routes]:
+        res = _Walk(r, t, asker, route, params, base, max(params.route_nodes - used, 0)).run()
+        used += res.nodes
+        results.append(res)
+        if res.verdict in (CONFIRMED_V, UNSETTLED_V):
+            break
+    pick = next((x for x in results if x.verdict == CONFIRMED_V), None) or next((x for x in results if x.verdict == WAITING_V), None) \
+        or next((x for x in results if x.verdict == UNSETTLED_V), None) or (results[0] if results else None)
+    if pick is None:
+        return {"verdict": REFUTED_V, "value": 0.0, "line": (), "route": None, "answer": "no route can be followed", "alts": [], "breaks": [], "nodes": 0, "seconds": time.perf_counter() - t0,
+                "reads": frozenset(), "routes_tried": 0, "stops": []}
+    stops = pick.stops
+    hard = [x for x in stops if x.kind == "hard"]
+    alts = _conditions(stops, pick.route) if pick.verdict == WAITING_V else []
+    breaks = [x for x in stops if x.kind == "hard" or pick.verdict == WAITING_V]
+    reads = {place_text(t.at), place_text(pick.route.unit.at)} | {place_text(p) for p in pick.route.places}
+    for c in alts:
+        reads |= set(c[1])
+    for x in breaks:
+        reads |= set(x.mover) | set(x.places)
+    answer = hard[0].words if hard else (stops[0].words if stops and pick.verdict == WAITING_V else "")
+    return {"verdict": pick.verdict, "value": pick.value, "line": tuple(pick.line), "route": pick.route, "answer": answer, "alts": alts, "breaks": breaks, "nodes": used,
+            "tried": sum(x.tried for x in results), "cut": int(any(x.capped for x in results)), "node_cap": params.route_nodes,
+            "seconds": time.perf_counter() - t0, "reads": frozenset(reads), "routes_tried": len(results), "stops": stops}
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- waiting across moves
+
+class Pool:
+    """THE SHEET'S MEMORY: discovery/facts.py's FactStore (October's event-driven store), used as it stands. A way is filed as a `claim` (confirmed), a `kill` (refuted) or a `gap` (waiting, or cut by
+    the node cap or the follow-up depth, with `resume`: the route, the node cap and the nodes used); the read set is the places the finding depended on and the signature is built from the codec's
+    `cell_reader`. A move is the event: `advance` calls `invalidate(diff, permanent=True)` with the codec's diff, which flags every fact that read a changed place. After it, a fact not flagged is served
+    as it is; a flagged one is read again only when a live question asks for it (it is served after the cheap comparison of its cells if they are in fact unchanged: `revalidated`); `queue()` lists the
+    flagged ones by chain stake. The whole graph is filed too (`file_graph`): a node a fact, the typed edges in `just` and in the payload, the stake bounds in the payload, `stake` the high bound.
+    The store is imported lazily (facts.py imports a game library at module level). Two things of the store do not fit and are bridged here: its `lookup` never serves a `gap` (they are for
+    resuming), so a waiting way is fetched by `_find` through the store's own groups and signatures; and its `advance(board)` takes a game board, so `advance` here is the codec's diff + `invalidate`."""
+
+    def __init__(self, codec):
+        from catspace.incubator.analyst.discovery import facts as FS
+        self.store = FS.FactStore()
+        self._signature = FS.signature
+        self.codec = codec
+        self.position: "str | None" = None
+        self._cell = None
+        self.ply = -1
+        self.kept = self.revalidated = self.reread = self.new = 0      # asked for: served unflagged, served after a flagged fact's cells matched, read again, never seen
+        self.flagged = self.queued = 0
+        self.audited = self.audit_differed = 0
+        self.audit_every = 0                                           # n > 0: every n-th served fact is read afresh and compared (the measure's test of the read sets)
+        self._would_keep = 0
+        self.born_log: list = []                                       # (ply, key, verdict word, value) of every way filed
+        self.queue_reread = 0                                          # facts read again from the queue by a budgeted refresh (0 unless `refresh` is called)
+
+    def cell(self, position: str):
+        if self._cell is None or self._cell[0] != position:
+            self._cell = (position, self.codec.cell_reader(position))
+        return self._cell[1]
+
+    def _find(self, key: tuple, cell):
+        """The newest fact of `key` (any kind, a gap too) whose read cells on this board equal its signature: the store's `lookup` without its filter on gaps."""
+        groups = self.store.groups.get((key, True))
+        best = None
+        for (reads, _occ), sg in (groups or {}).items():
+            f = sg.get(self._signature(cell, reads))
+            if f is not None and (best is None or f.id > best.id):
+                best = f
+        return best, bool(groups)
+
+    def lookup(self, key: tuple, position: str) -> tuple:
+        """-> (fact or None, "kept" | "revalidated" | "reread" | "new")."""
+        f, seen = self._find(key, self.cell(position))
+        if f is None:
+            if seen:
+                self.reread += 1
+                return None, "reread"
+            self.new += 1
+            return None, "new"
+        if f.id in self.store.stale:
+            self.store.stale.discard(f.id)
+            self.revalidated += 1
+            return f, "revalidated"
+        self.kept += 1
+        return f, "kept"
+
+    def add(self, key: tuple, question: tuple, verdict: dict, position: str, just: tuple = ()):
+        """File a way: claim, kill or gap by its verdict."""
+        reads = frozenset(verdict["reads"]) or frozenset({key[0]})
+        sig = self._signature(self.cell(position), sorted(reads))
+        word = verdict["verdict"]
+        kind = "claim" if word == CONFIRMED_V else ("kill" if word == REFUTED_V else "gap")
+        route = verdict.get("route")
+        resume = ({"route": [place_text(p) for p in route.places] if route else [], "node_cap": verdict.get("node_cap"), "nodes_used": verdict.get("nodes"), "position": position,
+                   "step": min((x.step for x in verdict.get("stops", []) if x.step), default=None)} if kind == "gap" else None)
+        hi = max(float(verdict["value"]), 0.0)
+        f = self.store.add(kind, key, True, f"{word}: {verdict.get('answer', '')}"[:120], value=int(round(verdict["value"])), reads=reads, sig=sig, just=just, stake=int(round(hi)), under="way", pk=position,
+                           payload={"way": True, "question": question, "verdict": verdict, "stake_low": 0.0 if kind != "claim" else hi, "stake_high": hi, "waits_on": [c[2] for c in verdict.get("alts", [])],
+                                    "breaks": [x.words for x in verdict.get("breaks", []) if hasattr(x, "words")]}, resume=resume)
+        self.born_log.append((self.ply, key, word, verdict["value"]))
+        return f
+
+    def ways(self) -> list:
+        """The live (not superseded) way facts."""
+        return [f for f in self.store.facts.values() if not f.superseded and f.payload.get("way")]
+
+    def invalidate(self, diff) -> list:
+        new = self.store.invalidate(diff, permanent=True)
+        self.flagged += len(new)
+        return new
+
+    def advance(self, position: str) -> list:
+        """The game moves on: the codec's diff of the two positions is the event; what read a changed place is flagged stale for good."""
+        new = []
+        if self.position is not None:
+            new = self.invalidate(self.codec.changed_places(self.position, position))
+            self.queued += len(self.store.queue())
+        self.position = position
+        self.ply += 1
+        return new
+
+    def queue(self) -> list:
+        """The stale facts and open gaps, by chain stake, highest first (the store's own order)."""
+        return self.store.queue()
+
+    def file_graph(self, sheet) -> int:
+        """File every node of the sheet's graph as a fact: kind by its verdict, `just` the facts of the nodes it follows from, the edge types, the bounds and the way's conditions in the payload,
+        `stake` the high bound, the read set the places of the unit and the way's route. -> facts filed."""
+        r = sheet.reading
+        cell = self.cell(r.position)
+        ids: dict = {}
+        for n in r.graph.nodes:
+            word = n.verdict
+            kind = "kill" if word in (REFUTED_V, "dead", CLOSED) else ("gap" if word in (WAITING_V, UNSETTLED_V, UNREAD, IDLE, "cheap layers only") else "claim")
+            reads = frozenset(n.reads) | (frozenset({place_text(n.target.at)}) if n.target is not None else frozenset())
+            incoming = [(e.kind, e.src) for e in r.graph.edges if e.dst == n.id]
+            just = tuple(ids[src] for _k, src in incoming if src in ids)
+            hi = n.stake_high if n.stake_high is not None else 0.0
+            f = self.store.add(kind, ("node", n.kind, n.asks), True, n.asks[:100], value=int(round(n.stake_low)), reads=reads or None, sig=self._signature(cell, sorted(reads)) if reads else (), just=just,
+                               stake=int(round(hi)), under=n.kind, pk=r.position,
+                               payload={"node": n.kind, "answer": n.answer, "verdict": n.verdict, "edges": incoming, "stake_low": n.stake_low, "stake_high": n.stake_high, "chance": n.chance,
+                                        "tried": n.tried, "cut": n.cut, **n.data},
+                               resume=({"route": n.data.get("route"), "node_cap": n.data.get("node_cap"), "nodes_used": n.data.get("nodes")} if kind == "gap" and n.data.get("route") is not None else None))
+            ids[n.id] = f.id
+        return len(ids)
+
+    def stats(self) -> dict:
+        return {"kept": self.kept, "revalidated": self.revalidated, "reread": self.reread, "new": self.new, "flagged": self.flagged, "queued": self.queued, "audited": self.audited,
+                "audit_differed": self.audit_differed, "facts": len(self.store.facts), "stale_now": len(self.store.stale)}
+
+
+def way_verdict(r: Reading, t: Unit, asker: str, way: tuple, routes: list, params: Params) -> "dict | None":
+    """The verdict of a way of more than one move, through the pool (the fact store) when the reading has one: a fact not flagged by a move is served as it is (marked `kept`), a flagged one whose
+    cells are in fact unchanged is served after the comparison (`revalidated`), one whose cells changed is read again (`reread`), a new way is read; every verdict is filed (claim, kill or gap)."""
+    pool = r.pool
+    key = (place_text(t.at), r.absolute(t.side), place_text(way[1].at), place_text(way[2]), way[3])
+    state = None
+    if pool is not None:
+        fact, state = pool.lookup(key, r.position)
+        if fact is not None:
+            stored = fact.payload["verdict"]
+            if pool.audit_every:
+                pool._would_keep += 1
+                if pool._would_keep % pool.audit_every == 0:
+                    fresh = search_way(r, t, asker, way, routes, params)
+                    if fresh is not None:
+                        pool.audited += 1
+                        pool.audit_differed += fresh["verdict"] != stored["verdict"]
+            return dict(stored, pool=state)
+    v = search_way(r, t, asker, way, routes, params)
+    if v is None:
+        return None
+    if pool is not None:
+        v["pool"] = state
+        pool.add(key, (place_text(t.at), r.absolute(t.side), r.absolute(asker)), v, r.position)
+    return v
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- layer two: the obstacles, one follow-up question each
+
+UNREAD = "not read"
+
+
+def question_node(r: Reading, q: Question) -> Node:
+    n = r.graph.node("question", q.label(), key=("q", id(q)), target=q.target, asker=q.asker)
+    if n.stake_high is None:
+        n.stake_high = q.stake
+    q.node = n.id
+    return n
+
+
+def way_node(r: Reading, q: Question, way: tuple) -> Node:
+    g, u = r.graph, way[1]
+    arrive = "already bears on it" if way[0] == 0 else f"{way[0]} hop{'s' if way[0] != 1 else ''} to {place_text(way[2])}"
+    n = g.node("way", f"can {unit_words(u)} come to bear on {unit_words(q.target)} ({arrive})", key=("w", id(q), way[:4]), target=q.target, asker=q.asker)
+    g.link(question_node(r, q), n, "needs", because=f"the attack needs {unit_words(u)} to arrive" if way[0] else f"{unit_words(u)} is the unit that bears on it")
+    return n
+
+
+def obstacle_node(r: Reading, q: Question, way: tuple, ob: Obstacle) -> Node:
+    g = r.graph
+    n = g.node("obstacle", _obstacle_words(ob, q.asker), key=("o", id(q), ob.kind, ob.place))
+    g.link(way_node(r, q, way), n, "blocked_by", because=_obstacle_words(ob, q.asker), gone=unit_words(ob.unit) if ob.unit else "the obstacle",
+             then=f"the route would take {way[0]} hop{'s' if way[0] != 1 else ''}" if way[0] else "it would bear on it at once")
+    return n
+
+
+def _by_place(r: Reading) -> dict:
+    return {place_text(u.at): u for u in r.units}
+
+
+def counterfactual_obstacles(r: Reading, q: Question, way: tuple, route: Route, params: Params, base: str) -> tuple:
+    """The obstacles of a route, FOUND BY THE COUNTERFACTUAL, not listed by shape. Each step of the route (a hop, then the final strike on the goal place) is asked of the kernel on `base` (for a
+    later step on a hypothetical board with the unit already on the step's first place). A step the kernel offers is not blocked. For a step it does not offer, every other unit is removed in
+    turn (on a hypothetical board: never a position of the game) and the kernel is asked again: each unit whose removal lets the step be made is an obstacle, whatever the reason ("without X the
+    step can be made"), described by a word read from facts already held (it stands on a place passed over / on the landing place / strikes the asker's goal unit) with `other` as the default.
+    If no single removal does it, pairs up to `params.pair_cap` are tried, else the step is recorded as one no single unit accounts for. A question examines at most `params.max_blocked_steps`
+    blocked steps; the rest are returned as cut (not read). -> (obstacles, cut)."""
+    codec, variant, med = r.env.codec, r.env.variant, r.env.medium()
+    origin, unit = place_text(route.unit.at), route.unit
+    side = r.absolute(unit.side)
+    by_place = _by_place(r)
+    goal = route.goal or place_text(q.target.at)
+    arrival = place_text(route.places[-1]) if route.places else origin
+    steps = [(origin if i == 0 else place_text(route.places[i - 1]), place_text(p), route.over[i] if i < len(route.over) else (), i) for i, p in enumerate(route.places)]
+    steps.append((arrival, goal, med.over(unit.kind, side, arrival, goal) if (unit.kind, side) not in med.takes else (), len(route.places)))
+    out, cut = [], False
+    asker_goal = r.goal_unit(q.asker)
+    for a_place, b_place, over, idx in steps:
+        t0 = time.perf_counter()
+        calls = 1
+        pos = base if a_place == origin else codec.relocate(base, origin, a_place)
+        if pos is None:
+            continue
+        try:
+            st = r.state_of(pos)
+        except Exception:
+            continue
+        if st[3] is not None or codec.find_move(pos, a_place, b_place) in list(st[2]):
+            continue                                                   # the kernel offers the step: nothing blocks it
+        if q.blocked >= params.max_blocked_steps:
+            cut = True
+            r.cf_cut += 1
+            continue
+        q.blocked += 1
+        found, rejected = [], 0
+        for h in codec.units(pos):
+            if h == a_place:
+                continue
+            try:
+                st2 = r.state_of(codec.without(pos, h))
+            except Exception:
+                calls += 1
+                rejected += 1
+                continue                                               # the kernel rejects the board without it (a goal unit): not a position
+            calls += 1
+            if st2[3] is None and codec.find_move(codec.without(pos, h), a_place, b_place) in list(st2[2]):
+                found.append(h)
+        if not found and params.pair_cap > 0:
+            import itertools
+            tried = 0
+            for first, second in itertools.combinations([h for h in codec.units(pos) if h != a_place], 2):
+                if tried >= params.pair_cap:
+                    break
+                tried += 1
+                calls += 1
+                try:
+                    pos2 = codec.without(codec.without(pos, first), second)
+                    st2 = r.state_of(pos2)
+                except Exception:
+                    continue
+                if st2[3] is None and codec.find_move(pos2, a_place, b_place) in list(st2[2]):
+                    found = [first, second]
+                    break
+        words = []
+        for h in found:
+            v = by_place.get(h)
+            if v is None:
+                continue
+            if h in over:
+                kind = "stands on a place passed over"
+            elif h == b_place:
+                kind = "stands on the landing place"
+            elif asker_goal is not None and v != asker_goal and asker_goal.at in r.strikes_of(v):
+                kind = "strikes the asker's goal unit"
+            else:
+                kind = "other"
+            words.append(kind)
+            out.append(Obstacle(kind, v, h, idx, f"without {unit_words(v)} the step from {a_place} to {b_place} can be made, read on the board without it", True))
+        if not words:
+            out.append(Obstacle("none", None, b_place, idx, f"no single unit accounts for the step from {a_place} to {b_place}" + (" (pairs tried)" if params.pair_cap else "") + (f"; {rejected} removals were rejected by the kernel as not a position" if rejected else ""), True, True))
+            words = ["none"]
+        r.cf_log.append({"ms": 1000 * (time.perf_counter() - t0), "calls": calls, "found": len(found) if found else 0, "words": words, "pair": len(found) == 2, "rejected": rejected})
+    return out, cut
+
+
+def goal_sign(r: Reading, side: str, params: Params) -> bool:
+    """The goal unit of `side` is under the sign: struck now (level 0 live) or at most `max_open_exits` exits open with an asker unit near (level 1 live), as the sheet reads it."""
+    g = r.goal_unit(side)
+    if g is None:
+        return False
+    qq = Question(g, OTHER if side == SELF else SELF, 1.0, 0, goal=True)
+    return level0(qq, r, params)[0] == LIVE or level1(qq, r, params)[0] == LIVE
+
+
+def cost_of_leaving(r: Reading, q: Question, u: Unit, mv: "str | None", base: "str | None", params: Params) -> dict:
+    """What changes for the asker's side when `u` is no longer on its place. Its first step `mv` is played for real from `base` (the other side then to move); when the step is not legal the board
+    without the unit is used (marked) and the other side is given the move by the kernel's pass. In that position the cheap verdicts are read for the asker's side's other units: the exchange frame
+    `lost where it stands` for each weighty unit that was not lost before, and the goal unit's sign. Each unit newly lost, or goal unit newly under the sign, is a DUTY the unit was holding.
+    -> {read, mark, duties: [{unit, stake, kind, value}]}"""
+    key = ("duty", q.asker, place_text(u.at), mv)
+    if key in r._frames:
+        return r._frames[key]
+    codec, variant, origin = r.env.codec, r.env.variant, place_text(u.at)
+    out = {"read": False, "mark": "", "duties": []}
+    child, mark = None, "read after the step"
+    if base is not None:
+        if mv is not None:
+            st = r.state_of(base, mv)
+            child = st[0] if st[3] is None else None
+        else:
+            mark = "read on the board without it (its step is not legal)"
+            try:
+                pos = codec.without(base, origin)
+                r.state_of(pos)
+                got = CE.passed(variant, pos, [])
+                child = got[0] if got else None
+            except Exception:
+                child = None
+    if child is None:
+        r._frames[key] = out
+        return out
+    out.update(read=True, mark=mark)
+    for v in r.units:
+        if v.side != q.asker or v == u or not r.weighty(v) or v == r.goal_unit(q.asker):
+            continue
+        if codec.kind_at(child, place_text(v.at)) is None:
+            continue
+        if exchange_stands(r, v, q.owner, params)["value"] > 0:
+            continue                                                   # it was lost before: not a duty of this unit
+        ex = _solve(r, _RealExchange(r, v.at), child, lambda p, m: m, params, "given")
+        r.frame_log.pop()
+        if ex["value"] > 0:
+            out["duties"].append({"unit": v, "stake": r.weight(v), "kind": "newly lost", "value": ex["value"]})
+    g = r.goal_unit(q.asker)
+    if g is not None and g != u:
+        try:
+            after_reading = r._frames.get(("reading", child)) or Reading(r.env, child, r.worth)
+            r._frames[("reading", child)] = after_reading
+            if ("sign", q.asker) not in r._frames:
+                r._frames[("sign", q.asker)] = goal_sign(r, q.asker, params)
+            if goal_sign(after_reading, OTHER, params) and not r._frames[("sign", q.asker)]:
+                out["duties"].append({"unit": g, "stake": r.weight(g), "kind": "goal unit newly under the sign", "value": 0.0})
+        except ValueError:
+            pass
+    r._frames[key] = out
+    return out
+
+
+def takeover_words(r: Reading, q: Question, u: Unit, duty: dict, params: Params) -> str:
+    """The cheap layers' answer to "can another unit of the asker take over the duty": the asker's other units that could come, within reach_k hops, to a place that strikes the held unit's place;
+    the deeper reading is left open."""
+    med = r.env.medium()
+    held = place_text(duty["unit"].at)
+    if med is None:
+        return "not read: no medium"
+    got = []
+    for v in r.units:
+        if v.side != q.asker or v in (u, duty["unit"]):
+            continue
+        side = r.absolute(v.side)
+        if any(0 < (med.distance(v.kind, side, place_text(v.at), p) or 99) <= params.reach_k for p in med.strike_places(v.kind, side, held)):
+            got.append(v)
+    return (f"{len(got)} other unit{'s' if len(got) != 1 else ''} of {side_word(q.asker)} could come to bear on {held} within {params.reach_k} hops: {_names(got[:3])}" if got
+            else f"no other unit of {side_word(q.asker)} can come to bear on {held} within {params.reach_k} hops") + "; whether it would hold is not read"
+
+
+def ask_obstacle(r: Reading, q: Question, way: tuple, route: Route, ob: Obstacle, params: Params, base: "str | None") -> dict:
+    """The follow-up question on one obstacle, by the kernel's real moves from the base position (the asker to move). An own unit in the way: does it have a move that leaves the route
+    clear, and what does leaving cost (the other side's exchange frame on the place it lands and on each own unit it was guarding, and the duties it holds, read after the move; at least what that
+    costs, the board as it stands)? The other side's unit: will not move for us; can it be taken (the exchange frame on it, started by the asker)? -> {verdict: movable | takeable | dead | not read,
+    text, then, cost, more, duties}."""
+    if ob.dead or ob.unit is None:
+        return {"verdict": "dead", "text": ob.note or "no single unit accounts for it", "then": "", "cost": 0.0, "more": 0, "duties": []}
+    if params.obstacle_depth < 1 or base is None:
+        return {"verdict": UNREAD, "text": "the follow-up question is not read (depth cap or no base position)", "then": "", "cost": 0.0, "more": 0, "duties": []}
+    key = ("obstacle", q.asker, ob.place, tuple(place_text(p) for p in route.places), ob.kind)
+    if key in r._frames:
+        return r._frames[key]
+    codec, u = r.env.codec, ob.unit
+    if u.side == q.asker:
+        legal = list(r.state_of(base)[2])
+        keep = {place_text(p) for p in route.places} | {x for ov in route.over for x in ov} | {place_text(route.unit.at)}
+        cands = [m for m in codec.moves_of(ob.place, legal) if codec.move_ends(m)[1] not in keep]
+        if not cands:
+            out = {"verdict": "dead", "text": f"{unit_words(u)} has no move that leaves the route clear", "then": "", "cost": 0.0, "more": 0, "duties": []}
+        else:
+            guarded = [g for g in r.units if g.side == u.side and g != u and g.at in r.strikes_of(u)]
+            best = None
+            for m in cands[:params.max_obstacle_moves]:
+                child = r.state_of(base, m)
+                if child[3] is not None:
+                    cost = 0.0
+                else:
+                    cost = 0.0
+                    for place in [codec.move_ends(m)[1]] + [place_text(g.at) for g in guarded]:
+                        if codec.kind_at(child[0], place) is None:
+                            continue
+                        ex = _solve(r, _RealExchange(r, tuple(place)), child[0], lambda pos, mv: mv, params, "given")
+                        r.frame_log.pop()
+                        cost = max(cost, ex["value"])
+                if best is None or cost < best[0]:
+                    best = (cost, m)
+                if cost <= 0:
+                    break
+            duties = cost_of_leaving(r, q, u, best[1], base, params) if params.duties else {"duties": []}
+            held = "; it holds " + ", ".join(unit_words(d["unit"]) for d in duties["duties"]) if duties["duties"] else ""
+            more = "it can move away, one move more" + (f", at a cost of at least {best[0]:g}" if best[0] > 0 else "") + held
+            out = {"verdict": "movable", "text": f"{unit_words(u)}: {more} ({best[1]})", "then": f"the route holds in {way[0]} hops, {way[0] + 1} moves with the one that clears it", "cost": best[0], "more": 1,
+                   "duties": duties["duties"]}
+    else:
+        ex = _solve(r, _RealExchange(r, tuple(ob.place)), base, lambda pos, mv: mv, params, "given")
+        r.frame_log.pop()
+        if ex["value"] > 0:
+            out = {"verdict": "takeable", "text": f"{unit_words(u)} will not move for us, but it can be taken: the exchange there is worth {ex['value']:g} to us, one move more",
+                   "then": f"the route holds in {way[0]} hops, {way[0] + 1} moves with the taking", "cost": 0.0, "more": 1, "duties": []}
+        else:
+            out = {"verdict": "dead", "text": f"{unit_words(u)} will not move for us and cannot be taken: the exchange on {ob.place} pays nothing", "then": "", "cost": 0.0, "more": 0, "duties": []}
+    r._frames[key] = out
+    return out
+
+
+def _unit_node(r: Reading, q: Question, u: Unit) -> Node:
+    return r.graph.node("unit", unit_words(u), key=("u", id(q), u), target=u, asker=q.asker)
+
+
+def _stop_unit(r: Reading, base: str, res: dict) -> "tuple | None":
+    """(unit, place) of the unit that made the refuting answer, read on `base` (None when the answer is the target's own move or the unit is not found)."""
+    hard = [x for x in res.get("stops", []) if x.kind == "hard" and x.mover]
+    if not hard:
+        return None
+    place = hard[0].mover[0]
+    v = _by_place(r).get(place)
+    return (v, place) if v is not None else None
+
+
+def _settle_way(r: Reading, q: Question, way: tuple, params: Params) -> dict:
+    """The verdict of one way at level 2, as a result entry. A clear route of one move is read after its first move (the earlier form). Otherwise every route (the best-ordered first) has its
+    obstacles found by the counterfactual and asked about, one follow-up question each; a route with a dead obstacle is dead (that unit is the reason), one with an obstacle not read is not read,
+    and the routes left, clear or with answerable obstacles, are followed whole by the route reasoner. A way is never refuted for what was not read."""
+    t, asker, j = q.target, q.asker, way[0]
+    routes = list(q.findings[1].detail.get("routes", {}).get(way[:4]) or [])
+    g = r.graph
+    wn = way_node(r, q, way)
+    if not params.routes or (j == 1 and (not routes or any(not x.obstacles for x in routes))) or (j >= 1 and not routes):
+        key = ("after", t, asker, way[:4])
+        if key not in r._frames:
+            r._frames[key] = exchange_after(r, t, asker, way, params)
+        v = r._frames[key]
+        verdict = CONFIRMED_V if v["value"] > 0 else REFUTED_V
+        wn.verdict, wn.answer = verdict, f"after its first move the exchange is worth {v['value']:g}" if v["value"] > 0 else "after its first move the exchange pays nothing"
+        return {"way": way, "move": v["line"][0] if (v["line"] and v["source"] == "given") else None, "status": verdict, "route": routes[0] if routes else None, **v}
+    base = r.position if asker == SELF else r.passed_position()
+    if params.duties and j >= 1 and base is not None and routes and routes[0].places:
+        early = _duty_reading(r, q, way, routes[0], base, params)             # the first question: what changes if this unit leaves
+        if early["duties"] and max(d["stake"] for d in early["duties"]) > q.stake:
+            big = max(early["duties"], key=lambda d: d["stake"])
+            for ask in ("what obstacles does it meet on its way", "what is the other side likely to do"):
+                nn = g.node("follow_up", ask, key=("f", id(q), way[:4], ask), answer=f"not read: leaving drops {unit_words(big['unit'])} (stake {big['stake']:g}), more than the attack could win ({q.stake:g})",
+                            verdict=UNREAD, target=q.target, asker=asker)
+                g.link(wn, nn, "needs", because="asked after the cost of leaving, which already settles it")
+            rt0 = routes[0]
+            entry = {"way": way, "move": None, "status": WAITING_V, "verdict": WAITING_V, "value": 0.0, "line": (), "source": "route", "open": False, "route": rt0, "nodes": 0, "seconds": 0.0,
+                     "answer": f"{unit_words(way[1])} holds {unit_words(big['unit'])} (stake {big['stake']:g}), more than the attack could win ({q.stake:g}); its route was not read",
+                     "alts": [("duty", (place_text(d["unit"].at),), f"something else holds {unit_words(d['unit'])}") for d in early["duties"]], "breaks": [], "obstacles": [], "stops": [],
+                     "reads": frozenset({place_text(t.at), place_text(way[1].at)} | {place_text(p) for p in rt0.places} | {place_text(d["unit"].at) for d in early["duties"]}),
+                     "duties": early["duties"], "duty_mark": early["mark"], "held_back": True, "skipped": True, "first_obstacles": [], "tried": 0, "cut": 0}
+            wn.verdict, wn.answer = WAITING_V, entry["answer"]
+            for kind, text, because in _graph_edges(entry):
+                g.link(wn, g.node("answer" if kind != "waits_on" else "condition", text, key=("a", id(q), way[:4], kind, text)), kind, because=because)
+            for d in early["duties"]:
+                fu = g.node("follow_up", "can another unit of mine take over the duty", key=("f", id(q), "takeover", d["unit"]), answer=takeover_words(r, q, way[1], d, params), verdict="cheap layers only", asker=asker)
+                g.link(wn, fu, "if_removed", because="the duty relieved", gone=unit_words(way[1]), then="it could travel")
+            return entry
+    walk, dead, unread, followed, first_obs = [], [], [], [], None
+    for rt in routes[:params.max_routes]:
+        if base is not None and r.env.medium() is not None:
+            obs_list, cut = counterfactual_obstacles(r, q, way, rt, params, base)
+        else:
+            obs_list, cut = list(rt.obstacles), False
+        if first_obs is None:
+            first_obs = [(o.unit.side if o.unit else None, o.kind, o.dead) for o in obs_list]
+        answers = []
+        for n, ob in enumerate(obs_list):
+            on = obstacle_node(r, q, way, ob)
+            ans = ask_obstacle(r, q, way, rt, ob, params, base)
+            answers.append((ob, ans))
+            fu = g.node("follow_up", "can it be taken" if ob.unit and ob.unit.side != asker else "can it move away", key=("f", id(q), ob.kind, ob.place), answer=ans["text"], verdict=ans["verdict"],
+                        target=ob.unit, asker=asker)
+            g.link(on, fu, "if_removed", because=ans["text"], gone=unit_words(ob.unit) if ob.unit else "it", then=ans["then"])
+            if ans["verdict"] == "dead":
+                bound(fu, 0.0, 0.0)
+                bound(on, 0.0, 0.0)
+            followed.append((ob, ans))
+        if cut:
+            cutob = Obstacle("other", None, "", len(rt.places), "blocked steps beyond the cap were not read")
+            answers.append((cutob, {"verdict": UNREAD, "text": "not read: more blocked steps than the cap", "then": "", "cost": 0.0, "more": 0, "duties": []}))
+        bad = next(((ob, a) for ob, a in answers if a["verdict"] == "dead"), None)
+        if bad:
+            dead.append((rt, bad))
+        elif any(a["verdict"] == UNREAD for _o, a in answers):
+            unread.append(rt)
+        else:
+            walk.append(rt)
+    entry: dict
+    if j == 0:                                                         # it bears on the target in place, but a unit stands in the line
+        if dead:
+            ob, a = dead[0][1]
+            verdict, text = REFUTED_V, f"{a['text']}"
+        elif unread:
+            verdict, text = UNSETTLED_V, "the obstacles were not read"
+        else:
+            verdict, text = WAITING_V, "; ".join(a["text"] for _o, a in followed[:2]) if followed else "nothing stands in the line"
+        alts = [("vacated" if a["verdict"] == "movable" else "taken", (ob.place,), f"{unit_words(ob.unit)} {'moves away' if a['verdict'] == 'movable' else 'is taken'}") for ob, a in followed if ob.unit] if verdict == WAITING_V else []
+        entry = {"way": way, "move": None, "status": verdict, "verdict": verdict, "value": 0.0, "line": (), "source": "route", "open": verdict == UNSETTLED_V, "answer": text, "alts": alts, "breaks": [],
+                 "route": routes[0] if routes else None, "nodes": 0, "seconds": 0.0, "reads": frozenset(ob.place for ob, _a in followed), "obstacles": followed, "stops": []}
+    else:
+        v = way_verdict(r, t, asker, way, walk, params) if walk else None
+        if walk and v is None:                                         # the asker not to move and no pass: read after the first move, marked
+            key = ("after", t, asker, way[:4])
+            if key not in r._frames:
+                r._frames[key] = exchange_after(r, t, asker, way, params)
+            v0 = r._frames[key]
+            verdict = CONFIRMED_V if v0["value"] > 0 else REFUTED_V
+            return {"way": way, "move": None, "status": verdict, "route": routes[0], **v0}
+        if v is None:
+            if unread:
+                v = {"verdict": UNSETTLED_V, "value": 0.0, "line": (), "route": unread[0], "answer": "the obstacles on the routes were not read", "alts": [], "breaks": [], "nodes": 0, "seconds": 0.0,
+                     "reads": frozenset(), "routes_tried": 0, "stops": []}
+            else:
+                rt, (ob, a) = dead[0]
+                v = {"verdict": REFUTED_V, "value": 0.0, "line": (), "route": rt, "answer": a["text"], "alts": [], "breaks": [], "nodes": 0, "seconds": 0.0, "reads": frozenset(),
+                     "routes_tried": 0, "stops": []}
+        elif v["verdict"] == REFUTED_V and unread:
+            v = dict(v, verdict=UNSETTLED_V, answer=v["answer"] + f" (the obstacles on {len(unread)} other routes were not read)")
+        entry = {**v, "way": way, "status": v["verdict"], "move": v["line"][0] if v["line"] else None, "source": "route", "open": v["verdict"] == UNSETTLED_V, "obstacles": followed,
+                 "dead_routes": len(dead), "unread_routes": len(unread)}
+    entry["first_obstacles"] = first_obs or []
+    wn.verdict, wn.answer = entry["status"], entry.get("answer", "")
+    _bound_way(wn, entry)
+    for kind, text, because in _graph_edges(entry):
+        g.link(wn, g.node("answer" if kind != "waits_on" else "condition", text, key=("a", id(q), way[:4], kind, text)), kind, because=because)
+    _refute_counterfactual(r, q, way, entry, base, params)
+    return entry
+
+
+def _duty_reading(r: Reading, q: Question, way: tuple, route: Route, base: str, params: Params) -> dict:
+    """The first question about a unit that is to join: what changes if it leaves (the cost of leaving), read after its first step on the route (or on the board without it when the step is not
+    legal). Recorded in the graph: the unit holds each duty found (`holds`)."""
+    u, codec = way[1], r.env.codec
+    mv = codec.find_move(base, place_text(u.at), place_text(route.places[0]))
+    if mv is not None and mv not in list(r.state_of(base)[2]):
+        mv = None
+    cost = cost_of_leaving(r, q, u, mv, base, params)
+    if cost["duties"]:
+        g = r.graph
+        un = _unit_node(r, q, u)
+        for d in cost["duties"]:
+            dn = g.node("duty", f"it holds {unit_words(d['unit'])}", key=("d", id(q), u, d["unit"]), answer=f"stake {d['stake']:g}, {d['kind']}, {cost['mark']}", target=d["unit"], asker=q.asker)
+            g.link(un, dn, "holds", because=f"{unit_words(u)} {d['kind']} when it leaves ({cost['mark']}); stake {d['stake']:g}", gone=unit_words(u), then=f"{unit_words(d['unit'])} would stay safe")
+            bound(dn, d["stake"], d["stake"])
+    return cost
+
+
+def _bound_way(wn: Node, entry: dict) -> None:
+    """The way node's bound from its verdict: confirmed, both ends at its value; refuted, both at 0; waiting, 0 to what it would be worth if its conditions held; not settled, as it was."""
+    wn.tried, wn.cut = entry.get("tried", 0), entry.get("cut", 0)
+    wn.reads = frozenset(entry.get("reads", ()))
+    rt = entry.get("route")
+    wn.data = {"route": [place_text(p) for p in rt.places] if rt is not None else None, "node_cap": entry.get("node_cap"), "nodes": entry.get("nodes"),
+               "waits_on": [c[2] for c in entry.get("alts", [])], "breaks": [x.words for x in entry.get("breaks", []) if hasattr(x, "words")]}
+    st = entry["status"]
+    if st == CONFIRMED_V:
+        bound(wn, entry["value"], entry["value"])
+    elif st == REFUTED_V:
+        bound(wn, 0.0, 0.0)
+    elif st == WAITING_V and entry.get("value", 0) > 0:
+        bound(wn, 0.0, entry["value"])
+
+
+def _refute_counterfactual(r: Reading, q: Question, way: tuple, entry: dict, base: "str | None", params: Params) -> None:
+    """A refuted route: the refuting answer's unit is the obstacle. Would the route be confirmed without that unit (the route's search rerun on the board without it, the same node cap)? If so the
+    graph gets an if_removed edge "without X this is worth V", and the follow-up "can it be taken"; "driven off" and "drawn away" stay open nodes marked not read."""
+    if not (params.refute_counterfactual and entry["status"] == REFUTED_V and base is not None and entry.get("route") is not None and entry.get("stops")):
+        return
+    found = _stop_unit(r, base, entry)
+    if found is None or found[1] == place_text(q.target.at):
+        return
+    u, place = found
+    codec = r.env.codec
+    try:
+        pos = codec.without(base, place)
+        r.state_of(pos)
+    except Exception:
+        return
+    res = _Walk(r, q.target, q.asker, entry["route"], params, pos, params.route_nodes).run()
+    entry["without_stopper"] = {"unit": u, "verdict": res.verdict, "value": res.value}
+    if res.verdict != CONFIRMED_V:
+        return
+    g = r.graph
+    ans = g.node("answer", entry["answer"], key=("a", id(q), way[:4], "stopped_by", entry["answer"]))
+    taken = ask_obstacle(r, q, way, entry["route"], Obstacle("answers and stops the route", u, place, 0), params, base)
+    fu = g.node("follow_up", "can it be taken", key=("f", id(q), "stopper", place), answer=taken["text"], verdict=taken["verdict"], target=u, asker=q.asker)
+    g.link(ans, fu, "if_removed", because=f"read on the board without {unit_words(u)}", gone=unit_words(u), then=f"without {unit_words(u)} this is worth {res.value:g}")
+    for what in ("driven off", "drawn away"):
+        g.link(ans, g.node("follow_up", f"can it be {what}", key=("f", id(q), what, place), answer="not read", verdict=UNREAD, target=u, asker=q.asker), "if_removed", because="left open",
+               gone=unit_words(u), then=f"without {unit_words(u)} this is worth {res.value:g}")
+    entry["if_removed_value"] = res.value
+
+
+def time_obstacle(r: Reading, q: Question, way: tuple, entry: dict) -> None:
+    """A confirmed way that takes n moves, while a confirmed or waiting way of the OTHER side on a unit of at least the same stake, already held (the sheet's other questions, the pool), needs
+    fewer: the obstacle `time`. Read only from what is held, nothing searched."""
+    n = way[0]
+    best = None
+    for q2 in getattr(r, "questions", []):
+        if q2.quiet or q2.target is None or q2.asker == q.asker or q2.stake < q.stake:
+            continue
+        deep = next((x for x in q2.findings if x.level >= 2 and x.detail.get("results")), None)
+        for x in (deep.detail["results"] if deep else ()):
+            w = x.get("way")
+            if w is not None and w[0] >= 1 and x["status"] in (CONFIRMED_V, WAITING_V) and w[0] < n and (best is None or w[0] < best[0]):
+                best = (w[0], unit_words(q2.target), "their" if q2.asker == OTHER else "my")
+    if best is None and r.pool is not None:
+        mine = r.absolute(q.asker)
+        for fact in r.pool.ways():
+            question, verdict = fact.payload["question"], fact.payload["verdict"]
+            rt = verdict.get("route")
+            if question[2] != mine and verdict["verdict"] in (CONFIRMED_V, WAITING_V) and rt is not None and 1 <= len(rt.places) < n:
+                kind = r.env.codec.kind_at(r.position, question[0])
+                if kind is not None and r.worth_of(kind) >= r.worth_of(q.target.kind):
+                    best = (len(rt.places), f"the unit on {question[0]}", "their" if question[2] == r.absolute(OTHER) else "my")
+    if best is None:
+        return
+    note = f"{best[2]} way on {best[1]} lands first (in {best[0]} moves)"
+    entry["time"] = note
+    g = r.graph
+    ob = g.node("obstacle", f"time: {note}", key=("time", id(q), way[:4]))
+    g.link(way_node(r, q, way), ob, "blocked_by", because=note, gone="that way", then=f"this one would be the first (in {n} moves)")
+
+
+def apply_duties(r: Reading, q: Question, way: tuple, entry: dict, params: Params) -> None:
+    """THE COST OF LEAVING for a confirmed way: the unit that travels may hold something where it stands. The route's value is the target's frame less the largest stake among the duties dropped;
+    if that is not above 0 the way is WAITING (`waits_on`: something else holds the unit), with the follow-up question whether another unit can take over."""
+    if not params.duties or entry["status"] != CONFIRMED_V or way[0] < 1:
+        return
+    base = r.position if q.asker == SELF else r.passed_position()
+    if base is None:
+        return
+    routes = q.findings[1].detail.get("routes", {}).get(way[:4]) or []
+    route = entry.get("route") or (routes[0] if routes else None)
+    if route is None or not route.places:
+        return
+    u = way[1]
+    cost = _duty_reading(r, q, way, route, base, params)
+    entry["duties"] = cost["duties"]
+    entry["duty_mark"] = cost["mark"]
+    if not cost["duties"]:
+        return
+    g = r.graph
+    wn = way_node(r, q, way)
+    biggest = max(cost["duties"], key=lambda d: d["stake"])
+    entry["held_value"] = entry["value"]
+    if entry["value"] - biggest["stake"] > 0:
+        wn.stake_low = wn.stake_high = entry["value"] - biggest["stake"]       # a confirmed frame less the duty dropped
+        return
+    wn.stake_low, wn.stake_high = 0.0, entry["value"]                         # it would be worth the frame if the duty were taken over
+    entry["status"] = entry["verdict"] = WAITING_V
+    entry["alts"] = list(entry.get("alts", [])) + [("duty", (place_text(d["unit"].at),), f"something else holds {unit_words(d['unit'])}") for d in cost["duties"]]
+    entry["answer"] = f"{unit_words(u)} holds {unit_words(biggest['unit'])} (stake {biggest['stake']:g}, more than the {entry['value']:g} the route wins)"
+    entry["breaks"] = []
+    entry["held_back"] = True
+    wn.verdict, wn.answer = WAITING_V, entry["answer"]
+    for d in cost["duties"]:
+        cn = g.node("condition", f"something else holds {unit_words(d['unit'])}", key=("a", id(q), way[:4], "waits_on", d["unit"]))
+        g.link(wn, cn, "waits_on", because="it would hold if another unit took over the duty")
+        fu = g.node("follow_up", "can another unit of mine take over the duty", key=("f", id(q), "takeover", d["unit"]), answer=takeover_words(r, q, u, d, params), verdict="cheap layers only", asker=q.asker)
+        g.link(g.nodes[cn.id], fu, "if_removed", because="the duty relieved", gone=unit_words(u), then="it could travel")
+
+
+def settle_way(r: Reading, q: Question, way: tuple, params: Params) -> dict:
+    """`_settle_way` with the cost of leaving and the time obstacle applied, and the time it took (obstacle questions and route walks both) and the nodes the route walks used."""
+    key = ("settled", q.target, q.asker, way[:4])
+    if key not in r._frames:                                          # a deeper level asks again: the same position, the same answer, and the pool is asked once
+        t0 = time.perf_counter()
+        entry = _settle_way(r, q, way, params)
+        apply_duties(r, q, way, entry, params)
+        if entry["status"] == CONFIRMED_V:
+            time_obstacle(r, q, way, entry)
+        entry["seconds_total"] = time.perf_counter() - t0
+        entry.setdefault("nodes", 0)
+        r._frames[key] = entry
+    return r._frames[key]
+
+
+def _graph_edges(entry: dict) -> list:
+    """(edge kind, node text, because) for a verdict: the owner's answer that refutes (stopped_by), what a waiting way waits on (waits_on) and the answers that would stop it (breaks)."""
+    out = []
+    if entry["status"] == REFUTED_V and entry.get("answer"):
+        out.append(("stopped_by", entry["answer"], "the route cannot be completed against it"))
+    if entry["status"] == WAITING_V:
+        out += [("waits_on", c[2], "it would hold if this were so") for c in entry.get("alts", [])]
+        out += [("breaks", x.words, "that answer stops it") for x in entry.get("breaks", []) if hasattr(x, "words")]
+    return out
+
+
 def cornering(r: Reading, t: Unit, asker: str, params: Params = Params()) -> dict:
     """Is the unit cornered: lost where it stands (the exchange frame of the asker says so) and lost on every place it can go to. The owner to move: its real legal moves, each read with
     the asker to move (the real frame). The owner not to move: the same on the passed position (the owner to move by the kernel's pass); when the pass is refused, its `go` places from the fact view, each read by the static form with the unit placed there. A unit with no place to go
@@ -790,28 +2186,30 @@ def cornering(r: Reading, t: Unit, asker: str, params: Params = Params()) -> dic
     return {"cornered": lost_now and all(lost for _p, lost in places), "lost_now": lost_now, "places": places, "open_exits": sum(1 for _p, lost in places if not lost)}
 
 
-SOURCE_WORDS = {"real": "real moves", "given": "the way's first move played, every answer, real moves", "static": "read from the board as it stands, lines behind not read"}
+SOURCE_WORDS = {"route": "the whole route followed, every answer, real moves", "real": "real moves", "given": "the way's first move played, every answer, real moves", "static": "read from the board as it stands, lines behind not read"}
 
 
 def level_frames(q: Question, r: Reading, params: Params) -> tuple:
-    """Level 2 of a non-goal unit by the exchange frame: the asker's frame on the target as it stands, then on the target after each way that passed the three links. CONFIRMED (live)
-    when the asker's value is above 0, REFUTED (closed) otherwise, with the line."""
+    """Level 2 of a non-goal unit by the exchange frame: the asker's frame on the target as it stands, then each way that passed the three links, judged by `settle_way` (a clear way of one move
+    after its first move; otherwise the obstacles asked about and the routes followed whole). The verdict of a way: CONFIRMED, REFUTED, WAITING (it waits on a condition, with what breaks it) or
+    NOT SETTLED. The question is LIVE when a way is confirmed, IDLE (the waiting records attached) when a way waits or is not settled, closed only when every way is refuted."""
     t0 = len(r.frame_log)
-    ways = sorted(q.findings[1].detail.get("supply", []) if len(q.findings) > 1 else [], key=lambda w: (w[0], w[1].kind, w[1].at, w[2]))[:params.max_ways]
+    supply = q.findings[1].detail.get("supply", []) if len(q.findings) > 1 else []
+    rank = q.findings[1].detail.get("rank", {}) if len(q.findings) > 1 else {}
+    ways = sorted(supply, key=lambda w: (w[0], rank.get(w, 0), w[1].kind, w[1].at, w[2]))[:params.max_ways]
     stands = exchange_stands(r, q.target, q.asker, params)
     results = [{"way": None, "move": None, "status": "confirmed" if stands["value"] > 0 else "refuted", **stands}]
     for way in ways:
-        if way[0] == 0:
+        if way[0] == 0 and way not in q.findings[1].detail.get("routes", {}):
             continue                                                  # a unit that strikes it now is the frame as it stands
-        key = ("after", q.target, q.asker, way[:4])
-        if key not in r._frames:
-            r._frames[key] = exchange_after(r, q.target, q.asker, way, params)
-        v = r._frames[key]
-        results.append({"way": way, "move": v["line"][0] if (v["line"] and v["source"] == "given") else None, "status": "confirmed" if v["value"] > 0 else "refuted", **v})
-    conf = [x for x in results if x["status"] == "confirmed"]
+        results.append(settle_way(r, q, way, params))
+    conf = [x for x in results if x["status"] == CONFIRMED_V]
+    wait = [x for x in results if x["status"] == WAITING_V]
+    unset = [x for x in results if x["status"] == UNSETTLED_V]
     side = side_word(q.asker)
-    detail = {"mode": "frame", "results": results, "confirmed": len(conf), "refuted": len(results) - len(conf), "open": 0, "lost_where_it_stands": stands["value"] > 0,
-              "sources": sorted({x["source"] for x in results}), "frame_steps": len(r.frame_log) - t0}
+    detail = {"mode": "frame", "results": results, "confirmed": len(conf), "refuted": len(results) - len(conf) - len(wait) - len(unset), "waiting": len(wait), "open": len(unset),
+              "lost_where_it_stands": stands["value"] > 0, "sources": sorted({x["source"] for x in results}), "frame_steps": len(r.frame_log) - t0, "waiting_ways": wait}
+    q.waiting = wait
     if stands["value"] > 0:
         detail.update(cornering(r, q.target, q.asker, params))
     if conf:
@@ -820,6 +2218,9 @@ def level_frames(q: Question, r: Reading, params: Params) -> tuple:
         where = "where it stands" if best["way"] is None else f"after {unit_words(best['way'][1])} comes to {place_text(best['way'][2])}"
         corner = ", and cornered" if detail.get("cornered") else ""
         return LIVE, f"the exchange {where} is worth {best['value']:g} to {side}: {' '.join(best['line']) or 'no taking'} ({SOURCE_WORDS[best['source']]}){corner}", detail
+    if wait or unset:
+        bits = [f"{x['way'][1].kind} to {place_text(x['way'][2])} waits: {x['answer']}" for x in wait[:2]] + [f"{x['way'][1].kind} to {place_text(x['way'][2])} not settled: {x['answer']}" for x in unset[:1]]
+        return IDLE, f"{len(wait)} ways wait and {len(unset)} are not settled, none confirmed; " + "; ".join(bits), detail
     x = results[0]
     return CLOSED, f"the exchange is stopped, worth nothing to {side}: {' '.join(x['line']) or 'no taking pays'} ({SOURCE_WORDS[x['source']]}); {len(results)} frames read", detail
 
@@ -860,6 +2261,48 @@ def level_quiet(q: Question, r: Reading, params: Params) -> tuple:
     return CLOSED, f"{unit_words(least)} does least: it strikes {strikes} places and can go to {places}", {"unit": least, "strikes": strikes, "places": places}
 
 
+def record_graph(q: Question, r: Reading, f: "Finding", params: Params) -> None:
+    """Add what a step found to the graph: the question's starting node, its ways (needs) and their obstacles (blocked_by) at level 1, the goal unit's weak places, the verdict at level 2."""
+    g = r.graph
+    qn = question_node(r, q)
+    d = f.detail
+    qn.verdict = f.status
+    qn.answer = f.text
+    if f.level >= 2 and f.status == LIVE and f.value is not None:
+        bound(qn, f.value, f.value)
+    elif f.level >= 2 and f.status == CLOSED:
+        bound(qn, 0.0, 0.0)
+    if f.level == 1 and not q.quiet:
+        for w in (d.get("supply") or [])[:params.max_ways]:
+            if w[0] == 0 and w not in (d.get("routes") or {}):
+                continue
+            way_node(r, q, w)
+            found = (d.get("routes") or {}).get(w[:4]) or []
+            for ob in (found[0].obstacles if found else ())[:params.max_obstacles]:
+                obstacle_node(r, q, w, ob)
+        if d.get("too_far"):
+            hops, u = d["far"][0]
+            n = g.node("answer", f"{unit_words(u)} is {hops} hops away", key=("far", id(q)), verdict="too far", target=q.target, asker=q.asker)
+            g.link(qn, n, "blocked_by", because=f"{unit_words(u)} is {hops} hops away, too far in time (reach is {params.reach_k})", gone=unit_words(u), then=f"it would be within {params.reach_k} hops")
+        for wp in d.get("weak", ()):
+            k = len(wp["candidates"])
+            need = wp["need"]
+            verdict = "can be brought" if k >= need else "cannot be brought"
+            ans = (f"{k} unit{'s' if k != 1 else ''} of {side_word(q.asker)} can come within {params.reach_k} hops" + (f": {_names([c[1] for c in wp['candidates'][:need]])}" if k else "")
+                   + "; not read by the reasoner (no unit stands on the place to exchange)")
+            wn = g.node("weak_place", f"can {side_word(q.asker)} bring {need} more unit{'s' if need != 1 else ''} to strike {wp['place']} ({len(wp['guards'])} guard it, {len(wp['strikers'])} strike it now)",
+                        key=("wp", id(q), wp["place"]), answer=ans, verdict=verdict, target=q.target, asker=q.asker)
+            g.link(qn, wn, "needs", because=f"{wp['place']} is guarded by {len(wp['guards'])} and struck by {len(wp['strikers'])}, so {need} more must strike it")
+            for hops, u, arrival in wp["candidates"][:need]:
+                cn = g.node("candidate", f"can {unit_words(u)} come to {arrival} ({hops} hops) and strike {wp['place']}", key=("wc", id(q), wp["place"], u),
+                            target=u, asker=q.asker, verdict="reaches")
+                g.link(wn, cn, "needs", because=f"the attack needs {unit_words(u)} to arrive")
+                found = geometric_routes(r, q.target, u, arrival, wp["place"], "strike", params)
+                for ob in (found[0].obstacles if found else ())[:params.max_obstacles]:
+                    on = g.node("obstacle", _obstacle_words(ob, q.asker), key=("wo", id(q), wp["place"], u, ob.place))
+                    g.link(cn, on, "blocked_by", because=_obstacle_words(ob, q.asker), gone=unit_words(ob.unit) if ob.unit else "the obstacle", then=f"it would take {hops} hops")
+
+
 def step(q: Question, r: Reading, params: Params = Params()) -> Finding:
     """Deepen the question by one level: what it found, what it cost, and whether it is now closed (with the reason in plain words), idle or live."""
     r.params_k = params.reach_k
@@ -879,6 +2322,8 @@ def step(q: Question, r: Reading, params: Params = Params()) -> Finding:
     new = status == LIVE and (value is None or q.best_value is None or value > q.best_value)
     f = Finding(q, level, status, text, cost, new, value, detail.get("line", ()), detail)
     q.findings.append(f)
+    if not q.quiet:
+        record_graph(q, r, f, params)
     q.spent += cost
     q.level += 1
     q.status = status
@@ -912,6 +2357,10 @@ class Sheet:
     read_seconds: float = 0.0
     reading: "Reading | None" = None
 
+    @property
+    def graph(self) -> Graph:
+        return self.reading.graph
+
 
 class _Costs:
     """The expected cost of a question's next step: the mean seen at that level, else the level below times a growth, else a prior."""
@@ -944,12 +2393,14 @@ def _record(sheet: Sheet, f: Finding, costs: _Costs, params: Params) -> None:
         q.urgency *= params.urgency_up
     elif f.status != CLOSED:
         q.urgency *= params.urgency_down
+        if f.status == IDLE and q.waiting and f.level >= 2:
+            q.urgency *= params.waiting_urgency
     if q.state == "open" and not q.quiet and q.level > params.max_level:
         q.state, q.closed_at, q.reason = "closed", f.level, "asked to the deepest level"
 
 
 def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_seconds: "float | None" = None, env: "Env | None" = None, game: "str | None" = None,
-        params: Params = Params()) -> Sheet:
+        params: Params = Params(), pool: "Pool | None" = None) -> Sheet:
     """The anytime schedule over the position's questions (see the module). Stops at `max_steps` steps or `budget_seconds` (default 40 steps when neither is given)."""
     if env is None:
         if game is None:
@@ -958,8 +2409,10 @@ def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_se
     t0 = time.perf_counter()
     r = Reading(env, position, worth)
     r.params_k = params.reach_k
+    r.pool = pool
     questions = first_order(r, params)
     sheet = Sheet(position, questions, read_seconds=r.read_seconds, reading=r)
+    r.questions = sheet.questions
     if max_steps is None and budget_seconds is None:
         max_steps = 40
     costs = _Costs(params)
@@ -1016,7 +2469,27 @@ def explain(sheet: Sheet) -> list:
         else:
             how = f"{q.status}, asked to level {q.level - 1}" + (f", best value {q.best_value}" if q.best_value is not None else "")
         out.append(f"  {q.rank}. {q.label()}: {how}")
+        deep = next((x for x in q.findings if x.level >= 2 and x.detail.get("results")), None)
+        for x in (deep.detail["results"] if deep else ()):
+            if x.get("way") is None or not x.get("route"):
+                continue
+            line = f"       way: {route_words(x['route'], q.target)}: {x['status'].upper()}"
+            if x["status"] == CONFIRMED_V:
+                line += f", worth {x['value']:g} against every answer"
+            elif x.get("answer"):
+                line += f": {x['answer']}"
+            if x["status"] == WAITING_V:
+                line += "; waits on " + "; ".join(c[2] for c in x.get("alts", [])) + "; broken by " + ("; ".join(b.words for b in x.get("breaks", []) if hasattr(b, "words")) or "nothing seen")
+            out.append(line)
     return out
+
+
+def explain_chain(sheet: Sheet, question: Question) -> list:
+    """One question's chain of claims from its starting node down: every line says "because ..." and, where an obstacle gives one, "if ... were gone then ..."."""
+    g = sheet.graph
+    if question.node is None:
+        return [f"{question.label()}: nothing recorded yet"]
+    return chain_lines(g, g.nodes[question.node])
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- the measures
@@ -1057,10 +2530,125 @@ class Record:
     frames: list = field(default_factory=list)  # (seconds, source) of each frame solved on the sheet
     passes: list = field(default_factory=list)  # True per pass the kernel gave, False per pass it refused, one per position
     units: list = field(default_factory=list)   # (owner, group, level 2 result, taken) of each weighty non-goal unit; group: flagged (open after level 1), closed1, other
+    routes: list = field(default_factory=list)  # measure H: one dict per unit above the lowest worth with ways of exactly two moves and none shorter
+    reach: list = field(default_factory=list)   # (units reached within reach_k by the medium, by the move tables) per non-goal question at level 1
+    too_far: int = 0                            # questions closed at level 1 because every unit of the asker is farther than reach_k hops
+    graph: tuple = (0, 0)                       # (nodes, edges) of the position's graph
+    chains: list = field(default_factory=list)  # printed chains (lines) of questions with an obstacle and its follow-up
+    cf: list = field(default_factory=list)      # the counterfactual's log, one dict per blocked step; and the number cut by the cap in `cf_cut`
+    cf_cut: int = 0
+    duty_rows: list = field(default_factory=list)   # one dict per way held back by a duty (or read for one): skipped, traveller moved in the game, held unit taken within 4 plies
+    bounds: dict = field(default_factory=dict)  # node kind -> [nodes whose bound closed (low = high), nodes]
+    way_costs: list = field(default_factory=list)   # (hops, ms, nodes, verdict) of every way of more than one move settled at level 2
 
 
-def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, moved: "str | None" = None, taken_of=None, weight: float = 0.0, follow_all: bool = False) -> Record:
+def sample_chains(sheet: Sheet, limit: int = 1) -> list:
+    """The printed chain of the first question whose graph holds an obstacle with its follow-up (for the report's samples)."""
+    out = []
+    for q in sheet.questions:
+        if q.quiet or q.node is None:
+            continue
+        lines = chain_lines(sheet.graph, sheet.graph.nodes[q.node])
+        if any("if_removed" in ln for ln in lines):
+            out.append(lines)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def node_bounds(graph: Graph) -> dict:
+    """{node kind: [nodes whose bound closed (low equals high), nodes]}."""
+    out: dict = {}
+    for n in graph.nodes:
+        c = out.setdefault(n.kind, [0, 0])
+        c[1] += 1
+        c[0] += n.stake_high is not None and n.stake_low == n.stake_high
+    return out
+
+
+def format_counterfactual(records: list) -> list:
+    """OBS lines: what the counterfactual found at the blocked steps, the cost of leaving, and the bounds that closed."""
+    out = []
+    cf = [x for r in records for x in r.cf]
+    if cf:
+        one = sum(1 for x in cf if x["found"] == 1)
+        many = sum(1 for x in cf if x["found"] > 1)
+        none = sum(1 for x in cf if x["found"] == 0)
+        words: dict = {}
+        for x in cf:
+            for w in x["words"]:
+                words[w] = words.get(w, 0) + 1
+        ms = [x["ms"] for x in cf]
+        calls = [x["calls"] for x in cf]
+        out.append(f"OBS (H) counterfactual: blocked steps examined {len(cf)} (in {sum(1 for r in records if r.cf)} of {len(records)} positions); explained by one unit {one} ({_pct(one, len(cf))}), by several {many} ({_pct(many, len(cf))}), "
+                   f"by none (no single unit) {none} ({_pct(none, len(cf))}); not examined because of the cap {sum(r.cf_cut for r in records)}; removals rejected as not a position {sum(x['rejected'] for x in cf)}")
+        out.append("OBS (H) counterfactual, describing words of the units found: " + ", ".join(f"{w} {n}" for w, n in sorted(words.items(), key=lambda kv: -kv[1])))
+        out.append(f"OBS (H) counterfactual cost per blocked step: mean {sum(ms) / len(ms):.2f} ms, max {max(ms):.2f} ms; kernel calls mean {sum(calls) / len(calls):.1f}, max {max(calls)}")
+    rows = [d for r in records for d in r.duty_rows]
+    if rows:
+        held = [d for d in rows if d["held_back"]]
+        known = [d for d in held if not d["skipped"]]
+        moved = [d for d in held if d["traveller_moved"] and d["taken4"] is not None]
+        hit = sum(1 for d in moved if d["taken4"])
+        out.append(f"OBS (H) duties: ways with a duty found {len(rows)}; held back {len(held)} (route read and confirmed, then held back: {len(known)}; route not read because leaving drops more than the attack could win: {len(held) - len(known)}); "
+                   f"of the held-back ways, those where the travelling unit did move at that ply of the game and the held unit can be followed: {len(moved)}, the held unit taken within 4 plies in {hit} ({_pct(hit, len(moved))})"
+                   + ("; the count is too small to mean anything" if len(moved) < 20 else ""))
+    kinds: dict = {}
+    for r in records:
+        for k, (c, n) in r.bounds.items():
+            kk = kinds.setdefault(k, [0, 0])
+            kk[0] += c
+            kk[1] += n
+    if kinds:
+        out.append("OBS (H) bounds closed (stake low equals high) after the levels run, by node kind: " + ", ".join(f"{k} {c}/{n} ({_pct(c, n)})" for k, (c, n) in sorted(kinds.items())) + f"; all nodes {sum(c for c, _ in kinds.values())}/{sum(n for _, n in kinds.values())}")
+    return out
+
+
+def route_unit(q: Question, sheet: Sheet, params: Params, taken_of) -> "dict | None":
+    """Measure H: for a unit above the lowest worth with at least one way of exactly two moves and none shorter, its verdict by the routes (confirmed, waiting, not settled, refuted), its
+    verdict under the earlier form (every way judged after its first move only), the group of its best-ordered way (clear route; an obstacle of the asker's own; an obstacle of the other side),
+    whether the exact unit was taken within 4 and 8 plies, and what the ways cost."""
+    if len(q.findings) < 3 or q.findings[1].status != LIVE:
+        return None
+    det1 = q.findings[1].detail
+    ways = list(det1.get("supply", []))
+    two = [w for w in ways if w[0] == 2]
+    if not two or any(w[0] < 2 for w in ways):
+        return None
+    deep = next((x for x in q.findings if x.level >= 2 and x.detail.get("results")), None)
+    if deep is None:
+        return None
+    r = sheet.reading
+    got = {x["way"][:4]: x for x in deep.detail["results"] if x.get("way") is not None}
+    read = [w for w in two if w[:4] in got]
+    if not read:
+        return None
+    rank = det1.get("rank", {})
+    first = sorted(read, key=lambda w: (rank.get(w, 0), w[1].kind, w[1].at, w[2]))[0]
+    obs = got[first[:4]].get("first_obstacles")
+    if obs is None:
+        best = (det1.get("routes", {}).get(first[:4]) or [None])[0]
+        obs = [(o.unit.side if o.unit else None, o.kind, o.dead) for o in (best.obstacles if best else ())]
+    group = "clear" if not obs else ("other" if any((side is not None and side != q.asker) or dead for side, _k, dead in obs) else "own")
+    order = (CONFIRMED_V, WAITING_V, UNSETTLED_V, REFUTED_V)
+    statuses = [got[w[:4]]["status"] for w in read]
+    new = next(v for v in order if v in statuses)
+    old_ms, old_conf = [], False
+    for w in read:
+        t0 = time.perf_counter()
+        v = exchange_after(r, q.target, q.asker, w, params)
+        old_ms.append(1000 * (time.perf_counter() - t0))
+        old_conf = old_conf or v["value"] > 0
+    place = place_text(q.target.at)
+    return {"owner": q.owner, "new": new, "old": CONFIRMED_V if old_conf else REFUTED_V, "group": group, "taken4": taken_of(place, 4) if taken_of else None,
+            "taken8": taken_of(place, 8) if taken_of else None, "ways": len(read), "new_ms": [1000 * got[w[:4]].get("seconds_total", 0.0) for w in read], "new_nodes": [got[w[:4]].get("nodes", 0) for w in read],
+            "old_ms": old_ms, "ways_by": [got[w[:4]]["status"] for w in read], "pool": [got[w[:4]].get("pool") for w in read]}
+
+
+def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, moved: "str | None" = None, taken_of=None, weight: float = 0.0, follow_all: bool = False,
+                    params: Params = Params()) -> Record:
     ranks, ways, answered, units, lost_units = [], [0, 0, 0], 0, [], []
+    routes, reach, too_far, way_costs, duty_rows = [], [], 0, [], []
     for q in sheet.questions:
         if q.quiet:
             continue
@@ -1076,9 +2664,30 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
             group = "flagged" if q.live_by_level1 else ("closed1" if closed1 else "other")
             l2 = f.get(2)
             result = "" if l2 is None else {LIVE: "confirmed", CLOSED: "refuted", IDLE: "not settled"}[l2.status]
+            if result == "not settled" and l2.detail.get("waiting"):
+                result = "waiting"
             units.append((q.owner, group, result, taken_of(place) if taken_of else None))
             ex = exchange_stands(sheet.reading, q.target, q.asker)
             lost_units.append((q.owner, ex["value"] > 0, taken_of(place) if taken_of else None))
+        if follow_all and not q.goal and 1 in f:
+            rec_geo, rec_old = f[1].detail.get("reach_geo"), f[1].detail.get("reach_old")
+            if rec_geo is not None and rec_old is not None:
+                reach.append((rec_geo, rec_old))
+            too_far += bool(f[1].detail.get("too_far"))
+        if follow_all and not q.goal:
+            deep_f = next((x for x in q.findings if x.level >= 2 and x.detail.get("results")), None)
+            for x in (deep_f.detail["results"] if deep_f else ()):
+                if x.get("way") is not None and x.get("duties"):
+                    held = x["duties"][0]["unit"]
+                    mover_here = q.asker == SELF and moved is not None and place_text(x["way"][1].at) == moved
+                    duty_rows.append({"held_back": bool(x.get("held_back")), "skipped": bool(x.get("skipped")), "traveller_moved": mover_here, "had_value": x.get("held_value"),
+                                      "taken4": taken_of(place_text(held.at), 4) if (taken_of and mover_here) else None})
+                if x.get("way") is not None and x["way"][0] >= 2 and x.get("source") == "route":
+                    way_costs.append((x["way"][0], 1000 * x.get("seconds_total", 0.0), x.get("nodes", 0), x["status"]))
+        if follow_all and not q.goal and ranks[-1].weighty:
+            ru = route_unit(q, sheet, params, taken_of)
+            if ru is not None:
+                routes.append(ru)
         for x in q.findings:
             if x.detail.get("mode") == "search":
                 ways[0] += x.detail["confirmed"]
@@ -1089,7 +2698,9 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
     quiet_at = place_text(quiet.findings[0].detail["unit"].at) if quiet else None
     costs = [(f"{s.level}" + (f" ({s.mode})" if s.mode else ""), s.cost) for s in sheet.steps if not s.question.quiet]
     return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered, units=units, lost_units=lost_units,
-                  frames=list(sheet.reading.frame_log) if sheet.reading else [], passes=list(sheet.reading.pass_log) if sheet.reading else [])
+                  frames=list(sheet.reading.frame_log) if sheet.reading else [], passes=list(sheet.reading.pass_log) if sheet.reading else [], routes=routes, reach=reach, too_far=too_far, way_costs=way_costs, duty_rows=duty_rows, cf=list(sheet.reading.cf_log) if sheet.reading else [], cf_cut=sheet.reading.cf_cut if sheet.reading else 0,
+                  bounds=node_bounds(sheet.graph) if sheet.reading else {},
+                  graph=sheet.graph.size() if sheet.reading else (0, 0), chains=sample_chains(sheet) if follow_all else [])
 
 
 class Item(NamedTuple):
@@ -1283,7 +2894,7 @@ def alternatives_share(env: Env, worth: dict, params: Params, position: str, liv
     return free / len(legal)
 
 
-def measure(items: list, runner, samples: int = 3, codec=None, objector=None, alternatives=None, alt_limit: int = 100, follow_all: bool = False) -> tuple:
+def measure(items: list, runner, samples: int = 3, codec=None, objector=None, alternatives=None, alt_limit: int = 100, follow_all: bool = False, params: Params = Params()) -> tuple:
     """items from `load_positions`; `runner(variant, start, moves) -> Sheet`. `codec.taken_within` follows my units in the game; `objector(item, live_before) -> (obj0, obj2)` and
     `alternatives(item, live_before) -> share` are the (e) readings. -> (records, sample explanation lines, number unreadable)."""
     records, unreadable, picked, n_alt = [], 0, [], 0
@@ -1296,8 +2907,8 @@ def measure(items: list, runner, samples: int = 3, codec=None, objector=None, al
             unreadable += 1
             continue
         variant, start, moves = it.pos
-        taken_of = (lambda place, it=it: codec.taken_within(start, it.full, it.key[1], place, 4)) if codec else None
-        rec = summarize_sheet(it.key, it.bad, it.fell, sheet, it.moved, taken_of, it.weight, follow_all)
+        taken_of = (lambda place, k=4, it=it: codec.taken_within(start, it.full, it.key[1], place, k)) if codec else None
+        rec = summarize_sheet(it.key, it.bad, it.fell, sheet, it.moved, taken_of, it.weight, follow_all, params)
         live_before = live0_places(sheet)
         if objector is not None:
             try:
@@ -1353,6 +2964,79 @@ def format_flagged(records: list, frames: bool = False) -> list:
     return out
 
 
+def format_routes(records: list, params: Params) -> list:
+    """OBS lines of measure H (and the geometry's counts): the units above the lowest worth with ways of exactly two moves and none shorter, by verdict, with the rate at which that exact unit
+    is taken within 4 and 8 plies, beside the same groups under the earlier form; split by the best-ordered route's group; the cost; the medium against the move tables; the graph."""
+    out = []
+    rows = [(r.key, u) for r in records for u in r.routes]
+    n = len(rows)
+    sides = {SELF: "mine", OTHER: "theirs"}
+
+    def cell(sel, k):
+        read = [u for _k, u in sel if u[f"taken{k}"] is not None]
+        hit = sum(1 for u in read if u[f"taken{k}"])
+        return f"{hit} of {len(read)} ({_pct(hit, len(read))})"
+
+    def lines(label, sel, field_name, verdicts):
+        for v in verdicts:
+            grp = [(k, u) for k, u in sel if u[field_name] == v]
+            out.append(f"OBS (H) {label}, {v}: {len(grp)} units ({_pct(len(grp), len(sel))}); taken within 4 plies {cell(grp, 4)}; within 8 plies {cell(grp, 8)}")
+    out.append(f"OBS (H) units read {n} (mine {sum(1 for _k, u in rows if u['owner'] == SELF)}, theirs {sum(1 for _k, u in rows if u['owner'] == OTHER)}): units above the lowest worth with a way of exactly two moves and none shorter, "
+               f"level 2 read; reach_k {params.reach_k}, geometry {params.geometry}, routes {params.routes}, max_routes {params.max_routes}, route_nodes {params.route_nodes}")
+    for side, word in sides.items():
+        sel = [(k, u) for k, u in rows if u["owner"] == side]
+        lines(f"{word}, new (the routes followed whole)", sel, "new", (CONFIRMED_V, REFUTED_V, WAITING_V, UNSETTLED_V))
+        lines(f"{word}, present code (each way judged after its first move)", sel, "old", (CONFIRMED_V, REFUTED_V))
+    for grp_name, text in (("clear", "a clear route"), ("own", "a route with an obstacle of the asker's own"), ("other", "a route with an obstacle of the other side")):
+        for side, word in sides.items():
+            sel = [(k, u) for k, u in rows if u["owner"] == side and u["group"] == grp_name]
+            out.append(f"OBS (H) {word}, best-ordered route is {text}: {len(sel)} units")
+            if not sel:
+                continue
+            lines(f"{word}, {text}, new", sel, "new", (CONFIRMED_V, REFUTED_V, WAITING_V, UNSETTLED_V))
+            lines(f"{word}, {text}, present code", sel, "old", (CONFIRMED_V, REFUTED_V))
+    new_ms = [x for _k, u in rows for x in u["new_ms"]]
+    nodes = [x for _k, u in rows for x in u["new_nodes"]]
+    old_ms = [x for _k, u in rows for x in u["old_ms"]]
+    if new_ms:
+        out.append(f"OBS (H) cost per two-move way, new: {len(new_ms)} ways, mean {sum(new_ms) / len(new_ms):.2f} ms, max {max(new_ms):.2f} ms; nodes mean {sum(nodes) / len(nodes):.1f}, max {max(nodes)}; "
+                   f"present code: mean {sum(old_ms) / len(old_ms):.2f} ms, max {max(old_ms):.2f} ms")
+        by = {}
+        for _k, u in rows:
+            for v in u["ways_by"]:
+                by[v] = by.get(v, 0) + 1
+        out.append("OBS (H) two-move ways by verdict (new): " + ", ".join(f"{v} {c}" for v, c in sorted(by.items())))
+        pools = [x for _k, u in rows for x in u["pool"] if x]
+        if pools:
+            out.append(f"OBS (H) two-move ways through the pool: " + ", ".join(f"{v} {pools.count(v)}" for v in sorted(set(pools))))
+    costs = [x for r in records for x in r.way_costs]
+    for hops in sorted({c[0] for c in costs}):
+        sel = [c for c in costs if c[0] == hops]
+        by = {}
+        for c in sel:
+            by[c[3]] = by.get(c[3], 0) + 1
+        out.append(f"OBS (H) all ways of {hops} moves settled by the routes (every unit, not only the group above): {len(sel)} ways, mean {sum(c[1] for c in sel) / len(sel):.2f} ms, max {max(c[1] for c in sel):.2f} ms; "
+                   f"nodes mean {sum(c[2] for c in sel) / len(sel):.1f}, max {max(c[2] for c in sel)}; " + ", ".join(f"{v} {n}" for v, n in sorted(by.items())))
+    pairs = [x for r in records for x in r.reach]
+    if pairs:
+        geo_only = sum(len(g - o) for g, o in pairs)
+        old_only = sum(len(o - g) for g, o in pairs)
+        both = sum(len(g & o) for g, o in pairs)
+        differ = sum(1 for g, o in pairs if g != o)
+        out.append(f"OBS (H) reach within {params.reach_k}, the medium against the move tables: {len(pairs)} questions read; units reached by both {both}, by the medium only {geo_only} (what the frozen board hid), "
+                   f"by the move tables only {old_only}; questions where the two differ {differ} ({_pct(differ, len(pairs))})")
+    out.append(f"OBS (H) questions closed at level 1 as too far in time (every unit of the asker farther than {params.reach_k} hops): {sum(r.too_far for r in records)} of {len(pairs)} non-goal questions read")
+    sizes = [r.graph for r in records if r.graph != (0, 0)]
+    if sizes:
+        nn, ee = [a for a, _b in sizes], [b for _a, b in sizes]
+        out.append(f"OBS (H) graph per position: nodes mean {sum(nn) / len(nn):.1f}, max {max(nn)}; edges mean {sum(ee) / len(ee):.1f}, max {max(ee)} ({len(sizes)} positions)")
+    chains = [c for r in records for c in r.chains]
+    for i, c in enumerate(chains[::max(1, len(chains) // 3)][:3], start=1):
+        out.append(f"OBS (H) printed chain {i}:")
+        out += [f"OBS   {ln}" for ln in c[:24]]
+    return out
+
+
 def format_frame_lines(records: list) -> list:
     """The measure over the exchange frame as the unit stands, independent of level 1, and the cost and sources of the frames."""
     out = []
@@ -1369,6 +3053,114 @@ def format_frame_lines(records: list) -> list:
     asked = [x for r in records for x in r.passes]
     if asked:
         out.append(f"OBS (G) passes: asked on {len(asked)} positions, given {sum(asked)}, refused {len(asked) - sum(asked)}")
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- measure I: anticipation over whole games
+
+BUCKETS = (("never", 0, 0), ("1-2", 1, 2), ("3-4", 3, 4), ("5-8", 5, 8), ("more", 9, 10 ** 9))
+
+
+def read_position(env: Env, worth: dict, params: Params, position: str, pool: "Pool | None" = None, max_steps: "int | None" = None) -> Sheet:
+    """One position read as the measures read it: the schedule, level 1 for every question, level 2 for every non-goal unit open after level 1; the pool (if any) carries the ways."""
+    sheet = run(position, worth, max_steps=max_steps, env=env, params=params, pool=pool)
+    finish_levels(sheet, 1, params)
+    settle_flagged(sheet, params)
+    return sheet
+
+
+def _bucket(plies: int) -> str:
+    return next(name for name, lo, hi in BUCKETS if lo <= plies <= hi)
+
+
+def anticipation(directory: str, games: int, env: Env, worth: dict, params: Params, audit_every: int = 5, max_plies: "int | None" = None) -> list:
+    """Measure I. Every position of the first `games` games, the pool carried from ply to ply. For every taking of a unit above the lowest worth (not the goal unit): how many plies before it
+    (counted to the taking move: the position just before the taking is 1) was the unit first under a confirmed or waiting verdict of one of its ways that stayed on until the taking, read
+    as mine (its owner to move: the positions an even number of plies back from the one before the taking) and as theirs (the other positions), and in either reading. Then the false alarms
+    (records of the pool that ended with the unit not taken within 8 plies) and the pool's saving."""
+    codec = env.codec
+    dist = {kind: {b[0]: 0 for b in BUCKETS} for kind in ("mine", "theirs", "either", "mine+stands", "theirs+stands", "either+stands")}
+    takings = unread = 0
+    born_all, stats = [], {"kept": 0, "revalidated": 0, "reread": 0, "new": 0, "flagged": 0, "queued": 0, "audited": 0, "audit_differed": 0, "facts": 0, "stale_now": 0}
+    store_sizes: list = []
+    sizes, seconds, positions = [], 0.0, 0
+    for line in (Path(directory) / "games.jsonl").read_text().splitlines()[:games]:
+        if not line.strip():
+            continue
+        g = json.loads(line)
+        v, start, moves = g.get("variant") or env.variant, g.get("start"), g["moves"]
+        by_ply, taken = codec.tracks(start, moves)
+        pool = Pool(codec)
+        pool.audit_every = audit_every
+        per_ply: list = []
+        for ply in range(len(moves) if max_plies is None else min(len(moves), max_plies)):
+            pos = CE.state(v, start, moves[:ply])[0]
+            pool.advance(pos)
+            t0 = time.perf_counter()
+            try:
+                sheet = read_position(env, worth, params, pos, pool)
+            except ValueError:
+                per_ply.append(None)
+                continue
+            seconds += time.perf_counter() - t0
+            pool.file_graph(sheet)
+            positions += 1
+            sizes.append(sheet.graph.size())
+            rec = {}
+            for q in sheet.questions:
+                if q.quiet or q.goal or not sheet.reading.weighty(q.target):
+                    continue
+                uid = by_ply[ply].get(place_text(q.target.at), (None,))[0]
+                deep = next((x for x in q.findings if x.level >= 2 and x.detail.get("results")), None)
+                res = deep.detail["results"] if deep else []
+                ways_on = any(x.get("way") is not None and x["status"] in (CONFIRMED_V, WAITING_V) for x in res)
+                stands_on = bool(res) and res[0]["status"] == CONFIRMED_V
+                rec[uid] = (q.owner == SELF, ways_on, ways_on or stands_on)
+            per_ply.append(rec)
+        for k, vv in pool.stats().items():
+            stats[k] += vv
+        store_sizes.append((len(pool.store.facts), sum(1 for f in pool.store.facts.values() if not f.superseded), len(pool.ways())))
+        born_all.append((by_ply, taken, list(pool.born_log), len(per_ply)))
+        for p, (uid, _side, _kind) in taken.items():
+            if p >= len(per_ply):
+                continue
+            if per_ply[p] is None or uid not in per_ply[p]:
+                unread += 1                                            # the unit was not weighty, or the position was not readable
+                continue
+            takings += 1
+            for kind, idx in (("", 1), ("+stands", 2)):
+                runs = {"mine": [], "theirs": [], "either": []}
+                for name, start_q, step_q in (("theirs", p, 2), ("mine", p - 1, 2), ("either", p, 1)):
+                    q_at = start_q
+                    first = None
+                    while q_at >= 0 and q_at < len(per_ply) and per_ply[q_at] is not None and uid in per_ply[q_at] and per_ply[q_at][uid][idx]:
+                        first = q_at
+                        q_at -= step_q
+                    runs[name] = 0 if first is None else p - first + 1
+                for name in runs:
+                    dist[name + kind][_bucket(runs[name])] += 1
+    out = [f"OBS (I) games {games}, positions read {positions} in {seconds:.1f} s; takings of a unit above the lowest worth, not the goal unit: {takings} (plus {unread} of a unit not weighty or a position not readable)"]
+    for kind in dist:
+        out.append(f"OBS (I) plies before the taking that the unit was first under a confirmed or waiting verdict that stayed on until the taking, read as {kind}: "
+                   + ", ".join(f"{name} {dist[kind][name]} ({_pct(dist[kind][name], takings)})" for name, _lo, _hi in BUCKETS))
+    for verdict in (CONFIRMED_V, WAITING_V):
+        n = hit = 0
+        for by_ply, taken, born, _n in born_all:
+            for ply, key, vd, _value in born:
+                if vd != verdict or ply >= len(by_ply):
+                    continue
+                uid = by_ply[ply].get(key[0], (None,))[0]
+                n += 1
+                hit += any(i in taken and taken[i][0] == uid for i in range(ply, ply + 8))
+        out.append(f"OBS (I) false alarms, records filed as {verdict}: {n}; the unit taken within 8 plies of the record's reading in {hit} ({_pct(hit, n)}); not taken (false alarm) {n - hit} ({_pct(n - hit, n)})")
+    total = stats["kept"] + stats["revalidated"] + stats["reread"] + stats["new"]
+    out.append(f"OBS (I) memory (the fact store): ways asked for {total}: served as filed, not flagged by any move {stats['kept']} ({_pct(stats['kept'], total)}); flagged stale but its read cells unchanged, served after the comparison "
+               f"{stats['revalidated']} ({_pct(stats['revalidated'], total)}); read again (flagged, cells changed) {stats['reread']} ({_pct(stats['reread'], total)}); new {stats['new']} ({_pct(stats['new'], total)}); "
+               f"facts flagged by moves {stats['flagged']}; offered by the queue in chain-stake order (counted at each move) {stats['queued']}; read again from the queue by a budgeted refresh 0 (not run: the live questions of the next position ask for what they need)")
+    out.append(f"OBS (I) memory audit: every 5th served fact read afresh: {stats['audited']} compared, the verdict differed in {stats['audit_differed']} ({_pct(stats['audit_differed'], stats['audited'])})")
+    out.append("OBS (I) store size per game (facts filed in all, not superseded at the end, way facts live): " + "; ".join(f"{a} / {b} / {c}" for a, b, c in store_sizes) + f"; stale at the ends {stats['stale_now']}")
+    if sizes:
+        out.append(f"OBS (I) graph per position: nodes mean {sum(a for a, _b in sizes) / len(sizes):.1f}, max {max(a for a, _b in sizes)}; edges mean {sum(b for _a, b in sizes) / len(sizes):.1f}, max {max(b for _a, b in sizes)}")
     return out
 
 
@@ -1533,6 +3325,11 @@ def main(argv: list) -> int:
     ap.add_argument("--no-frames", action="store_true", help="level 2 of a non-goal unit by the earlier forms (the search, the census) instead of the exchange frame")
     ap.add_argument("--no-pass", action="store_true", help="the asker not to move: the static form instead of the kernel's pass and real moves")
     ap.add_argument("--no-goal-near", action="store_true", help="the goal unit's level 1 by the earlier rule (no asker unit needed near)")
+    ap.add_argument("--no-geometry", action="store_true", help="level 1 by the move tables, the board frozen (the earlier form), instead of the medium and the obstacles")
+    ap.add_argument("--no-routes", action="store_true", help="a way of more than one move judged after its first move only (the earlier form)")
+    ap.add_argument("--reach-k", type=int, default=None, help="moves (hops) a unit of the asker may use (default 2)")
+    ap.add_argument("--route-nodes", type=int, default=None, help="node cap of one way's route reasoning")
+    ap.add_argument("--anticipation", type=int, default=None, help="measure I over the first N games of the (single) --games-dir, the pool carried from ply to ply")
     ap.add_argument("--no-search", action="store_true", help="level 2 by the census alone (the first version)")
     ap.add_argument("--alternatives", type=int, default=100, help="bad-move positions whose other legal moves are read for the sheet's objection (0: none)")
     ap.add_argument("--no-objection", action="store_true", help="skip measure (e)")
@@ -1544,7 +3341,11 @@ def main(argv: list) -> int:
     a = ap.parse_args(argv)
     env = Env(a.game)
     worth = store_worth(a.game)
-    params = Params(links=not a.no_links, search=not a.no_search, frames=not a.no_frames, goal_near=not a.no_goal_near, passes=not a.no_pass)
+    params = Params(links=not a.no_links, search=not a.no_search, frames=not a.no_frames, goal_near=not a.no_goal_near, passes=not a.no_pass, geometry=not a.no_geometry, routes=not a.no_routes)
+    if a.reach_k:
+        params.reach_k = a.reach_k
+    if a.route_nodes:
+        params.route_nodes = a.route_nodes
     if a.search_depth:
         params.max_level = params.search_depth_cap = a.search_depth
     t0 = time.perf_counter()
@@ -1556,6 +3357,11 @@ def main(argv: list) -> int:
         return 0
     if len(a.games_dir) != 1:
         ap.error("several --games-dir only with --goal-verdict")
+    if a.anticipation:
+        lines = anticipation(a.games_dir[0], a.anticipation, env, worth, params) + [f"OBS question sheet: anticipation {time.perf_counter() - t0:.1f} s"]
+        for ln in lines:
+            print(ln, flush=True)
+        return 0
     items = load_positions(a.games_dir[0], a.game, a.limit, game=a.game)
 
     def runner(variant, start, moves):
@@ -1576,8 +3382,8 @@ def main(argv: list) -> int:
         return alternatives_share(env, worth, params, CE.state(variant, start, list(moves))[0], live_before, it.played)
 
     records, text, unreadable = measure(items, runner, codec=env.codec, objector=None if a.no_objection else objector,
-                                        alternatives=None if (a.no_objection or not a.alternatives) else alternatives, alt_limit=a.alternatives, follow_all=a.flagged)
-    lines = format_obs(records, unreadable) + (format_flagged(records, params.frames) if a.flagged else []) + text
+                                        alternatives=None if (a.no_objection or not a.alternatives) else alternatives, alt_limit=a.alternatives, follow_all=a.flagged, params=params)
+    lines = format_obs(records, unreadable) + (format_flagged(records, params.frames) + format_routes(records, params) + format_counterfactual(records) if a.flagged else []) + text
     lines.append(f"OBS question sheet: {time.perf_counter() - t0:.1f} s for {len(items)} positions, worth {worth}")
     for ln in lines:
         print(ln)

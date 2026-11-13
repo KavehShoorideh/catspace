@@ -1,0 +1,22 @@
+;;; rules/concepts/chess_medium.gdl -- plan 78.41 (the question sheet's layer one): THE MEDIUM OF MOVEMENT, ignoring every unit on the board. A DELTA composed AFTER rules/concepts/chess.gdl,
+;;; chess_units.gdl and chess_scenario.gdl onto rules/chess.gdl, ADDITIVE ONLY: it changes no rule of the game. All three relations are about a unit of a kind and a side STANDING ON A GIVEN
+;;; SQUARE of the EMPTY board: none depends on the position, so a reader may read them once from any position and keep them. They are built from the base step relations of rules/chess.gdl
+;;; (`step`, `line_of`, `king_step`, `knight_jump`, `forward`, `pawn_diagonal`); a ray is steps repeated in one direction with no test of what stands on a square.
+;;;   (hop ?k ?c ?f1 ?r1 ?f2 ?r2)             a unit of kind ?k and side ?c on (f1 r1) may move to (f2 r2) in one move on the empty board, a move that needs nothing to be taken there
+;;;                                           (a pawn: its single forward step; the double step is not read)
+;;;   (hop_take ?k ?c ?f1 ?r1 ?f2 ?r2)        a move that is made only by taking a unit standing on (f2 r2) (a pawn's diagonal step)
+;;;   (hop_over ?k ?c ?f1 ?r1 ?f2 ?r2 ?fm ?rm) the squares (fm rm) the unit passes over strictly between (f1 r1) and (f2 r2) in a hop along a line (none for a unit that jumps or steps)
+(signature hop kind side file rank file rank) (signature hop_take kind side file rank file rank) (signature hop_over kind side file rank file rank file rank)
+(signature ray direction file rank file rank) (signature ray_over direction file rank file rank file rank)
+
+(<= (ray ?d ?f1 ?r1 ?f2 ?r2) (step ?d ?f1 ?r1 ?f2 ?r2))
+(<= (ray ?d ?f1 ?r1 ?f3 ?r3) (ray ?d ?f1 ?r1 ?f2 ?r2) (step ?d ?f2 ?r2 ?f3 ?r3))
+(<= (ray_over ?d ?f1 ?r1 ?f3 ?r3 ?f2 ?r2) (ray ?d ?f1 ?r1 ?f2 ?r2) (ray ?d ?f2 ?r2 ?f3 ?r3))
+
+(<= (hop ?k ?c ?f1 ?r1 ?f2 ?r2) (role ?c) (line_of ?k ?d) (ray ?d ?f1 ?r1 ?f2 ?r2))
+(<= (hop knight ?c ?f1 ?r1 ?f2 ?r2) (role ?c) (knight_jump ?f1 ?r1 ?f2 ?r2))
+(<= (hop king ?c ?f1 ?r1 ?f2 ?r2) (role ?c) (king_step ?f1 ?r1 ?f2 ?r2))
+(<= (hop pawn ?c ?f ?r1 ?f ?r2) (forward ?c ?d) (step ?d ?f ?r1 ?f ?r2))
+(<= (hop_take pawn ?c ?f1 ?r1 ?f2 ?r2) (pawn_diagonal ?c ?d) (step ?d ?f1 ?r1 ?f2 ?r2))
+
+(<= (hop_over ?k ?c ?f1 ?r1 ?f2 ?r2 ?fm ?rm) (role ?c) (line_of ?k ?d) (ray_over ?d ?f1 ?r1 ?f2 ?r2 ?fm ?rm))

@@ -36616,3 +36616,7 @@ A scratch probe and then question_sheet.py (a measure, not in the wake). Result:
 
 ## 2026-11-13 -- plan 78.41: vulnerability measured for both sides; October's frames brought in as the sheet's deeper level
 Kaveh: the goal is to reason about our vulnerabilities, and theirs; look at October's frames. Measures F and G, then the exchange and cornering frames on October's game-free frame search. "Lost where it stands" by the exchange frame separates on both sides; after an arrival it separates for their units and not for mine, for want of a pass; the goal unit's sign is now exits and a unit near. Lines in docs/ANALYST_PLAN.md 78.41. The full gate was not rerun; the test file passes (38).
+
+## 2026-11-13 -- plan 78.42: the question graph, first form, after Kaveh's direction
+Kaveh: the scout hands its route to the reasoner, which follows the whole flow; waiting frames; reuse October; the checker in two layers (hops on the empty medium, then the units as obstacles); reasoning as a graph of questions with counterfactuals; obstacles are an open kind; the cost of a unit's leaving; stakes as bounds and the clock by them; October's event-driven store brought over.
+Built on October's frame search and fact store, unedited. The frozen board had hidden most reaches; two-move ways now come out confirmed, refuted or waiting; chains print with "because" and "if ... were gone". About 4 s a position, and a list of defects in docs/ANALYST_PLAN.md 78.42. Gate: files 82, passed 1136, failed 0.
