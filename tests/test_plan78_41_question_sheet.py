@@ -637,8 +637,8 @@ def test_a_route_blocked_by_the_other_sides_unit_that_cannot_be_taken_is_dead_wi
     got = _ways(f, "rook", "a5")[0]
     assert got["status"] == Q.REFUTED_V and "their pawn on a3 will not move for us and cannot be taken" in got["answer"]
     assert any(n.verdict == "dead" and n.kind == "follow_up" for n in r.graph.nodes)
-    clear = _ways(f, "rook", "h1")                                     # the first rank is shut by my own goal unit: the kernel will not read the board without it, so no single unit accounts
-    assert clear and clear[0]["status"] == Q.REFUTED_V and "no single unit accounts for the step from a1 to h1" in clear[0]["answer"] and "rejected by the kernel as not a position" in clear[0]["answer"]
+    clear = _ways(f, "rook", "h1")                                     # the first rank is shut by my own goal unit: the kernel will not read the board without it, so it is moved aside instead
+    assert clear and clear[0]["status"] != Q.REFUTED_V and "no single unit accounts" not in clear[0]["answer"]
 
 
 def test_explain_chain_prints_because_and_if_gone(env):
@@ -808,16 +808,19 @@ def test_a_step_the_unit_may_not_make_because_it_would_uncover_its_goal_unit_is_
     route = f1.detail["routes"][way[:4]][0]
     assert "e2a2" not in r.legal                                # the kernel does not offer the step
     obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(), r.position)
-    assert {(o.unit.side, o.unit.kind, Q.place_text(o.unit.at)) for o in obs} == {("them", "rook", "e8")}               # the hop, and the strike from a2 that is tied the same way
-    assert "without their rook on e8 the step from e2 to a2 can be made" in obs[0].note and obs[0].kind in ("other", "strikes the asker's goal unit")
+    assert {(o.unit.side, o.unit.kind, Q.place_text(o.unit.at)) for o in obs} == {("them", "rook", "e8"), ("us", "king", "e1")}               # the tying rook; and my goal unit, which can step aside (the kernel will not read the board without it)
+    rook = next(o for o in obs if o.unit.kind == "rook")
+    assert "without their rook on e8 the step from e2 to a2 can be made" in rook.note and rook.kind in ("other", "strikes the asker's goal unit")
+    assert any("my king on e1 moved aside to" in o.note for o in obs if o.unit.kind == "king")
 
 
 def test_a_step_that_no_single_removal_explains_is_recorded_as_such(env):
     r, q, way, route = _route_of(env, "7k/8/8/7n/1p6/p7/8/R3K3 w - - 0 1", "them", "knight", "rook", "h1")
-    obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(), r.position)
+    off = Q.Params(aside_places=0)                                    # my own goal unit stands on the line: the board without it is no position, and with moving aside off nothing explains it
+    obs, _ = Q.counterfactual_obstacles(r, q, way, route, off, r.position)
     assert len(obs) == 1 and obs[0].kind == "none" and obs[0].dead and obs[0].unit is None
-    assert "no single unit accounts for the step from a1 to h1" in obs[0].note and "rejected by the kernel as not a position" in obs[0].note   # my own goal unit stands on the line: the board without it is no position
-    assert r.cf_log[0]["words"] == ["none"] and r.cf_log[0]["rejected"] >= 1
+    assert "no single unit accounts for the step from a1 to h1" in obs[0].note and "rejected by the kernel as not a position" in obs[0].note
+    assert r.cf_log[-1]["words"] == ["none"] and r.cf_log[-1]["rejected"] >= 1
 
 
 def test_a_refuted_route_whose_stopping_unit_once_removed_leaves_it_confirmed_gets_the_if_removed_edge_with_the_value(env):
@@ -827,6 +830,60 @@ def test_a_refuted_route_whose_stopping_unit_once_removed_leaves_it_confirmed_ge
     edges = [(e, r.graph.nodes[e.dst]) for e in r.graph.edges if e.kind == "if_removed" and "without my rook on f1 this is worth 14" in e.then]
     assert {n.asks for _e, n in edges} == {"can it be taken", "can it be driven off", "can it be drawn away"}
     assert {n.asks: n.verdict for _e, n in edges}["can it be driven off"] == Q.UNREAD and {n.asks: n.verdict for _e, n in edges}["can it be drawn away"] == Q.UNREAD
+
+
+def test_a_route_blocked_by_the_askers_own_goal_unit_is_explained_by_moving_it_aside_and_asks_whether_it_can_move_away(env):
+    r, q, way, route = _route_of(env, THEIR_IN_WAY, "them", "knight", "rook", "h1")
+    obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(), r.position)
+    assert [(o.unit.kind, o.unit.side, Q.place_text(o.unit.at), o.dead, o.hypothetical) for o in obs] == [("king", "us", "e1", False, True)]
+    assert re.search(r"read on the board with my king on e1 moved aside to [a-h]\d$", obs[0].note) and "e1 moved aside to d1" not in obs[0].note and "moved aside to f1" not in obs[0].note   # not a place of the route
+    assert r.cf_log[0]["rejected"] >= 1 and r.cf_log[0]["aside"] == 1 and r.cf_log[0]["found"] == 1
+    ans = Q.ask_obstacle(r, q, way, route, obs[0], Q.Params(), r.position)
+    assert ans["verdict"] == "movable" and "my king on e1: it can move away, one move more" in ans["text"] and ans["more"] == 1
+    r2, q2, f = _deep(env, THEIR_IN_WAY, "them", "knight")
+    assert any(n.kind == "follow_up" and n.asks == "can it move away" and "my king on e1" in n.answer for n in r2.graph.nodes)
+
+
+def test_a_route_blocked_by_the_other_sides_goal_unit_is_dead_with_that_unit_named(env):
+    fen = "8/8/3r4/4k3/4P3/8/8/K7 w - - 0 1"                   # my pawn on e4 may not step to e5: their goal unit stands there
+    r, q, way, route = _route_of(env, fen, "them", "rook", "pawn", "e5")
+    obs, _ = Q.counterfactual_obstacles(r, q, way, route, Q.Params(), r.position)
+    assert [(o.unit.side, o.unit.kind, o.kind, o.dead) for o in obs] == [("them", "king", "stands on the landing place", False)]
+    assert "their king on e5 moved aside to" in obs[0].note
+    ans = Q.ask_obstacle(r, q, way, route, obs[0], Q.Params(), r.position)
+    assert ans["verdict"] == "dead" and "their king on e5 will not move for us and cannot be taken" in ans["text"] and ans["more"] == 0
+    assert Q.counterfactual_obstacles(r, q, way, route, Q.Params(aside_places=0), r.position)[0][0].dead
+
+
+def _leaving_case(env, fen, kind, mv, full=False):
+    r = Q.Reading(env, fen, WORTH)
+    q = next(x for x in Q.first_order(r) if x.target.side == "them" and x.target.kind == "pawn")
+    unit = next(u for u in r.units if u.side == "us" and u.kind == kind)
+    return Q.cost_of_leaving(r, q, unit, mv, r.position, Q.Params(leaving_full=full)), r, q, unit
+
+
+def _duty_set(cost):
+    return sorted((d["unit"].kind, d["stake"], d["kind"], d["value"]) for d in cost["duties"])
+
+
+def test_the_narrow_cost_of_leaving_finds_a_dropped_guard_and_a_dropped_shield_and_equals_the_full_reread(env):
+    for fen, kind, mv, held in ((DUTY, "knight", "b3a5", "rook"), ("3r2k1/8/2p5/8/3B4/8/8/3QK3 w - - 0 1", "bishop", "d4e5", "queen")):
+        narrow, r, q, unit = _leaving_case(env, fen, kind, mv)
+        full, *_ = _leaving_case(env, fen, kind, mv, full=True)
+        assert [d["unit"].kind for d in narrow["duties"]] == [held] and _duty_set(narrow) == _duty_set(full), fen
+        cands, _sign = Q._leaving_candidates(r, q, unit, mv)
+        assert held in {c.kind for c in cands}
+    assert _duty_set(_leaving_case(env, DUTY_GUARDED, "knight", "b3a5")[0]) == _duty_set(_leaving_case(env, DUTY_GUARDED, "knight", "b3a5", full=True)[0]) == []
+
+
+def test_the_narrow_cost_of_leaving_reads_fewer_units_and_the_audit_logs_a_comparison(env):
+    r = Q.Reading(env, DUTY, WORTH)
+    q = next(x for x in Q.first_order(r) if x.target.side == "them" and x.target.kind == "pawn")
+    knight = next(u for u in r.units if u.kind == "knight")
+    cands, sign = Q._leaving_candidates(r, q, knight, "b3a5")
+    assert {c.kind for c in cands} == {"rook"}                   # the knight guards the rook; nothing else of mine is touched
+    Q.cost_of_leaving(r, q, knight, "b3a5", r.position, Q.Params(leaving_audit_every=1))
+    assert len(r.leaving_audit) == 1 and r.leaving_audit[0]["differ"] is False and r.leaving_audit[0]["missed"] == []
 
 
 def test_the_pairs_are_tried_only_when_asked_for(env):

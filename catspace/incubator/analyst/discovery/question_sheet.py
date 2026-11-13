@@ -74,6 +74,10 @@ class Params:
     obstacle_depth: int = 1            # follow-up questions asked on the obstacles of a route, this deep (0: none asked, the obstacles are reported as not read)
     max_obstacles: int = 3             # obstacles of one route asked about; the rest are not read
     max_blocked_steps: int = 12        # blocked steps one question may examine by the counterfactual (a kernel question per other unit); the rest are not read
+    aside_places: int = 4              # places tried when a unit the kernel will not read the board without is moved aside instead of removed (0: off)
+    leaving_audit_every: int = 0       # n > 0: every n-th cost of leaving is also read by the whole reread and compared (the audit of the narrow reading)
+    leaving_wide_sign: bool = False    # the goal sign of the cost of leaving is also read when the step touches any line to the goal unit (the audit's misses fall, the time doubles)
+    leaving_full: bool = False         # the cost of leaving by a whole new reading of the child position (the earlier form); False: only what the leaving can change
     pair_cap: int = 0                  # pairs of units tried when no single removal makes a blocked step legal (0: off)
     duties: bool = True                # the cost of leaving: what the travelling unit holds where it stands, read after its step
     refute_counterfactual: bool = True # a refuted route: would it be confirmed without the unit whose answer stopped it?
@@ -168,6 +172,14 @@ class Medium:
                     self.hop.setdefault((kind, side, frm), {})[to] = take
                     if take:
                         self.takes.add((kind, side))
+
+    def lines_into(self, to: str) -> set:
+        """The places passed over by some hop of some kind and side that lands on `to` (every line to it, units ignored)."""
+        if not hasattr(self, "_into"):
+            self._into: dict = {}
+            for (_k, _s, _f, t), over in self.over_of.items():
+                self._into.setdefault(t, set()).update(over)
+        return self._into.get(to, set())
 
     def hops(self, kind: str, side: str, frm: str) -> dict:
         return self.hop.get((kind, side, frm), {})
@@ -264,6 +276,10 @@ class Reading:
         self.passes = True                 # set by `step` from Params.passes
         self._pass: "tuple | None" = None  # (the passed position string or None when refused,) once asked
         self.pass_log: list = []           # True when the pass was given, False when refused, one entry per position asked
+        self.params = Params()             # the schedule the reading is used under (set by the cost of leaving)
+        self.leaving_audit: list = []      # one dict per audited cost of leaving: the narrow reading against the whole reread
+        self._audit_n = 0
+        self._refused: set = set()         # (position, move) the kernel refused as not a position
         self._states: dict = {}            # (position, move or None) -> the kernel's state: the route reasoner meets the same positions again and again
         self._other: "str | None" = None
         self.cf_cut = 0                    # blocked steps not examined because the question's cap was reached
@@ -278,6 +294,17 @@ class Reading:
         if key not in self._states:
             self._states[key] = CE.state(self.env.variant, position, [move] if move else [])
         return self._states[key]
+
+    def try_state(self, position: str, move: "str | None" = None) -> "tuple | None":
+        """`state_of`, or None when the kernel refuses the board (not a position of the game); the refusal is remembered too."""
+        key = (position, move)
+        if key in self._refused:
+            return None
+        try:
+            return self.state_of(position, move)
+        except Exception:
+            self._refused.add(key)
+            return None
 
     def absolute(self, side: str) -> str:
         """The side as the kernel names it (SELF is the mover; the other side is the mover after one move): the same name in every position of a game."""
@@ -1644,6 +1671,28 @@ def _by_place(r: Reading) -> dict:
     return {place_text(u.at): u for u in r.units}
 
 
+def _move_aside(r: Reading, pos: str, h: str, avoid: set, v: "Unit | None", params: Params) -> tuple:
+    """The counterfactual for a unit the kernel will not read the board without: stand it on another place instead. The candidates are the empty places its own hops reach (the medium),
+    none of them a place of the route or passed over by it; those the other side does not strike come first (the board is read as the kernel takes it, so a struck place may be refused or
+    leave the step unmade), at most `params.aside_places` tried. -> ((place, position) of the first the kernel takes as a position, or None, kernel calls used)."""
+    med = r.env.medium()
+    if v is None or med is None or params.aside_places < 1:
+        return None, 0
+    codec, side = r.env.codec, r.absolute(v.side)
+    struck = {place_text(x) for x in r.struck_by(OTHER if v.side == SELF else SELF)}
+    cands = sorted((p for p in med.hops(v.kind, side, h) if p not in avoid and codec.kind_at(pos, p) is None), key=lambda p: (p in struck, p))
+    calls = 0
+    for p in cands[:params.aside_places]:
+        moved = codec.relocate(pos, h, p)
+        if moved is None:
+            continue
+        calls += 1
+        st = r.try_state(moved)
+        if st is not None and st[3] is None:
+            return (p, moved), calls
+    return None, calls
+
+
 def counterfactual_obstacles(r: Reading, q: Question, way: tuple, route: Route, params: Params, base: str) -> tuple:
     """The obstacles of a route, FOUND BY THE COUNTERFACTUAL, not listed by shape. Each step of the route (a hop, then the final strike on the goal place) is asked of the kernel on `base` (for a
     later step on a hypothetical board with the unit already on the step's first place). A step the kernel offers is not blocked. For a step it does not offer, every other unit is removed in
@@ -1678,18 +1727,26 @@ def counterfactual_obstacles(r: Reading, q: Question, way: tuple, route: Route, 
             r.cf_cut += 1
             continue
         q.blocked += 1
-        found, rejected = [], 0
+        found, rejected, aside = [], 0, {}
+        route_places = {place_text(p) for p in route.places} | {x for ov in route.over for x in ov} | {origin, a_place, b_place, goal}
         for h in codec.units(pos):
             if h == a_place:
                 continue
-            try:
-                st2 = r.state_of(codec.without(pos, h))
-            except Exception:
-                calls += 1
-                rejected += 1
-                continue                                               # the kernel rejects the board without it (a goal unit): not a position
+            gone = codec.without(pos, h)
+            st2 = r.try_state(gone)
             calls += 1
-            if st2[3] is None and codec.find_move(codec.without(pos, h), a_place, b_place) in list(st2[2]):
+            if st2 is None:
+                rejected += 1                                          # the kernel rejects the board without it (a goal unit): not a position
+                moved_to, extra = _move_aside(r, pos, h, route_places, by_place.get(h), params)
+                calls += extra
+                if moved_to is not None:
+                    st3 = r.state_of(moved_to[1])
+                    calls += 1
+                    if st3[3] is None and codec.find_move(moved_to[1], a_place, b_place) in list(st3[2]):
+                        found.append(h)
+                        aside[h] = moved_to[0]
+                continue
+            if st2[3] is None and codec.find_move(gone, a_place, b_place) in list(st2[2]):
                 found.append(h)
         if not found and params.pair_cap > 0:
             import itertools
@@ -1721,11 +1778,14 @@ def counterfactual_obstacles(r: Reading, q: Question, way: tuple, route: Route, 
             else:
                 kind = "other"
             words.append(kind)
-            out.append(Obstacle(kind, v, h, idx, f"without {unit_words(v)} the step from {a_place} to {b_place} can be made, read on the board without it", True))
+            if h in aside:
+                out.append(Obstacle(kind, v, h, idx, f"with {unit_words(v)} out of the way the step from {a_place} to {b_place} can be made, read on the board with {unit_words(v)} moved aside to {aside[h]}", True))
+            else:
+                out.append(Obstacle(kind, v, h, idx, f"without {unit_words(v)} the step from {a_place} to {b_place} can be made, read on the board without it", True))
         if not words:
             out.append(Obstacle("none", None, b_place, idx, f"no single unit accounts for the step from {a_place} to {b_place}" + (" (pairs tried)" if params.pair_cap else "") + (f"; {rejected} removals were rejected by the kernel as not a position" if rejected else ""), True, True))
             words = ["none"]
-        r.cf_log.append({"ms": 1000 * (time.perf_counter() - t0), "calls": calls, "found": len(found) if found else 0, "words": words, "pair": len(found) == 2, "rejected": rejected})
+        r.cf_log.append({"ms": 1000 * (time.perf_counter() - t0), "calls": calls, "found": len(found) if found else 0, "words": words, "pair": len(found) == 2, "rejected": rejected, "aside": len(aside)})
     return out, cut
 
 
@@ -1738,56 +1798,150 @@ def goal_sign(r: Reading, side: str, params: Params) -> bool:
     return level0(qq, r, params)[0] == LIVE or level1(qq, r, params)[0] == LIVE
 
 
+def _leaving_child(r: Reading, q: Question, u: Unit, mv: "str | None", base: "str | None") -> tuple:
+    """(child position or None, mark): the board after the unit's step `mv` played for real from `base` (the other side then to move: one kernel call), or, when the step is not legal, the
+    board without the unit with the other side given the move by the kernel's pass."""
+    codec, variant, origin = r.env.codec, r.env.variant, place_text(u.at)
+    if base is None:
+        return None, "read after the step"
+    if mv is not None:
+        st = r.state_of(base, mv)
+        return (st[0] if st[3] is None else None), "read after the step"
+    mark = "read on the board without it (its step is not legal)"
+    pos = codec.without(base, origin)
+    if r.try_state(pos) is None:
+        return None, mark
+    key = ("pass", pos)
+    if key not in r._frames:
+        got = CE.passed(variant, pos, [])
+        r._frames[key] = got[0] if got else None
+    return r._frames[key], mark
+
+
+def _lost_after(r: Reading, q: Question, v: Unit, child: str, params: Params) -> "float | None":
+    """The value of the other side's exchange on `v`'s place in `child` when that is a newly lost unit (it was not lost where it stands before), else None."""
+    if r.env.codec.kind_at(child, place_text(v.at)) is None:
+        return None
+    if exchange_stands(r, v, q.owner, params)["value"] > 0:
+        return None                                                    # it was lost before: not a duty of this unit
+    ex = _solve(r, _RealExchange(r, v.at), child, lambda p, m: m, params, "given")
+    r.frame_log.pop()
+    return ex["value"] if ex["value"] > 0 else None
+
+
+def _goal_newly_under_sign(r: Reading, q: Question, child: str, params: Params) -> bool:
+    try:
+        after_reading = r._frames.get(("reading", child))
+        if after_reading is None:
+            after_reading = Reading(r.env, child, r.worth)
+            after_reading._goal_kind = r._goal_kind if r._goal_kind is not None else (r.goal_kind(),)      # the goal's kind is the game's, not the position's: not asked of the kernel again
+            r._frames[("reading", child)] = after_reading
+        if ("sign", q.asker) not in r._frames:
+            r._frames[("sign", q.asker)] = goal_sign(r, q.asker, params)
+        return goal_sign(after_reading, OTHER, params) and not r._frames[("sign", q.asker)]
+    except ValueError:
+        return False
+
+
+def _leaving_candidates(r: Reading, q: Question, u: Unit, mv: "str | None", params: "Params | None" = None) -> tuple:
+    """(units of the asker's side whose standing the leaving can change, whether the goal unit's sign may change). The leaving empties the unit's place and fills its new place (the step's
+    end), nothing else. A unit of its side is newly open if the unit guarded it (it strikes it now), shielded it (a unit of the other side has a hop to the place of that unit passing over the
+    unit's place: read from the medium), or if the new place lies on the line of a guard of that unit (the step shuts the guard). The goal sign may change when the goal unit is among those, or the
+    unit stood, or its step ends, one hop from it or on any line to it, or the unit strikes (now, or from the step's end) a place one hop from it."""
+    med = r.env.medium()
+    origin = place_text(u.at)
+    new = r.env.codec.move_ends(mv)[1] if mv else None
+    own = [v for v in r.units if v.side == q.asker and v != u]
+    foes = [w for w in r.units if w.side != q.asker]
+    strikes = r.strikes_of(u)
+    got: set = set()
+    for v in own:
+        if v.at in strikes:
+            got.add(v)                                                 # it guarded it
+    if med is None:
+        return set(own), True
+    for v in own:
+        for w in foes:
+            if origin in med.over(w.kind, r.absolute(w.side), place_text(w.at), place_text(v.at)):
+                got.add(v)                                             # it shielded it from a line
+                break
+        if new is not None and v not in got:
+            for g in own:
+                if g != v and v.at in r.strikes_of(g) and new in med.over(g.kind, r.absolute(g.side), place_text(g.at), place_text(v.at)):
+                    got.add(v)                                         # its step shuts a guard's line
+                    break
+    gu = r.goal_unit(q.asker)
+    touched = [x for x in (origin, new) if x is not None]
+    sign = False
+    if gu is not None and gu != u:
+        near = set(med.hops(gu.kind, r.absolute(gu.side), place_text(gu.at)))                                  # beside it
+        lines = med.lines_into(place_text(gu.at)) if params is not None and params.leaving_wide_sign else set()   # on a line any unit could come along to it (wide: costs a whole reading of the child for most steps)
+        side_u = r.absolute(u.side)
+        strikes_near = any(place_text(x) in near for x in strikes) or (new is not None and any(new in med.strike_places(u.kind, side_u, p) for p in near))
+        sign = gu in got or strikes_near or any(x in near or x in lines for x in touched) or any(x in lines for x in touched)
+    return got, sign
+
+
+def _cost_leaving_full(r: Reading, q: Question, u: Unit, child: str) -> list:
+    """The earlier form: the exchange frame for every weighty unit of the asker's side, and the goal sign from a whole reading of the child."""
+    duties = []
+    for v in r.units:
+        if v.side != q.asker or v == u or not r.weighty(v) or v == r.goal_unit(q.asker):
+            continue
+        value = _lost_after(r, q, v, child, r.params)
+        if value is not None:
+            duties.append({"unit": v, "stake": r.weight(v), "kind": "newly lost", "value": value})
+    g = r.goal_unit(q.asker)
+    if g is not None and g != u and _goal_newly_under_sign(r, q, child, r.params):
+        duties.append({"unit": g, "stake": r.weight(g), "kind": "goal unit newly under the sign", "value": 0.0})
+    return duties
+
+
+def _cost_leaving_narrow(r: Reading, q: Question, u: Unit, mv: "str | None", child: str, params: Params) -> list:
+    cands, sign = _leaving_candidates(r, q, u, mv, params)
+    goal = r.goal_unit(q.asker)
+    duties = []
+    for v in r.units:
+        if v not in cands or not r.weighty(v) or v == goal:
+            continue
+        value = _lost_after(r, q, v, child, params)
+        if value is not None:
+            duties.append({"unit": v, "stake": r.weight(v), "kind": "newly lost", "value": value})
+    if goal is not None and goal != u and sign and _goal_newly_under_sign(r, q, child, params):
+        duties.append({"unit": goal, "stake": r.weight(goal), "kind": "goal unit newly under the sign", "value": 0.0})
+    return duties
+
+
 def cost_of_leaving(r: Reading, q: Question, u: Unit, mv: "str | None", base: "str | None", params: Params) -> dict:
     """What changes for the asker's side when `u` is no longer on its place. Its first step `mv` is played for real from `base` (the other side then to move); when the step is not legal the board
-    without the unit is used (marked) and the other side is given the move by the kernel's pass. In that position the cheap verdicts are read for the asker's side's other units: the exchange frame
-    `lost where it stands` for each weighty unit that was not lost before, and the goal unit's sign. Each unit newly lost, or goal unit newly under the sign, is a DUTY the unit was holding.
+    without the unit is used (marked) and the other side is given the move by the kernel's pass. In that position the exchange frame `lost where it stands` is read for the asker's side's units
+    that the leaving can change (the narrow reading: the units it guarded or shielded, or whose guard line its step shuts; with `params.leaving_full` every weighty unit and a whole reading of the
+    child), and the goal unit's sign when it may have changed. Each unit newly lost, or goal unit newly under the sign, is a DUTY the unit was holding.
     -> {read, mark, duties: [{unit, stake, kind, value}]}"""
-    key = ("duty", q.asker, place_text(u.at), mv)
+    key = ("duty", q.asker, place_text(u.at), mv, params.leaving_full)
     if key in r._frames:
         return r._frames[key]
-    codec, variant, origin = r.env.codec, r.env.variant, place_text(u.at)
+    r.params = params
     out = {"read": False, "mark": "", "duties": []}
-    child, mark = None, "read after the step"
-    if base is not None:
-        if mv is not None:
-            st = r.state_of(base, mv)
-            child = st[0] if st[3] is None else None
-        else:
-            mark = "read on the board without it (its step is not legal)"
-            try:
-                pos = codec.without(base, origin)
-                r.state_of(pos)
-                got = CE.passed(variant, pos, [])
-                child = got[0] if got else None
-            except Exception:
-                child = None
+    child, mark = _leaving_child(r, q, u, mv, base)
     if child is None:
         r._frames[key] = out
         return out
     out.update(read=True, mark=mark)
-    for v in r.units:
-        if v.side != q.asker or v == u or not r.weighty(v) or v == r.goal_unit(q.asker):
-            continue
-        if codec.kind_at(child, place_text(v.at)) is None:
-            continue
-        if exchange_stands(r, v, q.owner, params)["value"] > 0:
-            continue                                                   # it was lost before: not a duty of this unit
-        ex = _solve(r, _RealExchange(r, v.at), child, lambda p, m: m, params, "given")
-        r.frame_log.pop()
-        if ex["value"] > 0:
-            out["duties"].append({"unit": v, "stake": r.weight(v), "kind": "newly lost", "value": ex["value"]})
-    g = r.goal_unit(q.asker)
-    if g is not None and g != u:
-        try:
-            after_reading = r._frames.get(("reading", child)) or Reading(r.env, child, r.worth)
-            r._frames[("reading", child)] = after_reading
-            if ("sign", q.asker) not in r._frames:
-                r._frames[("sign", q.asker)] = goal_sign(r, q.asker, params)
-            if goal_sign(after_reading, OTHER, params) and not r._frames[("sign", q.asker)]:
-                out["duties"].append({"unit": g, "stake": r.weight(g), "kind": "goal unit newly under the sign", "value": 0.0})
-        except ValueError:
-            pass
+    if params.leaving_full:
+        out["duties"] = _cost_leaving_full(r, q, u, child)
+    else:
+        out["duties"] = _cost_leaving_narrow(r, q, u, mv, child, params)
+        if params.leaving_audit_every > 0:
+            r._audit_n += 1
+            if r._audit_n % params.leaving_audit_every == 0:
+                full = _cost_leaving_full(r, q, u, child)
+                narrow_set = {(d["unit"], d["kind"]) for d in out["duties"]}
+                full_set = {(d["unit"], d["kind"]) for d in full}
+                cands, sign = _leaving_candidates(r, q, u, mv, params)
+                r.leaving_audit.append({"unit": unit_words(u), "mv": mv, "position": r.position, "narrow": len(narrow_set), "full": len(full_set), "differ": narrow_set != full_set,
+                                        "missed": [f"{unit_words(x)} ({k})" for x, k in sorted(full_set - narrow_set, key=lambda z: (z[0].kind, z[0].at))],
+                                        "extra": [f"{unit_words(x)} ({k})" for x, k in sorted(narrow_set - full_set, key=lambda z: (z[0].kind, z[0].at))], "candidates": len(cands)})
     r._frames[key] = out
     return out
 
@@ -1853,6 +2007,8 @@ def ask_obstacle(r: Reading, q: Question, way: tuple, route: Route, ob: Obstacle
             more = "it can move away, one move more" + (f", at a cost of at least {best[0]:g}" if best[0] > 0 else "") + held
             out = {"verdict": "movable", "text": f"{unit_words(u)}: {more} ({best[1]})", "then": f"the route holds in {way[0]} hops, {way[0] + 1} moves with the one that clears it", "cost": best[0], "more": 1,
                    "duties": duties["duties"]}
+    elif u == r.goal_unit(u.side):
+        out = {"verdict": "dead", "text": f"{unit_words(u)} will not move for us and cannot be taken (it is the goal unit of the other side)", "then": "", "cost": 0.0, "more": 0, "duties": []}
     else:
         ex = _solve(r, _RealExchange(r, tuple(ob.place)), base, lambda pos, mv: mv, params, "given")
         r.frame_log.pop()
@@ -2537,6 +2693,7 @@ class Record:
     chains: list = field(default_factory=list)  # printed chains (lines) of questions with an obstacle and its follow-up
     cf: list = field(default_factory=list)      # the counterfactual's log, one dict per blocked step; and the number cut by the cap in `cf_cut`
     cf_cut: int = 0
+    leaving_audit: list = field(default_factory=list)   # the audited costs of leaving: narrow reading against the whole reread
     duty_rows: list = field(default_factory=list)   # one dict per way held back by a duty (or read for one): skipped, traveller moved in the game, held unit taken within 4 plies
     bounds: dict = field(default_factory=dict)  # node kind -> [nodes whose bound closed (low = high), nodes]
     way_costs: list = field(default_factory=list)   # (hops, ms, nodes, verdict) of every way of more than one move settled at level 2
@@ -2581,9 +2738,15 @@ def format_counterfactual(records: list) -> list:
         ms = [x["ms"] for x in cf]
         calls = [x["calls"] for x in cf]
         out.append(f"OBS (H) counterfactual: blocked steps examined {len(cf)} (in {sum(1 for r in records if r.cf)} of {len(records)} positions); explained by one unit {one} ({_pct(one, len(cf))}), by several {many} ({_pct(many, len(cf))}), "
-                   f"by none (no single unit) {none} ({_pct(none, len(cf))}); not examined because of the cap {sum(r.cf_cut for r in records)}; removals rejected as not a position {sum(x['rejected'] for x in cf)}")
+                   f"by none (no single unit) {none} ({_pct(none, len(cf))}); not examined because of the cap {sum(r.cf_cut for r in records)}; removals rejected as not a position {sum(x['rejected'] for x in cf)}; of those, the unit moved aside instead and the step then made {sum(x.get('aside', 0) for x in cf)}")
         out.append("OBS (H) counterfactual, describing words of the units found: " + ", ".join(f"{w} {n}" for w, n in sorted(words.items(), key=lambda kv: -kv[1])))
         out.append(f"OBS (H) counterfactual cost per blocked step: mean {sum(ms) / len(ms):.2f} ms, max {max(ms):.2f} ms; kernel calls mean {sum(calls) / len(calls):.1f}, max {max(calls)}")
+    audit = [x for r in records for x in r.leaving_audit]
+    if audit:
+        miss = [x for x in audit if x["missed"]]
+        out.append(f"OBS (H) leaving audit: narrow reading against the whole reread on {len(audit)} costs of leaving; duties differ in {sum(1 for x in audit if x['differ'])} ({_pct(sum(1 for x in audit if x['differ']), len(audit))}); "
+                   f"the whole reread found {sum(x['full'] for x in audit)} duties, the narrow {sum(x['narrow'] for x in audit)}; narrow missed {sum(len(x['missed']) for x in audit)}"
+                   + ("".join(f"; missed by {x['unit']} {x['mv']}: {', '.join(x['missed'])} (position {x['position']})" for x in miss[:5])) + f"; narrow found what the reread did not {sum(len(x['extra']) for x in audit)}")
     rows = [d for r in records for d in r.duty_rows]
     if rows:
         held = [d for d in rows if d["held_back"]]
@@ -2698,7 +2861,7 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
     quiet_at = place_text(quiet.findings[0].detail["unit"].at) if quiet else None
     costs = [(f"{s.level}" + (f" ({s.mode})" if s.mode else ""), s.cost) for s in sheet.steps if not s.question.quiet]
     return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered, units=units, lost_units=lost_units,
-                  frames=list(sheet.reading.frame_log) if sheet.reading else [], passes=list(sheet.reading.pass_log) if sheet.reading else [], routes=routes, reach=reach, too_far=too_far, way_costs=way_costs, duty_rows=duty_rows, cf=list(sheet.reading.cf_log) if sheet.reading else [], cf_cut=sheet.reading.cf_cut if sheet.reading else 0,
+                  frames=list(sheet.reading.frame_log) if sheet.reading else [], passes=list(sheet.reading.pass_log) if sheet.reading else [], routes=routes, reach=reach, too_far=too_far, way_costs=way_costs, duty_rows=duty_rows, cf=list(sheet.reading.cf_log) if sheet.reading else [], cf_cut=sheet.reading.cf_cut if sheet.reading else 0, leaving_audit=list(sheet.reading.leaving_audit) if sheet.reading else [],
                   bounds=node_bounds(sheet.graph) if sheet.reading else {},
                   graph=sheet.graph.size() if sheet.reading else (0, 0), chains=sample_chains(sheet) if follow_all else [])
 
@@ -3335,6 +3498,9 @@ def main(argv: list) -> int:
     ap.add_argument("--no-objection", action="store_true", help="skip measure (e)")
     ap.add_argument("--goal-verdict", action="store_true", help="measure F: the goal unit's question against how the games ended (levels 0 and 1 only)")
     ap.add_argument("--flagged", action="store_true", help="measure G: the level 2 result on the flagged units of both sides, followed for 4 plies")
+    ap.add_argument("--leaving-full", action="store_true", help="the cost of leaving by a whole new reading of the child position (the earlier form)")
+    ap.add_argument("--leaving-wide-sign", action="store_true", help="the cost of leaving reads the goal sign whenever the step touches a line to the goal unit")
+    ap.add_argument("--leaving-audit", type=int, default=0, help="every n-th cost of leaving is also read by the whole reread and compared")
     ap.add_argument("--search-depth", type=int, default=None, help="the deepest level and the deepest search (default: the Params'); 2 keeps G to depth 2")
     ap.add_argument("--games", type=int, default=None, help="with --goal-verdict: at most this many games")
     ap.add_argument("--out", default=None, help="a name under the derived data directory to write the OBS lines to")
@@ -3342,6 +3508,7 @@ def main(argv: list) -> int:
     env = Env(a.game)
     worth = store_worth(a.game)
     params = Params(links=not a.no_links, search=not a.no_search, frames=not a.no_frames, goal_near=not a.no_goal_near, passes=not a.no_pass, geometry=not a.no_geometry, routes=not a.no_routes)
+    params.leaving_full, params.leaving_audit_every, params.leaving_wide_sign = a.leaving_full, a.leaving_audit, a.leaving_wide_sign
     if a.reach_k:
         params.reach_k = a.reach_k
     if a.route_nodes:

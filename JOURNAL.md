@@ -36620,3 +36620,7 @@ Kaveh: the goal is to reason about our vulnerabilities, and theirs; look at Octo
 ## 2026-11-13 -- plan 78.42: the question graph, first form, after Kaveh's direction
 Kaveh: the scout hands its route to the reasoner, which follows the whole flow; waiting frames; reuse October; the checker in two layers (hops on the empty medium, then the units as obstacles); reasoning as a graph of questions with counterfactuals; obstacles are an open kind; the cost of a unit's leaving; stakes as bounds and the clock by them; October's event-driven store brought over.
 Built on October's frame search and fact store, unedited. The frozen board had hidden most reaches; two-move ways now come out confirmed, refuted or waiting; chains print with "because" and "if ... were gone". About 4 s a position, and a list of defects in docs/ANALYST_PLAN.md 78.42. Gate: files 82, passed 1136, failed 0.
+
+## 2026-11-13 -- plan 78.42 second form: goal unit moved aside, narrow cost of leaving
+
+A goal unit standing on a route is moved aside in place of removed. The cost of leaving reads only what the leaving unit guarded or shielded. Verdicts unchanged; time per position down; numbers and what is still wrong in docs/ANALYST_PLAN.md 78.42 SECOND FORM.
