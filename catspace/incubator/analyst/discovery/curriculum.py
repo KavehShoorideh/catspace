@@ -88,6 +88,29 @@ class ChessCodec:
         found.sort(key=lambda m: m.promotion != chess.QUEEN)
         return found[0].uci() if found else None
 
+    def kind_at(self, position: str, place: str) -> "str | None":
+        """The kind (the description's word) of the unit standing on handle `place`, None when none does (plan 78.41 frames)."""
+        import chess
+        p = chess.Board(position).piece_at(chess.parse_square(place))
+        return self.KINDS[p.symbol().lower()] if p else None
+
+    def takings_on(self, position: str, place: str, legal: list) -> list:
+        """[(move, kind of the unit that plays it)] of the legal moves that land on handle `place` while a unit stands there (the takings of that unit's place); `legal` is the kernel's list."""
+        import chess
+        b = chess.Board(position)
+        sq = chess.parse_square(place)
+        if b.piece_at(sq) is None:
+            return []
+        return [(u, self.KINDS[b.piece_at(chess.Move.from_uci(u).from_square).symbol().lower()]) for u in legal if chess.Move.from_uci(u).to_square == sq]
+
+    def moves_of(self, place: str, legal: list) -> list:
+        """The moves of `legal` played by the unit standing on handle `place`."""
+        return [u for u in legal if u[:2] == place]
+
+    def move_ends(self, move: str) -> tuple:
+        """(origin handle, destination handle) of a move."""
+        return move[:2], move[2:4]
+
     def taken_within(self, start: "str | None", moves: list, ply: int, place: str, k: int) -> "bool | None":
         """Is the unit standing on handle `place` after `moves[:ply]` (of either side) taken by a move of the other side within the next `k` plies of the same game? The unit is followed
         when its own side moves it. None when the game has no move left after `ply` or no unit stands there."""

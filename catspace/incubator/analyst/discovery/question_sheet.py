@@ -35,6 +35,8 @@ from pathlib import Path
 
 import cs_engine as CE
 
+from catspace.incubator.analyst.frame_search import FrameSearch
+
 from catspace.io import paths
 
 SELF, OTHER = "us", "them"             # the sides as the fact view names them in the mover's perspective
@@ -64,6 +66,9 @@ class Params:
     links: bool = True                 # level 1 as a chain of three links (reach, a place to stand, a strike that gains); False: reach alone, the first version
     max_open_exits: int = 1            # the goal unit, no full plan read: live only when at most this many of its exits are open
     cost_growth: float = 3.0           # expected cost of a level when only the one below has been seen: that times the one below
+    frames: bool = True                # level 2 of a non-goal unit by the exchange frame (False: the play-and-reply search or the census, the earlier forms)
+    frame_budget: int = 20_000         # nodes one frame search may expand
+    goal_near: bool = True             # the goal unit is live at level 1 only when open exits are at most max_open_exits AND an asker unit is near (False: the earlier rule)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- units and the reading
@@ -138,6 +143,8 @@ class Reading:
         self.read_seconds = time.perf_counter() - t0
         self._scenario: dict = {}
         self._census: dict = {}
+        self.frame_log: list = []          # (seconds, source) of every frame solved: source real, given or static
+        self._frames: dict = {}
         self._goal_kind: "tuple | None" = None
 
     # ---- stakes
@@ -316,7 +323,7 @@ def level0(q: Question, r: Reading, params: Params) -> tuple:
             total = open_exits + sum(1 for c in rep["covered"] if not c["own"])
             live = bool(strikers) or bool(rep.get("goal_holds"))
             text = f"struck by {_names(strikers)}; guarded by {_names(guards)}; {open_exits} of its {total} exits open" + ("; the goal already holds" if rep.get("goal_holds") else "")
-            return (LIVE if live else IDLE), text, {"strikers": strikers, "guards": guards, "open_exits": open_exits, "exits": total}
+            return (LIVE if live else IDLE), text, {"strikers": strikers, "guards": guards, "open_exits": open_exits, "exits": total, "struck": bool(strikers), "cornered": bool(strikers) and open_exits == 0}
     strikers = r.strikers_of(t, q.asker)
     exits = r.exits_of(t)
     covered = r.struck_by(q.asker)
@@ -370,9 +377,17 @@ def _level1(q: Question, r: Reading, params: Params) -> tuple:
         rep = r.scenario(_role_of(q.asker))
         if rep.get("target") and not rep.get("unreadable"):
             if rep.get("goal_holds"):
-                return LIVE, "the goal already holds", {"scenarios": 0}
+                return LIVE, "the goal already holds", {"scenarios": 0, "live_old": True}
+            if rep["safe"] is True and not params.goal_near:
+                return CLOSED, f"no unit of {side} can reach it within {k} moves", {"scenarios": 0, "failed_at": 1, "live_old": False}
             if rep["safe"] is True:
-                return CLOSED, f"no unit of {side} can reach it within {k} moves", {"scenarios": 0, "failed_at": 1}
+                open_exits = sum(1 for h in rep["holes"] if h["kind"] == "exit")
+                if open_exits <= params.max_open_exits:
+                    return IDLE, f"only {open_exits} of its exits are open, but no unit of {side} can reach it within {k} moves", {"scenarios": 0, "open_exits": open_exits, "near": False, "live_old": False}
+                return CLOSED, f"no unit of {side} can reach it within {k} moves", {"scenarios": 0, "failed_at": 1, "open_exits": open_exits, "near": False, "live_old": False}
+            open_exits = sum(1 for h in rep["holes"] if h["kind"] == "exit")
+            near = asker_near(r, t, q.asker, k)
+            held = {"open_exits": open_exits, "near": near, "scenarios": len(rep["scenarios"])}
             if rep["scenarios"]:
                 best = min(rep["scenarios"], key=lambda s: s["moves"])
                 plan = "; ".join(f"{p['kind']} from {p['from'].replace(':', '')} to {p['to'].replace(':', '')} in {p['moves']}" for p in best["placements"])
@@ -382,13 +397,27 @@ def _level1(q: Question, r: Reading, params: Params) -> tuple:
                         w = (pl["moves"], Unit(q.asker, pl["kind"], tuple(pl["from"].split(":"))), tuple(pl["to"].split(":")), "strike")
                         if w not in ways and pl["moves"] > 0:
                             ways.append(w)
-                return LIVE, f"a plan of {best['moves']} moves of {side}: {plan} ({len(rep['scenarios'])} plans)", {"scenarios": len(rep["scenarios"]), "moves": best["moves"], "supply": ways}
-            if params.links:
-                open_exits = sum(1 for h in rep["holes"] if h["kind"] == "exit")
+                held.update(moves=best["moves"], supply=ways)
+                fact = f"a plan of {best['moves']} moves of {side}: {plan} ({len(rep['scenarios'])} plans)"
+                held["live_old"] = True
+                if not params.goal_near:
+                    return LIVE, fact, held
+                if open_exits <= params.max_open_exits and near:
+                    return LIVE, f"{open_exits} of its exits open and a unit of {side} near; {fact}", held
                 if open_exits <= params.max_open_exits:
-                    return LIVE, f"no full plan read, but only {open_exits} of its exits are open", {"scenarios": 0, "open_exits": open_exits}
-                return CLOSED, f"no way for {side} passes all three links: it fails at {LINKS[3]}, {open_exits} of its exits are open and no plan covers them", {"scenarios": 0, "failed_at": 3}
-            return IDLE, f"the supply was not fully read (caps hit); {side} not shown to reach it", {"scenarios": 0}
+                    return IDLE, f"{open_exits} of its exits open but no unit of {side} is near; {fact}", held
+                return IDLE, f"{open_exits} of its exits are open, more than {params.max_open_exits}; {fact}", held
+            if params.links:
+                held["live_old"] = open_exits <= params.max_open_exits
+                if params.goal_near:
+                    if open_exits <= params.max_open_exits and near:
+                        return LIVE, f"no full plan read, but only {open_exits} of its exits are open and a unit of {side} is near", held
+                    if open_exits <= params.max_open_exits:
+                        return IDLE, f"only {open_exits} of its exits are open, but no unit of {side} is near", held
+                elif open_exits <= params.max_open_exits:
+                    return LIVE, f"no full plan read, but only {open_exits} of its exits are open", held
+                return CLOSED, f"no way for {side} passes all three links: it fails at {LINKS[3]}, {open_exits} of its exits are open and no plan covers them", {**held, "failed_at": 3}
+            return IDLE, f"the supply was not fully read (caps hit); {side} not shown to reach it", held
     now = r.strikers_of(t, q.asker)
     exits = r.exits_of(t)
     open_exits = exits - r.struck_by(q.asker)
@@ -523,7 +552,253 @@ def level_search(q: Question, r: Reading, params: Params) -> tuple:
     return IDLE, f"{len(refu)} of {len(results)} ways are answered within {depth} plies, {detail['open']} not settled", detail
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------- frames: the exchange on a unit's place
+
+def asker_near(r: Reading, t: Unit, asker: str, k: int) -> bool:
+    """At least one unit of the asking side strikes the target's place or one of its exits now, or can come to a place that does within `k` moves."""
+    goals = {t.at} | r.exits_of(t)
+    for u in r.units:
+        if u.side != asker:
+            continue
+        if r.strikes_of(u) & goals:
+            return True
+        for table in r.go[:min(k, len(r.go))]:
+            if any(set(r.acts.get((u.kind, u.side, to), ())) & goals for to in table.get((u.kind, u.side, u.at), ())):
+                return True
+    return False
+
+
+class _RealExchange:
+    """The exchange frame over real positions (a position string, the side to move being the side that may take): its moves are the legal moves that take the unit on one place, the
+    cheapest taker first; the gain of a taking is the worth of the unit taken; the exit is 0 (the side to move may stop). Lines opened by a taking and units that may not legally move
+    are the kernel's business: the moves are its own."""
+
+    def __init__(self, r: Reading, place: tuple):
+        self.r, self.place, self.codec = r, place_text(place), r.env.codec
+        self._st: dict = {}
+
+    def state(self, pos: str) -> tuple:
+        if pos not in self._st:
+            self._st[pos] = CE.state(self.r.env.variant, pos, [])
+        return self._st[pos]
+
+    def moves(self, pos: str) -> list:
+        s = self.state(pos)
+        if s[3] is not None:
+            return []
+        found = self.codec.takings_on(pos, self.place, list(s[2]))
+        found.sort(key=lambda x: (self.r.worth_of(x[1]), x[0]))
+        return [m for m, _ in found]
+
+    def gain(self, pos: str, move: str) -> float:
+        return float(self.r.worth_of(self.codec.kind_at(pos, self.place) or ""))
+
+    def next(self, pos: str, move: str) -> str:
+        return CE.state(self.r.env.variant, pos, [move])[0]
+
+    def exit(self, pos: str) -> float:
+        return 0.0
+
+    def key(self, pos: str) -> str:
+        return pos
+
+
+class _StaticExchange:
+    """The same frame read from the fact view: a state is (strikers of the side to move, strikers of the other side, worth of the unit standing on the place); a striker is
+    (worth, may take only when the other side has none left, label), sorted cheapest first. The standard swap with the option to stop. Lines behind the strikers are not read."""
+
+    def moves(self, s: tuple) -> list:
+        mine, theirs, _occ = s
+        for i, (_w, only_last, _l) in enumerate(mine):
+            if not only_last or not theirs:
+                return [i]
+        return []
+
+    def gain(self, s: tuple, move: int) -> float:
+        return float(s[2])
+
+    def next(self, s: tuple, move: int) -> tuple:
+        mine, theirs, _occ = s
+        return (theirs, mine[:move] + mine[move + 1:], mine[move][0])
+
+    def exit(self, s: tuple) -> float:
+        return 0.0
+
+    def key(self, s: tuple) -> tuple:
+        return s
+
+
+def _line_of(fs, frame, state, label) -> tuple:
+    """The line the best taking leads to (the moves of both sides in turn, `label` naming a move), empty when no taking is worth more than stopping or none exists."""
+    out = []
+    root = {m: frame.gain(state, m) - fs.value(frame.next(state, m)) for m in frame.moves(state)}
+    if not root:
+        return ()
+    best = max(root, key=lambda m: (root[m], -list(root).index(m)))
+    out.append(label(state, best))
+    state = frame.next(state, best)
+    for _ in range(20):
+        v = fs.value(state)
+        nxt = [m for m in frame.moves(state) if frame.gain(state, m) - fs.value(frame.next(state, m)) == v]
+        if not nxt or frame.exit(state) == v:
+            break
+        out.append(label(state, nxt[0]))
+        state = frame.next(state, nxt[0])
+    return tuple(out)
+
+
+def _solve(r: Reading, frame, state, label, params: Params, source: str) -> dict:
+    """The starter's value of a frame in the judge's worth units (it may stop: never below 0), its line, and the source; the time of the solve is logged on the reading."""
+    t0 = time.perf_counter()
+    fs = FrameSearch(frame, budget=params.frame_budget)
+    value = fs.value(state)
+    line = _line_of(fs, frame, state, label) if value >= 0 else ()
+    r.frame_log.append((time.perf_counter() - t0, source))
+    return {"value": value, "line": line, "source": source, "open": fs.stopped > 0}
+
+
+def _static_state(r: Reading, strikers: list, guards: list, occupant: float) -> tuple:
+    goal = {r.goal_kind()} - {None}
+
+    def item(u):
+        return (r.worth_of(u.kind), u.kind in goal, unit_words(u))
+    return (tuple(sorted(item(u) for u in strikers)), tuple(sorted(item(u) for u in guards)), occupant)
+
+
+def _static_label(state: tuple, move: int) -> str:
+    return state[0][move][2]
+
+
+def _guards_of(r: Reading, t: Unit, at: tuple) -> list:
+    return [u for u in r.units if u.side == t.side and u != t and at in r.strikes_of(u)]
+
+
+def exchange_static(r: Reading, t: Unit, asker: str, params: Params, strikers: "list | None" = None, at: "tuple | None" = None, source: str = "static") -> dict:
+    """The exchange on the target's place started by the asker, read from the fact view (the strikers and guards as the board stands; `strikers` and `at` give a hypothetical
+    arrival). Marked: read from the board as it stands, lines behind not read."""
+    at = at or t.at
+    strikers = r.strikers_of(t, asker) if strikers is None else strikers
+    state = _static_state(r, strikers, _guards_of(r, t, at), r.worth_of(t.kind))
+    out = _solve(r, _StaticExchange(), state, _static_label, params, source)
+    out["note"] = "read from the board as it stands, lines behind not read"
+    return out
+
+
+def exchange_stands(r: Reading, t: Unit, asker: str, params: Params = Params()) -> dict:
+    """The exchange frame started by the asker on the target as it stands (cached). The asker is to move: the frame's moves are the real legal takings (source real). The asker is not to
+    move and the engine offers no way to hand the other side the move: the static form."""
+    key = ("stands", t, asker)
+    if key not in r._frames:
+        if asker == SELF:
+            r._frames[key] = _solve(r, _RealExchange(r, t.at), r.position, lambda pos, m: m, params, "real")
+        else:
+            r._frames[key] = exchange_static(r, t, asker, params)
+    return r._frames[key]
+
+
+def exchange_after(r: Reading, t: Unit, asker: str, way: tuple, params: Params = Params()) -> dict:
+    """The exchange frame after the way's first move (a unit of the asker comes to strike). The asker to move: the first move is played for real, the owner answers with every legal
+    move (the target followed where it goes), and the asker starts the real frame from there; the value is the least over the answers (source given). The asker not to move: the move
+    cannot be played; the static form with the supplier placed."""
+    j, u, to, what = way
+    if asker == SELF:
+        mv = None
+        for o, d in _first_moves(r, Question(t, asker, 0.0, 0), way):
+            mv = r.env.codec.find_move(r.position, o, d)
+            if mv in r.legal:
+                break
+            mv = None
+        if mv is not None:
+            t0 = time.perf_counter()
+            child = CE.state(r.env.variant, r.position, [mv])
+            if child[3] is not None:
+                r.frame_log.append((time.perf_counter() - t0, "given"))
+                return {"value": BIG_VALUE if 100 in list(child[3]) else 0.0, "line": (mv,), "source": "given", "open": False}
+            worst, line, where = None, (mv,), place_text(t.at)
+            for m2 in child[2]:
+                nxt = CE.state(r.env.variant, child[0], [m2])
+                from_h, to_h = r.env.codec.move_ends(m2)
+                moved_to = to_h if from_h == where else where
+                if nxt[3] is not None or r.env.codec.kind_at(nxt[0], moved_to) is None:
+                    v = {"value": 0.0, "line": (mv, m2)}
+                else:
+                    v = _solve(r, _RealExchange(r, tuple(moved_to)), nxt[0], lambda pos, m: m, params, "given")
+                    r.frame_log.pop()                          # one step is the whole question below, logged once
+                    v["line"] = (mv, m2) + tuple(v["line"])
+                if worst is None or v["value"] < worst["value"]:
+                    worst = v
+                if worst["value"] <= 0:
+                    break
+            r.frame_log.append((time.perf_counter() - t0, "given"))
+            return {"value": worst["value"] if worst else 0.0, "line": worst["line"] if worst else (mv,), "source": "given", "open": False}
+    strikers = [v for v in r.strikers_of(t, asker) if v != u] + ([u] if what == "strike" else [])
+    return exchange_static(r, t, asker, params, strikers=strikers, at=t.at, source="static")
+
+
+def cornering(r: Reading, t: Unit, asker: str, params: Params = Params()) -> dict:
+    """Is the unit cornered: lost where it stands (the exchange frame of the asker says so) and lost on every place it can go to. The owner to move: its real legal moves, each read with
+    the asker to move (the real frame). The owner not to move: its `go` places from the fact view, each read by the static form with the unit placed there. A unit with no place to go
+    is cornered when it is lost where it stands. -> {cornered, lost_now, places: [(place, lost)], open_exits: places where it is not lost}."""
+    now = exchange_stands(r, t, asker, params)
+    places = []
+    where = place_text(t.at)
+    if asker == OTHER:
+        for m in r.env.codec.moves_of(where, r.legal):
+            child = CE.state(r.env.variant, r.position, [m])
+            dest = r.env.codec.move_ends(m)[1]
+            if child[3] is not None:
+                places.append((dest, False))
+                continue
+            v = _solve(r, _RealExchange(r, tuple(dest)), child[0], lambda pos, mm: mm, params, "real")
+            places.append((dest, v["value"] > 0))
+    else:
+        own = {u.at for u in r.units if u.side == t.side and u != t}
+        for to in sorted(r.exits_of(t) - own):
+            hit = [u for u in r.units if u.side == asker and u.at != to and to in r.strikes_of(u)]
+            gd = [u for u in r.units if u.side == t.side and u != t and to in r.strikes_of(u)]
+            v = _solve(r, _StaticExchange(), _static_state(r, hit, gd, r.worth_of(t.kind)), _static_label, params, "static")
+            places.append((place_text(to), v["value"] > 0))
+    lost_now = now["value"] > 0
+    return {"cornered": lost_now and all(lost for _p, lost in places), "lost_now": lost_now, "places": places, "open_exits": sum(1 for _p, lost in places if not lost)}
+
+
+SOURCE_WORDS = {"real": "real moves", "given": "the way's first move played, every answer, real moves", "static": "read from the board as it stands, lines behind not read"}
+
+
+def level_frames(q: Question, r: Reading, params: Params) -> tuple:
+    """Level 2 of a non-goal unit by the exchange frame: the asker's frame on the target as it stands, then on the target after each way that passed the three links. CONFIRMED (live)
+    when the asker's value is above 0, REFUTED (closed) otherwise, with the line."""
+    t0 = len(r.frame_log)
+    ways = sorted(q.findings[1].detail.get("supply", []) if len(q.findings) > 1 else [], key=lambda w: (w[0], w[1].kind, w[1].at, w[2]))[:params.max_ways]
+    stands = exchange_stands(r, q.target, q.asker, params)
+    results = [{"way": None, "move": None, "status": "confirmed" if stands["value"] > 0 else "refuted", **stands}]
+    for way in ways:
+        if way[0] == 0:
+            continue                                                  # a unit that strikes it now is the frame as it stands
+        key = ("after", q.target, q.asker, way[:4])
+        if key not in r._frames:
+            r._frames[key] = exchange_after(r, q.target, q.asker, way, params)
+        v = r._frames[key]
+        results.append({"way": way, "move": v["line"][0] if (v["line"] and v["source"] == "given") else None, "status": "confirmed" if v["value"] > 0 else "refuted", **v})
+    conf = [x for x in results if x["status"] == "confirmed"]
+    side = side_word(q.asker)
+    detail = {"mode": "frame", "results": results, "confirmed": len(conf), "refuted": len(results) - len(conf), "open": 0, "lost_where_it_stands": stands["value"] > 0,
+              "sources": sorted({x["source"] for x in results}), "frame_steps": len(r.frame_log) - t0}
+    if stands["value"] > 0:
+        detail.update(cornering(r, q.target, q.asker, params))
+    if conf:
+        best = max(conf, key=lambda x: x["value"])
+        detail.update(value=best["value"], line=tuple(best["line"]))
+        where = "where it stands" if best["way"] is None else f"after {unit_words(best['way'][1])} comes to {place_text(best['way'][2])}"
+        corner = ", and cornered" if detail.get("cornered") else ""
+        return LIVE, f"the exchange {where} is worth {best['value']:g} to {side}: {' '.join(best['line']) or 'no taking'} ({SOURCE_WORDS[best['source']]}){corner}", detail
+    x = results[0]
+    return CLOSED, f"the exchange is stopped, worth nothing to {side}: {' '.join(x['line']) or 'no taking pays'} ({SOURCE_WORDS[x['source']]}); {len(results)} frames read", detail
+
+
 def level_deep(q: Question, r: Reading, params: Params) -> tuple:
+    if params.frames and not q.goal:
+        return level_frames(q, r, params)
     if params.search and q.asker == SELF:
         return level_search(q, r, params)
     status, text, detail = level_census(q, r, params)
@@ -749,11 +1024,13 @@ class Record:
     alt_share: "float | None" = None   # share of the other legal moves the sheet does not object to at level 0
     ways: tuple = (0, 0, 0)            # level 2 search: ways confirmed, refuted, not settled
     answered: int = 0                  # questions closed by "every way is answered"
+    lost_units: list = field(default_factory=list)   # (owner, lost where it stands by the exchange frame, taken) of each weighty non-goal unit (measure G, independent of level 1)
+    frames: list = field(default_factory=list)  # (seconds, source) of each frame solved on the sheet
     units: list = field(default_factory=list)   # (owner, group, level 2 result, taken) of each weighty non-goal unit; group: flagged (open after level 1), closed1, other
 
 
 def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, moved: "str | None" = None, taken_of=None, weight: float = 0.0, follow_all: bool = False) -> Record:
-    ranks, ways, answered, units = [], [0, 0, 0], 0, []
+    ranks, ways, answered, units, lost_units = [], [0, 0, 0], 0, [], []
     for q in sheet.questions:
         if q.quiet:
             continue
@@ -770,6 +1047,8 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
             l2 = f.get(2)
             result = "" if l2 is None else {LIVE: "confirmed", CLOSED: "refuted", IDLE: "not settled"}[l2.status]
             units.append((q.owner, group, result, taken_of(place) if taken_of else None))
+            ex = exchange_stands(sheet.reading, q.target, q.asker)
+            lost_units.append((q.owner, ex["value"] > 0, taken_of(place) if taken_of else None))
         for x in q.findings:
             if x.detail.get("mode") == "search":
                 ways[0] += x.detail["confirmed"]
@@ -779,7 +1058,8 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
     quiet = next((q for q in sheet.questions if q.quiet and q.findings), None)
     quiet_at = place_text(quiet.findings[0].detail["unit"].at) if quiet else None
     costs = [(f"{s.level}" + (f" ({s.mode})" if s.mode else ""), s.cost) for s in sheet.steps if not s.question.quiet]
-    return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered, units=units)
+    return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered, units=units, lost_units=lost_units,
+                  frames=list(sheet.reading.frame_log) if sheet.reading else [])
 
 
 class Item(NamedTuple):
@@ -1018,11 +1298,13 @@ def settle_flagged(sheet: Sheet, params: Params = Params()) -> None:
             _record(sheet, step(q, sheet.reading, params), costs, params)
 
 
-def format_flagged(records: list) -> list:
+def format_flagged(records: list, frames: bool = False) -> list:
     """OBS lines of measure G: for the units above the lowest worth (not the goal unit) of each side, the share taken within 4 plies by group and by the level 2 result. Mine are read as
     if it were their turn (the census), theirs with the asker to move (the search)."""
     out = []
-    for side, word, mode in ((SELF, "mine", "level 2 read as if it were their turn"), (OTHER, "theirs", "level 2 read with the asker to move, by search")):
+    modes = (("level 2 by the exchange frame, the asker not to move: the static form", "level 2 by the exchange frame, the asker to move: real takings") if frames
+             else ("level 2 read as if it were their turn", "level 2 read with the asker to move, by search"))
+    for side, word, mode in ((SELF, "mine", modes[0]), (OTHER, "theirs", modes[1])):
         rows = [u for r in records for u in r.units if u[0] == side and u[3] is not None]
 
         def cell(pick):
@@ -1036,13 +1318,32 @@ def format_flagged(records: list) -> list:
             out.append(f"OBS (G) {word}, flagged, level 2 {label}: taken {cell(lambda u, res=res: u[1] == 'flagged' and u[2] == res)}")
         out.append(f"OBS (G) {word}, closed at level 1: taken {cell(lambda u: u[1] == 'closed1')}")
         out.append(f"OBS (G) {word}, neither flagged nor closed at level 1: taken {cell(lambda u: u[1] == 'other')}")
+    if frames:
+        out += format_frame_lines(records)
+    return out
+
+
+def format_frame_lines(records: list) -> list:
+    """The measure over the exchange frame as the unit stands, independent of level 1, and the cost and sources of the frames."""
+    out = []
+    for side, word in ((SELF, "mine"), (OTHER, "theirs")):
+        rows = [u for r in records for u in r.lost_units if u[0] == side and u[2] is not None]
+        lost, safe = [u for u in rows if u[1]], [u for u in rows if not u[1]]
+        out.append(f"OBS (G) {word}, exchange frame as it stands, units above the lowest worth: lost where it stands: taken within 4 plies {sum(u[2] for u in lost)} of {len(lost)} ({_pct(sum(u[2] for u in lost), len(lost))}); "
+                   f"not lost: {sum(u[2] for u in safe)} of {len(safe)} ({_pct(sum(u[2] for u in safe), len(safe))})")
+    log = [x for r in records for x in r.frames]
+    if log:
+        ms = [1000 * c for c, _s in log]
+        out.append(f"OBS (G) frames: {len(log)} frame steps, mean {sum(ms) / len(ms):.2f} ms, max {max(ms):.2f} ms; sources: real moves {sum(1 for _c, s in log if s == 'real')}, "
+                   f"the way's first move played with every answer {sum(1 for _c, s in log if s == 'given')}, static fallback (read from the board as it stands, lines behind not read) {sum(1 for _c, s in log if s == 'static')}")
     return out
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- F: the goal unit's verdict against how games ended
 
 BANDS = ((1, 2), (3, 4), (5, 8), (9, 16), (17, 32), (33, 10 ** 9))
-SIGNS = (("live (level 0 or 1)", "live"), ("open exits at most 1", "exits1"), ("a scenario exists", "scenario"))
+SIGNS = (("live (level 0 or 1)", "live"), ("live at level 1, new rule (open exits at most 1 and an asker unit near)", "live1"), ("live at level 1, earlier rule", "live1_old"),
+         ("an asker unit near", "near"), ("open exits at most 1", "exits1"), ("a scenario exists", "scenario"))
 
 
 def band_of(plies_to_end: int) -> int:
@@ -1085,7 +1386,8 @@ def goal_reading(env: Env, position: str, worth: dict, params: Params) -> dict:
         lv0 = step(q, r, params)
         lv1 = step(q, r, params)
         exits = lv0.detail.get("open_exits")
-        out[q.target.side] = {"live": q.live_by_level1, "live0": lv0.status == LIVE, "open_exits": exits, "exits1": exits is not None and exits <= 1,
+        out[q.target.side] = {"live": q.live_by_level1, "live0": lv0.status == LIVE, "live1": lv1.status == LIVE, "live1_old": bool(lv0.status == LIVE or lv1.detail.get("live_old", lv1.status == LIVE)),
+                              "near": bool(lv1.detail.get("near")), "cornered": bool(lv0.detail.get("cornered")), "open_exits": exits, "exits1": exits is not None and exits <= 1,
                               "scenario": lv1.detail.get("scenarios", 0) > 0, "total_moves": lv1.detail.get("total_moves"), "suppliers": lv1.detail.get("suppliers")}
     return out
 
@@ -1195,6 +1497,8 @@ def main(argv: list) -> int:
     ap.add_argument("--seconds", type=float, default=None)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--no-links", action="store_true", help="level 1 by reach alone (the first version)")
+    ap.add_argument("--no-frames", action="store_true", help="level 2 of a non-goal unit by the earlier forms (the search, the census) instead of the exchange frame")
+    ap.add_argument("--no-goal-near", action="store_true", help="the goal unit's level 1 by the earlier rule (no asker unit needed near)")
     ap.add_argument("--no-search", action="store_true", help="level 2 by the census alone (the first version)")
     ap.add_argument("--alternatives", type=int, default=100, help="bad-move positions whose other legal moves are read for the sheet's objection (0: none)")
     ap.add_argument("--no-objection", action="store_true", help="skip measure (e)")
@@ -1206,7 +1510,7 @@ def main(argv: list) -> int:
     a = ap.parse_args(argv)
     env = Env(a.game)
     worth = store_worth(a.game)
-    params = Params(links=not a.no_links, search=not a.no_search)
+    params = Params(links=not a.no_links, search=not a.no_search, frames=not a.no_frames, goal_near=not a.no_goal_near)
     if a.search_depth:
         params.max_level = params.search_depth_cap = a.search_depth
     t0 = time.perf_counter()
@@ -1239,7 +1543,7 @@ def main(argv: list) -> int:
 
     records, text, unreadable = measure(items, runner, codec=env.codec, objector=None if a.no_objection else objector,
                                         alternatives=None if (a.no_objection or not a.alternatives) else alternatives, alt_limit=a.alternatives, follow_all=a.flagged)
-    lines = format_obs(records, unreadable) + (format_flagged(records) if a.flagged else []) + text
+    lines = format_obs(records, unreadable) + (format_flagged(records, params.frames) if a.flagged else []) + text
     lines.append(f"OBS question sheet: {time.perf_counter() - t0:.1f} s for {len(items)} positions, worth {worth}")
     for ln in lines:
         print(ln)

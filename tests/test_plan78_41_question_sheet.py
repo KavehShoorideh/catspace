@@ -77,7 +77,7 @@ def test_a_deeper_step_finds_the_best_line_and_its_value(env):
     q = _find(qs, "them", "queen")
     Q.step(q, r), Q.step(q, r)
     f = Q.step(q, r)
-    assert f.level == 2 and f.status == Q.LIVE and f.value == 14 and f.line[0] == "d2d5"
+    assert f.level == 2 and f.status == Q.LIVE and f.value == 14 and f.line[0] == "d2d5"          # by the exchange frame (frames on is the default)
 
 
 def test_the_schedule_goes_to_the_higher_stake_and_moves_on_when_nothing_is_found(env):
@@ -248,7 +248,7 @@ def test_load_positions_reads_the_unit_moved_and_the_weight(tmp_path):
 def _to_level_2(env, fen, side, kind, params=None):
     r, qs = _first_order(env, fen)
     q = _find(qs, side, kind)
-    params = params or Q.Params()
+    params = params or Q.Params(frames=False)
     Q.step(q, r, params), Q.step(q, r, params)
     return Q.step(q, r, params), q, r
 
@@ -284,7 +284,7 @@ def test_every_way_answered_closes_with_the_first_move_and_the_reply(env):
 def test_when_the_asker_is_not_to_move_the_census_is_kept_and_said(env):
     f, q, r = _to_level_2(env, HANGING, "us", "rook")
     assert f.detail["mode"].startswith("census") and "as if it were their turn" in f.text
-    old, _q, _r = _to_level_2(env, HANGING, "them", "queen", Q.Params(search=False))
+    old, _q, _r = _to_level_2(env, HANGING, "them", "queen", Q.Params(search=False, frames=False))
     assert old.detail["mode"] == "census" and old.value == 14
 
 
@@ -386,9 +386,9 @@ def test_g_follows_a_unit_of_either_side_and_reads_the_level_2_result_of_the_fla
     moves = ["e2e4", "d7d5", "e4d5", "d8d5"]
     assert codec.taken_within(None, moves, 2, "d5", 4) is True              # the unit is not the mover of ply 2 and is taken at once
     assert codec.taken_within(None, moves, 2, "a7", 4) is False
-    sheet = Q.run(HANGING, WORTH, env=env, max_steps=0, params=Q.Params(max_level=2, search_depth_cap=2))
-    Q.finish_levels(sheet, 1, Q.Params(max_level=2, search_depth_cap=2))
-    Q.settle_flagged(sheet, Q.Params(max_level=2, search_depth_cap=2))
+    sheet = Q.run(HANGING, WORTH, env=env, max_steps=0, params=Q.Params(max_level=2, search_depth_cap=2, frames=False))
+    Q.finish_levels(sheet, 1, Q.Params(max_level=2, search_depth_cap=2, frames=False))
+    Q.settle_flagged(sheet, Q.Params(max_level=2, search_depth_cap=2, frames=False))
     queen = next(q for q in sheet.questions if not q.quiet and q.target.kind == "queen")
     assert len(queen.findings) == 3 and queen.findings[2].detail["mode"] == "search" and queen.findings[2].detail["depth"] == 2
     rec = Q.summarize_sheet((0, 0), False, None, sheet, taken_of=lambda place: place == "d5", follow_all=True)
@@ -404,3 +404,86 @@ def test_g_lines_count_taken_by_side_and_result():
     assert "theirs, flagged, level 2 confirmed: taken 1 of 1 (100.0%)" in get("theirs, flagged, level 2 confirmed")
     assert "mine, closed at level 1: taken 0 of 1 (0.0%)" in get("mine, closed at level 1")
     assert "theirs, neither flagged nor closed at level 1: taken 1 of 1" in get("theirs, neither")
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- frames: the exchange on a unit's place, cornering, the goal unit's live sign
+
+def _unit(env, fen, side, kind):
+    r = Q.Reading(env, fen, WORTH)
+    return r, next(u for u in r.units if u.side == side and u.kind == kind)
+
+
+def test_the_exchange_frame_the_starter_wins(env):
+    r, u = _unit(env, "3rk3/8/8/3q4/8/8/3R4/4K3 w - - 0 1", "them", "queen")           # the queen is guarded, but it is worth more than my rook
+    x = Q.exchange_stands(r, u, "us")
+    assert x["source"] == "real" and x["value"] == 6 and x["line"] == ("d2d5", "d8d5")
+    r2, u2 = _unit(env, HANGING, "them", "queen")
+    assert Q.exchange_stands(r2, u2, "us")["value"] == 14
+
+
+def test_the_exchange_frame_the_starter_loses_and_so_stops(env):
+    r, u = _unit(env, "7k/8/4p3/3p4/8/8/3R4/4K3 w - - 0 1", "them", "pawn")           # a guarded pawn: taking it loses the rook for it, so the starter stops
+    x = Q.exchange_stands(r, u, "us")
+    assert x["value"] == 0 and x["line"][:2] == ("d2d5", "e6d5")                         # the line it would lose by is shown; the value is the exit's
+    f = _level2(env, "7k/8/4p3/3p4/8/8/3R4/4K3 w - - 0 1", "them", "pawn")
+    assert f.status == Q.CLOSED and "stopped" in f.text and f.detail["lost_where_it_stands"] is False
+
+
+def _level2(env, fen, side, kind, params=None):
+    r, qs = _first_order(env, fen)
+    q = _find(qs, side, kind)
+    params = params or Q.Params()
+    Q.step(q, r, params), Q.step(q, r, params)
+    return Q.step(q, r, params)
+
+
+def test_a_unit_behind_another_on_the_same_line_decides_the_exchange_by_real_moves(env):
+    behind = "3rk3/8/8/3p4/8/3R4/3R4/4K3 w - - 0 1"
+    alone = "3rk3/8/8/3p4/8/3R4/8/4K3 w - - 0 1"
+    r, u = _unit(env, behind, "them", "pawn")
+    real = Q.exchange_stands(r, u, "us")
+    assert real["source"] == "real" and real["value"] == 2                              # the second rook, behind the first, recaptures: the kernel's own moves see it
+    assert Q.exchange_static(r, u, "us", Q.Params())["value"] == 0                       # the fact view does not see a unit behind another
+    r1, u1 = _unit(env, alone, "them", "pawn")
+    assert Q.exchange_stands(r1, u1, "us")["value"] == 0
+
+
+def test_the_static_fallback_is_marked_when_the_asker_is_not_to_move(env):
+    r, u = _unit(env, HANGING, "us", "rook")                                             # their queen strikes my rook, my king guards it
+    x = Q.exchange_stands(r, u, "them")
+    assert x["source"] == "static" and x["note"] == "read from the board as it stands, lines behind not read" and x["value"] == 0
+    f = _level2(env, HANGING, "us", "rook")
+    assert f.detail["mode"] == "frame" and "read from the board as it stands, lines behind not read" in f.text
+    r2, u2 = _unit(env, "7k/8/8/8/8/8/q7/N3K3 w - - 0 1", "us", "knight")
+    assert Q.exchange_stands(r2, u2, "them")["value"] == 4                                # unguarded and struck: lost where it stands
+
+
+def test_a_cornered_unit_and_a_unit_with_one_safe_place(env):
+    r, u = _unit(env, "7k/8/8/8/8/8/q7/N3K3 w - - 0 1", "us", "knight")                  # struck, unguarded, and both places it can go to are struck
+    c = Q.cornering(r, u, "them")
+    assert c["cornered"] and c["lost_now"] and c["open_exits"] == 0 and len(c["places"]) == 2
+    r2, u2 = _unit(env, "7k/8/8/8/8/8/q7/N2K4 w - - 0 1", "us", "knight")                # my king guards c2: one place is safe
+    c2 = Q.cornering(r2, u2, "them")
+    assert c2["lost_now"] and not c2["cornered"] and c2["open_exits"] == 1
+    r3, u3 = _unit(env, "4k3/8/8/3p4/8/8/3R4/4K3 w - - 0 1", "them", "pawn")             # the owner is not to move: its places are read from the fact view
+    c3 = Q.cornering(r3, u3, "us")
+    assert c3["cornered"] and c3["places"] == [("d4", True)]
+
+
+def test_a_level_2_of_a_cornered_unit_says_so(env):
+    f = _level2(env, "7k/8/8/8/8/8/q7/N3K3 w - - 0 1", "us", "knight")
+    assert f.status == Q.LIVE and f.detail["cornered"] and "cornered" in f.text
+
+
+def test_the_goal_unit_is_idle_when_no_unit_of_the_asker_is_near_and_live_when_confined_with_a_striker_near(env):
+    def level1(fen, params=None):
+        r, qs = _first_order(env, fen)
+        q = next(x for x in qs if x.goal and x.target.side == "them")
+        Q.step(q, r, params or Q.Params())
+        return Q.step(q, r, params or Q.Params())
+    far = level1("7k/6pp/8/8/8/8/8/K7 w - - 0 1")                                        # confined, but my only unit is far away
+    assert far.status == Q.IDLE and far.detail["open_exits"] == 1 and far.detail["near"] is False
+    assert level1("7k/6pp/8/8/8/8/8/K7 w - - 0 1", Q.Params(goal_near=False)).status == Q.CLOSED       # the earlier rule closed it
+    near = level1("7k/6pp/8/8/8/8/8/R3K3 w - - 0 1")                                     # my rook reaches the line in one move
+    assert near.status == Q.LIVE and near.detail["near"] and near.detail["open_exits"] == 1
+    assert "scenarios" in near.detail                                                    # a plan is a recorded fact, not the status
