@@ -448,14 +448,44 @@ def test_a_unit_behind_another_on_the_same_line_decides_the_exchange_by_real_mov
     assert Q.exchange_stands(r1, u1, "us")["value"] == 0
 
 
-def test_the_static_fallback_is_marked_when_the_asker_is_not_to_move(env):
-    r, u = _unit(env, HANGING, "us", "rook")                                             # their queen strikes my rook, my king guards it
+IN_CHECK = "4k3/8/8/4q3/8/8/3R4/4K3 w - - 0 1"           # the mover's goal unit is struck: the kernel refuses the pass
+
+
+def test_the_static_fallback_is_marked_when_the_pass_is_refused(env):
+    r, u = _unit(env, IN_CHECK, "us", "rook")
+    assert r.passed_position() is None
     x = Q.exchange_stands(r, u, "them")
-    assert x["source"] == "static" and x["note"] == "read from the board as it stands, lines behind not read" and x["value"] == 0
-    f = _level2(env, HANGING, "us", "rook")
+    assert x["source"] == "static" and x["note"] == "read from the board as it stands, lines behind not read"
+    f = _level2(env, IN_CHECK, "us", "rook")
     assert f.detail["mode"] == "frame" and "read from the board as it stands, lines behind not read" in f.text
+    r1, u1 = _unit(env, HANGING, "us", "rook")                                           # a pass is given: the same question by real moves
+    x1 = Q.exchange_stands(r1, u1, "them")
+    assert r1.passed_position() is not None and x1["source"] == "real" and x1["value"] == 0
+    r1b, u1b = _unit(env, HANGING, "us", "rook")
+    r1b.passes = False                                                                   # switched off: the static form, marked
+    assert Q.exchange_stands(r1b, u1b, "them")["source"] == "static"
     r2, u2 = _unit(env, "7k/8/8/8/8/8/q7/N3K3 w - - 0 1", "us", "knight")
     assert Q.exchange_stands(r2, u2, "them")["value"] == 4                                # unguarded and struck: lost where it stands
+
+
+def test_passed_gives_the_same_placement_with_the_other_side_to_move_and_is_refused_where_the_kernel_refuses():
+    import cs_engine as CE
+    fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+    p = CE.passed("chess", fen, [])
+    assert p[0].split()[0] == fen.split()[0] and p[1] == "white" and CE.state("chess", fen, [])[1] == "black"
+    assert CE.state("chess", p[0], [])[:3] == p[:3]                                       # the string is a start for the other calls
+    assert CE.passed("chess", None, ["e2e4"])[0] == p[0]                                  # a start and a move list as `state` takes it
+    assert CE.passed("chess", IN_CHECK, []) is None                                       # the mover is in check
+    assert CE.passed("chess", "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", []) is None              # the game is over
+
+
+def test_a_question_on_the_movers_own_unit_is_read_by_real_moves_refuted_when_answered_confirmed_when_not(env):
+    answered = _level2(env, "1r4k1/8/8/8/8/4K3/8/N7 w - - 0 1", "us", "knight")        # the knight can leave the file the rook comes to
+    assert answered.status == Q.CLOSED and answered.detail["sources"] == ["given", "real"] and answered.detail["confirmed"] == 0
+    lost = _level2(env, "1r4k1/8/8/5b2/2p5/8/8/N3K3 w - - 0 1", "us", "knight")          # every place the knight can go to is struck
+    assert lost.status == Q.LIVE and lost.value == 4 and "real moves" in lost.text and lost.detail["sources"] == ["given", "real"]
+    off = _level2(env, "1r4k1/8/8/5b2/2p5/8/8/N3K3 w - - 0 1", "us", "knight", Q.Params(passes=False))
+    assert off.detail["sources"] == ["static"]                                            # --no-pass: the earlier form
 
 
 def test_a_cornered_unit_and_a_unit_with_one_safe_place(env):

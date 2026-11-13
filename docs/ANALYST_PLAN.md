@@ -6357,3 +6357,27 @@ NEXT: the frame as the sheet's deeper level, the same for both sides: the EXCHAN
 READING: (1) "LOST WHERE IT STANDS" BY THE EXCHANGE FRAME IS THE SIGN THAT SEPARATES, ON BOTH SIDES: theirs 11 of 13 taken against 18 of 748; mine 7 of 23 against 19 of 740 (mine lower because the owner is to move and saves it, which is the right reading of a threat that is answered). A frame step costs 0.30 ms. (2) AFTER A SUPPLIER'S ARRIVAL: for theirs (real moves, every answer of the owner tried) confirmed 14 of 71 taken against 8 of 236 refuted, and nothing left unsettled where the earlier search left 192; for MINE the static form confirms 302 of 318 and separates nothing, because the owner never answers the arrival. The kernel gives Python no way to hand the other side the move; that is the one thing missing to read my side as theirs is read. (3) THE GOAL UNIT: the new sign is on in 9 of 11 and 6 of 11 of the loser's last four plies read as mine (10 and 8 of 11 read as theirs), in none of the winner's last eight plies, in 3 to 10 of 100 of the undecided near the end; far from the end it still fires in 13 to 21 of 100. It leads the end by a median of 3 plies (the count of exits alone: 5). Eleven decisive games.
 OPEN: a pass in the kernel's Python face (so a question on my unit plays the other side's arrival and then my answers); a unit behind another is unread in the static form; the goal unit has no exchange frame and keeps the earlier level 2; a unit made during the line has no worth.
 NEXT: the pass (a small Rust addition to the Python face, the census already holds it), then G for mine again; then the sheet's verdicts as the search's first moves in the wake, measured by 78.37's surprise rate.
+
+78.41 THE PASS: MY SIDE READ AS THEIRS IS READ (2026-11-13; rust/engine/py/src/lib.rs `passed(variant, fen, moves)`, the kernel's own pass that the census already used, 14 lines; Params.passes, --no-pass). A question on the mover's own unit now plays the other side's arrival from the passed position, tries every answer of the owner, then runs the asker's real exchange frame. Tests 40. G on the same 150 positions:
+    OBS (G) mine (level 2 by the exchange frame, the asker not to move: real moves after the kernel's pass, the static form where it is refused (or with --no-pass)): units read 763; flagged (open after level 1) 318: taken 15 of 318 (4.7%)
+    OBS (G) mine, flagged, level 2 confirmed: taken 7 of 79 (8.9%)
+    OBS (G) mine, flagged, level 2 refuted: taken 6 of 235 (2.6%)
+    OBS (G) mine, flagged, level 2 not settled: taken 0 of 0 (n/a)
+    OBS (G) mine, flagged, level 2 no level 2 step: taken 2 of 4 (50.0%)
+    OBS (G) mine, closed at level 1: taken 11 of 445 (2.5%)
+    OBS (G) mine, neither flagged nor closed at level 1: taken 0 of 0 (n/a)
+    OBS (G) theirs (level 2 by the exchange frame, the asker to move: real takings): units read 761; flagged (open after level 1) 310: taken 22 of 310 (7.1%)
+    OBS (G) theirs, flagged, level 2 confirmed: taken 14 of 71 (19.7%)
+    OBS (G) theirs, flagged, level 2 refuted: taken 8 of 236 (3.4%)
+    OBS (G) theirs, flagged, level 2 not settled: taken 0 of 0 (n/a)
+    OBS (G) theirs, flagged, level 2 no level 2 step: taken 0 of 3 (0.0%)
+    OBS (G) theirs, closed at level 1: taken 7 of 451 (1.6%)
+    OBS (G) theirs, neither flagged nor closed at level 1: taken 0 of 0 (n/a)
+    OBS (G) mine, exchange frame as it stands, units above the lowest worth: lost where it stands: taken within 4 plies 7 of 22 (31.8%); not lost: 19 of 741 (2.6%)
+    OBS (G) theirs, exchange frame as it stands, units above the lowest worth: lost where it stands: taken within 4 plies 11 of 13 (84.6%); not lost: 18 of 748 (2.4%)
+    OBS (G) frames: 3358 frame steps, mean 0.63 ms, max 27.19 ms; sources: real moves 1625, the way's first move played with every answer 1319, static fallback (read from the board as it stands, lines behind not read) 414
+    OBS (G) passes: asked on 150 positions, given 131, refused 19
+    OBS gate engine: files 82, passed 1106, failed 0, xfailed 1, errors 0, wall 1395.7 s
+READING: mine, flagged: confirmed 7 of 79 taken against refuted 6 of 235 (before the pass: 12 of 302 against 1 of 12). The alarms on my side fall from 302 to 79 and the two groups now differ; theirs is unchanged (14 of 71 against 8 of 236). The counts of takings are small (7 and 6), so the direction is shown and the size is not. The pass is refused where the mover's goal unit is struck (19 of 150 positions), and the static form, marked, is used there.
+OPEN: a way is judged after its first move only, so a way of two preparing moves reads refuted (October's waiting frames: what it waits on, what breaks it); the goal unit has no exchange frame; nothing of the sheet is in the wake.
+NEXT: the sheet in the wake: its confirmed questions on their units and on mine as the search's first moves, measured by 78.37's surprise rate at 0.2 s and 1.0 s beside the plain search; that needs the sheet's levels 0 to 2 in Rust (the frame step is 0.62 ms in Python, the fact read 3.7 ms a position).

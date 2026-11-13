@@ -188,6 +188,19 @@ fn state(variant: &str, fen: Option<&str>, moves: Vec<String>, start960: u32) ->
     Ok((g.fen(&s), g.mover(&s).map(|r| g.roles()[r].clone()), ms, g.outcome(&s), g.key(&s)))
 }
 
+/// passed(variant, fen=None, moves=[], start960=518) -> the `state` tuple of the position after the side to move passes (the other side to move, the en-passant right
+/// gone), by the kernel's own `pass` (the one `census(side="other")` reads); None when it refuses (the mover in check, the game over, a game with no pass).
+/// The fen of the tuple is a position string the other calls take with no moves.
+#[pyfunction]
+#[pyo3(signature = (variant, fen=None, moves=vec![], start960=518))]
+fn passed(variant: &str, fen: Option<&str>, moves: Vec<String>, start960: u32) -> PyResult<Option<(String, Option<String>, Vec<String>, Option<Vec<i64>>, u64)>> {
+    let (g, s0) = state_of(variant, fen, start960, &moves)?;
+    Ok(g.pass(&s0).map(|s| {
+        let ms = g.moves(&s).iter().map(|m| g.move_name(&s, m)).collect();
+        (g.fen(&s), g.mover(&s).map(|r| g.roles()[r].clone()), ms, g.outcome(&s), g.key(&s))
+    }))
+}
+
 /// The variants the kernels play (lichess's names).
 #[pyfunction]
 fn variants() -> Vec<String> { kernel::VARIANTS.iter().map(|s| s.to_string()).collect() }
@@ -1094,6 +1107,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(graph, m)?)?;
     m.add_function(wrap_pyfunction!(graph_vocab, m)?)?;
     m.add_function(wrap_pyfunction!(state, m)?)?;
+    m.add_function(wrap_pyfunction!(passed, m)?)?;
     m.add_function(wrap_pyfunction!(watch, m)?)?;
     m.add_function(wrap_pyfunction!(census, m)?)?;
     m.add_function(wrap_pyfunction!(reason, m)?)?;

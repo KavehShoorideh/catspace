@@ -68,6 +68,7 @@ class Params:
     cost_growth: float = 3.0           # expected cost of a level when only the one below has been seen: that times the one below
     frames: bool = True                # level 2 of a non-goal unit by the exchange frame (False: the play-and-reply search or the census, the earlier forms)
     frame_budget: int = 20_000         # nodes one frame search may expand
+    passes: bool = True                # the asker not to move: hand it the move by the kernel's pass and run the frames by real moves (False: the static form, for comparison)
     goal_near: bool = True             # the goal unit is live at level 1 only when open exits are at most max_open_exits AND an asker unit is near (False: the earlier rule)
 
 
@@ -146,6 +147,9 @@ class Reading:
         self.frame_log: list = []          # (seconds, source) of every frame solved: source real, given or static
         self._frames: dict = {}
         self._goal_kind: "tuple | None" = None
+        self.passes = True                 # set by `step` from Params.passes
+        self._pass: "tuple | None" = None  # (the passed position string or None when refused,) once asked
+        self.pass_log: list = []           # True when the pass was given, False when refused, one entry per position asked
 
     # ---- stakes
     def worth_of(self, kind: str) -> float:
@@ -200,6 +204,16 @@ class Reading:
             tactics, _stats = CE.census(self.env.variant, self.position, [], 1, depth, fuse, "mover" if side == SELF else "other", self.worth)
             self._census[key] = tactics
         return self._census[key]
+
+    def passed_position(self) -> "str | None":
+        """This position with the other side to move (the kernel's pass), None when passes are off or the kernel refuses it (the mover under attack on its goal unit, the game over)."""
+        if not self.passes:
+            return None
+        if self._pass is None:
+            got = CE.passed(self.env.variant, self.position, [])
+            self._pass = (got[0] if got else None,)
+            self.pass_log.append(got is not None)
+        return self._pass[0]
 
     # ---- the tables
     def strikes_of(self, u: Unit) -> set:
@@ -686,11 +700,12 @@ def exchange_static(r: Reading, t: Unit, asker: str, params: Params, strikers: "
 
 def exchange_stands(r: Reading, t: Unit, asker: str, params: Params = Params()) -> dict:
     """The exchange frame started by the asker on the target as it stands (cached). The asker is to move: the frame's moves are the real legal takings (source real). The asker is not to
-    move and the engine offers no way to hand the other side the move: the static form."""
+    move: the position with the asker to move by the kernel's pass, the same real frame; when the pass is refused (or switched off), the static form."""
     key = ("stands", t, asker)
     if key not in r._frames:
-        if asker == SELF:
-            r._frames[key] = _solve(r, _RealExchange(r, t.at), r.position, lambda pos, m: m, params, "real")
+        base = r.position if asker == SELF else r.passed_position()
+        if base is not None:
+            r._frames[key] = _solve(r, _RealExchange(r, t.at), base, lambda pos, m: m, params, "real")
         else:
             r._frames[key] = exchange_static(r, t, asker, params)
     return r._frames[key]
@@ -699,18 +714,21 @@ def exchange_stands(r: Reading, t: Unit, asker: str, params: Params = Params()) 
 def exchange_after(r: Reading, t: Unit, asker: str, way: tuple, params: Params = Params()) -> dict:
     """The exchange frame after the way's first move (a unit of the asker comes to strike). The asker to move: the first move is played for real, the owner answers with every legal
     move (the target followed where it goes), and the asker starts the real frame from there; the value is the least over the answers (source given). The asker not to move: the move
-    cannot be played; the static form with the supplier placed."""
+    cannot be played from the position as it stands: it is played from the passed position (the asker to move by the kernel's pass), the same way; the static form with the supplier
+    placed only when the pass is refused."""
     j, u, to, what = way
-    if asker == SELF:
+    base = r.position if asker == SELF else r.passed_position()
+    if base is not None:
+        legal = list(CE.state(r.env.variant, base, [])[2])
         mv = None
         for o, d in _first_moves(r, Question(t, asker, 0.0, 0), way):
-            mv = r.env.codec.find_move(r.position, o, d)
-            if mv in r.legal:
+            mv = r.env.codec.find_move(base, o, d)
+            if mv in legal:
                 break
             mv = None
         if mv is not None:
             t0 = time.perf_counter()
-            child = CE.state(r.env.variant, r.position, [mv])
+            child = CE.state(r.env.variant, base, [mv])
             if child[3] is not None:
                 r.frame_log.append((time.perf_counter() - t0, "given"))
                 return {"value": BIG_VALUE if 100 in list(child[3]) else 0.0, "line": (mv,), "source": "given", "open": False}
@@ -737,7 +755,7 @@ def exchange_after(r: Reading, t: Unit, asker: str, way: tuple, params: Params =
 
 def cornering(r: Reading, t: Unit, asker: str, params: Params = Params()) -> dict:
     """Is the unit cornered: lost where it stands (the exchange frame of the asker says so) and lost on every place it can go to. The owner to move: its real legal moves, each read with
-    the asker to move (the real frame). The owner not to move: its `go` places from the fact view, each read by the static form with the unit placed there. A unit with no place to go
+    the asker to move (the real frame). The owner not to move: the same on the passed position (the owner to move by the kernel's pass); when the pass is refused, its `go` places from the fact view, each read by the static form with the unit placed there. A unit with no place to go
     is cornered when it is lost where it stands. -> {cornered, lost_now, places: [(place, lost)], open_exits: places where it is not lost}."""
     now = exchange_stands(r, t, asker, params)
     places = []
@@ -745,6 +763,16 @@ def cornering(r: Reading, t: Unit, asker: str, params: Params = Params()) -> dic
     if asker == OTHER:
         for m in r.env.codec.moves_of(where, r.legal):
             child = CE.state(r.env.variant, r.position, [m])
+            dest = r.env.codec.move_ends(m)[1]
+            if child[3] is not None:
+                places.append((dest, False))
+                continue
+            v = _solve(r, _RealExchange(r, tuple(dest)), child[0], lambda pos, mm: mm, params, "real")
+            places.append((dest, v["value"] > 0))
+    elif r.passed_position() is not None:
+        base = r.passed_position()
+        for m in r.env.codec.moves_of(where, list(CE.state(r.env.variant, base, [])[2])):
+            child = CE.state(r.env.variant, base, [m])
             dest = r.env.codec.move_ends(m)[1]
             if child[3] is not None:
                 places.append((dest, False))
@@ -835,6 +863,7 @@ def level_quiet(q: Question, r: Reading, params: Params) -> tuple:
 def step(q: Question, r: Reading, params: Params = Params()) -> Finding:
     """Deepen the question by one level: what it found, what it cost, and whether it is now closed (with the reason in plain words), idle or live."""
     r.params_k = params.reach_k
+    r.passes = params.passes
     level = q.level
     t0 = time.perf_counter()
     if q.quiet:
@@ -1026,6 +1055,7 @@ class Record:
     answered: int = 0                  # questions closed by "every way is answered"
     lost_units: list = field(default_factory=list)   # (owner, lost where it stands by the exchange frame, taken) of each weighty non-goal unit (measure G, independent of level 1)
     frames: list = field(default_factory=list)  # (seconds, source) of each frame solved on the sheet
+    passes: list = field(default_factory=list)  # True per pass the kernel gave, False per pass it refused, one per position
     units: list = field(default_factory=list)   # (owner, group, level 2 result, taken) of each weighty non-goal unit; group: flagged (open after level 1), closed1, other
 
 
@@ -1059,7 +1089,7 @@ def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, mo
     quiet_at = place_text(quiet.findings[0].detail["unit"].at) if quiet else None
     costs = [(f"{s.level}" + (f" ({s.mode})" if s.mode else ""), s.cost) for s in sheet.steps if not s.question.quiet]
     return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered, units=units, lost_units=lost_units,
-                  frames=list(sheet.reading.frame_log) if sheet.reading else [])
+                  frames=list(sheet.reading.frame_log) if sheet.reading else [], passes=list(sheet.reading.pass_log) if sheet.reading else [])
 
 
 class Item(NamedTuple):
@@ -1302,7 +1332,7 @@ def format_flagged(records: list, frames: bool = False) -> list:
     """OBS lines of measure G: for the units above the lowest worth (not the goal unit) of each side, the share taken within 4 plies by group and by the level 2 result. Mine are read as
     if it were their turn (the census), theirs with the asker to move (the search)."""
     out = []
-    modes = (("level 2 by the exchange frame, the asker not to move: the static form", "level 2 by the exchange frame, the asker to move: real takings") if frames
+    modes = (("level 2 by the exchange frame, the asker not to move: real moves after the kernel's pass, the static form where it is refused (or with --no-pass)", "level 2 by the exchange frame, the asker to move: real takings") if frames
              else ("level 2 read as if it were their turn", "level 2 read with the asker to move, by search"))
     for side, word, mode in ((SELF, "mine", modes[0]), (OTHER, "theirs", modes[1])):
         rows = [u for r in records for u in r.units if u[0] == side and u[3] is not None]
@@ -1336,6 +1366,9 @@ def format_frame_lines(records: list) -> list:
         ms = [1000 * c for c, _s in log]
         out.append(f"OBS (G) frames: {len(log)} frame steps, mean {sum(ms) / len(ms):.2f} ms, max {max(ms):.2f} ms; sources: real moves {sum(1 for _c, s in log if s == 'real')}, "
                    f"the way's first move played with every answer {sum(1 for _c, s in log if s == 'given')}, static fallback (read from the board as it stands, lines behind not read) {sum(1 for _c, s in log if s == 'static')}")
+    asked = [x for r in records for x in r.passes]
+    if asked:
+        out.append(f"OBS (G) passes: asked on {len(asked)} positions, given {sum(asked)}, refused {len(asked) - sum(asked)}")
     return out
 
 
@@ -1498,6 +1531,7 @@ def main(argv: list) -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--no-links", action="store_true", help="level 1 by reach alone (the first version)")
     ap.add_argument("--no-frames", action="store_true", help="level 2 of a non-goal unit by the earlier forms (the search, the census) instead of the exchange frame")
+    ap.add_argument("--no-pass", action="store_true", help="the asker not to move: the static form instead of the kernel's pass and real moves")
     ap.add_argument("--no-goal-near", action="store_true", help="the goal unit's level 1 by the earlier rule (no asker unit needed near)")
     ap.add_argument("--no-search", action="store_true", help="level 2 by the census alone (the first version)")
     ap.add_argument("--alternatives", type=int, default=100, help="bad-move positions whose other legal moves are read for the sheet's objection (0: none)")
@@ -1510,7 +1544,7 @@ def main(argv: list) -> int:
     a = ap.parse_args(argv)
     env = Env(a.game)
     worth = store_worth(a.game)
-    params = Params(links=not a.no_links, search=not a.no_search, frames=not a.no_frames, goal_near=not a.no_goal_near)
+    params = Params(links=not a.no_links, search=not a.no_search, frames=not a.no_frames, goal_near=not a.no_goal_near, passes=not a.no_pass)
     if a.search_depth:
         params.max_level = params.search_depth_cap = a.search_depth
     t0 = time.perf_counter()
