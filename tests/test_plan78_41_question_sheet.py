@@ -233,39 +233,128 @@ def test_explain_names_the_link_that_failed(env):
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- measures (b) by unit and (d) the quiet question
 
-def test_load_positions_reads_the_units_lost_and_the_unit_moved(tmp_path):
+def test_load_positions_reads_the_unit_moved_and_the_weight(tmp_path):
     moves = ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"]
     ours = {str(p): {"balance": 0} for p in range(6)}
     (tmp_path / "games.jsonl").write_text(json.dumps({"variant": "chess", "game": 0, "start": None, "moves": moves, "ours": ours}) + "\n")
-    (tmp_path / "surprises.jsonl").write_text("")
-    items = {i[0][1]: i for i in Q.load_positions(str(tmp_path), "chess", game="chess")}
-    assert items[1][4] == {"pawn"}                      # black had 8 pawns at ply 1 and 7 at ply 5
-    assert items[0][4] == {"pawn"}                      # white's pawn is taken at ply 3
-    assert items[0][5] == "e2" and items[1][5] == "d7" and items[2][5] == "e4"
-    assert items[3][4] is None                          # the game ends before ply 7
+    (tmp_path / "surprises.jsonl").write_text(json.dumps({"game": 0, "ply": 2, "kind": "MISSED", "judge": {"jump": -0.3}, "weight": 2.5}) + "\n")
+    items = {i.key[1]: i for i in Q.load_positions(str(tmp_path), "chess", game="chess")}
+    assert (items[0].moved, items[0].moved_to, items[1].moved, items[2].moved_to) == ("e2", "e4", "d7", "d5")
+    assert items[2].bad and items[2].weight == 2.5 and items[0].weight == 0.0 and items[3].played == "d8d5"
 
 
-def _rec(bad, rows, lost=None, quiet_at=None, moved=None):
-    return Q.Record((0, 0), bad, rows, None, [(0, 0.001)], lost=lost, quiet_at=quiet_at, moved=moved)
+# ---------------------------------------------------------------------------------------------------------------------------------------------- level 2 as a search of the question's own ways
+
+def _to_level_2(env, fen, side, kind, params=None):
+    r, qs = _first_order(env, fen)
+    q = _find(qs, side, kind)
+    params = params or Q.Params()
+    Q.step(q, r, params), Q.step(q, r, params)
+    return Q.step(q, r, params), q, r
 
 
-def test_measure_b_by_unit_and_measure_d_on_hand_made_records():
-    row = lambda kind, closed, live=False, owner="us": Q.Row(owner, live, closed, kind=kind)
-    records = [
-        _rec(False, [row("pawn", True), row("rook", False)], lost={"pawn"}),
-        _rec(False, [row("pawn", True), row("rook", False)], lost=set()),
-        _rec(False, [row("pawn", True), row("rook", False, owner="them")], lost={"rook"}),
-        _rec(True, [row("pawn", True)], lost=set(), quiet_at="a2", moved="a2"),
-        _rec(False, [row("pawn", True)], lost=set(), quiet_at="a2", moved="b1"),
-        _rec(True, [row("pawn", True)], lost=set(), quiet_at="a2", moved="b1"),
-        _rec(False, [row("pawn", False, live=True)], lost=set(), quiet_at="a2", moved="a2"),    # a question is live: not a quiet position
-    ]
+def test_a_confirmed_way_is_played_and_valued_after_the_reply(env):
+    f, q, r = _to_level_2(env, HANGING, "them", "queen")
+    assert f.detail["mode"] == "search" and f.status == Q.LIVE and f.detail["confirmed"] >= 1
+    assert f.value == 14 and f.line == ("d2d5",)
+    assert Q.step(q, r).level == 3                                                       # asked again: one ply deeper, still standing
+
+
+def test_a_refuted_way_names_its_reply_and_closes_the_question(env):
+    # my rook can take their queen, but the queen is guarded: the way is met by the recapture
+    f, q, r = _to_level_2(env, "4k3/8/8/3q4/8/8/3R4/3rK3 w - - 0 1", "them", "queen")
+    refuted = [x for x in f.detail["results"] if x["status"] == "refuted"]
+    assert refuted and refuted[0]["reply"]
+    # a position whose only way is answered closes with the reply named
+    g, q2, r2 = _to_level_2(env, "4k3/8/8/3q4/8/8/3R4/3rK3 w - - 0 1", "them", "rook")
+    assert g.detail["mode"] == "search"
+
+
+def test_every_way_answered_closes_with_the_first_move_and_the_reply(env):
+    r, qs = _first_order(env, "4k3/3q4/8/8/8/8/3R4/3K4 w - - 0 1")
+    q = _find(qs, "them", "queen")
+    Q.step(q, r), Q.step(q, r)
+    f = Q.step(q, r)
+    if f.status == Q.CLOSED:
+        assert f.text.startswith("every way is answered: ") and " is met by " in f.text
+    else:
+        assert f.detail["refuted"] + f.detail["open"] + f.detail["confirmed"] == len(f.detail["results"])
+
+
+def test_when_the_asker_is_not_to_move_the_census_is_kept_and_said(env):
+    f, q, r = _to_level_2(env, HANGING, "us", "rook")
+    assert f.detail["mode"].startswith("census") and "as if it were their turn" in f.text
+    old, _q, _r = _to_level_2(env, HANGING, "them", "queen", Q.Params(search=False))
+    assert old.detail["mode"] == "census" and old.value == 14
+
+
+def test_the_codec_finds_a_move_and_follows_a_unit():
+    from catspace.incubator.analyst.discovery import curriculum as CU
+    codec = CU.codec_of("chess")
+    assert codec.find_move("4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1", "d2", "d5") == "d2d5"
+    assert codec.find_move("4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1", "d2", "a8") is None
+    moves = ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"]
+    assert codec.taken_within(None, moves, 0, "e2", 4) is True                           # the pawn moves to e4 and is taken on d5 at ply 3
+    assert codec.taken_within(None, moves, 0, "a2", 4) is False
+    assert codec.taken_within(None, moves, 6, "a2", 4) is None
+
+
+def _rec(bad, rows, quiet_at=None, moved=None, **kw):
+    return Q.Record((0, 0), bad, rows, None, [("0", 0.001)], quiet_at=quiet_at, moved=moved, **kw)
+
+
+def test_measure_b_by_the_exact_unit_and_measure_d_on_hand_made_records():
+    row = lambda kind, taken, **kw: Q.Row("us", kw.pop("live", False), kw.pop("closed1", False), kind=kind, taken=taken, **kw)
+    records = [_rec(False, [row("rook", True, live0=True, weighty=True), row("pawn", False, closed1=True, failed_at=2), row("pawn", True, closed1=True, failed_at=3),
+                            row("rook", False, closed1=True, failed_at=3, weighty=True)]),
+               _rec(False, [row("rook", True, live=True, live1=True, weighty=True), row("pawn", False, closed1=True, failed_at=1)])]
     lines = Q.format_obs(records)
-    closed = next(ln for ln in lines if "my units that closed at level 1" in ln)
-    stayed = next(ln for ln in lines if "my units that stayed open" in ln)
-    assert "closed at level 1: 6; " in closed and "in 1 (16.7%)" in closed                    # pawn closed in 6 rows, lost in the first only
-    assert "stayed open: 3; " in stayed and "in 0 (0.0%)" in stayed                              # the rook's two rows of mine and the live pawn; none of those kinds lost
-    d = next(ln for ln in lines if ln.startswith("OBS (d)"))
-    assert "nothing live at level 0 or 1: 6 " in d and "the quiet question named and the move read: 3" in d
-    assert "a move of the unit it names in 1 (33.3%)" in d
+    get = lambda s: next(ln for ln in lines if s in ln)
+    assert "above the lowest worth 1 of 1 (100.0%); the lowest 0 of 0" in get("live at level 0:")
+    assert "above the lowest worth 1 of 1 (100.0%)" in get("live at level 1 (a way")
+    assert "by a place to stand: taken within 4 plies, above the lowest worth 0 of 0 (n/a); the lowest 0 of 1 (0.0%)" in get("by a place to stand")
+    assert "by no gain: taken within 4 plies, above the lowest worth 0 of 1 (0.0%); the lowest 1 of 1 (100.0%)" in get("by no gain")
+    assert "by reach: taken within 4 plies, above the lowest worth 0 of 0 (n/a); the lowest 0 of 1 (0.0%)" in get("by reach")
+    assert "all questions: taken 3 of 6" in get("all questions")
+    # (d): two positions with nothing live, the quiet unit moved in one of them
+    rows0 = [row("pawn", False, closed1=True)]
+    recs = [_rec(True, rows0, quiet_at="a2", moved="a2"), _rec(False, rows0, quiet_at="a2", moved="b1"), _rec(True, rows0, quiet_at="a2", moved="b1"),
+            _rec(False, [row("pawn", False, live=True)], quiet_at="a2", moved="a2")]
+    d = next(ln for ln in Q.format_obs(recs) if ln.startswith("OBS (d)"))
+    assert "nothing live at level 0 or 1: 3 " in d and "move read: 3" in d and "a move of the unit it names in 1 (33.3%)" in d
     assert "bad move follows 100.0% when it was (1), 50.0% when it was not (2)" in d
+
+
+def test_measure_e_counts_the_objections_on_hand_made_records():
+    recs = [_rec(True, [], obj0=True, obj2=False, weight=3.0), _rec(True, [], obj0=False, obj2=True, weight=1.0), _rec(True, [], obj0=False, obj2=False, weight=2.0),
+            _rec(False, [], obj0=True, obj2=False), _rec(False, [], obj0=False, obj2=False), _rec(False, [], obj0=False, obj2=False, alt_share=0.5)]
+    recs[0].alt_share, recs[1].alt_share = 0.25, 0.75
+    lines = Q.format_obs(recs)
+    e0 = next(ln for ln in lines if "objects at level 0 to" in ln)
+    assert "to 1 of 3 bad moves (33.3%) and to 1 of 3 other moves (33.3%)" in e0
+    assert "when it objects 50.0% (2), when it does not 50.0% (4)" in e0 and "holds 50.0% of the bad moves' weight (total 6.0)" in e0
+    e2 = next(ln for ln in lines if "objects at level 0 or 2 to" in ln)
+    assert "to 2 of 3 bad moves (66.7%) and to 1 of 3 other moves" in e2 and "holds 66.7% of the bad moves' weight" in e2
+    alt = next(ln for ln in lines if "alternatives" in ln)
+    assert "in 3 bad-move positions" in alt and "mean 50.0%" in alt
+
+
+def test_the_objection_function_reads_a_move_that_leaves_a_unit_struck_and_unguarded(env):
+    params = Q.Params()
+    # white's rook stands on d2; after the move rook to d3 the black queen on d5 strikes it (the file is open) and nothing guards it
+    after = "4k3/8/8/3q4/8/3R4/8/4K3 b - - 1 1"
+    # the new mover is black; the original mover's rook is "theirs" in that reading
+    obj0, obj2 = Q.objection(env, WORTH, params, after, set(), ("d2", "d3"))
+    assert obj0 is True
+    # the rook was already struck and unguarded before the move: not an objection to the move
+    obj0b, _ = Q.objection(env, WORTH, params, after, {"d2"}, ("d2", "d3"))
+    assert obj0b is False
+    share = Q.alternatives_share(env, WORTH, params, "4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1", set(), "d2d5")
+    assert 0.0 <= share <= 1.0
+
+
+def test_the_module_names_no_object_of_one_game():
+    words = r"\b(king|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check\w*|mate|stalemate|uci|fen|san|chess\w*|shakmaty|[a-h][1-8])\b"
+    text = SOURCE.read_text()
+    hit = re.search(words, text, flags=re.I)
+    assert hit is None, hit and (hit.group(0), text[max(0, hit.start() - 40):hit.end() + 20])

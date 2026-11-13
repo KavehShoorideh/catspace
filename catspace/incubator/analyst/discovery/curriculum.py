@@ -80,6 +80,35 @@ class ChessCodec:
         import chess
         return [(self.SIDES[p.color], p.symbol().lower()) for _, p in sorted(chess.Board(position).piece_map().items())]
 
+    def find_move(self, position: str, origin: str, destination: str) -> "str | None":
+        """The legal move (as the kernel names it) of the unit on handle `origin` to handle `destination`, None when there is none (plan 78.41: a way's first move)."""
+        import chess
+        board = chess.Board(position)
+        found = [m for m in board.legal_moves if chess.square_name(m.from_square) == origin and chess.square_name(m.to_square) == destination]
+        found.sort(key=lambda m: m.promotion != chess.QUEEN)
+        return found[0].uci() if found else None
+
+    def taken_within(self, start: "str | None", moves: list, ply: int, place: str, k: int) -> "bool | None":
+        """Is the unit standing on handle `place` after `moves[:ply]` taken by a move of the other side within the next `k` plies of the same game? The unit is followed when its
+        own side moves it. None when the game has no move left after `ply`."""
+        import chess
+        board = chess.Board(start) if start else chess.Board()
+        for u in moves[:ply]:
+            board.push_uci(u)
+        sq, mover = chess.parse_square(place), board.turn
+        rest = moves[ply:ply + k]
+        if not rest:
+            return None
+        for u in rest:
+            m = chess.Move.from_uci(u)
+            if board.turn == mover:
+                if m.from_square == sq:
+                    sq = m.to_square
+            elif m.to_square == sq:
+                return True
+            board.push(m)
+        return False
+
     def keep(self, position: str, units: list) -> str:
         import chess
         board = chess.Board(position)

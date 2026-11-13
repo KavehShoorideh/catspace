@@ -6239,3 +6239,49 @@ MY CHECK OF THE SAFE VERDICT (scratch script, the exact unit followed move by mo
 READING: (1) with the links the questions on the lower ranks close in more than half the positions (ranks 7 and 8 open in about 42 of 100, from 98), so the sheet now has something to ration the clock by. (2) THE SAFE VERDICT HOLDS FOR THE UNIT ITSELF: a unit live at level 0 is taken within 4 plies in 31.5% of cases, open after level 1 in 5.2%, closed at level 1 in 4.3%; above the lowest kind the closed ones are taken in 1.1% to 2.0% against 4.1% to 7.0% for the open ones. Closed for want of reach: 0 of 56 taken; closed for want of a place to stand: 5 of 613; closed because the strike does not gain: 103 of 1856, nearly all of the lowest kind, which is exchanged rather than won. The module's measure (b) by kind said the reverse and is wrong for this purpose; it should follow the unit. (3) "No question open" is still rare (4 of 400), so the quiet question was not measured; with twenty units a side something is nearly always open at level 1. The question that separates is not whether anything is open but WHERE the clock goes first.
 OPEN: link 2 reads the board as it stands (no line opened or shut by the arrival) and has no count of the exchange; link 3 calls an even exchange no gain, which is right for a win of material and wrong for "will this unit leave the board"; the goal unit's question still rests on the 78.39 report at its cost; measure (b) to follow the unit in the module itself.
 NEXT: the sheet's open questions as the search's first moves (stage 2, in the wake, measured by the surprise rate of 78.37 at 0.2 s and 1.0 s beside the plain search), which needs the Rust additions listed above; and the mined worths as the judge, which the sheet already uses and the search does not.
+
+78.41 STAGE 1, THIRD FORM: THE SEARCH SETTLES WHAT THE LINKS CANNOT READ (2026-11-12; Kaveh on the lines an arrival opens or shuts: "that 'misses lines' is the use case for searching"). Level 2 plays the first move of each way that passed the links and reads the reply (Params.search; the reason chain on the child, depth 2 then 3); a way is CONFIRMED, REFUTED with the reply named, or not settled. Measure (b) now follows the exact unit (codec taken_within); measure (e) is the sheet's objection to the move played. Tests 27. The same 400 positions:
+    OBS (b) level 1 closed on a unit of mine in 395 positions (98.8%); of those with the balance read (393) the mover's balance fell within 4 plies in 92 (23.4%); in all positions with the balance read (398): 93 (23.4%)
+    OBS (b) my units, live at level 0: taken within 4 plies, above the lowest worth 23 of 119 (19.3%); the lowest 16 of 40 (40.0%)
+    OBS (b) my units, live at level 1 (a way passes all three links): taken within 4 plies, above the lowest worth 61 of 1106 (5.5%); the lowest 25 of 188 (13.3%)
+    OBS (b) my units, open after level 1 (live at level 0 or 1): taken within 4 plies, above the lowest worth 61 of 1124 (5.4%); the lowest 25 of 191 (13.1%)
+    OBS (b) my units, closed at level 1 by reach: taken within 4 plies, above the lowest worth 0 of 161 (0.0%); the lowest 0 of 5 (0.0%)
+    OBS (b) my units, closed at level 1 by a place to stand: taken within 4 plies, above the lowest worth 1 of 522 (0.2%); the lowest 4 of 91 (4.4%)
+    OBS (b) my units, closed at level 1 by no gain: taken within 4 plies, above the lowest worth 18 of 631 (2.9%); the lowest 85 of 1247 (6.8%)
+    OBS (b) my units, closed at level 1 (any link): taken within 4 plies, above the lowest worth 19 of 1314 (1.4%); the lowest 89 of 1343 (6.6%)
+    OBS (b) my units, all questions: taken 194 of 3951 (4.9%)
+    OBS level 2 search: ways confirmed 236, refuted 4175, not settled 4740; questions closed by every way answered 418
+    OBS (c) level 0: 7954 steps, mean 3.74 ms, max 111.58 ms
+    OBS (c) level 1: 7954 steps, mean 0.25 ms, max 1.50 ms
+    OBS (c) level 2 (census, as if it were their turn): 1280 steps, mean 6.92 ms, max 292.41 ms
+    OBS (c) level 2 (search): 1317 steps, mean 89.20 ms, max 3281.00 ms
+    OBS (c) level 3 (census, as if it were their turn): 1203 steps, mean 12.30 ms, max 345.10 ms
+    OBS (c) level 3 (search): 832 steps, mean 343.79 ms, max 3932.78 ms
+    OBS (c) level 4 (census, as if it were their turn): 1078 steps, mean 64.98 ms, max 2815.03 ms
+    OBS (c) level 4 (search): 718 steps, mean 0.20 ms, max 0.54 ms
+    OBS (e) the sheet objects at level 0 to 2 of 115 bad moves (1.7%) and to 14 of 284 other moves (4.9%); bad-move rate when it objects 12.5% (16), when it does not 29.5% (383); it holds 2.0% of the bad moves' weight (total 44.3)
+    OBS (e) the sheet objects at level 0 or 2 to 6 of 115 bad moves (5.2%) and to 32 of 284 other moves (11.3%); bad-move rate when it objects 15.8% (38), when it does not 30.2% (361); it holds 6.7% of the bad moves' weight (total 44.3)
+    OBS (e) alternatives: in 100 bad-move positions sampled the sheet does not object at level 0 to a mean 77.2% of the other legal moves (least 20.0%, most 100.0%)
+TWO DIAGNOSES OF MINE (scratch scripts, TRAINING SIDE ONLY, the outside judge at depth 10 naming its preferred move; nothing here is read by the wake):
+    OBS bad moves, seeds 11 12 13 at 0.2 s: 1133; the judge's preferred move read at depth 10
+    OBS   the judge's move a quiet piece move; ours does not take: 599 (52.9% of the count, 53.8% of the weight)
+    OBS   the judge's move a quiet pawn move; ours does not take: 204 (18.0% of the count, 14.4% of the weight)
+    OBS   the judge's move gives check; ours does not take: 114 (10.1% of the count, 13.9% of the weight)
+    OBS   the judge's move a quiet piece move; ours takes a unit: 84 (7.4% of the count, 7.0% of the weight)
+    OBS   the judge's move takes a unit; ours takes a unit: 36 (3.2% of the count, 3.1% of the weight)
+    OBS   the judge's move at depth 10 is the move we played: 29 (2.6% of the count, 1.7% of the weight)
+    OBS   the judge's move a quiet pawn move; ours takes a unit: 26 (2.3% of the count, 1.8% of the weight)
+    OBS   the judge's move gives check; ours takes a unit: 25 (2.2% of the count, 2.8% of the weight)
+    OBS   the judge's move takes a unit; ours does not take: 16 (1.4% of the count, 1.6% of the weight)
+    OBS   before the move, within 300 either way judge centipawns: 1090 (96.2%)
+    OBS   before the move, the mover already ahead by 300 or more judge centipawns: 43 (3.8%)
+    OBS judge's move against ours, by the sheet after the move (levels 0 and 1, no search): 246 bad-move positions of seed 11; stakes summed over the questions; 'on me' are questions about the mover's units
+    OBS   on_me_live0: mean after the judge's move 0.72, after ours 0.85, after a random other move 3.16; judge's lower than ours in 11.8%, higher in 7.7%
+    OBS   on_me_open1: mean after the judge's move 39.19, after ours 39.09, after a random other move 39.87; judge's lower than ours in 37.0%, higher in 41.9%
+    OBS   on_me_n_open1: mean after the judge's move 3.62, after ours 3.51, after a random other move 3.71; judge's lower than ours in 28.9%, higher in 33.3%
+    OBS   on_them_live0: mean after the judge's move 5.26, after ours 2.06, after a random other move 1.93; judge's lower than ours in 11.0%, higher in 35.8%
+    OBS   on_them_open1: mean after the judge's move 42.11, after ours 38.28, after a random other move 39.81; judge's lower than ours in 19.1%, higher in 41.5%
+    OBS   on_them_n_open1: mean after the judge's move 3.76, after ours 3.41, after a random other move 3.62; judge's lower than ours in 15.9%, higher in 38.2%
+READING: (1) THE SHEET'S OBJECTION DOES NOT FIND THE BAD MOVES (measure e): it objects to 5.2% of them and to 11.3% of the others. The bad moves are not moves that leave a unit to be taken. (2) WHAT THEY ARE: in seven of ten the judge preferred a quiet move to our quiet move, in one of ten a check; a missed capture is rare (1.4%). (3) THE DIFFERENCE THE SHEET DOES SEE IS ON THE OTHER SIDE OF THE BOARD: after the judge's move the stake of THEIR units live at level 0 is 5.26 against 2.06 after ours and 1.93 after a random other move; the questions on MY units read the same after both (0.72 and 0.85 live, 39.19 and 39.09 open). Our move keeps our units as safe as the judge's does and makes no more threats than a random move. The engine answers "is anything of mine about to be lost" and does not ask "what can I attack". (4) The search step is dear as built (89.20 ms a step at depth 2, 343.79 ms at depth 3) and leaves 4740 ways not settled because a quiet first move takes nothing and threatens nothing at once: its value is in the question it opens, which is the next thing to count.
+OPEN: the value of a way is a formula over the reason chain's answers, not a full exchange; a quiet move's worth to a question is unread; the run with search takes 1720.7 s for 400 positions.
+NEXT: the sheet's questions on THEIR units as the source of first moves (a move is worth trying when it makes a question on their unit live or carries a way one move nearer), tried in the wake beside the plain search and measured by 78.37's surprise rate at 0.2 s and 1.0 s.

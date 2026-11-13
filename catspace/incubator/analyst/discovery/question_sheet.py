@@ -30,6 +30,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
+from typing import NamedTuple
 from pathlib import Path
 
 import cs_engine as CE
@@ -56,6 +57,10 @@ class Params:
     min_stake: float = 0.1             # no unit's stake is lower (a stake of nothing would never be asked)
     quiet_stake_share: float = 0.5     # the quiet question's stake: this share of the lowest stake
     cost_prior: tuple = (0.002, 0.01, 0.01)    # seconds expected for level 0, 1, 2 before any step of that level has been seen
+    search: bool = True                # level 2 on: when the asker is to move, play the first move of each way and settle it by the reasoning search on the child (False: the census)
+    max_ways: int = 4                  # ways settled per step
+    reason_fuse: int = 50_000          # nodes the reasoning search may use on one child
+    search_depth_cap: int = 3          # the search is not deepened past this many plies (a deeper level reads the cached answers)
     links: bool = True                 # level 1 as a chain of three links (reach, a place to stand, a strike that gains); False: reach alone, the first version
     max_open_exits: int = 1            # the goal unit, no full plan read: live only when at most this many of its exits are open
     cost_growth: float = 3.0           # expected cost of a level when only the one below has been seen: that times the one below
@@ -122,7 +127,8 @@ class Reading:
         state = CE.state(env.variant, position, [])
         if state[3] is not None or not state[2]:
             raise ValueError("the position is over or has no legal moves")
-        self.mover = state[1]
+        self.mover, self.legal = state[1], list(state[2])
+        self._settled: dict = {}
         facts = CE.facts(env.variant, env.spec, env.vocabulary_json, position, [], True)
         rel = env.relations
         self.units = sorted((Unit(f[-2], f[-1], tuple(f[1:-2])) for f in facts if f[0] == UNIT_RELATION), key=lambda u: (u.side != SELF, u.kind, u.at))
@@ -137,6 +143,14 @@ class Reading:
     # ---- stakes
     def worth_of(self, kind: str) -> float:
         return float(self.worth.get(kind, self.worth.get(self.kind_key.get(kind, kind), 0)))
+
+    def lowest_worth(self) -> float:
+        """The lowest worth above nothing in the table."""
+        return min([w for w in self.worth.values() if w > 0] or [0.0])
+
+    def weighty(self, u: Unit) -> bool:
+        """A goal unit, or a unit whose kind is worth more than the lowest worth."""
+        return u == self.goal_unit(u.side) or self.worth_of(u.kind) > self.lowest_worth()
 
     def weight(self, u: Unit) -> float:
         """What losing the unit costs: its worth, and for a goal unit the top stake (its worth in the table is nothing)."""
@@ -352,7 +366,13 @@ def level1(q: Question, r: Reading, params: Params) -> tuple:
             if rep["scenarios"]:
                 best = min(rep["scenarios"], key=lambda s: s["moves"])
                 plan = "; ".join(f"{p['kind']} from {p['from'].replace(':', '')} to {p['to'].replace(':', '')} in {p['moves']}" for p in best["placements"])
-                return LIVE, f"a plan of {best['moves']} moves of {side}: {plan} ({len(rep['scenarios'])} plans)", {"scenarios": len(rep["scenarios"]), "moves": best["moves"]}
+                ways = []
+                for sc in sorted(rep["scenarios"], key=lambda s: s["moves"])[:3]:
+                    for pl in sc["placements"]:
+                        w = (pl["moves"], Unit(q.asker, pl["kind"], tuple(pl["from"].split(":"))), tuple(pl["to"].split(":")), "strike")
+                        if w not in ways and pl["moves"] > 0:
+                            ways.append(w)
+                return LIVE, f"a plan of {best['moves']} moves of {side}: {plan} ({len(rep['scenarios'])} plans)", {"scenarios": len(rep["scenarios"]), "moves": best["moves"], "supply": ways}
             if params.links:
                 open_exits = sum(1 for h in rep["holes"] if h["kind"] == "exit")
                 if open_exits <= params.max_open_exits:
@@ -409,7 +429,99 @@ def _matches(q: Question, r: Reading, tactic: dict) -> bool:
     return f"{r.kind_key.get(q.target.kind, q.target.kind)}@{place_text(q.target.at)}" in tactic["targets"]
 
 
+def _first_moves(r: Reading, q: Question, way: tuple) -> list:
+    """The (origin, destination) handles of the first move of a way: the strike itself for a unit already striking, the step to the arrival place, or to a place from which
+    the arrival place is one move on."""
+    j, u, to = way[0], way[1], way[2]
+    if j == 0:
+        return [(place_text(u.at), place_text(q.target.at))]
+    if j == 1:
+        return [(place_text(u.at), place_text(to))]
+    one = r.go[0] if r.go else {}
+    mids = sorted(m for m in one.get((u.kind, u.side, u.at), ()) if to in one.get((u.kind, u.side, m), ()))
+    return [(place_text(u.at), place_text(m)) for m in mids]
+
+
+def _gain(r: Reading, child: str) -> float:
+    """What the move into `child` takes from the other side, in worth: the units it has fewer of than the position before."""
+    codec = r.env.codec
+
+    def count(position):
+        out: dict = {}
+        for side, kind in codec.owned(position):
+            if side != r.mover:
+                out[kind] = out.get(kind, 0) + 1
+        return out
+    before, after = count(r.position), count(child)
+    return sum(int(r.worth.get(k, 0)) * (n - after.get(k, 0)) for k, n in before.items() if n > after.get(k, 0))
+
+
+def _settle(r: Reading, mv: str, depth: int, params: Params) -> dict:
+    """Play `mv` and read the child by the reasoning search at `depth`: the asker's value over the line = what the move takes + a threat nobody can parry - the best reply (a parry
+    that wins something, or a counter of its own). confirmed: above 0; refuted: not, with the reply that does it; open: the move makes no threat and takes nothing."""
+    key = (mv, depth)
+    if key in r._settled:
+        return r._settled[key]
+    st = CE.state(r.env.variant, r.position, [mv])
+    child = st[0]
+    if st[3] is not None:
+        out = {"move": mv, "status": "confirmed", "value": BIG_VALUE, "reply": None}
+    else:
+        rep = CE.reason(r.env.variant, child, [], depth, params.reason_fuse, {k: int(v) for k, v in r.worth.items()})
+        gain = _gain(r, child)
+        replies = [(a["net"], a["line"][0]) for a in rep["answers"] if a["line"]] + [(o["value"], o["line"][0]) for o in rep["ours"] if o["line"]]
+        top = max(replies, key=lambda x: x[0]) if replies else (0, None)
+        bonus = max((t["stake"] for t in rep["threats"]), default=0) if rep["threats"] and not rep["answers"] else 0
+        value = gain + bonus - max(top[0], 0)
+        reply = top[1] if top[0] > 0 or not rep["answers"] else rep["answers"][0]["line"][0]
+        if value > 0:
+            out = {"move": mv, "status": "confirmed", "value": value, "reply": None}
+        elif rep["threats"] or gain > 0:
+            out = {"move": mv, "status": "refuted", "value": value, "reply": reply}
+        else:
+            out = {"move": mv, "status": "open", "value": 0, "reply": None}
+    r._settled[key] = out
+    return out
+
+
+def level_search(q: Question, r: Reading, params: Params) -> tuple:
+    depth = min(q.level, params.search_depth_cap)
+    ways = sorted(q.findings[1].detail.get("supply", []) if len(q.findings) > 1 else [], key=lambda w: (w[0], w[1].kind, w[1].at, w[2]))[:params.max_ways]
+    results = []
+    for way in ways:
+        mv = None
+        for o, d in _first_moves(r, q, way):
+            mv = r.env.codec.find_move(r.position, o, d)
+            if mv in r.legal:
+                break
+            mv = None
+        results.append({"way": way, **(_settle(r, mv, depth, params) if mv else {"move": None, "status": "open", "value": 0, "reply": None})})
+    conf = [x for x in results if x["status"] == "confirmed"]
+    refu = [x for x in results if x["status"] == "refuted"]
+    detail = {"mode": "search", "depth": depth, "results": results, "confirmed": len(conf), "refuted": len(refu), "open": len(results) - len(conf) - len(refu)}
+    side = side_word(q.asker)
+    if not results:
+        return IDLE, f"no way of {side} to play at {depth} plies", detail
+    if conf:
+        best = max(conf, key=lambda x: x["value"])
+        detail.update(value=best["value"], line=(best["move"],))
+        shown = "reaches the goal" if best["value"] >= BIG_VALUE else f"value {best['value']}"
+        return LIVE, f"{len(conf)} of {len(results)} ways of {side} stand after the reply within {depth} plies; best: {best['move']}, {shown}", detail
+    if len(refu) == len(results):
+        x = refu[0]
+        return CLOSED, f"every way is answered: {x['move']} is met by {x['reply']}", detail
+    return IDLE, f"{len(refu)} of {len(results)} ways are answered within {depth} plies, {detail['open']} not settled", detail
+
+
 def level_deep(q: Question, r: Reading, params: Params) -> tuple:
+    if params.search and q.asker == SELF:
+        return level_search(q, r, params)
+    status, text, detail = level_census(q, r, params)
+    detail["mode"] = "census" + ("" if q.asker == SELF else ", as if it were their turn")
+    return status, (text if q.asker == SELF else text + " (read as if it were their turn)"), detail
+
+
+def level_census(q: Question, r: Reading, params: Params) -> tuple:
     depth = q.level
     tactics = [x for x in r.census(q.asker, depth, params.census_fuse) if _matches(q, r, x)]
     side = side_word(q.asker)
@@ -474,6 +586,7 @@ class Step:
     status: str
     finding: str
     cost: float
+    mode: str = ""
 
 
 @dataclass
@@ -511,7 +624,7 @@ def priority(q: Question, costs: _Costs) -> float:
 
 def _record(sheet: Sheet, f: Finding, costs: _Costs, params: Params) -> None:
     q = f.question
-    sheet.steps.append(Step(q, f.level, f.status, f.text, f.cost))
+    sheet.steps.append(Step(q, f.level, f.status, f.text, f.cost, f.detail.get("mode", "")))
     costs.add(f.level if not q.quiet else 0, f.cost)
     if f.status == LIVE and f.new:
         q.urgency *= params.urgency_up
@@ -603,6 +716,11 @@ class Row:
     live0: bool = False                # live at level 0 (struck now and not safely guarded)
     near: bool = False                 # live at level 0, or a plan of one move at level 1
     kind: str = ""                     # the target's kind
+    place: str = ""                    # where the target stands
+    weighty: bool = False              # a goal unit, or a kind worth more than the lowest worth
+    live1: bool = False                # live at level 1 (a way passes all three links)
+    failed_at: int = 0                 # the link a question closed at level 1 failed at
+    taken: "bool | None" = None        # the unit was taken within 4 plies in the game (my units only; None: not read)
 
 
 @dataclass
@@ -611,51 +729,71 @@ class Record:
     bad: bool                          # a bad move was played here
     ranks: list                        # one Row per question in the first order
     fell: "bool | None"                # the mover's unit balance fell within 4 plies (None: not read)
-    costs: list                        # (level, seconds) per step
+    costs: list                        # (level label, seconds) per step
     text: list = field(default_factory=list)
-    lost: "set | None" = None          # kinds of the mover's side of which fewer units stand 4 plies later (None: the game ends sooner)
     quiet_at: "str | None" = None      # the place of the unit the quiet question names
     moved: "str | None" = None         # the unit handle of the mover's side that the move played at this ply left
+    weight: float = 0.0                # the bad move's weight (surprises file)
+    obj0: "bool | None" = None         # the sheet objects to the move played, at level 0
+    obj2: "bool | None" = None         # ... a level 2 search confirms a way for the new mover
+    alt_share: "float | None" = None   # share of the other legal moves the sheet does not object to at level 0
+    ways: tuple = (0, 0, 0)            # level 2 search: ways confirmed, refuted, not settled
+    answered: int = 0                  # questions closed by "every way is answered"
 
 
-def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, lost: "set | None" = None, moved: "str | None" = None) -> Record:
-    ranks = []
+def summarize_sheet(key: tuple, bad: bool, fell: "bool | None", sheet: Sheet, moved: "str | None" = None, taken_of=None, weight: float = 0.0) -> Record:
+    ranks, ways, answered = [], [0, 0, 0], 0
     for q in sheet.questions:
         if q.quiet:
             continue
         f = {x.level: x for x in q.findings}
         live0 = 0 in f and f[0].status == LIVE
         one = 1 in f and f[1].status == LIVE and (f[1].detail.get("moves") == 1 or any(x[0] == 1 for x in f[1].detail.get("supply", ())))
-        ranks.append(Row(q.owner, q.live_by_level1, q.closed_at == 1 and q.state == "closed", live0, live0 or one, q.target.kind))
+        closed1 = q.closed_at == 1 and q.state == "closed"
+        place = place_text(q.target.at)
+        taken = taken_of(place) if (taken_of and q.owner == SELF) else None
+        ranks.append(Row(q.owner, q.live_by_level1, closed1, live0, live0 or one, q.target.kind, place, bool(sheet.reading and sheet.reading.weighty(q.target)),
+                         1 in f and f[1].status == LIVE, f[1].detail.get("failed_at", 0) if (closed1 and 1 in f) else 0, taken))
+        for x in q.findings:
+            if x.detail.get("mode") == "search":
+                ways[0] += x.detail["confirmed"]
+                ways[1] += x.detail["refuted"]
+                ways[2] += x.detail["open"]
+        answered += q.state == "closed" and q.reason.startswith("every way is answered")
     quiet = next((q for q in sheet.questions if q.quiet and q.findings), None)
     quiet_at = place_text(quiet.findings[0].detail["unit"].at) if quiet else None
-    return Record(key, bad, ranks, fell, [(s.level, s.cost) for s in sheet.steps if not s.question.quiet], lost=lost, quiet_at=quiet_at, moved=moved)
+    costs = [(f"{s.level}" + (f" ({s.mode})" if s.mode else ""), s.cost) for s in sheet.steps if not s.question.quiet]
+    return Record(key, bad, ranks, fell, costs, quiet_at=quiet_at, moved=moved, weight=weight, ways=tuple(ways), answered=answered)
 
 
-def _lost_and_moved(codec, variant: str, start, moves: list, ply: int) -> tuple:
-    def at(n):
-        st = CE.state(variant, start, list(moves[:n]))
-        return st[0], st[1]
-    here, mover = at(ply)
-    kinds = lambda pos: [d[1] for d in codec.describe(pos) if d[0] == mover]
-    lost = None
-    if ply + 4 <= len(moves):
-        before, after = kinds(here), kinds(at(ply + 4)[0])
-        lost = {k for k in set(before) if after.count(k) < before.count(k)}
-    moved = None
-    if ply + 1 <= len(moves):
-        nxt = at(ply + 1)[0]
-        mine = lambda pos: {h for h, d in zip(codec.units(pos), codec.describe(pos)) if d[0] == mover}
-        gone = sorted(mine(here) - mine(nxt))
-        moved = gone[0] if gone else None
-    return lost, moved
+class Item(NamedTuple):
+    key: tuple                         # (game, ply)
+    pos: tuple                         # (variant, start, moves before the ply)
+    bad: bool
+    fell: "bool | None"
+    moved: "str | None"                # the handle the mover's unit left with the move played
+    moved_to: "str | None"             # ... and the handle it arrived on
+    weight: float
+    played: "str | None"               # the move played at this ply
+    full: list                         # the whole game's moves
+
+
+def _units_of(codec, position: str, side: str) -> set:
+    return {h for h, d in zip(codec.units(position), codec.describe(position)) if d[0] == side}
+
+
+def moved_pair(codec, variant: str, position: str, nxt: str) -> tuple:
+    """(handle the mover's unit left, handle it arrived on) between a position and the one after a move (None where nothing changed hands)."""
+    mover = CE.state(variant, position, [])[1]
+    before, after = _units_of(codec, position, mover), _units_of(codec, nxt, mover)
+    gone, came = sorted(before - after), sorted(after - before)
+    return (gone[0] if gone else None), (came[0] if came else None)
 
 
 def load_positions(directory: str, variant: str, limit: "int | None" = None, game: "str | None" = None) -> list:
-    """[(key, position, bad, fell, lost, moved)] from a surprise meter's directory (games.jsonl, surprises.jsonl). A position is a game's ply that has a reading of ours; a bad move is a
-    MISSED surprise whose judge jump is below 0. `fell`: the mover's balance (by ply, from the games file) was lower at one of the next 4 plies, the other side's read negated.
-    With `game` (its codec): `lost`, the kinds of the mover's units of which fewer stand 4 plies later in the same game (a unit that is gone counts as lost: a count by kind, an
-    approximation), and `moved`, the handle of the mover's unit that the move played at this ply left (the handle is taken to read as the place the description writes)."""
+    """[Item] from a surprise meter's directory (games.jsonl, surprises.jsonl). A position is a game's ply that has a reading of ours; a bad move is a MISSED surprise whose judge
+    jump is below 0 (its `weight` from the file). `fell`: the mover's balance (by ply, from the games file) was lower at one of the next 4 plies, the other side's read negated.
+    With `game` (its codec): `moved` and `moved_to`, the handles the mover's unit left and arrived on with the move played (a handle is taken to read as the place text)."""
     from catspace.incubator.analyst.discovery import curriculum as CU
     codec = CU.codec_of(game) if game else None
     d = Path(directory)
@@ -664,12 +802,12 @@ def load_positions(directory: str, variant: str, limit: "int | None" = None, gam
         if line.strip():
             g = json.loads(line)
             games[g["game"]] = g
-    bad = set()
+    bad = {}
     for line in (d / "surprises.jsonl").read_text().splitlines():
         if line.strip():
             s = json.loads(line)
             if s.get("kind") == "MISSED" and (s.get("judge") or {}).get("jump", 0) < 0:
-                bad.add((s["game"], s["ply"]))
+                bad[(s["game"], s["ply"])] = float(s.get("weight", 1.0))
     out = []
     for gid in sorted(games):
         g = games[gid]
@@ -680,10 +818,11 @@ def load_positions(directory: str, variant: str, limit: "int | None" = None, gam
             here = ours[ply].get("balance")
             later = [(j, ours[ply + j].get("balance")) for j in range(1, 5) if ply + j in ours and ours[ply + j].get("balance") is not None]
             fell = None if here is None or not later else any((b if j % 2 == 0 else -b) < here for j, b in later)
-            lost = moved = None
+            v = g.get("variant") or variant
+            frm = to = None
             if codec is not None:
-                lost, moved = _lost_and_moved(codec, g.get("variant") or variant, g.get("start"), g["moves"], ply)
-            out.append(((gid, ply), (g.get("variant") or variant, g.get("start"), g["moves"][:ply]), (gid, ply) in bad, fell, lost, moved))
+                frm, to = moved_pair(codec, v, CE.state(v, g.get("start"), g["moves"][:ply])[0], CE.state(v, g.get("start"), g["moves"][:ply + 1])[0])
+            out.append(Item((gid, ply), (v, g.get("start"), g["moves"][:ply]), (gid, ply) in bad, fell, frm, to, bad.get((gid, ply), 0.0), g["moves"][ply], g["moves"]))
     if limit is not None and limit < len(out):
         stride = len(out) / limit
         out = [out[int(i * stride)] for i in range(limit)]
@@ -703,7 +842,7 @@ def _open_lines(records: list, label: str, pick, n: int, bad: int) -> list:
 
 
 def format_obs(records: list, unreadable: int = 0) -> list:
-    """The OBS lines of the measures (a) and (b) and the costs (c)."""
+    """The OBS lines of the measures (a), (b), (c), (d), (e) and the level 2 search counts."""
     n = len(records)
     bad = sum(r.bad for r in records)
     out = [f"OBS question sheet: positions read {n} (unreadable {unreadable}); bad moves {bad} ({_pct(bad, n)} of positions)"]
@@ -724,15 +863,20 @@ def format_obs(records: list, unreadable: int = 0) -> list:
     mine_closed = [r for r in records if any(x.owner == SELF and x.closed1 for x in r.ranks)]
     read = [r for r in records if r.fell is not None]
     mc = [r for r in mine_closed if r.fell is not None]
-    all_safe = [r for r in read if any(x.owner == SELF for x in r.ranks) and all(x.closed1 for x in r.ranks if x.owner == SELF)]
     out.append(f"OBS (b) level 1 closed on a unit of mine in {len(mine_closed)} positions ({_pct(len(mine_closed), n)}); of those with the balance read ({len(mc)}) the mover's balance fell within 4 plies in "
                f"{sum(r.fell for r in mc)} ({_pct(sum(r.fell for r in mc), len(mc))}); in all positions with the balance read ({len(read)}): {sum(r.fell for r in read)} ({_pct(sum(r.fell for r in read), len(read))})")
-    out.append(f"OBS (b) all my units closed at level 1 in {len(all_safe)} positions; the balance fell within 4 plies in {sum(r.fell for r in all_safe)} ({_pct(sum(r.fell for r in all_safe), len(all_safe))})")
-    mine_rows = [(x, r) for r in records if r.lost is not None for x in r.ranks if x.owner == SELF]
-    for label, pick in (("closed at level 1", lambda x: x.closed1), ("stayed open", lambda x: not x.closed1)):
-        rows = [(x, r) for x, r in mine_rows if pick(x)]
-        gone = sum(x.kind in r.lost for x, r in rows)
-        out.append(f"OBS (b) questions on my units that {label}: {len(rows)}; that unit's kind had fewer units 4 plies later in {gone} ({_pct(gone, len(rows))})")
+    mine = [x for r in records for x in r.ranks if x.owner == SELF and x.taken is not None]
+    groups = [("live at level 0", lambda x: x.live0), ("live at level 1 (a way passes all three links)", lambda x: x.live1), ("open after level 1 (live at level 0 or 1)", lambda x: x.live),
+              ("closed at level 1 by reach", lambda x: x.closed1 and x.failed_at == 1), ("closed at level 1 by a place to stand", lambda x: x.closed1 and x.failed_at == 2),
+              ("closed at level 1 by no gain", lambda x: x.closed1 and x.failed_at == 3), ("closed at level 1 (any link)", lambda x: x.closed1)]
+    for label, pick in groups:
+        hi = [x for x in mine if pick(x) and x.weighty]
+        lo = [x for x in mine if pick(x) and not x.weighty]
+        out.append(f"OBS (b) my units, {label}: taken within 4 plies, above the lowest worth {sum(x.taken for x in hi)} of {len(hi)} ({_pct(sum(x.taken for x in hi), len(hi))}); "
+                   f"the lowest {sum(x.taken for x in lo)} of {len(lo)} ({_pct(sum(x.taken for x in lo), len(lo))})")
+    out.append(f"OBS (b) my units, all questions: taken {sum(x.taken for x in mine)} of {len(mine)} ({_pct(sum(x.taken for x in mine), len(mine))})")
+    c = sum(r.ways[0] for r in records), sum(r.ways[1] for r in records), sum(r.ways[2] for r in records)
+    out.append(f"OBS level 2 search: ways confirmed {c[0]}, refuted {c[1]}, not settled {c[2]}; questions closed by every way answered {sum(r.answered for r in records)}")
     quiet_pos = [r for r in records if not any(x.live for x in r.ranks)]
     named = [r for r in quiet_pos if r.quiet_at is not None and r.moved is not None]
     yes = [r for r in named if r.moved == r.quiet_at]
@@ -747,24 +891,102 @@ def format_obs(records: list, unreadable: int = 0) -> list:
     for level in sorted(by):
         c = by[level]
         out.append(f"OBS (c) level {level}: {len(c)} steps, mean {1000 * sum(c) / len(c):.2f} ms, max {1000 * max(c):.2f} ms")
+    judged = [r for r in records if r.obj0 is not None]
+    if judged:
+        bads, goods = [r for r in judged if r.bad], [r for r in judged if not r.bad]
+        tw = sum(r.weight for r in bads)
+        for label, pick in (("level 0", lambda r: r.obj0), ("level 0 or 2", lambda r: r.obj0 or r.obj2)):
+            ob, og = sum(1 for r in bads if pick(r)), sum(1 for r in goods if pick(r))
+            yes, no = [r for r in judged if pick(r)], [r for r in judged if not pick(r)]
+            held = sum(r.weight for r in bads if pick(r))
+            out.append(f"OBS (e) the sheet objects at {label} to {ob} of {len(bads)} bad moves ({_pct(ob, len(bads))}) and to {og} of {len(goods)} other moves ({_pct(og, len(goods))}); bad-move rate when it objects "
+                       f"{_pct(sum(r.bad for r in yes), len(yes))} ({len(yes)}), when it does not {_pct(sum(r.bad for r in no), len(no))} ({len(no)}); it holds {100.0 * held / tw if tw else 0.0:.1f}% of the bad moves' weight (total {tw:.1f})")
+        alts = [r.alt_share for r in judged if r.alt_share is not None]
+        if alts:
+            out.append(f"OBS (e) alternatives: in {len(alts)} bad-move positions sampled the sheet does not object at level 0 to a mean {100.0 * sum(alts) / len(alts):.1f}% of the other legal moves "
+                       f"(least {100.0 * min(alts):.1f}%, most {100.0 * max(alts):.1f}%)")
     return out
 
 
-def measure(items: list, runner, samples: int = 3) -> tuple:
-    """items from `load_positions`; `runner(variant, start, moves) -> (Sheet or None)`. -> (records, sample explanation lines, number unreadable)."""
-    records, unreadable, picked = [], 0, []
-    for key, pos, bad, fell, lost, moved in items:
+# ---------------------------------------------------------------------------------------------------------------------------------------------- the sheet's objection to a move
+
+def live0_places(sheet: Sheet) -> set:
+    """The places of my units that are live at level 0 in the sheet's position."""
+    return {place_text(q.target.at) for q in sheet.questions if not q.quiet and q.target.side == SELF and q.findings and q.findings[0].status == LIVE}
+
+
+def objection(env: Env, worth: dict, params: Params, position_after: str, live_before: set, moved: tuple, search_depths: int = 2) -> tuple:
+    """(objects at level 0, a level 2 search confirms a way) for the position after a move. The sheet is read there to level 0 for the units of the side that moved (now "theirs") that
+    are goal units or worth more than the lowest worth; it OBJECTS at level 0 when one is live and was not live before the move (a unit that moved is followed to its new place). Level 1
+    is read for those units and, for the ones still open, the level 2 search is asked `search_depths` times (depth 2, 3): confirmed when a way of the new mover stands after the reply."""
+    r = Reading(env, position_after, worth)
+    cand = [q for q in first_order(r, params) if q.target.side == OTHER and r.weighty(q.target)]
+    obj0 = False
+    for q in cand:
+        if step(q, r, params).status == LIVE:
+            place = place_text(q.target.at)
+            before = moved[0] if (moved[1] is not None and place == moved[1]) else place
+            obj0 = obj0 or before not in live_before
+    obj2 = False
+    for q in cand if search_depths else ():
+        if q.state != "open":
+            continue
+        step(q, r, params)
+        for _ in range(search_depths):
+            if q.state != "open":
+                break
+            f = step(q, r, params)
+            obj2 = obj2 or f.detail.get("confirmed", 0) > 0
+    return obj0, obj2
+
+
+def alternatives_share(env: Env, worth: dict, params: Params, position: str, live_before: set, played: "str | None") -> "float | None":
+    """Of the other legal moves, the share the sheet does not object to at level 0 (see `objection`)."""
+    variant, codec = env.variant, env.codec
+    legal = [m for m in CE.state(variant, position, [])[2] if m != played]
+    if not legal:
+        return None
+    free = 0
+    for m in legal:
+        child = CE.state(variant, position, [m])[0]
         try:
-            sheet = runner(*pos)
+            obj0, _ = objection(env, worth, params, child, live_before, moved_pair(codec, variant, position, child), search_depths=0)
+        except ValueError:
+            obj0 = False
+        free += not obj0
+    return free / len(legal)
+
+
+def measure(items: list, runner, samples: int = 3, codec=None, objector=None, alternatives=None, alt_limit: int = 100) -> tuple:
+    """items from `load_positions`; `runner(variant, start, moves) -> Sheet`. `codec.taken_within` follows my units in the game; `objector(item, live_before) -> (obj0, obj2)` and
+    `alternatives(item, live_before) -> share` are the (e) readings. -> (records, sample explanation lines, number unreadable)."""
+    records, unreadable, picked, n_alt = [], 0, [], 0
+    for it in items:
+        try:
+            sheet = runner(*it.pos)
         except ValueError:
             sheet = None
         if sheet is None:
             unreadable += 1
             continue
-        rec = summarize_sheet(key, bad, fell, sheet, lost, moved)
+        variant, start, moves = it.pos
+        taken_of = (lambda place, it=it: codec.taken_within(start, it.full, it.key[1], place, 4)) if codec else None
+        rec = summarize_sheet(it.key, it.bad, it.fell, sheet, it.moved, taken_of, it.weight)
+        live_before = live0_places(sheet)
+        if objector is not None:
+            try:
+                rec.obj0, rec.obj2 = objector(it, live_before)
+            except ValueError:
+                pass
+        if alternatives is not None and it.bad and n_alt < alt_limit:
+            try:
+                rec.alt_share = alternatives(it, live_before)
+            except ValueError:
+                pass
+            n_alt += 1
         records.append(rec)
         if len(picked) < samples and (any(x.live for x in rec.ranks) or len(records) % 50 == 0):
-            picked.append((key, bad, sheet))
+            picked.append((it.key, it.bad, sheet))
     text = []
     for key, bad, sheet in picked:
         text.append(f"OBS sample game {key[0]} ply {key[1]}{' (a bad move followed)' if bad else ''}:")
@@ -789,12 +1011,15 @@ def main(argv: list) -> int:
     ap.add_argument("--seconds", type=float, default=None)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--no-links", action="store_true", help="level 1 by reach alone (the first version)")
+    ap.add_argument("--no-search", action="store_true", help="level 2 by the census alone (the first version)")
+    ap.add_argument("--alternatives", type=int, default=100, help="bad-move positions whose other legal moves are read for the sheet's objection (0: none)")
+    ap.add_argument("--no-objection", action="store_true", help="skip measure (e)")
     ap.add_argument("--out", default=None, help="a name under the derived data directory to write the OBS lines to")
     a = ap.parse_args(argv)
     env = Env(a.game)
     worth = store_worth(a.game)
     items = load_positions(a.games_dir, a.game, a.limit, game=a.game)
-    params = Params(links=not a.no_links)
+    params = Params(links=not a.no_links, search=not a.no_search)
     t0 = time.perf_counter()
 
     def runner(variant, start, moves):
@@ -803,7 +1028,17 @@ def main(argv: list) -> int:
         finish_levels(sheet, 1, params)
         return sheet
 
-    records, text, unreadable = measure(items, runner)
+    def objector(it, live_before):
+        variant, start, moves = it.pos
+        after = CE.state(variant, start, list(moves) + [it.played])[0]
+        return objection(env, worth, params, after, live_before, (it.moved, it.moved_to))
+
+    def alternatives(it, live_before):
+        variant, start, moves = it.pos
+        return alternatives_share(env, worth, params, CE.state(variant, start, list(moves))[0], live_before, it.played)
+
+    records, text, unreadable = measure(items, runner, codec=env.codec, objector=None if a.no_objection else objector,
+                                        alternatives=None if (a.no_objection or not a.alternatives) else alternatives, alt_limit=a.alternatives)
     lines = format_obs(records, unreadable) + text
     lines.append(f"OBS question sheet: {time.perf_counter() - t0:.1f} s for {len(items)} positions, worth {worth}")
     for ln in lines:
