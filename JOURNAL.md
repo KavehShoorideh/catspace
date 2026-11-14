@@ -36632,3 +36632,7 @@ The chance of a question, fitted from our own games, separates and holds on unse
 ## 2026-11-13 -- plan 78.42 fourth form: loss in place of taking, the question of the move
 
 By loss, the sheet foresees most of the other side's losses and few of the mover's own. The question of the move agrees with the search and adds little on these games. Numbers in docs/ANALYST_PLAN.md 78.42 FOURTH FORM.
+
+## 2026-11-13 -- plan 78.42: every loss charged to the last own move
+
+At the charged move the sheet or the question of the move had seen most losses and a safe keeping move existed in nearly all; the plain search played the losing move anyway. Next is use, not sight. Numbers in docs/ANALYST_PLAN.md.

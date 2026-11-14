@@ -4001,6 +4001,16 @@ def unit_loss(events: list, unit_id, start: int, horizon: int, worth_of) -> "dic
     return {"status": LOST if balance > 0 else (EVEN if balance == 0 else GAINED), "balance": balance, "place": place, "ply": hit, "run": run, "arrival": arrival}
 
 
+def charged_ply(events: list, loss: dict) -> "int | None":
+    """THE MOVE A LOSS IS CHARGED TO. `loss` is the result of `unit_loss` for a unit that was LOST (status lost). The first taking of its run is the first ply of the run at which a unit of the
+    unit's own side is taken; the charged ply is the last ply before it at which the unit's own side moved (the unit's own arriving capture, when it lies in the run, is such a move). None when its
+    side made no move before that taking in the game."""
+    side = events[loss["ply"]]["taken"][1]
+    first = min(i for i in loss["run"] if events[i]["taken"] and events[i]["taken"][1] == side)
+    own = [i for i in range(first) if events[i]["mover"][1] == side]
+    return max(own) if own else None
+
+
 def question_records(sheet: Sheet, outcomes_of) -> list:
     """The records of one read position: for every non-goal question of a unit above the lowest worth, the keys it passed through (before any step, and after each level) and the outcomes.
     `outcomes_of(place) -> {horizon: bool|None} | None`. Each record also holds its final key, its owner and the unit's kind."""
@@ -4313,11 +4323,13 @@ def k_position(env: Env, worth: dict, params: Params, games: Games, di: int, gi:
     status = {h: v["status"] for h, v in lost.items()}
     lost_h = sorted(h for h, v in status.items() if v == LOST)
     origin = env.codec.move_ends(played)[0]
+    events = games.events(di, gi)
+    charged_h = sorted(h for h, v in lost.items() if v["status"] == LOST and charged_ply(events, v) == ply)       # the losses charged to the move played here
     named_h = res["named"]["place"] if res["named"] else None
     parts = {k: sum(x["ms"][k] for x in sheet.results) for k in ("a", "read", "b", "c", "total")}
     return {"di": di, "gi": gi, "ply": ply, "played": played, "verdict": res["verdict"], "named": named_h, "named_part": res["named"]["part"] if res["named"] else None,
             "named_lost": bool(named_h and by_ply.get(named_h) and by_ply[named_h][0] in {by_ply[h][0] for h in lost_h}),
-            "lost": lost_h, "statuses": status, "moved": origin, "moved_lost": origin in lost_h, "other_lost": any(h != origin for h in lost_h),
+            "lost": lost_h, "statuses": status, "lost_charged": charged_h, "named_lost_charged": bool(named_h and by_ply.get(named_h) and by_ply[named_h][0] in {by_ply[h][0] for h in charged_h}), "moved": origin, "moved_lost": origin in lost_h, "other_lost": any(h != origin for h in lost_h),
             "bad": None if bad is None else (gi, ply) in bad, "legal": len(r.legal), "loses": len(sheet.loses()), "played_in_loses": res["verdict"] == LOSES_V,
             "verdicts": dict(sheet.verdicts()), "read_ms": read_ms, "sheet_ms": parts["total"], "parts_ms": parts, "max_move_ms": max(x["ms"]["total"] for x in sheet.results),
             "answer": " | ".join(res["answers"].values())[:300]}
@@ -4356,6 +4368,18 @@ def format_k(records: list) -> list:
         both = sum(1 for x in rows if x["moved_lost"] and x["other_lost"])
         out.append(f"OBS (K)   {v}: {sum(1 for x in rows if x['moved_lost'] and not x['other_lost'])} | {sum(1 for x in rows if x['other_lost'] and not x['moved_lost'])} | {both} | "
                    f"{sum(1 for x in rows if x['named_lost'])} | {sum(1 for x in rows if x['named'] and not x['named_lost'])} | {sum(1 for x in rows if not x['named'])}")
+    if all("lost_charged" in x for x in records):
+        out.append(f"OBS (K, charged) the same table, a unit counts as lost only when the loss is CHARGED to the move played here (the last own move before the first taking of the run, see `charged_ply`); horizon {K_HORIZON} plies as above")
+        out.append("OBS (K, charged) table: verdict | a unit of the mover lost, charged to this move | none charged | total")
+        for v in verdicts:
+            rows = [x for x in records if x["verdict"] == v]
+            out.append(f"OBS (K, charged)   {v}: {sum(1 for x in rows if x['lost_charged'])} | {sum(1 for x in rows if not x['lost_charged'])} | {len(rows)}")
+        out.append("OBS (K, charged) the same split by which unit (positions with a charged loss): verdict | the moved unit only | another unit only | both | the verdict named a unit that was lost")
+        for v in verdicts:
+            rows = [x for x in records if x["verdict"] == v and x["lost_charged"]]
+            mv = lambda x: x["moved"] in x["lost_charged"]                                          # noqa: E731
+            ot = lambda x: any(h != x["moved"] for h in x["lost_charged"])                          # noqa: E731
+            out.append(f"OBS (K, charged)   {v}: {sum(1 for x in rows if mv(x) and not ot(x))} | {sum(1 for x in rows if ot(x) and not mv(x))} | {sum(1 for x in rows if mv(x) and ot(x))} | {sum(1 for x in rows if x['named_lost_charged'])}")
     out.append("OBS (K) by which part named the unit (LOSES): " + ", ".join(f"{p}: {sum(1 for x in records if x['verdict'] == LOSES_V and x['named_part'] == p)} named, of which lost in the game "
                f"{sum(1 for x in records if x['verdict'] == LOSES_V and x['named_part'] == p and x['named_lost'])}" for p in "abc"))
     judged = [x for x in records if x["bad"] is not None]

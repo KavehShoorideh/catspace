@@ -1481,3 +1481,31 @@ def test_the_move_question_is_off_by_default_and_on_it_is_kept_on_the_sheet_and_
     assert "the question of the move:" in text and "the move d2d3" in text and "LOSES" in text
     gone = Q.run(HUNG, WORTH, env=env, max_steps=3, budget_seconds=0.0, params=Q.Params(move_question=True))
     assert gone.moves.results == []
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- plan 78.42 (next): a loss is charged to the last own move
+
+def _charged(env, start, moves, unit_place, ply=0, horizon=6):
+    by_ply, _ = env.codec.tracks(start, moves)
+    ev = _events(env, start, moves)
+    res = Q.unit_loss(ev, by_ply[ply][unit_place][0], ply, horizon, env.worth_fn(WORTH))
+    return Q.charged_ply(ev, res), res
+
+
+def test_a_loss_is_charged_to_the_last_own_move_before_the_first_taking(env):
+    start = "4r1k1/8/8/4p3/8/3N4/8/4K3 w - - 0 1"
+    assert _charged(env, start, ["d3e5", "e8e5"], "d3")[0] == 0                                  # taken at once: charged to the move that arrived
+    got, res = _charged(env, start, ["d3e5", "g8g7", "e1d1", "e8e5"], "d3")                      # a second own move lies between: it is the one charged
+    assert res["status"] == Q.LOST and got == 2
+    got, res = _charged(env, "4k3/8/8/4b3/8/2N5/8/4K3 w - - 0 1", ["e1d1", "e8d8", "d1c1", "e5c3"], "c3")        # the unit never moved
+    assert res["status"] == Q.LOST and got == 2
+    got, res = _charged(env, "4k3/8/8/4b3/8/2N5/8/4K3 b - - 0 1", ["e5c3"], "c3")             # no own move of the unit's side before the taking
+    assert res["status"] == Q.LOST and got is None
+
+
+def test_measure_k_prints_the_charged_table(env, tmp_path):
+    d = _game_dir(tmp_path, ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5"])
+    (Path(d) / "surprises.jsonl").write_text("")
+    recs = Q.measure_k([d], env, WORTH, Q.Params(), stride=3, say=None)
+    assert recs and all("lost_charged" in x for x in recs)
+    assert any(ln.startswith("OBS (K, charged) table") for ln in Q.format_k(recs))

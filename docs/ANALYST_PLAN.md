@@ -6766,3 +6766,44 @@ READ. (1) With LOSS as the outcome the sheet foresees three in four of the other
 STILL WRONG: K charges later moves' losses to this move; part (c) never fires because (a) reads the same units; units of the least worth are not asked about; the chance table is still fitted on taking; the reading of a position is the cost of everything (the kernel's facts call and the rows built from it).
 
 NEXT: (i) K with each loss charged to the last own move before it; (ii) the mover's own losses need the other side's next move: the sheet asked from their side for their best open question, which is also "what is the opponent likely to do"; (iii) a cheaper reading of a child position (from the changed places, not anew); (iv) the event kernel.
+
+
+78.42 EVERY LOSS CHARGED TO THE LAST OWN MOVE BEFORE IT (2026-11-13; question_sheet.py: charged_ply, measure K's second table; tests 118; the study's scripts and rows in the session scratchpad as charge_*; all 16 games of sn_13_02 at every ply, either side's weighty units, LOST by unit_loss):
+
+    OBS (K, charged) the same table, a unit counts as lost only when the loss is CHARGED to the move played here (the last own move before the first taking of the run, see `charged_ply`); horizon 4 plies as above
+    OBS (K, charged) table: verdict | a unit of the mover lost, charged to this move | none charged | total
+    OBS (K, charged)   LOSES: 4 | 5 | 9
+    OBS (K, charged)   SAFE: 8 | 426 | 434
+    OBS (K, charged)   NOT SETTLED: 0 | 3 | 3
+    OBS (K, charged) the same split by which unit (positions with a charged loss): verdict | the moved unit only | another unit only | both | the verdict named a unit that was lost
+    OBS (K, charged)   LOSES: 2 | 1 | 1 | 4
+    OBS (K, charged)   SAFE: 0 | 8 | 0 | 0
+    OBS (K, charged)   NOT SETTLED: 0 | 0 | 0 | 0
+    OBS (study) losses of weighty units (LOST by unit_loss, every ply of 16 games, either side): 44; charged ply found 44
+    OBS (study) classes: A 16, B 14, C 6, D 8
+    OBS (study) A at the charged ply (the sheet says lost where it stands or live at level 0): 19; with a SAFE move that keeps the unit (strict) 16; none 3; of those none: traced back to a first-lost ply 3, not found 0
+    OBS (study) verdict kind of the sheet at the charged ply on the lost unit: closed3 2, confirmed 1, lost 19, refuted 13, unsettled 2, waiting 7
+    OBS (study) the other side's way on that unit with the real next move as first move: no such way 41, refuted 3
+    OBS (study) table: class | seen | not seen  (A: seen = the sheet said lost/live0, counted in the way-out row)
+    OBS (study)   A (A, way out): 16 | 0
+    OBS (study)   B: 13 | 0
+    OBS (study)   B (via A): 0 | 1
+    OBS (study)   C: 5 | 0
+    OBS (study)   C (via A): 1 | 0
+    OBS (study)   D: 0 | 7
+    OBS (study)   D (via A): 0 | 1
+    OBS (study) sub-class B: seen: 13
+    OBS (study) sub-class C: seen by part a: 5
+    OBS (study) sub-class D: D1 took at once another unit of the run; the moved unit then newly strikes 1 weighty unit(: 7
+    OBS (study) losses for which some legal move at the charged ply was SAFE by move_question and kept the unit (strict): 41 of 44; SAFE by move_question alone (loose): 44 of 44
+    OBS (study)   class A: strict-safe move existed 16 of 16; mean legal moves 28.6, mean strict-safe moves 4.4
+    OBS (study)   class B: strict-safe move existed 13 of 14; mean legal moves 27.6, mean strict-safe moves 16.9
+    OBS (study)   class C: strict-safe move existed 5 of 6; mean legal moves 22.2, mean strict-safe moves 12.0
+    OBS (study)   class D: strict-safe move existed 7 of 8; mean legal moves 21.6, mean strict-safe moves 14.4
+    OBS (study) move_question verdict on the move played at the charged ply: LOSES 21, SAFE 23
+
+Classes: A the unit already stood lost before the charged move (the sheet said so) and a move that kept it existed; B the charged move took the unit itself to where it was lost; C the charged move took away a guard or a shield; D neither: the other side's next move took another unit at once and this one went in the same exchange.
+
+READ. At the move a loss is charged to, the sheet or the question of the move had SEEN the loss in most cases (A, B and C against D), and a move that the question of the move calls SAFE and that keeps the unit existed in nearly all. The games played the losing move anyway: they were played by the plain search, which never asked. So for losses of this kind the reasoner's sight is no longer the limit; what it sees is not yet USED. The unseen class D is small and mostly a second unit going in an exchange on a place the sheet had already marked. The count is small (one set of games), and this says nothing yet on what the SAFE moves cost elsewhere: the question of the move calls about one legal move in five LOSES, and a standing "lost" on my units is followed by a loss less than one time in three.
+
+NEXT: USE. A player that takes the search's move, asks the sheet on standing losses and the question of the move on that move, and where the answer is LOSES or a standing loss is left without a keeper, asks the search's next choices in order until one is SAFE; played against the plain search at the same clock, measured by weighty units lost a game (unit_loss), by the result, and by 78.37's surprise rate. The reading of a position is the cost to cut for this.
