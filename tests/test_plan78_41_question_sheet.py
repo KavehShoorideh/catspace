@@ -767,7 +767,7 @@ def test_the_pool_audit_compares_a_served_fact_with_a_fresh_reading(env):
 def test_the_graph_is_filed_as_facts_with_edges_in_just_and_the_bounds_in_the_payload(env):
     pool = Q.Pool(env.codec)
     sheet = _read(env, pool, OWN_IN_WAY)
-    n = pool.file_graph(sheet)
+    n = pool.file_graph(sheet, legacy=True)                                 # the first form (every node a fact); the default files one fact a question
     assert n == len(sheet.graph.nodes)
     waits = [f for f in pool.store.facts.values() if f.payload.get("node") == "way" and f.payload["verdict"] == Q.WAITING_V]
     assert waits and all(f.kind == "gap" and f.just and ("needs" in [k for k, _s in f.payload["edges"]]) and f.stake == round(f.payload["stake_high"]) for f in waits)

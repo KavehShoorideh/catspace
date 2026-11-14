@@ -29,12 +29,13 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 from pathlib import Path
 
 import cs_engine as CE
 
+from catspace.incubator.analyst.discovery import sheet_events as SE
 from catspace.incubator.analyst.frame_search import FrameSearch
 
 from catspace.io import paths
@@ -94,6 +95,7 @@ class Params:
     chance_horizon: int = 4            # the table's horizon (plies within which the exact unit is taken): 4 or 8
     clock: str = "present"             # the order of steps in `run`: "present" (stake x urgency over cost), "chance" (chance x stake at risk over cost), "plain" (the first order, each question to full depth in turn)
     move_question: bool = False        # after the questions, the question of each legal move (`move_sheet`) is asked and kept on the sheet (False: as before)
+    recheck_floor: float = 0.0         # the single shared agenda: a woken fact whose stake (the worth of its unit) is below this is not rechecked at all (stale, not re-read); 0 = off
     risk: float = 1.0                  # THE TOLERANCE FOR RISK: the stake at risk of my own unit is risk x its high bound + (1 - risk) x the midpoint of its bounds; 1 = the worst case, 0 = the expected value
 
 
@@ -1722,35 +1724,77 @@ def search_way(r: Reading, t: Unit, asker: str, way: tuple, routes: list, params
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------- waiting across moves
 
+CONTEXT = "*context:"                  # the pseudo-place of what is on no place, for an asker (CONTEXT + its side): the side to move, the rights and the like on the position the asker reads from (its own,
+                                       # or the kernel's pass of it when the asker is not to move); part of every fact's read set, so of its signature
+
+
 class Pool:
-    """THE SHEET'S MEMORY: discovery/facts.py's FactStore (October's event-driven store), used as it stands. A way is filed as a `claim` (confirmed), a `kill` (refuted) or a `gap` (waiting, or cut by
-    the node cap or the follow-up depth, with `resume`: the route, the node cap and the nodes used); the read set is the places the finding depended on and the signature is built from the codec's
-    `cell_reader`. A move is the event: `advance` calls `invalidate(diff, permanent=True)` with the codec's diff, which flags every fact that read a changed place. After it, a fact not flagged is served
-    as it is; a flagged one is read again only when a live question asks for it (it is served after the cheap comparison of its cells if they are in fact unchanged: `revalidated`); `queue()` lists the
-    flagged ones by chain stake. The whole graph is filed too (`file_graph`): a node a fact, the typed edges in `just` and in the payload, the stake bounds in the payload, `stake` the high bound.
+    """THE SHEET'S MEMORY: discovery/facts.py's FactStore (October's event-driven store), used as it stands, with LISTENERS and an AGENDA over it (discovery/sheet_events.py, which says which of
+    October's four events each part is). A way is filed as a `claim` (confirmed), a `kill` (refuted) or a `gap` (waiting, or cut by the node cap or the follow-up depth, with `resume`: the route,
+    the node cap and the nodes used). Its READ SET is every place the verdict depended on (see `way_reads`: the route, the places passed over, the units that bear on them and on one another, both
+    goal units, the target's exits, and the units of the target's side, which are the answerers) and the pseudo-place CONTEXT (the side to move); the signature is built from the codec's `cell_reader`.
+
+    A move is the PUSH event: `advance` takes the codec's diff of the two positions, flags every fact that read a changed place (the store's `invalidate`, for good) and runs the listeners:
+    a waiting fact whose `waits_on` condition is true now is WOKEN, one whose `breaks` condition is true is KILLED and dropped, every other flagged fact is put on the agenda (by chance times stake when
+    a table of chances is set, else by stake). `refresh(r, params, budget)` drains the agenda: each fact is asked again on the new position, the new verdict filed, the old superseded. What the
+    budget leaves is STALE, NOT RE-READ: `stale_report()` names it with its last verdict, and no lookup serves it (a fact is served only when its read cells on this board equal its signature,
+    so a fact whose cells changed is never served, flagged or not). A fact flagged whose cells are in fact unchanged is served after that comparison (`revalidated`).
+
+    The graph of a question is ONE fact (`file_graph`): its nodes and edges as a payload, superseded when the question is filed again. Superseded and dead facts are dropped (`collect`).
     The store is imported lazily (facts.py imports a game library at module level). Two things of the store do not fit and are bridged here: its `lookup` never serves a `gap` (they are for
     resuming), so a waiting way is fetched by `_find` through the store's own groups and signatures; and its `advance(board)` takes a game board, so `advance` here is the codec's diff + `invalidate`."""
 
-    def __init__(self, codec):
+    def __init__(self, codec, answerers: str = "near"):
         from catspace.incubator.analyst.discovery import facts as FS
         self.store = FS.FactStore()
         self._signature = FS.signature
         self.codec = codec
+        self.answerers = answerers                                     # "all": every unit of the target's side is read (conservative); "near": the units that bear on a read place or could move onto one; "bearers": the first only
         self.position: "str | None" = None
         self._cell = None
         self.ply = -1
         self.kept = self.revalidated = self.reread = self.new = 0      # asked for: served unflagged, served after a flagged fact's cells matched, read again, never seen
+        self.other_turn = 0                                            # of `new`: a fact of the key stood for the other side to move (same cells, other context)
         self.flagged = self.queued = 0
         self.audited = self.audit_differed = 0
         self.audit_every = 0                                           # n > 0: every n-th served fact is read afresh and compared (the measure's test of the read sets)
         self._would_keep = 0
         self.born_log: list = []                                       # (ply, key, verdict word, value) of every way filed
-        self.queue_reread = 0                                          # facts read again from the queue by a budgeted refresh (0 unless `refresh` is called)
+        self.queue_reread = 0                                          # facts read again from the queue by a budgeted refresh
+        self.events = SE.Listeners()
+        self.agenda = SE.Agenda()
+        self.table = None                                              # the table of chances (set by `run` from the params)
+        self.chance_horizon = 4
+        self.served_log: list = []                                     # one dict per fact served: ply, key, fact id, state, the ply it was filed
+        self.refreshed: list = []                                      # one dict per fact asked again from the agenda
+        self.wake_log: list = []                                       # one dict per fact put on the agenda by an event
+        self.killed = self.dropped = 0
+        self.kill_log: list = []
+        self._qfacts: dict = {}
+        self._valid: "tuple | None" = None
+        self.size_max = 0
 
     def cell(self, position: str):
         if self._cell is None or self._cell[0] != position:
-            self._cell = (position, self.codec.cell_reader(position))
+            base = self.codec.cell_reader(position)
+            self._cell = (position, lambda place: (place, self._context(position, place[len(CONTEXT):])) if place.startswith(CONTEXT) else base(place))
         return self._cell[1]
+
+    variant: "str | None" = None                                       # the game's variant (set by `run`): the kernel's pass needs it
+
+    def _context(self, position: str, asker: str):
+        """The context an asker's verdict depends on: the codec's context of the position the asker reads from, "refused" when that is the kernel's pass and the kernel refuses it."""
+        memo = self.__dict__.setdefault("_ctx_memo", {})
+        k = (position, asker)
+        if k not in memo:
+            if len(memo) > 64:
+                memo.clear()
+            base = position
+            if self.codec.context(position)[0] != asker:
+                got = CE.passed(self.variant, position, []) if self.variant is not None else None
+                base = got[0] if got else None
+            memo[k] = self.codec.context(base) if base is not None else "refused"
+        return memo[k]
 
     def _find(self, key: tuple, cell):
         """The newest fact of `key` (any kind, a gap too) whose read cells on this board equal its signature: the store's `lookup` without its filter on gaps."""
@@ -1762,26 +1806,48 @@ class Pool:
                 best = f
         return best, bool(groups)
 
+    def _other_turn(self, key: tuple, cell) -> bool:
+        """Would a fact of `key` have been served were it not for the context (the side to move)?"""
+        for (reads, _occ), sg in (self.store.groups.get((key, True)) or {}).items():
+            order = sorted(reads)
+            at = [i for i, p in enumerate(order) if p.startswith(CONTEXT)]
+            if not at:
+                continue
+            now = self._signature(cell, [p for p in order if not p.startswith(CONTEXT)])
+            if any(tuple(x for j, x in enumerate(s) if j not in at) == now for s in sg):
+                return True
+        return False
+
     def lookup(self, key: tuple, position: str) -> tuple:
         """-> (fact or None, "kept" | "revalidated" | "reread" | "new")."""
-        f, seen = self._find(key, self.cell(position))
+        cell = self.cell(position)
+        f, seen = self._find(key, cell)
         if f is None:
             if seen:
+                if self._other_turn(key, cell):
+                    self.other_turn += 1
+                    self.new += 1
+                    return None, "new"
                 self.reread += 1
                 return None, "reread"
             self.new += 1
             return None, "new"
         if f.id in self.store.stale:
             self.store.stale.discard(f.id)
+            self.agenda.discard(f.id)
             self.revalidated += 1
+            self.served_log.append({"ply": self.ply, "key": key, "fid": f.id, "state": "revalidated", "filed": f.payload.get("ply")})
             return f, "revalidated"
         self.kept += 1
+        self.served_log.append({"ply": self.ply, "key": key, "fid": f.id, "state": "kept", "filed": f.payload.get("ply")})
         return f, "kept"
 
-    def add(self, key: tuple, question: tuple, verdict: dict, position: str, just: tuple = ()):
-        """File a way: claim, kill or gap by its verdict."""
+    def add(self, key: tuple, question: tuple, verdict: dict, position: str, just: tuple = (), extra=frozenset(), ctx: "dict | None" = None):
+        """File a way: claim, kill or gap by its verdict. `extra`: the places it read beyond the verdict's own (`way_reads`); `ctx`: what asking it again needs (`way_context`)."""
         reads = frozenset(verdict["reads"]) or frozenset({key[0]})
-        sig = self._signature(self.cell(position), sorted(reads))
+        reads = reads | frozenset(extra) | ({CONTEXT + question[2]} if self.answerers != "old" else frozenset())
+        cell = self.cell(position)
+        sig = self._signature(cell, sorted(reads))
         word = verdict["verdict"]
         kind = "claim" if word == CONFIRMED_V else ("kill" if word == REFUTED_V else "gap")
         route = verdict.get("route")
@@ -1790,13 +1856,59 @@ class Pool:
         hi = max(float(verdict["value"]), 0.0)
         f = self.store.add(kind, key, True, f"{word}: {verdict.get('answer', '')}"[:120], value=int(round(verdict["value"])), reads=reads, sig=sig, just=just, stake=int(round(hi)), under="way", pk=position,
                            payload={"way": True, "question": question, "verdict": verdict, "stake_low": 0.0 if kind != "claim" else hi, "stake_high": hi, "waits_on": [c[2] for c in verdict.get("alts", [])],
-                                    "breaks": [x.words for x in verdict.get("breaks", []) if hasattr(x, "words")]}, resume=resume)
+                                    "breaks": [x.words for x in verdict.get("breaks", []) if hasattr(x, "words")], "ctx": ctx, "ply": self.ply}, resume=resume)
+        if ctx is not None and ctx.get("core"):
+            f.payload["core_sig"] = self._signature(cell, sorted(ctx["core"]))
         self.born_log.append((self.ply, key, word, verdict["value"]))
+        self._subscribe(f, verdict, ctx, cell)
+        self._valid = None
         return f
+
+    def _subscribe(self, f, verdict: dict, ctx: "dict | None", cell) -> None:
+        """FOUND: the new fact enters the listeners. Every fact by its read set; a confirmed way by the places of its route and of the units that answer; a refuted one by the places of the unit or
+        the exchange that refuted it; a waiting one by each condition it waits on and by each answer that breaks it (conditions are places plus a test)."""
+        L = self.events
+        L.subscribe(f.id, "reads", {p for p in f.reads if not p.startswith(CONTEXT)})
+        word = verdict["verdict"]
+        if ctx is None:
+            return
+        if f.kind == "claim":
+            L.subscribe(f.id, "route", ctx["route_places"] | ctx["answer_places"])
+        elif f.kind == "kill":
+            at = {place_text(ctx["t"][2]), place_text(ctx["unit"][2])}
+            for x in verdict.get("stops", []):
+                if x.kind == "hard":
+                    at |= set(x.mover) | set(x.places)
+            L.subscribe(f.id, "refuter", at & f.reads)
+        elif word == WAITING_V:
+            filed = {p: cell(p) for p in f.reads if not p.startswith(CONTEXT)}
+            mine = (ctx["asker"], ctx["unit"][1])
+            for kind, places, words in verdict.get("alts", []):
+                places = tuple(places)
+                if kind in ("vacated", "cleared"):
+                    test = SE.all_empty(places)
+                elif kind == "step":
+                    continue                                                       # the unit's own earlier steps: part of the route, not an event of the board
+                else:
+                    test = SE.changed_from(places, filed)                          # a condition of another kind: woken when what it is about is no longer what it was
+                L.subscribe(f.id, "wake", places, SE.Cond(kind, places, test, words))
+            for x in verdict.get("breaks", []):
+                mv = tuple(getattr(x, "mover", ()) or ())
+                if len(mv) == 2:
+                    L.subscribe(f.id, "break", mv, SE.Cond("answered", mv, SE.answer_made(mv[0], mv[1], ctx["t"][0]), x.words))
 
     def ways(self) -> list:
         """The live (not superseded) way facts."""
         return [f for f in self.store.facts.values() if not f.superseded and f.payload.get("way")]
+
+    def valid_ways(self, position: str) -> list:
+        """The live way facts that hold on `position` as they stand: not flagged, and their read cells equal their signature. (What a sheet may use of the memory without asking: nothing stale.)"""
+        if self._valid is not None and self._valid[0] == position:
+            return self._valid[1]
+        cell = self.cell(position)
+        out = [f for f in self.ways() if f.id not in self.store.stale and self._signature(cell, sorted(f.reads)) == f.sig]
+        self._valid = (position, out)
+        return out
 
     def invalidate(self, diff) -> list:
         new = self.store.invalidate(diff, permanent=True)
@@ -1804,24 +1916,240 @@ class Pool:
         return new
 
     def advance(self, position: str) -> list:
-        """The game moves on: the codec's diff of the two positions is the event; what read a changed place is flagged stale for good."""
+        """The game moves on: the PUSH event. The codec's diff of the two positions flags what read a changed place (for good), the listeners say what that wakes or kills, and what is woken goes on the
+        agenda. -> the ids flagged."""
         new = []
         if self.position is not None:
-            new = self.invalidate(self.codec.changed_places(self.position, position))
+            diff = self.codec.changed_places(self.position, position)
+            self.position = position
+            self.ply += 1
+            self._cell = None
+            self._valid = None
+            new = self.invalidate(diff)
             self.queued += len(self.store.queue())
-        self.position = position
-        self.ply += 1
+            self._wake(diff, new)
+            self.collect()
+        else:
+            self.position = position
+            self.ply += 1
         return new
+
+    def _mover(self, position: str):
+        memo = self.__dict__.setdefault("_mover_memo", {})
+        if position not in memo:
+            if len(memo) > 16:
+                memo.clear()
+            memo[position] = self.codec.context(position)[0] if hasattr(self.codec, "context") else None
+        return memo[position]
+
+    def _wake(self, diff, flagged: list) -> None:
+        cell = self.cell(self.position)
+        wakes = {w.fid: w for w in self.events.notify(diff, cell)}
+        for fid in flagged:
+            if fid not in wakes:
+                near = sorted(diff & self.store.facts[fid].reads) if fid in self.store.facts else []
+                wakes[fid] = SE.Wake(fid, "reads", near[0] if near else "")
+        mover = self._mover(self.position)
+        for w in wakes.values():
+            f = self.store.facts.get(w.fid)
+            if f is None or f.superseded or not f.payload.get("way"):
+                continue
+            word = f.payload["verdict"]["verdict"]
+            self.wake_log.append({"ply": self.ply, "fid": f.id, "key": f.key, "role": w.role, "why": w.why, "word": word})
+            if w.role == "break":
+                self._kill(f, w)
+            else:
+                self.agenda.push(w, self._priority(f, mover))
+
+    def _kill(self, f, w) -> None:
+        self.killed += 1
+        self.kill_log.append({"ply": self.ply, "key": f.key, "why": w.why, "word": f.payload["verdict"]["verdict"], "filed": f.payload.get("ply")})
+        self._supersede(f)
+
+    def _supersede(self, f) -> None:
+        """The store's own supersede (`_retire`): out of its groups and its read index; the agenda and the listeners forget it too."""
+        self.store._retire(f)
+        self.agenda.discard(f.id)
+        self.events.drop(f.id)
+        self.store.stale.discard(f.id)
+
+    def collect(self) -> int:
+        """Drop the superseded facts (the store keeps them for its justification graphs; the sheet has none to keep). -> facts dropped."""
+        gone = [fid for fid, f in self.store.facts.items() if f.superseded]
+        for fid in gone:
+            self.events.drop(fid)
+            self.agenda.discard(fid)
+            del self.store.facts[fid]
+        self.dropped += len(gone)
+        self.size_max = max(self.size_max, len(self.store.facts))
+        return len(gone)
+
+    def _priority(self, f, mover) -> float:
+        """Chance times stake (the fitted table's chance of the way as it stands, for the owner of the target now) when a table is set, else the stake: the worth of the unit the way is about."""
+        ctx = f.payload.get("ctx") or {}
+        stake = float(ctx.get("stake", f.stake) or 0.0)
+        if self.table is None or not ctx:
+            return stake
+        word = f.payload["verdict"]["verdict"]
+        kind = {CONFIRMED_V: "confirmed", WAITING_V: "waiting", UNSETTLED_V: "unsettled"}.get(word, "refuted")
+        d = ctx["way"][0]
+        owner = "mine" if ctx["t"][0] == mover else "theirs"
+        return stake * self.table.chance((owner, kind, str(d) if d < 3 else "3+", ctx.get("group", "clear")), self.chance_horizon)
 
     def queue(self) -> list:
         """The stale facts and open gaps, by chain stake, highest first (the store's own order)."""
         return self.store.queue()
 
-    def file_graph(self, sheet) -> int:
-        """File every node of the sheet's graph as a fact: kind by its verdict, `just` the facts of the nodes it follows from, the edge types, the bounds and the way's conditions in the payload,
-        `stake` the high bound, the read set the places of the unit and the way's route. -> facts filed."""
+    def stale_report(self) -> list:
+        """What the events woke and the budget left: STALE, NOT RE-READ, each with its last verdict (never to be read as current)."""
+        out = []
+        for w in self.agenda.left():
+            f = self.store.facts.get(w.fid)
+            if f is None or f.superseded:
+                continue
+            out.append({"key": f.key, "last": f.payload["verdict"]["verdict"], "role": w.role, "status": "stale, not re-read", "stake": f.payload.get("ctx", {}).get("stake")})
+        return out
+
+    def refresh(self, r: "Reading", params: "Params", budget: "float | None" = None) -> dict:
+        """DRAIN the agenda on the reading `r` (of the position the pool is at): each woken fact is asked again, the new verdict filed, the old superseded, until the budget (seconds of the asks'
+        own time; None: all) is used up. What is left stays on the agenda and is reported by `stale_report`. -> {asked, left, seconds}."""
+        if self.position != r.position:
+            self.advance(r.position)
+        t0 = time.perf_counter()
+
+        done = self.agenda.drain(lambda w: self.recheck(w, r, params), budget)
+        self.collect()
+        self.left_stale = self.stale_report()
+        return {"asked": len(done), "left": len(self.agenda), "seconds": time.perf_counter() - t0}
+
+    left_stale: list = []
+    cheap = True                                                       # a recheck that can be decided by comparing a few cells is (False: always asked again in full)
+    cheap_settled = full_reasked = 0
+
+    def recheck(self, w, r: "Reading", params: "Params") -> None:
+        """One recheck of a woken fact (taken off the agenda by the caller or by the drain): decided cheaply when its recorded reason still stands, else asked again in full; the new fact is filed."""
+        self.agenda.discard(w.fid)
+        f = self.store.facts.get(w.fid)
+        if f is None or f.superseded:
+            return
+        if f.id not in self.store.stale and w.role not in ("wake", "break"):
+            self.refreshed.append({"ply": self.ply, "key": f.key, "role": w.role, "old": f.payload["verdict"]["verdict"], "new": "already current"})
+            return
+        old = f.payload["verdict"]["verdict"]
+        got = self._reask(f, r, params)
+        self.queue_reread += 1
+        self.refreshed.append({"ply": self.ply, "key": f.key, "role": w.role, "why": w.why, "old": old, "new": got if isinstance(got, str) else got.payload["verdict"]["verdict"],
+                               "value": None if isinstance(got, str) else got.payload["verdict"]["value"], "fid": None if isinstance(got, str) else got.id, "cheap": self._last_cheap})
+    _last_cheap = False
+
+    def stake_of(self, f) -> float:
+        return float((f.payload.get("ctx") or {}).get("stake", f.stake) or 0.0)
+
+    def chance_of(self, f, w, mover) -> float:
+        """The chance of a recheck: the table's chance for the verdict kind of the fact being rechecked (1 with no table). A waiting record woken because its own `waits_on` condition came true has no cell
+        in the table yet: it takes the confirmed kind's chance until it is fitted (its rate is measured by `sheet_events_measure`)."""
+        if self.table is None:
+            return 1.0
+        ctx = f.payload.get("ctx") or {}
+        word = f.payload["verdict"]["verdict"]
+        kind = {CONFIRMED_V: "confirmed", WAITING_V: "waiting", UNSETTLED_V: "unsettled"}.get(word, "refuted")
+        if word == WAITING_V and w.role == "wake":
+            kind = "confirmed"                                          # "waiting, condition true": not in the table
+        d = (ctx.get("way") or (1,))[0]
+        owner = "mine" if (ctx.get("t") or (None,))[0] == mover else "theirs"
+        return self.table.chance((owner, kind, str(d) if d < 3 else "3+", ctx.get("group", "clear")), self.chance_horizon)
+
+    def recheck_priority(self, w, costs: "_Costs", params: "Params") -> "float | None":
+        """The one priority of the shared agenda, for a recheck: chance x stake at risk over the expected cost of a recheck (the same formula as `chance_priority`: a unit of the side to move risks its
+        high bound by `params.risk`, the other side's takes the midpoint of the bounds 0 and the stake). None when the fact is gone or its stake is under `params.recheck_floor`."""
+        f = self.store.facts.get(w.fid)
+        if f is None or f.superseded:
+            return None
+        stake = self.stake_of(f)
+        if stake < params.recheck_floor:
+            return None
+        mover = self._mover(self.position)
+        mine = (f.payload.get("ctx") or {}).get("t", (None,))[0] == mover
+        risk = (params.risk * stake + (1.0 - params.risk) * 0.5 * stake) if mine else 0.5 * stake
+        return self.chance_of(f, w, mover) * risk / costs.expect(2)
+
+    def _reask(self, f, r: "Reading", params: "Params"):
+        """Ask the way of fact `f` again on the reading `r`. -> the new fact, or a word for why not (the unit is gone, the asker has no pass): then the old fact is dropped."""
+        ctx = f.payload.get("ctx")
+        if ctx is None:
+            self._supersede(f)
+            return "no context"
+        cell = self.cell(r.position)
+        sides = {r.absolute(SELF): SELF, r.absolute(OTHER): OTHER}
+
+        def unit(spec):
+            side, kind, at = spec
+            c = cell(place_text(at))
+            return Unit(sides[side], kind, at) if (c[1] == side and c[2] == kind) else None
+        t, u = unit(ctx["t"]), unit(ctx["unit"])
+        if t is None or u is None:
+            self._supersede(f)
+            self.dropped_dead = getattr(self, "dropped_dead", 0) + 1
+            return "unit gone"
+        asker = sides[ctx["asker"]]
+        way = (ctx["way"][0], u, ctx["way"][1], ctx["way"][2])
+        routes = [replace(rt, unit=Unit(sides[a], rt.unit.kind, rt.unit.at)) for a, rt in ctx["routes"]]
+        self._last_cheap = False
+        if self.cheap and f.kind == "kill" and ctx.get("core") and self._signature(cell, sorted(ctx["core"])) == f.payload.get("core_sig"):
+            # A REFUTED way stands on one answer. The places that answer and the route stand on, what bears on them and the context are as they were: only a place read for the other answers
+            # moved, which can add answers, never take that one away. Decided by comparing those cells; the verdict is filed again on this board.
+            v = dict(f.payload["verdict"])
+            self._supersede(f)
+            self.cheap_settled += 1
+            self._last_cheap = True
+            return file_way(r, t, asker, way, routes, v, params)
+        self.full_reasked += 1
+        v = search_way(r, t, asker, way, routes, params)
+        if v is None:
+            self._supersede(f)
+            return "no base"
+        self._supersede(f)
+        return file_way(r, t, asker, way, routes, v, params)
+
+    def file_graph(self, sheet, legacy: bool = False) -> int:
+        """File the graph of every question of the sheet: ONE fact a question (key: its target's place and side), its nodes and edges as the payload, the earlier fact of the question superseded.
+        `legacy`: every node a fact, as the first form did (kept for the comparison of the store's size). -> facts filed."""
         r = sheet.reading
         cell = self.cell(r.position)
+        if legacy:
+            return self._file_graph_nodes(sheet, cell)
+        by_src: dict = {}
+        for e in r.graph.edges:
+            by_src.setdefault(e.src, []).append(e)
+        filed = 0
+        for q in sheet.questions:
+            if q.node is None or q.target is None:
+                continue
+            seen, todo = {q.node}, [q.node]
+            while todo:
+                for e in by_src.get(todo.pop(), ()):
+                    if e.dst not in seen:
+                        seen.add(e.dst)
+                        todo.append(e.dst)
+            nodes = [r.graph.nodes[i] for i in sorted(seen)]
+            reads = frozenset({place_text(q.target.at)}).union(*[frozenset(n.reads) for n in nodes]) | {CONTEXT + r.absolute(q.asker)}
+            key = ("question", place_text(q.target.at), r.absolute(q.target.side))
+            kind_word = verdict_kind(q)
+            kind = "kill" if kind_word in ("refuted", "closed1", "closed2", "closed3") else ("gap" if kind_word in ("waiting", "unsettled", "idle0", "idle1", "unread") else "claim")
+            old = self._qfacts.pop(key, None)
+            if old is not None and old in self.store.facts:
+                self._supersede(self.store.facts[old])
+            f = self.store.add(kind, key, True, q.label()[:100], value=0, reads=reads, sig=self._signature(cell, sorted(reads)), stake=int(round(q.stake)), under="question", pk=r.position,
+                               payload={"question_graph": True, "verdict": kind_word, "nodes": [{"kind": n.kind, "asks": n.asks, "answer": n.answer, "verdict": n.verdict, "stake_low": n.stake_low,
+                                                                                                  "stake_high": n.stake_high, "chance": n.chance} for n in nodes],
+                                        "edges": [(e.kind, e.src, e.dst) for i in sorted(seen) for e in by_src.get(i, ())]})
+            self._qfacts[key] = f.id
+            filed += 1
+        return filed
+
+    def _file_graph_nodes(self, sheet, cell) -> int:
+        """The first form: every node of the sheet's graph a fact (kept only to count what it cost)."""
+        r = sheet.reading
         ids: dict = {}
         for n in r.graph.nodes:
             word = n.verdict
@@ -1843,11 +2171,85 @@ class Pool:
                 "audit_differed": self.audit_differed, "facts": len(self.store.facts), "stale_now": len(self.store.stale)}
 
 
+def way_key(r: "Reading", t: Unit, way: tuple, routes: list, params: "Params") -> tuple:
+    """The key of a way in the pool: the target's place and (absolute) side, the unit's place, the arrival place, what it does, and the routes it was read along (a different set of routes is a
+    different question)."""
+    key = (place_text(t.at), r.absolute(t.side), place_text(way[1].at), place_text(way[2]), way[3])
+    if r.pool is not None and r.pool.answerers == "old":               # the first form's key: no routes, so the audit can show what the new read sets fixed
+        return key
+    return key + (tuple(tuple(place_text(p) for p in rt.places) for rt in routes[:params.max_routes]),)
+
+
+def way_reads(r: "Reading", t: Unit, way: tuple, routes: list, params: "Params", answerers: str = "all") -> tuple:
+    """EVERY PLACE THE VERDICT OF A WAY DEPENDED ON. -> (reads, route places, answer places).
+      the route: the unit's place, each place of each route, the places passed over between them, the target and the arrival place;
+      the units that bear on any of those places and, behind them, on one another (the exchange's whole supply, a unit that pins one of them);
+      both goal units, and the units that bear on them (what may be played at all), and the exits of the target when it is the goal unit (where the goal sign was read);
+      the ANSWERERS: the units of the target's side, which answer each step with every legal move. `answerers` "all": every one of them is read (the conservative rule: which of them could stop the
+      route is not a thing of places); "near": those that bear on a place read (already in) and those that could move onto one; "bearers": only those that bear on one; "old": the first form's read set, the verdict's own places alone
+      with no context (only for the audit's comparison).
+    What no place holds is the context (the side to move on the position the asker reads from, the rights; in `Pool.cell`) and the game's own repetition and move counters, which no read set here covers."""
+    codec, pos = r.env.codec, r.position
+    if answerers == "old":                                             # the first form: only what the verdict itself named (kept for the audit's comparison)
+        return set(), {place_text(t.at), place_text(way[1].at), place_text(way[2])}, set()
+    places = {place_text(t.at), place_text(way[1].at), place_text(way[2])}
+    for rt in routes[:params.max_routes]:
+        prev = place_text(rt.unit.at)
+        for p in rt.places:
+            pt = place_text(p)
+            places.add(pt)
+            places |= set(codec.passed_over(prev, pt))
+            prev = pt
+    out = set(places)
+    for p in places:
+        out |= codec.bearers(pos, p)
+    for side in (SELF, OTHER):
+        g = r.goal_unit(side)
+        if g is not None:
+            gp = place_text(g.at)
+            out.add(gp)
+            out |= codec.bearers(pos, gp)
+            if g == t:
+                out |= {place_text(e) for e in r.exits_of(t)}
+    owner, answer = r.absolute(t.side), set()
+    if answerers == "all":
+        answer = set(codec.unit_places(pos, owner))
+    elif answerers == "near":                                          # the owner's units that could move onto a place read so far (to stand in a line, to guard, to take), as the board stands
+        for side, kind, at in codec.cells(pos):
+            if side == owner and place_text(at) not in out and {place_text(x) for x in codec.reach_from(pos, owner, kind, place_text(at))} & out:
+                answer.add(place_text(at))
+    return out | answer, places, answer
+
+
+def way_context(r: "Reading", t: Unit, asker: str, way: tuple, routes: list, params: "Params", places: set, answer: set) -> dict:
+    """What asking a way again needs, in the absolute names of the sides (the sides of a reading flip with the mover)."""
+    obs = routes[0].obstacles if routes else ()
+    group = "clear" if not obs else ("theirs" if any((o.unit is not None and o.unit.side != asker) or o.dead for o in obs) else "own")
+    return {"t": (r.absolute(t.side), t.kind, t.at), "unit": (r.absolute(way[1].side), way[1].kind, way[1].at), "asker": r.absolute(asker), "way": (way[0], way[2], way[3]),
+            "routes": [(r.absolute(rt.unit.side), rt) for rt in routes[:params.max_routes]], "stake": r.worth_of(t.kind), "group": group, "route_places": frozenset(places), "answer_places": frozenset(answer)}
+
+
+def file_way(r: "Reading", t: Unit, asker: str, way: tuple, routes: list, v: dict, params: "Params", state: "str | None" = None):
+    """File the verdict `v` of a way in the reading's pool, with its read set and what asking it again needs. -> the fact."""
+    pool = r.pool
+    reads, places, answer = way_reads(r, t, way, routes, params, pool.answerers)
+    if state is not None:
+        v["pool"] = state
+    ctx = way_context(r, t, asker, way, routes, params, places, answer)
+    if v["verdict"] == REFUTED_V and pool.answerers != "old":              # the places a refutation stands on: everything read but the other answerers, the places of its own hard answers, the context
+        core = set(reads) - answer if pool.answerers != "bearers" else set(reads)
+        for x in v.get("stops", []):
+            if x.kind == "hard":
+                core |= set(x.mover) | set(x.places)
+        ctx["core"] = frozenset(core | {CONTEXT + r.absolute(asker)})
+    return pool.add(way_key(r, t, way, routes, params), (place_text(t.at), r.absolute(t.side), r.absolute(asker)), v, r.position, extra=reads, ctx=ctx)
+
+
 def way_verdict(r: Reading, t: Unit, asker: str, way: tuple, routes: list, params: Params) -> "dict | None":
     """The verdict of a way of more than one move, through the pool (the fact store) when the reading has one: a fact not flagged by a move is served as it is (marked `kept`), a flagged one whose
     cells are in fact unchanged is served after the comparison (`revalidated`), one whose cells changed is read again (`reread`), a new way is read; every verdict is filed (claim, kill or gap)."""
     pool = r.pool
-    key = (place_text(t.at), r.absolute(t.side), place_text(way[1].at), place_text(way[2]), way[3])
+    key = way_key(r, t, way, routes, params)
     state = None
     if pool is not None:
         fact, state = pool.lookup(key, r.position)
@@ -1865,8 +2267,7 @@ def way_verdict(r: Reading, t: Unit, asker: str, way: tuple, routes: list, param
     if v is None:
         return None
     if pool is not None:
-        v["pool"] = state
-        pool.add(key, (place_text(t.at), r.absolute(t.side), r.absolute(asker)), v, r.position)
+        file_way(r, t, asker, way, routes, v, params, state)
     return v
 
 
@@ -2517,7 +2918,7 @@ def time_obstacle(r: Reading, q: Question, way: tuple, entry: dict) -> None:
                 best = (w[0], unit_words(q2.target), "their" if q2.asker == OTHER else "my")
     if best is None and r.pool is not None:
         mine = r.absolute(q.asker)
-        for fact in r.pool.ways():
+        for fact in r.pool.valid_ways(r.position):                 # only what holds on this board as it stands: nothing stale is read as current
             question, verdict = fact.payload["question"], fact.payload["verdict"]
             rt = verdict.get("route")
             if question[2] != mine and verdict["verdict"] in (CONFIRMED_V, WAITING_V) and rt is not None and 1 <= len(rt.places) < n:
@@ -2808,6 +3209,8 @@ class Sheet:
     read_seconds: float = 0.0
     reading: "Reading | None" = None
     moves: "MoveSheet | None" = None       # the question of each move, when `Params.move_question` is on
+    stale: list = field(default_factory=list)      # facts of the pool the move woke and the budget left: stale, not re-read, each with its last verdict (never current)
+    refreshed: "dict | None" = None        # what the drain of the pool's agenda did before the questions: {asked, left, seconds}
 
     @property
     def graph(self) -> Graph:
@@ -2879,13 +3282,18 @@ def _record(sheet: Sheet, f: Finding, costs: _Costs, params: Params) -> None:
 
 
 def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_seconds: "float | None" = None, budget_cost: "float | None" = None, env: "Env | None" = None, game: "str | None" = None,
-        params: Params = Params(), pool: "Pool | None" = None, on_step=None, light: bool = False, full_go: bool = False, full_goal: bool = False, only=None) -> Sheet:
+        params: Params = Params(), pool: "Pool | None" = None, on_step=None, light: bool = False, full_go: bool = False, full_goal: bool = False, only=None, refresh: "float | None" = None, shared: bool = False) -> Sheet:
     """The anytime schedule over the position's questions (see the module). Stops at `max_steps` steps, at `budget_seconds` of wall time (the reading of the position counted), or when the
     summed measured cost of the steps taken reaches `budget_cost` (seconds; the reproducible form of the budget); default 40 steps when none is given. A step is started only while
     the budget is not used up; one step already begun is finished, so the time may overrun by that step. `params.clock` is the order: "present" (every question's level 0 first, then stake x
     urgency over cost), "chance" (from the start by chance x stake at risk over cost, see `chance_priority`), "plain" (the first order, each question taken to its full depth before the next).
     `on_step(sheet, step, elapsed)` is called after every step. `light`: the whole sheet on the light reading (the units and bearings from the codec, the move tables on demand, the goal sign from the
-    goal unit's legal moves; no fact view and no scenario read); `full_go` and `full_goal` take the move tables / the goal unit's levels from the fact view on a light reading (the comparison). `only(unit) -> bool`: ask the questions of those units only (the rest are not on the sheet; ranks are kept)."""
+    goal unit's legal moves; no fact view and no scenario read); `full_go` and `full_goal` take the move tables / the goal unit's levels from the fact view on a light reading (the comparison). `only(unit) -> bool`: ask the questions of those units only (the rest are not on the sheet; ranks are kept).
+    `refresh` (seconds, with a pool): FIRST the events of the move (the pool is advanced to this position when it is not there yet), THEN the pool's agenda is drained under that budget (None: not drained,
+    the questions ask for what they need; `math.inf`: all of it), THEN the new questions; the time of the drain counts against `budget_cost`. What the drain leaves is on `sheet.stale`.
+    `shared` (with a pool): THE SINGLE AGENDA. No drain phase: the woken facts to recheck and the questions' own next steps are ONE agenda, ordered by one priority (chance x stake at risk over expected
+    cost, `chance_priority`; the table's chance for a recheck is that of the verdict kind of the fact; plain stake with no table), and the one budget (`budget_cost`, `budget_seconds`, `max_steps`)
+    is spent on it from the top. A woken fact under `params.recheck_floor` is not rechecked. What is not reached is on `sheet.stale`, with its last verdict, never served as current."""
     if env is None:
         if game is None:
             raise ValueError("run needs an Env or a game name")
@@ -2895,16 +3303,29 @@ def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_se
     r.full_go, r.full_goal = full_go, full_goal
     r.params_k = params.reach_k
     r.pool = pool
+    refreshed, drain_cost = None, 0.0
+    if pool is not None:
+        pool.variant = env.variant
+        if pool.position != position:
+            pool.advance(position)
+        pool.table, pool.chance_horizon = (load_chances(params.chances) if params.chances else None), params.chance_horizon
+        if refresh is not None and not shared:
+            refreshed = pool.refresh(r, params, refresh if budget_cost is None else min(refresh, budget_cost))
+            drain_cost = refreshed["seconds"]
     questions = first_order(r, params)
     if only is not None:
         questions = [q for q in questions if only(q.target)]
     sheet = Sheet(position, questions, read_seconds=r.read_seconds, reading=r)
+    sheet.refreshed = refreshed
+    sheet.stale = pool.stale_report() if (pool is not None and refresh is not None and not shared) else []
     r.questions = sheet.questions
+    the_pool = pool
+    rcosts, rechecked = _Costs(params), [0]
     if max_steps is None and budget_seconds is None and budget_cost is None:
         max_steps = 40
     costs = _Costs(params)
     table = load_chances(params.chances) if params.chances else None
-    spent = [0.0]
+    spent = [drain_cost]
 
     def over() -> bool:
         return ((max_steps is not None and len(sheet.steps) >= max_steps) or (budget_seconds is not None and time.perf_counter() - t0 >= budget_seconds)
@@ -2917,7 +3338,7 @@ def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_se
         if on_step is not None:
             on_step(sheet, sheet.steps[-1], time.perf_counter() - t0)
 
-    if params.clock == "present":
+    if params.clock == "present" and not shared:
         for q in questions:                                  # every question's level 0 first, in the first order
             if over():
                 break
@@ -2929,9 +3350,24 @@ def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_se
             quiet = quiet_question(r, len(questions) + 1, params, lowest)
             if quiet is not None:
                 sheet.questions.append(quiet)
-        pool = [q for q in sheet.questions if q.state == "open"]
-        if not pool:
+        pending = [q for q in sheet.questions if q.state == "open"]
+        wakes = [w for w in the_pool.agenda.left() if the_pool.recheck_priority(w, rcosts, params) is not None] if shared else []
+        if not pending and not wakes:
             break
+        if shared:
+            best_q = max(pending, key=lambda x: (chance_priority(x, costs, params, table, r), -x.rank)) if pending else None
+            best_w = max(wakes, key=lambda w: the_pool.recheck_priority(w, rcosts, params)) if wakes else None
+            if best_w is not None and (best_q is None or the_pool.recheck_priority(best_w, rcosts, params) > chance_priority(best_q, costs, params, table, r)):
+                t1 = time.perf_counter()
+                the_pool.recheck(best_w, r, params)
+                dt = time.perf_counter() - t1
+                rcosts.add(2, dt)
+                spent[0] += dt
+                rechecked[0] += 1
+                continue
+            take(best_q)
+            continue
+        pool = pending
         if params.clock == "chance":
             q = max(pool, key=lambda x: (chance_priority(x, costs, params, table, r), -x.rank))
         elif params.clock == "plain":
@@ -2942,6 +3378,15 @@ def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_se
     if params.move_question:
         left = None if budget_seconds is None else max(0.0, budget_seconds - (time.perf_counter() - t0))
         sheet.moves = move_sheet(env, r, params, budget_seconds=left)
+    if shared and budget_cost is None and budget_seconds is None:         # no time budget: the steps are capped by `max_steps`, the rechecks that outrank nothing are still all made
+        for w in the_pool.agenda.left():
+            if the_pool.recheck_priority(w, rcosts, params) is not None:
+                the_pool.recheck(w, r, params)
+                rechecked[0] += 1
+    if shared:
+        the_pool.collect()
+        sheet.refreshed = {"asked": rechecked[0], "left": len(the_pool.agenda), "seconds": 0.0}
+        sheet.stale = the_pool.stale_report()
     sheet.seconds = time.perf_counter() - t0
     return sheet
 
@@ -3858,9 +4303,9 @@ def format_frame_lines(records: list) -> list:
 BUCKETS = (("never", 0, 0), ("1-2", 1, 2), ("3-4", 3, 4), ("5-8", 5, 8), ("more", 9, 10 ** 9))
 
 
-def read_position(env: Env, worth: dict, params: Params, position: str, pool: "Pool | None" = None, max_steps: "int | None" = None) -> Sheet:
+def read_position(env: Env, worth: dict, params: Params, position: str, pool: "Pool | None" = None, max_steps: "int | None" = None, light: bool = False, refresh: "float | None" = None) -> Sheet:
     """One position read as the measures read it: the schedule, level 1 for every question, level 2 for every non-goal unit open after level 1; the pool (if any) carries the ways."""
-    sheet = run(position, worth, max_steps=max_steps, env=env, params=params, pool=pool)
+    sheet = run(position, worth, max_steps=max_steps, env=env, params=params, pool=pool, light=light, refresh=refresh)
     finish_levels(sheet, 1, params)
     settle_flagged(sheet, params)
     return sheet
@@ -4947,6 +5392,7 @@ def main(argv: list) -> int:
     ap.add_argument("--reach-k", type=int, default=None, help="moves (hops) a unit of the asker may use (default 2)")
     ap.add_argument("--route-nodes", type=int, default=None, help="node cap of one way's route reasoning")
     ap.add_argument("--anticipation", type=int, default=None, help="measure I over the first N games of the (single) --games-dir, the pool carried from ply to ply")
+    ap.add_argument("--anticipation-events", type=int, default=None, help="measure I2 over the first N games of the (single) --games-dir: the memory with listeners and the agenda, audited, on the light reading (see sheet_events_measure)")
     ap.add_argument("--no-search", action="store_true", help="level 2 by the census alone (the first version)")
     ap.add_argument("--alternatives", type=int, default=100, help="bad-move positions whose other legal moves are read for the sheet's objection (0: none)")
     ap.add_argument("--no-objection", action="store_true", help="skip measure (e)")
@@ -5087,6 +5533,9 @@ def main(argv: list) -> int:
         return 0
     if len(a.games_dir) != 1:
         ap.error("several --games-dir only with --goal-verdict")
+    if a.anticipation_events:
+        from catspace.incubator.analyst.discovery import sheet_events_measure as SEM
+        return SEM.main([a.game, "--games-dir", a.games_dir[0], "--events", str(a.anticipation_events)])
     if a.anticipation:
         lines = anticipation(a.games_dir[0], a.anticipation, env, worth, params) + [f"OBS question sheet: anticipation {time.perf_counter() - t0:.1f} s"]
         for ln in lines:

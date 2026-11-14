@@ -311,6 +311,45 @@ class ChessCodec:
             return c
         return cell
 
+    # ---- plan 78.42, the sheet's events: what a verdict read beyond its route (read sets), generic names
+
+    def context(self, position: str) -> tuple:
+        """What of a position is not on any place but changes what the units may do: the side to move, the castling rights, the en passant place. Part of every fact's signature."""
+        import chess
+        b = self._board(position)
+        return (self.SIDES[b.turn], b.castling_xfen(), chess.square_name(b.ep_square) if b.ep_square is not None else None)
+
+    def bearers(self, position: str, place: str, depth: int = 3, cap: int = 24) -> set:
+        """The handles of the units of either side that bear on `place`, and (to `depth` rounds, at most `cap` places) the units that bear on THOSE (a unit behind a unit on a line: the exchange's
+        whole supply), the place itself not counted. A unit that bears on a unit pins it or supports it: a change there changes an exchange on `place`."""
+        import chess
+        b = self._board(position)
+        seen, frontier = set(), {chess.parse_square(place)}
+        for _ in range(depth):
+            nxt = set()
+            for sq in frontier:
+                for color in (chess.WHITE, chess.BLACK):
+                    for a in b.attackers(color, sq):
+                        if a not in seen:
+                            nxt.add(a)
+            seen |= nxt
+            frontier = nxt
+            if not frontier or len(seen) >= cap:
+                break
+        return {chess.square_name(s) for s in seen} - {place}
+
+    def passed_over(self, origin: str, destination: str) -> list:
+        """The handles strictly between two handles on a line (none when they are not on one: a knight's hop passes over nothing)."""
+        import chess
+        return [chess.square_name(s) for s in chess.SquareSet(chess.between(chess.parse_square(origin), chess.parse_square(destination)))]
+
+    def unit_places(self, position: str, side: str) -> list:
+        """The handles of the units of `side` (as the kernel names it)."""
+        import chess
+        b = self._board(position)
+        color = {v: k for k, v in self.SIDES.items()}[side]
+        return [chess.square_name(s) for s in chess.SquareSet(b.occupied_co[color])]
+
     def changed_places(self, before: str, after: str) -> set:
         """The handles whose content or whose count of units bearing on them (either side) differs between two positions: what a move changed (mirrors regress.diff_squares)."""
         import chess

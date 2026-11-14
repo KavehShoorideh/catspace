@@ -36648,3 +36648,7 @@ The light reading makes the question of the move cost about a millisecond. At eq
 ## 2026-11-13 -- plan 78.42: the whole sheet on the light reading; sheet against search
 
 The light sheet agrees with the full one on every verdict kind read and is several times cheaper. The multi-move ways it confirms are few, mostly seen by the search, and the unseen ones rarely come true on the search's own games. Numbers in docs/ANALYST_PLAN.md.
+
+## 2026-11-13 -- plan 78.42: the sheet's memory as an event system
+
+Listeners, waking, the drain and one shared agenda built on October's fact store. Served verdicts now agree with a fresh sheet; the memory saves no time, and one agenda by stake helps only a little at the shortest budgets. Numbers in docs/ANALYST_PLAN.md.
