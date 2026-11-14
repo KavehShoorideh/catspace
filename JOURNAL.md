@@ -36636,3 +36636,7 @@ By loss, the sheet foresees most of the other side's losses and few of the mover
 ## 2026-11-13 -- plan 78.42: every loss charged to the last own move
 
 At the charged move the sheet or the question of the move had seen most losses and a safe keeping move existed in nearly all; the plain search played the losing move anyway. Next is use, not sight. Numbers in docs/ANALYST_PLAN.md.
+
+## 2026-11-13 -- plan 78.42 use: the sheet as a check on the search's move
+
+The guided player loses fewer units but spends four times the clock; the plain search given that time does far better. The sheet has to go into the search and cost near nothing. Numbers in docs/ANALYST_PLAN.md 78.42 USE.
