@@ -6911,3 +6911,101 @@ NEXT: USE. A player that takes the search's move, asks the sheet on standing los
 READ. (1) The guided player loses fewer weighty units than the plain search across the board from it, and the question of the move alone does most of that; the standing check alone does harm. (2) The result and the judge's mean loss barely move, and the judge calls the overrides about as often worse as better. (3) The guided player spends about four times the clock. The plain search GIVEN that same time beats the plain search by far more than the guided player does, on the result, on the balance of worth and on the judge's mean loss. So, as wired, the sheet is worth less than the time it costs: the same milliseconds are better spent searching. (4) The cost is the reading of positions in Python (the position, then the position after the move), not the frames. (5) Known wrong: a promotion is called a loss of the promoting unit; the next choices are not the search's own; games at the ply cap are left out of the scores.
 
 NEXT: the sheet is not to stand beside the search as a veto in Python; what it knows has to cost near nothing and go INTO the search: (i) the reading of a child from the changed places and the sheet's cheap levels in Rust beside the kernel's facts, so that a move question costs what a frame costs; (ii) the verdicts as the search's ordering and as its quiet-move extension (a move the sheet calls LOSES searched last, a standing loss a reason to look one move deeper there), measured at EQUAL time against the plain search; (iii) fix promotion in unit_loss and the question of the move. The event kernel after that.
+
+
+78.42 USE, SECOND FORM: THE QUESTION OF THE MOVE MADE CHEAP; THE MATCH AT EQUAL TIME (2026-11-13; question_sheet.py Reading(light=True), the goal's kind cached on Env, promotion followed as the same unit with its new worth in move_question and unit_loss; the codec's cells / bearing / arrives; sheet_player.py configs equal, equal_both, equal_wide: the sheet's measured cost is taken off the search's clock; tests 131 and 28). The light reading takes the units and what each bears on from the codec's board, not from the kernel's fact view: it is the injected game layer answering, not the rule files; the goal sign is not read in it. Audit of light against full, then the matches (48 openings twice, against the plain search at the same clock; control beside them):
+
+    OBS (audit) pairs 2407 from 0 ; agree 2384 (99.04%)  total time 548s
+    OBS (audit) disagreement: full NOT SETTLED / light SAFE: 23
+    OBS (cost) light_reading: mean 0.34 ms max 1.04 ms over 313
+    OBS (cost) full_reading: mean 150.73 ms max 274.86 ms over 313
+    OBS (cost) full_standing: mean 1.05 ms max 81.08 ms over 313
+    OBS (cost) light_standing: mean 1.13 ms max 2.83 ms over 313
+    OBS (cost) full_q: mean 204.60 ms max 426.15 ms over 2407
+    OBS (cost) light_q: mean 1.32 ms max 3.58 ms over 2407
+    OBS (cost) light_a: mean 0.26 ms max 1.75 ms over 2407
+    OBS (cost) full_a: mean 56.19 ms max 212.23 ms over 2407
+    OBS (cost) light_b: mean 0.54 ms max 2.22 ms over 2407
+    OBS (cost) full_b: mean 0.22 ms max 1.79 ms over 2407
+    OBS (cost) light_c: mean 0.31 ms max 1.66 ms over 2407
+    OBS (cost) full_c: mean 1.32 ms max 168.58 ms over 2407
+    OBS (cost) light_read: mean 0.16 ms max 0.48 ms over 2407
+    OBS (cost) full_read: mean 146.81 ms max 241.38 ms over 2407
+  control:
+    OBS setup: config control {"use_standing": false, "use_question": false}, plain clock 0.2, openings 48, max plies 120, snapshot fc078d2ea37ad758, workers 6
+    OBS played 96 games in 278 s
+    OBS (control) games 96, unfinished at the cap 11 (not counted below); the guided player: wins 13, draws 61, losses 11, score 0.512 of 85 finished games
+    OBS (control) pairs complete 41: guided scores 2.0/1.5/1.0/0.5/0.0 in 0/2/39/0/0
+    OBS (control) guided: weighty units LOST 164 in 96 games (1.71 a game), charged to its own moves 164; balance of worth over all takings, mean a game -0.36 (sum -35)
+    OBS (control) plain: weighty units LOST 161 in 96 games (1.68 a game), charged to its own moves 161; balance of worth over all takings, mean a game +0.36 (sum +35)
+    OBS (control) guided decisions 4024; by outcome of the sheet: forced 46, off 3945, one_legal 33
+    OBS (control) overrides 0 in 96 games (0.00 a game), share of the guided positions 0.0000; the search's choice would lose by the sheet, sum of stake 0 (mean nan an override); rejected-and-kept (none accepted) 0
+    OBS (control) the guided player's own move at the overridden ply was followed by a charged loss (`charged_ply`) in 0 of 0 overrides; at its other plies in 157 of 4024
+    OBS (control) time a move, guided: mean 200 ms, max 210 ms over 4024 moves
+    OBS (control) time a move, plain: mean 200 ms, max 227 ms over 4023 moves
+    OBS (control) time a move, the guided player minus the plain player: mean -0.2 ms, max -17 ms; moves over 250 ms: guided 0 of 4024, plain 0 of 4023
+    OBS (control) the search's own clock a guided move: mean 200.0 ms, min 200 ms
+    OBS (control) guided time split, mean ms: search 200, read 0, standing 0.0, first question 0, later tries 0, ordering the next choices 0
+    OBS (control) judge (measure only), guided: moves 4011, mean loss 77.3 centipawns (cap 1000 a move), 0.1237 expected result
+    OBS (control) judge (measure only), plain: moves 4012, mean loss 77.9 centipawns (cap 1000 a move), 0.1242 expected result
+    OBS (control) judge on overridden moves 0 (tolerance 0.02 expected result): override better 0, equal 0, worse 0; mean expected result played minus search's choice +nan, mean centipawns +nan
+  equal:
+    OBS setup: config equal {"equal": true, "light": true, "filtered": true, "use_standing": false, "budget": 0.04, "rank_seconds": 0.015}, plain clock 0.2, openings 48, max plies 120, snapshot fc078d2ea37ad758, workers 6
+    OBS played 96 games in 278 s
+    OBS (equal) games 96, unfinished at the cap 17 (not counted below); the guided player: wins 11, draws 51, losses 17, score 0.462 of 79 finished games
+    OBS (equal) pairs complete 34: guided scores 2.0/1.5/1.0/0.5/0.0 in 0/2/27/4/1
+    OBS (equal) guided: weighty units LOST 147 in 96 games (1.53 a game), charged to its own moves 147; balance of worth over all takings, mean a game -1.01 (sum -97)
+    OBS (equal) plain: weighty units LOST 156 in 96 games (1.62 a game), charged to its own moves 156; balance of worth over all takings, mean a game +1.01 (sum +97)
+    OBS (equal) guided decisions 4101; by outcome of the sheet: first_accepted 3926, forced 42, none_accepted 16, one_legal 31, overridden 86
+    OBS (equal) overrides 86 in 96 games (0.90 a game), share of the guided positions 0.0210; the search's choice would lose by the sheet, sum of stake 234 (mean 2.72 an override); rejected-and-kept (none accepted) 16
+    OBS (equal) the guided player's own move at the overridden ply was followed by a charged loss (`charged_ply`) in 15 of 86 overrides; at its other plies in 127 of 4015
+    OBS (equal) time a move, guided: mean 199 ms, max 278 ms over 4101 moves
+    OBS (equal) time a move, plain: mean 199 ms, max 210 ms over 4106 moves
+    OBS (equal) time a move, the guided player minus the plain player: mean +0.1 ms, max +68 ms; moves over 250 ms: guided 52 of 4101, plain 0 of 4106
+    OBS (equal) the search's own clock a guided move: mean 196.0 ms, min 180 ms
+    OBS (equal) guided time split, mean ms: search 195, read 0, standing 0.0, first question 2, later tries 0, ordering the next choices 1
+    OBS (equal) judge (measure only), guided: moves 4090, mean loss 78.9 centipawns (cap 1000 a move), 0.1190 expected result
+    OBS (equal) judge (measure only), plain: moves 4089, mean loss 74.7 centipawns (cap 1000 a move), 0.1172 expected result
+    OBS (equal) judge on overridden moves 86 (tolerance 0.02 expected result): override better 7, equal 57, worse 22; mean expected result played minus search's choice -0.0554, mean centipawns -55.5
+  equal_both:
+    OBS setup: config equal_both {"equal": true, "light": true, "filtered": true, "budget": 0.04, "rank_seconds": 0.015}, plain clock 0.2, openings 48, max plies 120, snapshot fc078d2ea37ad758, workers 6
+    OBS played 96 games in 269 s
+    OBS (equal_both) games 96, unfinished at the cap 12 (not counted below); the guided player: wins 7, draws 62, losses 15, score 0.452 of 84 finished games
+    OBS (equal_both) pairs complete 37: guided scores 2.0/1.5/1.0/0.5/0.0 in 0/2/25/10/0
+    OBS (equal_both) guided: weighty units LOST 131 in 96 games (1.36 a game), charged to its own moves 131; balance of worth over all takings, mean a game -0.72 (sum -69)
+    OBS (equal_both) plain: weighty units LOST 127 in 96 games (1.32 a game), charged to its own moves 127; balance of worth over all takings, mean a game +0.72 (sum +69)
+    OBS (equal_both) guided decisions 3882; by outcome of the sheet: first_accepted 3608, forced 27, none_accepted 96, one_legal 36, overridden 115
+    OBS (equal_both) overrides 115 in 96 games (1.20 a game), share of the guided positions 0.0296; the search's choice would lose by the sheet, sum of stake 436 (mean 3.79 an override); rejected-and-kept (none accepted) 96
+    OBS (equal_both) the guided player's own move at the overridden ply was followed by a charged loss (`charged_ply`) in 6 of 115 overrides; at its other plies in 118 of 3767
+    OBS (equal_both) time a move, guided: mean 200 ms, max 281 ms over 3882 moves
+    OBS (equal_both) time a move, plain: mean 199 ms, max 216 ms over 3890 moves
+    OBS (equal_both) time a move, the guided player minus the plain player: mean +0.5 ms, max +65 ms; moves over 250 ms: guided 62 of 3882, plain 0 of 3890
+    OBS (equal_both) the search's own clock a guided move: mean 194.4 ms, min 157 ms
+    OBS (equal_both) guided time split, mean ms: search 194, read 0, standing 1.6, first question 2, later tries 1, ordering the next choices 1
+    OBS (equal_both) judge (measure only), guided: moves 3875, mean loss 78.3 centipawns (cap 1000 a move), 0.1239 expected result
+    OBS (equal_both) judge (measure only), plain: moves 3875, mean loss 75.0 centipawns (cap 1000 a move), 0.1223 expected result
+    OBS (equal_both) judge on overridden moves 115 (tolerance 0.02 expected result): override better 12, equal 75, worse 28; mean expected result played minus search's choice -0.0543, mean centipawns -57.0
+  equal_wide:
+    OBS setup: config equal_wide {"equal": true, "light": true, "filtered": true, "use_standing": false, "max_alternatives": 8, "max_tries": 9, "budget": 0.06, "rank_seconds": 0.015}, plain clock 0.2, openings 48, max plies 120, snapshot fc078d2ea37ad758, workers 6
+    OBS played 96 games in 277 s
+    OBS (equal_wide) games 96, unfinished at the cap 13 (not counted below); the guided player: wins 10, draws 57, losses 16, score 0.464 of 83 finished games
+    OBS (equal_wide) pairs complete 38: guided scores 2.0/1.5/1.0/0.5/0.0 in 0/4/27/7/0
+    OBS (equal_wide) guided: weighty units LOST 142 in 96 games (1.48 a game), charged to its own moves 142; balance of worth over all takings, mean a game -1.17 (sum -112)
+    OBS (equal_wide) plain: weighty units LOST 146 in 96 games (1.52 a game), charged to its own moves 146; balance of worth over all takings, mean a game +1.17 (sum +112)
+    OBS (equal_wide) guided decisions 4000; by outcome of the sheet: first_accepted 3820, forced 37, none_accepted 9, one_legal 34, overridden 100
+    OBS (equal_wide) overrides 100 in 96 games (1.04 a game), share of the guided positions 0.0250; the search's choice would lose by the sheet, sum of stake 292 (mean 2.92 an override); rejected-and-kept (none accepted) 9
+    OBS (equal_wide) the guided player's own move at the overridden ply was followed by a charged loss (`charged_ply`) in 18 of 100 overrides; at its other plies in 118 of 3900
+    OBS (equal_wide) time a move, guided: mean 199 ms, max 334 ms over 4000 moves
+    OBS (equal_wide) time a move, plain: mean 199 ms, max 211 ms over 4009 moves
+    OBS (equal_wide) time a move, the guided player minus the plain player: mean +0.6 ms, max +123 ms; moves over 250 ms: guided 82 of 4000, plain 0 of 4009
+    OBS (equal_wide) the search's own clock a guided move: mean 195.4 ms, min 160 ms
+    OBS (equal_wide) guided time split, mean ms: search 194, read 0, standing 0.0, first question 2, later tries 1, ordering the next choices 1
+    OBS (equal_wide) judge (measure only), guided: moves 3990, mean loss 78.6 centipawns (cap 1000 a move), 0.1232 expected result
+    OBS (equal_wide) judge (measure only), plain: moves 3993, mean loss 76.1 centipawns (cap 1000 a move), 0.1219 expected result
+    OBS (equal_wide) judge on overridden moves 100 (tolerance 0.02 expected result): override better 9, equal 65, worse 26; mean expected result played minus search's choice -0.0673, mean centipawns -68.8
+
+READ. (1) The cost is gone: the question of the move went from the cost of a whole search move to a small part of one, with the same verdicts except where the full form said NOT SETTLED for the goal sign. (2) At equal time the guided player does NOT beat the plain search: every guided score is under the control's, the judge calls the overrides worse about three times as often as better, and the guided player's lost units are a little under the control's, not clearly outside noise. (3) So the finding of the first form stands with the cost removed: replacing the search's move, on the word of a one-move reading of losses, by a move the search rated lower, does not help. What the sheet sees at one move the search at this clock mostly sees too, and where they differ the search is more often right.
+
+WHAT THIS MEANS FOR THE PLAN. The reasoner is not to second-guess the search on what the search can already see. Its use is where the search does not reach: the order in which things are looked at when the clock is short, and the things more than a few plies away (a way of two or three preparing moves, a waiting record that comes true). Both are 78.42's own subject (routes followed whole, waiting, the clock), and both were too slow to try in play before the light reading.
+
+NEXT: (i) the whole sheet on the light reading (levels 0 to 2, the routes), with the audit against the full form, so that a position's sheet costs milliseconds; (ii) then the routes and the waiting records measured for what the search at its clock does NOT see: of the ways the sheet confirms at two or three moves, how many the search's own line at that clock contains or avoids; (iii) the sheet kept across the moves of a game on October's event kernel (what a move changes is re-asked, the rest served), which the light reading and the changed places make cheap; (iv) the goal sign in the light reading.

@@ -131,17 +131,22 @@ class Env:
         self.medium_names = [raw["scenario"][role]["relation"] for role in MEDIUM_ROLES if role in raw["scenario"]]
         self.vocabulary = {**full, "derived": [x for x in full["derived"] if x not in self.medium_names]}          # the medium does not depend on the position: read once, not at every position
         self.vocabulary_json = json.dumps(self.vocabulary)
+        self.goal_kind_known: "tuple | None" = None                                                                            # (the goal's kind,) once read: it is the game's, not the position's
         self.medium_json = json.dumps({**full, "derived": list(self.medium_names)})
         self.spec = GS.spec_texts(game, vocabulary)[self.variant]
         self.codec = CU.codec_of(game)
         self._medium: "Medium | None | bool" = None
 
+    def kind_keys_all(self) -> dict:
+        """{kind as the description names it: kind as the worth table names it} for every kind of the game (read once from the initial position)."""
+        if not hasattr(self, "_kind_key"):
+            self._kind_key = kind_keys(self.codec, CE.state(self.variant, None, [])[0])
+        return self._kind_key
+
     def worth_fn(self, worth: dict):
         """kind (the description's word) -> its worth in the table, the same reading as `Reading.worth_of` but for any kind of the game, whatever the position holds (the keys are read once from the
         initial position)."""
-        if not hasattr(self, "_kind_key"):
-            self._kind_key = kind_keys(self.codec, CE.state(self.variant, None, [])[0])
-        table, keys = dict(worth), self._kind_key
+        table, keys = dict(worth), self.kind_keys_all()
         return lambda kind: float(table.get(kind, table.get(keys.get(kind, kind), 0)))
 
     def medium(self) -> "Medium | None":
@@ -268,20 +273,31 @@ def kind_keys(codec, position: str) -> dict:
 class Reading:
     """One position read once: its units, the strike table, the move tables, and the shared answers of the engine calls that several questions use."""
 
-    def __init__(self, env: Env, position: str, worth: dict):
+    def __init__(self, env: Env, position: str, worth: dict, light: bool = False):
         self.env, self.position, self.worth = env, position, dict(worth)
+        self.light = light                 # LIGHT: read from the position codec and the kernel's moves alone, no fact view (plan 78.42, cheap): the units and what they bear on at once, the one-hop move tables only when asked
         t0 = time.perf_counter()
         state = CE.state(env.variant, position, [])
         if state[3] is not None or not state[2]:
             raise ValueError("the position is over or has no legal moves")
         self.mover, self.legal = state[1], list(state[2])
         self._settled: dict = {}
-        facts = CE.facts(env.variant, env.spec, env.vocabulary_json, position, [], True)
-        rel = env.relations
-        self.units = sorted((Unit(f[-2], f[-1], tuple(f[1:-2])) for f in facts if f[0] == UNIT_RELATION), key=lambda u: (u.side != SELF, u.kind, u.at))
-        self.acts = _rows(facts, rel["acts_on"])
-        self.go = [_rows(facts, spec) for spec in rel["can_go"]]
-        self.kind_key = kind_keys(env.codec, position)
+        self._go: "list | None" = None
+        self._kind_key: "dict | None" = None
+        if light:
+            codec = env.codec
+            cells = [(SELF if side == self.mover else OTHER, kind, at) for side, kind, at in codec.cells(position)]
+            self.units = sorted((Unit(side, kind, at) for side, kind, at in cells), key=lambda u: (u.side != SELF, u.kind, u.at))
+            self.acts = {}
+            for (side, kind, at), to in codec.bearing(position).items():
+                self.acts[(kind, SELF if side == self.mover else OTHER, at)] = to
+        else:
+            facts = CE.facts(env.variant, env.spec, env.vocabulary_json, position, [], True)
+            rel = env.relations
+            self.units = sorted((Unit(f[-2], f[-1], tuple(f[1:-2])) for f in facts if f[0] == UNIT_RELATION), key=lambda u: (u.side != SELF, u.kind, u.at))
+            self.acts = _rows(facts, rel["acts_on"])
+            self._go = [_rows(facts, spec) for spec in rel["can_go"]]
+            self._kind_key = kind_keys(env.codec, position)
         self.read_seconds = time.perf_counter() - t0
         self._scenario: dict = {}
         self._census: dict = {}
@@ -303,6 +319,20 @@ class Reading:
         self.questions: list = []          # the sheet's questions (set by run): the time obstacle reads what they already hold
         self.graph = Graph()               # the claims of every question of this position and how they follow from one another
         self.pool: "Pool | None" = None    # set by `run`: the waiting pool that carries ways from one position of a game to the next
+
+    @property
+    def go(self) -> list:
+        """The move tables (one hop, within two, within three): read from the fact view the first time they are asked of a light reading."""
+        if self._go is None:
+            facts = CE.facts(self.env.variant, self.env.spec, self.env.vocabulary_json, self.position, [], True)
+            self._go = [_rows(facts, spec) for spec in self.env.relations["can_go"]]
+        return self._go
+
+    @property
+    def kind_key(self) -> dict:
+        if self._kind_key is None:
+            self._kind_key = kind_keys(self.env.codec, self.position)
+        return self._kind_key
 
     def state_of(self, position: str, move: "str | None" = None) -> tuple:
         """The kernel's state of `position` (after `move` when given), cached."""
@@ -332,7 +362,8 @@ class Reading:
 
     # ---- stakes
     def worth_of(self, kind: str) -> float:
-        return float(self.worth.get(kind, self.worth.get(self.kind_key.get(kind, kind), 0)))
+        key = self.kind_key.get(kind) or self.env.kind_keys_all().get(kind, kind)          # a kind the position does not hold (a unit about to arrive as one) is read from the game's own list
+        return float(self.worth.get(kind, self.worth.get(key, 0)))
 
     def lowest_worth(self) -> float:
         """The lowest worth above nothing in the table."""
@@ -350,6 +381,8 @@ class Reading:
 
     def goal_kind(self) -> "str | None":
         """The kind the goal clause names (read by the scenario report from either side), None when the description does not name one clear target."""
+        if self._goal_kind is None and self.env.goal_kind_known is not None:
+            self._goal_kind = self.env.goal_kind_known
         if self._goal_kind is None:
             kind = None
             for role in ("mover", "other"):
@@ -358,6 +391,8 @@ class Reading:
                     kind = r["target"]["kind"]
                     break
             self._goal_kind = (kind,)
+            if kind is not None:
+                self.env.goal_kind_known = self._goal_kind
         return self._goal_kind[0]
 
     def goal_unit(self, side: str) -> "Unit | None":
@@ -1893,6 +1928,8 @@ def _lost_after(r: Reading, q: Question, v: Unit, child: str, params: Params) ->
 
 
 def _goal_newly_under_sign(r: Reading, q: Question, child: str, params: Params) -> bool:
+    if r.light:
+        return False                                                   # the light reading does not ask it: the report of the goal unit costs the kernel a whole scenario read for each side
     try:
         after_reading = r._frames.get(("reading", child))
         if after_reading is None:
@@ -2792,7 +2829,7 @@ def child_reading(r: Reading, child: str, params: Params) -> Reading:
     """The reading of the position `child` reached from `r`'s position by one move, made once and shared (the goal's kind is the game's, not the position's)."""
     got = r._frames.get(("reading", child))
     if got is None:
-        got = Reading(r.env, child, r.worth)
+        got = Reading(r.env, child, r.worth, light=r.light)
         got._goal_kind = r._goal_kind if r._goal_kind is not None else (r.goal_kind(),)
         r._frames[("reading", child)] = got
     got.params_k, got.passes = params.reach_k, params.passes
@@ -2821,6 +2858,14 @@ def _threat(unit: Unit, at_before: str, part: str, kind: str, value: float, line
     return {"unit": unit, "place": at_before, "part": part, "kind": kind, "value": float(value), "line": tuple(line), "open": bool(open_), "words": words}
 
 
+def _bears_on(r: Reading, t: Unit) -> bool:
+    """Does a unit of the side to move bear on the place of `t`? The fact view's strike table; a light reading asks the kernel's legal takings on that place (the exchange frame's own moves, so a place
+    nothing legally takes is a frame of no moves)."""
+    if r.light:
+        return bool(r.env.codec.takings_on(r.position, place_text(t.at), r.legal))
+    return bool(r.strikers_of(t, SELF))
+
+
 def move_question(env: Env, reading: Reading, move: str, params: Params = Params()) -> dict:
     """THE QUESTION OF THE MOVE (plan 78.42): the side to move plays `move`; is something of its own lost for it? Three answers, each a node of the graph with stake bounds, asked in this order:
       a. WHAT IT LEAVES: the cost of leaving (narrow form) for the moving unit and this step: which of the mover's units are newly lost where they stand, or the goal unit newly under the sign,
@@ -2840,7 +2885,7 @@ def move_question(env: Env, reading: Reading, move: str, params: Params = Params
     if u is None:
         raise ValueError(f"{move} is not a move of a unit of the side to move")
     ms = {"a": 0.0, "read": 0.0, "b": 0.0, "c": 0.0, "total": 0.0}
-    out = {"move": move, "unit": u, "dest": dest, "took": 0.0, "took_units": [], "answers": {"a": "", "b": "", "c": ""}, "threats": [], "verdict": SAFE_V, "named": None, "low": 0.0, "high": 0.0,
+    out = {"move": move, "unit": u, "dest": dest, "took": 0.0, "credit": 0.0, "took_units": [], "answers": {"a": "", "b": "", "c": ""}, "threats": [], "verdict": SAFE_V, "named": None, "low": 0.0, "high": 0.0,
            "line": (), "because": "", "ms": ms, "nodes": {}, "unsettled": []}
     st = r.try_state(r.position, move)
     if st is None:
@@ -2868,7 +2913,10 @@ def move_question(env: Env, reading: Reading, move: str, params: Params = Params
     mine_now = {place_text(x.at): x for x in child_r.units if x.side == OTHER}
     took_units = _taken_by(r, child_r)
     took = sum(r.worth_of(x.kind) for x in took_units)
-    out["took"], out["took_units"] = took, took_units
+    land_now = mine_now.get(dest)
+    credit = (r.worth_of(land_now.kind) - r.worth_of(u.kind)) if land_now is not None and land_now.kind != u.kind else 0.0      # a unit that arrives as another kind is the same unit with its new worth: what it gains by it is not lost with it
+    out["took"], out["took_units"], out["credit"] = took, took_units, credit
+    gain = took + credit
     ms["read"] = 1000 * (time.perf_counter() - t0)
 
     # a. what it leaves
@@ -2897,8 +2945,12 @@ def move_question(env: Env, reading: Reading, move: str, params: Params = Params
         ex = exchange_stands(child_r, land, SELF, params)
         mine = f"my {land.kind} on {dest}"
         where = f"the other side's exchange on {mine} is worth {ex['value']:g} to it" if ex["value"] > 0 else f"{mine} is not lost where it lands"
+        if credit:
+            where += f"; it arrives as a {land.kind}, worth {credit:+g} more than it was"
         if took_units:
-            where += f"; the move took {_names(took_units)} worth {took:g}, so the balance is {took - ex['value']:+g}"
+            where += f"; the move took {_names(took_units)} worth {took:g}, so the balance is {gain - ex['value']:+g}"
+        elif credit:
+            where += f", so the balance is {gain - ex['value']:+g}"
         out["answers"]["b"] = where + f" ({SOURCE_WORDS[ex['source']]})"
         if ex["value"] > 0:
             threats.append(_threat(u, origin, "b", "lands", ex["value"], ex["line"], ex["open"], where))
@@ -2914,7 +2966,7 @@ def move_question(env: Env, reading: Reading, move: str, params: Params = Params
         if v.side != SELF or v == u or v in cands or not r.weighty(v) or v == r.goal_unit(SELF) or place_text(v.at) not in changed:
             continue
         vc = mine_now.get(place_text(v.at))
-        if vc is None or not child_r.strikers_of(vc, SELF):
+        if vc is None or not _bears_on(child_r, vc):
             continue
         read_units.append(v)
         if exchange_stands(r, v, OTHER, params)["value"] > 0:
@@ -2927,7 +2979,7 @@ def move_question(env: Env, reading: Reading, move: str, params: Params = Params
         elif ex["open"]:
             unsettled.append({"unit": v, "part": "c", "words": f"the exchange on {unit_words(v)} was not read to its end (node cap)", "stake": r.weight(v)})
     goal = r.goal_unit(SELF)
-    if goal is not None and goal != u and not any(x["unit"] == goal for x in unsettled) and changed & ({place_text(goal.at)} | {place_text(x) for x in r.exits_of(goal)}):
+    if not r.light and goal is not None and goal != u and not any(x["unit"] == goal for x in unsettled) and changed & ({place_text(goal.at)} | {place_text(x) for x in r.exits_of(goal)}):
         if _goal_newly_under_sign(r, q, child, params):
             unsettled.append({"unit": goal, "part": "c", "words": f"{unit_words(goal)} comes newly under the sign", "stake": r.weight(goal)})
     out["answers"]["c"] = ("; ".join(newly + [x["words"] for x in unsettled if x["part"] == "c"])
@@ -2936,13 +2988,13 @@ def move_question(env: Env, reading: Reading, move: str, params: Params = Params
 
     # the verdict
     out["threats"], out["unsettled"] = threats, unsettled
-    sure = sorted((t for t in threats if t["value"] - took > 0), key=lambda t: (-t["value"], t["part"]))
+    sure = sorted((t for t in threats if t["value"] - gain > 0), key=lambda t: (-t["value"], t["part"]))
     if sure:
         worst = sure[0]
-        lo = worst["value"] - took
-        hi = max(lo, sum(t["value"] for t in threats) - took)
+        lo = worst["value"] - gain
+        hi = max(lo, sum(t["value"] for t in threats) - gain)
         out.update(verdict=LOSES_V, named=worst, low=lo, high=hi, line=worst["line"],
-                   because=f"{worst['words']}" + (f"; the move took {_names(took_units)} worth {took:g}, which leaves {lo:g}" if took_units else ""))
+                   because=f"{worst['words']}" + (f"; the move took {_names(took_units)} worth {took:g}" if took_units else "") + (f"{'; ' if not took_units else ' and '}it arrives worth {credit:+g}" if credit else "") + (f", which leaves {lo:g}" if gain else ""))
     elif unsettled:
         first = unsettled[0]
         out.update(verdict=MOVE_UNSETTLED, named={"unit": first["unit"], "place": place_text(first["unit"].at), "part": first["part"], "words": first["words"]},
@@ -3965,14 +4017,21 @@ class Games:
 LOST, EVEN, GAINED = "lost", "even", "gained"
 
 
+def _changes_kind(event: dict) -> bool:
+    """Does the move of this event leave its unit another kind than it was (the event's `arrives`, when the codec gives it)?"""
+    return event.get("arrives") is not None and event["arrives"] != event["mover"][2]
+
+
 def unit_loss(events: list, unit_id, start: int, horizon: int, worth_of) -> "dict | None":
     """THE LOSS OF A UNIT, followed through a game's real moves (plan 78.42, replacing "was it taken" as the outcome).
     `events[i]` is the i-th move of the game: {mover: (id, side, kind), dest, taken: (id, side, kind) | None, taken_at}. The unit `unit_id` is looked for among the takings of the plies
     `start` .. `start + horizon - 1`. None when it is not taken there. Otherwise let X be the place it was taken on, and the RUN be
       (1) the plies, from the one that takes the unit back to `start` and forward to the end of the game, that are consecutive takings on X (the exchange on that place: the forward end is not
           cut by the horizon, the horizon decides only when the unit goes), and
-      (2) the unit's own arriving capture: when the last move of the unit before it was taken ended on X and took something, that move too, wherever its ply lies (not before `start`).
-    The BALANCE is, over the run, (worth of the units taken that belong to the unit's side) minus (worth of the units taken that belong to the other side), by `worth_of(kind)`.
+      (2) the unit's own arriving move: when the last move of the unit before it was taken ended on X and took something, or arrived as another kind (the event's `arrives`), that move too,
+          wherever its ply lies (not before `start`).
+    The BALANCE is, over the run, (worth of the units taken that belong to the unit's side) minus (worth of the units taken that belong to the other side), by `worth_of(kind)`. A unit that
+    changed kind on arriving is the same unit with its new worth: what the change gained its side (the new worth less the old) is counted for the side, as a taking is.
     The unit is LOST when the balance is above 0, EVEN when it is 0, GAINED when it is below 0.
     -> {status, balance, place, ply (the ply it was taken), run (the plies, in order), arrival (the ply of its own arriving capture or None)}"""
     end = min(start + horizon, len(events))
@@ -3992,12 +4051,14 @@ def unit_loss(events: list, unit_id, start: int, horizon: int, worth_of) -> "dic
     arrival = None
     for j in range(hit - 1, start - 1, -1):
         if events[j]["mover"][0] == unit_id:
-            if events[j]["dest"] == place and events[j]["taken"]:
+            if events[j]["dest"] == place and (events[j]["taken"] or _changes_kind(events[j])):
                 arrival = j
                 if j not in run:
                     run = sorted(run + [j])
             break
-    balance = sum((1 if events[i]["taken"][1] == side else -1) * worth_of(events[i]["taken"][2]) for i in run)
+    balance = sum((1 if events[i]["taken"][1] == side else -1) * worth_of(events[i]["taken"][2]) for i in run if events[i]["taken"])
+    if arrival is not None and _changes_kind(events[arrival]):
+        balance -= worth_of(events[arrival]["arrives"]) - worth_of(events[arrival]["mover"][2])
     return {"status": LOST if balance > 0 else (EVEN if balance == 0 else GAINED), "balance": balance, "place": place, "ply": hit, "run": run, "arrival": arrival}
 
 

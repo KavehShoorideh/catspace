@@ -3,6 +3,8 @@ choice, `max_tries` and the budget, no override under a forced win or with one l
 import re
 from pathlib import Path
 
+import pytest
+
 from catspace.incubator.analyst.discovery import question_sheet as QS
 from catspace.incubator.analyst.discovery import sheet_player as SP
 
@@ -210,3 +212,104 @@ def test_the_module_names_no_object_of_any_one_game():
     text = SOURCE.read_text()
     words = r"\b(king|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check\w*|mate|stalemate|uci|fen|san|chess\w*|shakmaty|[a-h][1-8])\b"
     assert not re.findall(words, text, flags=re.I)
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- 78.42 equal time
+
+class ClockSearch(StubSearch):
+    """A stub search that records the clock it is given and spends it on the fake clock."""
+
+    def __init__(self, clock, **kw):
+        super().__init__(**kw)
+        self.clock, self.given = clock, []
+
+    def decide(self, start, moves, seconds):
+        self.given.append(seconds)
+        self.clock.t += seconds
+        return {"move": self.first, "proved": False, "value": 0, "forced": False, "error": None, "seconds": seconds}
+
+
+class OrderedSheet(StubSheet):
+    def order(self, r, moves):
+        return list(moves)
+
+
+EQUAL = dict(seconds=0.2, equal=True, filtered=True, use_standing=False, floor=0.05, prior_cost=0.01)
+
+
+def test_under_equal_the_search_gets_the_clock_less_the_estimate_and_the_estimate_follows_the_moves():
+    clock = Clock()
+    se, sh = ClockSearch(clock), OrderedSheet({}, clock=clock, cost=0.03)
+    p = player(se, sh, SP.PlayerConfig(**EQUAL), clock=clock)
+    p.choose(None, [])                                   # the prior estimate 0.01
+    p.choose(None, [])                                   # the measured 0.03
+    p.choose(None, [])
+    assert se.given == pytest.approx([0.2 - 0.01, 0.2 - 0.03, 0.2 - 0.03]) and abs(p.sheet_estimate() - 0.03) < 1e-9
+    assert abs(sum(se.given[1:]) / 2 + p.sheet_estimate() - 0.2) < 1e-9                      # the whole move comes to the clock of the plain player
+
+
+def test_the_search_clock_never_falls_under_the_floor():
+    clock = Clock()
+    se, sh = ClockSearch(clock), OrderedSheet({}, clock=clock, cost=0.5)
+    p = player(se, sh, SP.PlayerConfig(**EQUAL), clock=clock)
+    p.choose(None, [])
+    p.choose(None, [])
+    p.choose(None, [])
+    assert se.given[1:] == pytest.approx([0.05, 0.05]) and min(se.given) >= 0.05
+
+
+def test_without_equal_the_search_keeps_its_whole_clock():
+    clock = Clock()
+    se, sh = ClockSearch(clock), OrderedSheet({}, clock=clock, cost=0.1)
+    p = player(se, sh, SP.PlayerConfig(seconds=0.2), clock=clock)
+    p.choose(None, [])
+    p.choose(None, [])
+    assert se.given == [0.2, 0.2] and p.costs == []
+
+
+def test_a_move_the_sheet_never_reads_costs_nothing_and_lowers_the_estimate():
+    clock = Clock()
+    se, sh = ClockSearch(clock, forced=True), OrderedSheet({}, clock=clock, cost=0.1)
+    se.decide = lambda start, moves, seconds: (se.given.append(seconds), {"move": "m1", "proved": True, "value": 0, "forced": True, "error": None, "seconds": seconds})[1]
+    p = player(se, sh, SP.PlayerConfig(**EQUAL), clock=clock)
+    p.choose(None, [])
+    assert p.costs == [0.0] and sh.asked == []
+
+
+def test_filtered_asks_the_others_in_the_sheets_order_and_the_search_orders_only_the_accepted():
+    clock = Clock()
+    se = ClockSearch(clock, rest=("m4", "m3", "m2"))
+    sh = OrderedSheet({"m1": lose("m1"), "m2": "SAFE", "m3": lose("m3"), "m4": "SAFE"}, clock=clock, cost=0.001)
+    mv, row = player(se, sh, SP.PlayerConfig(**EQUAL), clock=clock, legal=("m1", "m2", "m3", "m4")).choose(None, [])
+    assert sh.asked == ["m1", "m2", "m3", "m4"] and mv == "m4" and row["overridden"] and row["why"] == "overridden"      # the search puts m4 before m2 among the accepted
+    assert se.ranked == 1 and "reason_played" in row
+
+
+def test_filtered_stops_at_the_number_of_accepted_moves_and_at_the_budget():
+    clock = Clock()
+    se = ClockSearch(clock)
+    sh = OrderedSheet({"m1": lose("m1")}, clock=clock, cost=0.001)
+    cfg = SP.PlayerConfig(**{**EQUAL, "max_alternatives": 2})
+    player(se, sh, cfg, clock=clock, legal=("m1", "m2", "m3", "m4", "m5")).choose(None, [])
+    assert sh.asked == ["m1", "m2", "m3"]                                                   # two accepted, then no more asked
+    sh = OrderedSheet({m: lose(m) for m in ("m1", "m2", "m3", "m4", "m5")}, clock=clock, cost=0.03)
+    mv, row = player(se, sh, SP.PlayerConfig(**{**EQUAL, "budget": 0.05}), clock=clock, legal=("m1", "m2", "m3", "m4", "m5")).choose(None, [])
+    assert sh.asked == ["m1", "m2", "m3"] and mv == "m1" and row["why"] == "none_accepted"      # the first, then 0.03 and 0.06 spent: over the budget
+
+
+def test_the_equal_configs_are_the_cheap_reading_with_the_clock_shared():
+    for name in ("equal", "equal_both", "equal_wide"):
+        cfg = SP.PlayerConfig(**SP.CONFIGS[name])
+        assert cfg.equal and cfg.light and cfg.filtered and cfg.use_question
+    assert not SP.PlayerConfig(**SP.CONFIGS["equal"]).use_standing and SP.PlayerConfig(**SP.CONFIGS["equal_both"]).use_standing
+    assert SP.PlayerConfig(**SP.CONFIGS["equal_wide"]).max_alternatives == 8 and SP.PlayerConfig(**SP.CONFIGS["equal"]).max_alternatives == 4
+
+
+def test_the_light_engine_reads_a_position_and_the_standing_follows_a_unit_that_changes_kind():
+    env = QS.Env("chess")
+    eng = SP.SheetEngine(env, WORTH, light=True)
+    r = eng.open("2k5/P7/8/8/8/8/r7/4K3 w - - 0 1")
+    assert r.light
+    a = eng.assess(r, "a7a8q", [(next(u for u in r.units if u.kind == "pawn" and u.side == QS.SELF), 2.0)], use_question=False)
+    assert a.error is None and a.took == 12.0                                              # the change itself counts for the move
+    assert eng.order(r, r.legal)[0] in r.legal and sorted(eng.order(r, r.legal)) == sorted(r.legal)

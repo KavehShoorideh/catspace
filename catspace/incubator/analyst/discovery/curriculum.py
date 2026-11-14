@@ -64,6 +64,20 @@ class ChessCodec:
         b = chess.Board(position)
         return [(self.SIDES[b.piece_map()[sq].color], self.KINDS[b.piece_map()[sq].symbol().lower()]) for sq in sorted(b.piece_map())]
 
+    def cells(self, position: str) -> list:
+        """(side as the kernel names it, kind as the description names it, place as the tuple of its handle's characters) of each unit, in the order of `units`: the units the fact view's `cell`
+        relation holds, read without the fact view (plan 78.42: the light reading)."""
+        import chess
+        b = chess.Board(position)
+        return [(self.SIDES[p.color], self.KINDS[p.symbol().lower()], tuple(chess.square_name(sq))) for sq, p in sorted(b.piece_map().items())]
+
+    def bearing(self, position: str) -> dict:
+        """{(side, kind, place): [places the unit bears on]} of every unit, places as tuples of the handle's characters: what the fact view's `strike` relation holds for the units that stand (a
+        place held by the unit's own side counts: the unit guards it)."""
+        import chess
+        b = chess.Board(position)
+        return {(self.SIDES[p.color], self.KINDS[p.symbol().lower()], tuple(chess.square_name(sq))): [tuple(chess.square_name(t)) for t in b.attacks(sq)] for sq, p in b.piece_map().items()}
+
     def unit_term(self, side: str, kind: str, tag: str) -> tuple:
         f, r = f"?f{tag}", f"?r{tag}"
         return f"(cell {f} {r} {side} {kind})", [f, r]
@@ -287,7 +301,7 @@ class ChessCodec:
 
     def events(self, start: "str | None", moves: list) -> list:
         """One dict per move of the game: {mover: (unit id, side, kind) of the unit that moves, origin, dest: its handles, taken: (unit id, side, kind) of the unit the move takes or None,
-        taken_at: the handle that unit stood on or None}. The ids are those of `tracks` (an id follows its unit through moves, a castling, a promotion)."""
+        taken_at: the handle that unit stood on or None, arrives: the kind the moving unit has once the move is made (another kind than `mover`'s when the move changes what the unit is)}. The ids are those of `tracks` (an id follows its unit through moves, a castling, a promotion)."""
         import chess
         by_ply, taken = self.tracks(start, moves)
         board = chess.Board(start) if start else chess.Board()
@@ -298,7 +312,7 @@ class ChessCodec:
             at = None
             if i in taken:
                 at = chess.square_name(chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square))) if board.is_en_passant(m) else dest
-            out.append({"mover": by_ply[i][origin], "origin": origin, "dest": dest, "taken": taken.get(i), "taken_at": at})
+            out.append({"mover": by_ply[i][origin], "origin": origin, "dest": dest, "taken": taken.get(i), "taken_at": at, "arrives": by_ply[i + 1][dest][2]})
             board.push(m)
         return out
 

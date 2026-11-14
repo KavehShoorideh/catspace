@@ -52,6 +52,12 @@ class PlayerConfig:
     use_question: bool = True          # the question of the move (SAFE) is required
     rank_seconds: float = 0.03         # the search's clock on each reply position when the next choices are ordered
     rank_threads: int = 2
+    light: bool = False                # the cheap reading (see `question_sheet.Reading`): the units and what they bear on from the codec, no fact view
+    equal: bool = False                # EQUAL TIME: `seconds` is the clock of the WHOLE move; the search is given it less the running estimate of what the sheet costs a move, never under `floor`
+    floor: float = 0.05                # the least clock the search is given under `equal`
+    prior_cost: float = 0.005          # the estimate of the sheet's cost a move before any move has been timed
+    filtered: bool = False             # when the first choice is rejected: ask the move question of the other moves in the sheet's own order (cheap), then let the search order the accepted ones
+    max_alternatives: int = 4          # `filtered`: accepted moves the search orders (the first choice not counted)
 
     def sheet_budget(self) -> float:
         return self.seconds if self.budget is None else self.budget
@@ -63,6 +69,10 @@ CONFIGS = {
     "stand": dict(use_question=False),                                 # ablation: the standing test alone
     "question": dict(use_standing=False),                              # ablation: the question of the move alone
     "control": dict(use_standing=False, use_question=False),           # the guided player with both parts off: the plain search against itself
+    # EQUAL TIME (plan 78.42, the cheap reading): the whole move, search and sheet, takes the plain player's clock; the sheet's measured cost is taken off the search's clock move by move
+    "equal": dict(equal=True, light=True, filtered=True, use_standing=False, budget=0.04, rank_seconds=0.015),                    # the question of the move only
+    "equal_both": dict(equal=True, light=True, filtered=True, budget=0.04, rank_seconds=0.015),                                 # the standing losses as well
+    "equal_wide": dict(equal=True, light=True, filtered=True, use_standing=False, max_alternatives=8, max_tries=9, budget=0.06, rank_seconds=0.015),   # the question on up to eight next choices
 }
 
 
@@ -163,11 +173,22 @@ def unanswered_losses(after: list, took: float) -> list:
 class SheetEngine:
     """The question sheet behind the player: one reading of the position, the standing losses, and the assessment of a move."""
 
-    def __init__(self, env: QS.Env, worth: dict, params: "QS.Params | None" = None):
-        self.env, self.worth, self.params = env, dict(worth), params or QS.Params()
+    def __init__(self, env: QS.Env, worth: dict, params: "QS.Params | None" = None, light: bool = False):
+        self.env, self.worth, self.params, self.light = env, dict(worth), params or QS.Params(), light
+
+    def warm(self) -> None:
+        """Read the game's one-time tables (the medium of movement, the goal's kind) and make one question, before any clock runs."""
+        r = self.open(CE.state(self.env.variant, None, [])[0])
+        self.env.medium()
+        r.goal_kind()
+        QS.move_question(self.env, r, r.legal[0], self.params)
+
+    def order(self, r: QS.Reading, moves: list) -> list:
+        """The moves in the sheet's own order of asking (struck landing places first, the heavier unit first)."""
+        return QS.move_order(r, moves, self.params)
 
     def open(self, position: str) -> QS.Reading:
-        r = QS.Reading(self.env, position, self.worth)
+        r = QS.Reading(self.env, position, self.worth, light=self.light)
         r.params_k, r.passes, r.params = self.params.reach_k, self.params.passes, self.params
         return r
 
@@ -188,7 +209,7 @@ class SheetEngine:
         try:
             if use_question:
                 res = QS.move_question(self.env, r, move, self.params)
-                a.verdict, a.took, a.lines = res["verdict"], res["took"], QS.explain_move(res)
+                a.verdict, a.took, a.lines = res["verdict"], res["took"] + res["credit"], QS.explain_move(res)
                 a.stake = res["low"] if res["verdict"] == QS.LOSES_V else 0.0
             if use_standing and standing:
                 st = r.try_state(r.position, move)
@@ -196,13 +217,18 @@ class SheetEngine:
                     a.error = "the kernel does not accept the move"
                 elif st[3] is None:
                     child_r = QS.child_reading(r, st[0], self.params)
+                    origin, dest = self.env.codec.move_ends(move)
                     if not use_question:
                         a.took = float(sum(r.worth_of(x.kind) for x in QS._taken_by(r, child_r)))
-                    origin, dest = self.env.codec.move_ends(move)
+                        arrived = next((x for x in child_r.units if x.side == QS.OTHER and QS.place_text(x.at) == dest), None)
+                        mover = next((x for x in r.units if x.side == QS.SELF and QS.place_text(x.at) == origin), None)
+                        if arrived is not None and mover is not None and arrived.kind != mover.kind:
+                            a.took += r.worth_of(arrived.kind) - r.worth_of(mover.kind)          # a unit that arrives as another kind is the same unit with its new worth
                     after = []
                     for u, _v in standing:
-                        place = dest if QS.place_text(u.at) == origin else QS.place_text(u.at)
-                        vc = next((x for x in child_r.units if x.side == QS.OTHER and x.kind == u.kind and QS.place_text(x.at) == place), None)
+                        moved = QS.place_text(u.at) == origin
+                        place = dest if moved else QS.place_text(u.at)
+                        vc = next((x for x in child_r.units if x.side == QS.OTHER and (moved or x.kind == u.kind) and QS.place_text(x.at) == place), None)      # the moved unit is followed by where it lands, whatever it has become
                         if vc is not None:
                             after.append((QS.unit_words(u), QS.exchange_stands(child_r, vc, QS.SELF, self.params)["value"]))
                     a.unanswered = unanswered_losses(after, a.took)
@@ -229,6 +255,16 @@ class SheetPlayer:
 
     def __init__(self, search, engine, state, config: "PlayerConfig | None" = None, clock=time.perf_counter):
         self.search, self.engine, self.state, self.cfg, self.clock = search, engine, state, config or PlayerConfig(), clock
+        self.costs: list = []              # seconds the sheet took (the whole move less the search) at each move of this game, under `equal`
+
+    def sheet_estimate(self) -> float:
+        """The running estimate of what the sheet costs a move: the mean of the moves timed so far, the prior before the first."""
+        return sum(self.costs) / len(self.costs) if self.costs else self.cfg.prior_cost
+
+    def search_clock(self) -> float:
+        """The clock the search is given: `seconds`; under `equal`, `seconds` less the sheet's estimated cost, never under `floor`."""
+        cfg = self.cfg
+        return max(cfg.floor, cfg.seconds - self.sheet_estimate()) if cfg.equal else cfg.seconds
 
     def choose(self, start, moves: list) -> tuple:
         """-> (the move to play, the row): {ply, search_move, played, overridden, why (first_accepted / overridden / none_accepted / forced / one_legal / off / unreadable), proved, value, standing
@@ -236,14 +272,17 @@ class SheetPlayer:
         (the words for the search's choice, the verdict lines), seconds {search, read, standing, first, tries, rank, total}}."""
         cfg, t_all = self.cfg, self.clock()
         position, _mover, legal, _outcome = self.state(start, moves)
-        s = self.search.decide(start, moves, cfg.seconds)
+        clock_s = self.search_clock()
+        s = self.search.decide(start, moves, clock_s)
         first = s["move"]
         row = {"ply": len(moves), "search_move": first, "played": first, "overridden": False, "why": "off", "proved": s["proved"], "value": s["value"], "standing": [], "tries": [],
-               "rejected_stake": 0.0, "reason": [], "seconds": {"search": s["seconds"], "read": 0.0, "standing": 0.0, "first": 0.0, "tries": 0.0, "rank": 0.0, "total": 0.0}}
+               "rejected_stake": 0.0, "reason": [], "search_clock": clock_s, "seconds": {"search": s["seconds"], "read": 0.0, "standing": 0.0, "first": 0.0, "tries": 0.0, "rank": 0.0, "total": 0.0}}
 
         def done(move, why):
             row.update(played=move, overridden=(move != first), why=why)
             row["seconds"]["total"] = self.clock() - t_all
+            if cfg.equal:
+                self.costs.append(max(0.0, row["seconds"]["total"] - s["seconds"]))
             return move, row
 
         if first is None:
@@ -281,6 +320,8 @@ class SheetPlayer:
         row["reason"] = list(row["tries"][0]["lines"])
         if cfg.max_tries <= 1:
             return done(first, "none_accepted")
+        if cfg.filtered:
+            return self._filtered(start, moves, legal, first, r, ask, row, done)
         alt = self.search.alternatives(start, moves, legal, [first], cfg.rank_seconds, cfg.rank_threads, cfg.max_tries - 1)
         row["seconds"]["rank"] = alt["seconds"]
         spent = 0.0
@@ -294,6 +335,28 @@ class SheetPlayer:
                 row["reason_played"] = list(row["tries"][-1]["lines"])
                 return done(m, "overridden")
         return done(first, "none_accepted")
+
+    def _filtered(self, start, moves: list, legal: list, first, r, ask, row: dict, done) -> tuple:
+        """THE NEXT CHOICES, CHEAPLY: the move question is asked of the other moves in the sheet's own order (each costs about what a frame costs), up to `max_alternatives` accepted, while the time spent is
+        under the budget; the search then orders only the accepted ones (one short search of each reply, in one batch) and the best by it is played. None accepted: the search's first choice."""
+        cfg = self.cfg
+        ok, spent = [], 0.0
+        for m in self.engine.order(r, [x for x in legal if x != first]):
+            if len(ok) >= cfg.max_alternatives or spent >= cfg.sheet_budget():
+                break
+            if ask(m):
+                ok.append(m)
+            spent += row["tries"][-1]["seconds"]
+        row["seconds"]["tries"] = spent
+        if not ok:
+            return done(first, "none_accepted")
+        pick = ok[0]
+        if len(ok) > 1:
+            alt = self.search.alternatives(start, moves, ok, [first], cfg.rank_seconds, cfg.rank_threads, 1)
+            row["seconds"]["rank"] = alt["seconds"]
+            pick = alt["moves"][0] if alt["moves"] else ok[0]
+        row["reason_played"] = list(next(t for t in row["tries"] if t["move"] == pick)["lines"])
+        return done(pick, "overridden")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------ games
@@ -311,7 +374,10 @@ def _world(game: str, store: "str | None", out_dir: str) -> dict:
         os.makedirs(out_dir, exist_ok=True)
         search = PlainSearch(game, store=store, specs=specs, trace_path=str(Path(out_dir) / f"trace_{os.getpid()}.jsonl"))
         _WORLD.clear()
-        _WORLD.update(key=key, env=env, search=search, state=kernel_state(game), engine=SheetEngine(env, QS.store_worth(game)))
+        worth = QS.store_worth(game)
+        _WORLD.update(key=key, env=env, search=search, state=kernel_state(game), engine=SheetEngine(env, worth), light_engine=SheetEngine(env, worth, light=True))
+        _WORLD["engine"].warm()
+        _WORLD["light_engine"].warm()
     return _WORLD
 
 
@@ -321,7 +387,7 @@ def play_game(spec: dict) -> dict:
     w = _world(spec["game"], spec["store"], spec["scratch"])
     cfg = PlayerConfig(**spec["config"])
     plain_cfg = PlayerConfig(seconds=spec["plain_seconds"], use_standing=False, use_question=False)
-    guided = SheetPlayer(w["search"], w["engine"], w["state"], cfg)
+    guided = SheetPlayer(w["search"], w["light_engine"] if cfg.light else w["engine"], w["state"], cfg)
     plain = SheetPlayer(w["search"], w["engine"], w["state"], plain_cfg)
     moves, seen, rows, times = list(spec["opening"]), {}, [], {"guided": [], "plain": []}
     outcome, unfinished = None, False
@@ -519,6 +585,10 @@ def measure_match(env: QS.Env, worth: dict, games: list, judge_reader, variant: 
     for who in ("guided", "plain"):
         ts = [t for g in games for _p, t in g["times"][who]]
         say(f"{P} time a move, {who}: mean {1000 * _mean(ts):.0f} ms, max {1000 * max(ts, default=float('nan')):.0f} ms over {len(ts)} moves")
+    tg, tp = [t for g in games for _p, t in g["times"]["guided"]], [t for g in games for _p, t in g["times"]["plain"]]
+    say(f"{P} time a move, the guided player minus the plain player: mean {1000 * (_mean(tg) - _mean(tp)):+.1f} ms, max {1000 * (max(tg, default=float('nan')) - max(tp, default=float('nan'))):+.0f} ms; "
+        f"moves over 250 ms: guided {sum(1 for t in tg if t > 0.25)} of {len(tg)}, plain {sum(1 for t in tp if t > 0.25)} of {len(tp)}")
+    say(f"{P} the search's own clock a guided move: mean {1000 * _mean([r['search_clock'] for r in rows if 'search_clock' in r]):.1f} ms, min {1000 * min([r['search_clock'] for r in rows if 'search_clock' in r], default=float('nan')):.0f} ms")
     sec = lambda k: [r["seconds"][k] for r in rows]
     say(f"{P} guided time split, mean ms: search {1000 * _mean(sec('search')):.0f}, read {1000 * _mean(sec('read')):.0f}, standing {1000 * _mean(sec('standing')):.1f}, first question {1000 * _mean(sec('first')):.0f}, "
         f"later tries {1000 * _mean(sec('tries')):.0f}, ordering the next choices {1000 * _mean(sec('rank')):.0f}")

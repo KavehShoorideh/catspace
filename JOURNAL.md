@@ -36640,3 +36640,7 @@ At the charged move the sheet or the question of the move had seen most losses a
 ## 2026-11-13 -- plan 78.42 use: the sheet as a check on the search's move
 
 The guided player loses fewer units but spends four times the clock; the plain search given that time does far better. The sheet has to go into the search and cost near nothing. Numbers in docs/ANALYST_PLAN.md 78.42 USE.
+
+## 2026-11-13 -- plan 78.42 use, second form: cheap question of the move, equal-time match
+
+The light reading makes the question of the move cost about a millisecond. At equal time the guided player does not beat the plain search; overrides are more often worse. The reasoner's use is where the search does not reach. Numbers in docs/ANALYST_PLAN.md.

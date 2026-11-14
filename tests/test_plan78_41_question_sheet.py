@@ -1509,3 +1509,85 @@ def test_measure_k_prints_the_charged_table(env, tmp_path):
     recs = Q.measure_k([d], env, WORTH, Q.Params(), stride=3, say=None)
     assert recs and all("lost_charged" in x for x in recs)
     assert any(ln.startswith("OBS (K, charged) table") for ln in Q.format_k(recs))
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- 78.42 cheap: the light reading, a unit that changes kind
+
+LIGHT_POSITIONS = [HANGING, PAWNS, SPARSE, "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", "r3k2r/ppp2ppp/2n1bn2/3pp3/3PP3/2N1BN2/PPP2PPP/R3K2R w KQkq - 0 1",
+                   "4k3/8/8/3q4/8/8/3R4/3rK3 w - - 0 1"]
+
+
+@pytest.mark.parametrize("fen", LIGHT_POSITIONS)
+def test_the_light_reading_holds_what_the_full_reading_holds_for_the_units_that_stand(env, fen):
+    full, light = Q.Reading(env, fen, WORTH), Q.Reading(env, fen, WORTH, light=True)
+    assert light.units == full.units and light.mover == full.mover and light.legal == full.legal
+    for u in full.units:
+        assert light.strikes_of(u) == full.strikes_of(u)
+    assert light.kind_key == full.kind_key
+    assert [light.worth_of(u.kind) for u in light.units] == [full.worth_of(u.kind) for u in full.units]
+
+
+def test_the_light_reading_reads_the_move_tables_only_when_asked(env):
+    light = Q.Reading(env, HANGING, WORTH, light=True)
+    assert light._go is None
+    assert light.go[0] == Q.Reading(env, HANGING, WORTH).go[0] and light._go is not None
+
+
+@pytest.mark.parametrize("fen", LIGHT_POSITIONS)
+def test_the_light_question_of_the_move_says_what_the_full_one_says(env, fen):
+    full, light = Q.Reading(env, fen, WORTH), Q.Reading(env, fen, WORTH, light=True)
+    for mv in full.legal:
+        a, b = Q.move_question(env, full, mv), Q.move_question(env, light, mv)
+        assert (a["verdict"], a["low"], a["took"]) == (b["verdict"], b["low"], b["took"]), (fen, mv)
+        assert (a["named"] or {}).get("place") == (b["named"] or {}).get("place")
+
+
+def test_the_light_reading_says_what_it_leaves_unread(env):
+    # the goal unit's sign is not asked by the light reading (it costs a whole scenario read): no part c answer about it, and the verdict never rests on it
+    light = Q.Reading(env, "4k3/8/8/3q4/8/8/3R4/3rK3 w - - 0 1", WORTH, light=True)
+    assert Q._goal_newly_under_sign(light, Q.Question(light.units[0], Q.SELF, 1.0, 0), light.position, Q.Params()) is False
+
+
+PROMOTES_TAKING = "1rk5/P7/8/8/8/8/8/4K3 w - - 0 1"              # the pawn takes the rook and becomes a queen the king may take
+PROMOTES_AND_LOST = "2k5/P7/8/8/8/8/r7/4K3 w - - 0 1"             # the pawn becomes a queen on a place the rook bears on
+
+
+@pytest.mark.parametrize("light", [False, True])
+def test_a_unit_that_arrives_as_another_kind_is_the_same_unit_with_its_new_worth(env, light):
+    r = Q.Reading(env, PROMOTES_TAKING, WORTH, light=light)
+    res = Q.move_question(env, r, "a7b8q")
+    assert res["took"] == 8.0 and res["credit"] == 12.0                                  # the queen is worth 12 more than the pawn was
+    assert res["threats"] and res["threats"][0]["value"] == 14.0
+    assert res["verdict"] == Q.SAFE_V and "arrives as a queen" in res["answers"]["b"] and "the balance is +6" in res["answers"]["b"]
+    r2 = Q.Reading(env, PROMOTES_AND_LOST, WORTH, light=light)
+    res2 = Q.move_question(env, r2, "a7a8q")
+    assert res2["verdict"] == Q.LOSES_V and res2["low"] == 2.0 and res2["credit"] == 12.0      # what it loses is the pawn it was: 14 less the 12 it had gained
+
+
+def _events_with(env, start, moves):
+    return env.codec.events(start, moves)
+
+
+def test_the_events_say_what_kind_a_unit_has_after_its_move(env):
+    ev = _events_with(env, PROMOTES_TAKING, ["a7b8q", "c8b8"])
+    assert ev[0]["mover"][2] == "pawn" and ev[0]["arrives"] == "queen" and ev[1]["arrives"] == "king"
+    assert ev[0]["mover"][0] == ev[1]["taken"][0]                                           # the queen taken is the pawn that moved
+
+
+def test_a_unit_that_changes_kind_on_taking_and_is_retaken_is_not_lost_by_the_change(env):
+    ev = _events_with(env, PROMOTES_TAKING, ["a7b8q", "c8b8"])
+    res = Q.unit_loss(ev, ev[0]["mover"][0], 0, 4, env.worth_fn(WORTH))
+    # a queen (14) is taken, the rook (8) was taken by it, and the change itself gained 12: the side is ahead by 6
+    assert res["status"] == Q.GAINED and res["balance"] == 14 - 8 - 12 and res["arrival"] == 0 and res["run"] == [0, 1]
+
+
+def test_a_unit_that_changes_kind_with_no_taking_and_is_taken_on_arrival_is_lost_at_what_it_was(env):
+    ev = _events_with(env, PROMOTES_AND_LOST, ["a7a8q", "a2a8"])
+    res = Q.unit_loss(ev, ev[0]["mover"][0], 0, 4, env.worth_fn(WORTH))
+    assert res["status"] == Q.LOST and res["balance"] == 14 - 12 and res["arrival"] == 0
+
+
+def test_events_without_the_arrival_kind_read_as_before(env):
+    ev = [{"mover": ("u", "w", "pawn"), "origin": "a7", "dest": "a8", "taken": None, "taken_at": None}, {"mover": ("v", "b", "rook"), "origin": "a1", "dest": "a8", "taken": ("u", "w", "queen"), "taken_at": "a8"}]
+    res = Q.unit_loss(ev, "u", 0, 4, env.worth_fn(WORTH))
+    assert res["balance"] == 14 and res["arrival"] is None
