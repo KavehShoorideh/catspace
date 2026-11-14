@@ -36644,3 +36644,7 @@ The guided player loses fewer units but spends four times the clock; the plain s
 ## 2026-11-13 -- plan 78.42 use, second form: cheap question of the move, equal-time match
 
 The light reading makes the question of the move cost about a millisecond. At equal time the guided player does not beat the plain search; overrides are more often worse. The reasoner's use is where the search does not reach. Numbers in docs/ANALYST_PLAN.md.
+
+## 2026-11-13 -- plan 78.42: the whole sheet on the light reading; sheet against search
+
+The light sheet agrees with the full one on every verdict kind read and is several times cheaper. The multi-move ways it confirms are few, mostly seen by the search, and the unseen ones rarely come true on the search's own games. Numbers in docs/ANALYST_PLAN.md.

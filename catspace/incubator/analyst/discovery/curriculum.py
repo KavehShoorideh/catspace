@@ -78,6 +78,68 @@ class ChessCodec:
         b = chess.Board(position)
         return {(self.SIDES[p.color], self.KINDS[p.symbol().lower()], tuple(chess.square_name(sq))): [tuple(chess.square_name(t)) for t in b.attacks(sq)] for sq, p in b.piece_map().items()}
 
+    # ---- plan 78.42, the whole sheet on the light reading: the move tables of a unit standing on ANY place (the fact view's `strike` and `go` relations), without the fact view
+
+    def _board(self, position: str):
+        """The python-chess board of `position`, kept (a few hundred at most) for the readers that only look: never mutate what this returns."""
+        import chess
+        memo = self.__dict__.setdefault("_board_memo", {})
+        got = memo.get(position)
+        if got is None:
+            if len(memo) >= 512:
+                memo.clear()
+            got = memo[position] = chess.Board(position)
+        return got
+
+    _KIND_TYPE = {"king": 6, "queen": 5, "rook": 4, "bishop": 3, "knight": 2, "pawn": 1}
+
+    def opposite(self, side: str) -> str:
+        """The side that is not `side` (as the kernel names the sides)."""
+        return self.SIDES[not {v: k for k, v in self.SIDES.items()}[side]]
+
+    def bearing_from(self, position: str, side: str, kind: str, at: str) -> list:
+        """The places a unit of `side` and `kind` STANDING ON handle `at` would bear on, the board as it stands (a line stops at the first unit; a place held by its own side counts): the fact
+        view's `strike` relation for any placement, present unit or not."""
+        import chess
+        b = self._board(position)
+        color = {v: k for k, v in self.SIDES.items()}[side]
+        sq, t = chess.parse_square(at), self._KIND_TYPE[kind]
+        if t == chess.PAWN:
+            mask = chess.BB_PAWN_ATTACKS[color][sq]
+        elif t == chess.KNIGHT:
+            mask = chess.BB_KNIGHT_ATTACKS[sq]
+        elif t == chess.KING:
+            mask = chess.BB_KING_ATTACKS[sq]
+        else:
+            occ, mask = b.occupied, 0
+            if t in (chess.BISHOP, chess.QUEEN):
+                mask |= chess.BB_DIAG_ATTACKS[sq][chess.BB_DIAG_MASKS[sq] & occ]
+            if t in (chess.ROOK, chess.QUEEN):
+                mask |= chess.BB_RANK_ATTACKS[sq][chess.BB_RANK_MASKS[sq] & occ] | chess.BB_FILE_ATTACKS[sq][chess.BB_FILE_MASKS[sq] & occ]
+        return [tuple(chess.square_name(s)) for s in chess.scan_forward(mask)]
+
+    def reach_from(self, position: str, side: str, kind: str, at: str) -> list:
+        """The places a unit of `side` and `kind` standing on handle `at` may move to in one move, the board as it stands and legality of the side's own goal unit not read (the fact view's `go`
+        relation for any placement): an empty place or a place held by the other side but not its goal unit; a pawn by its single forward step onto an empty place or its diagonal onto the other side."""
+        import chess
+        b = self._board(position)
+        color = {v: k for k, v in self.SIDES.items()}[side]
+        sq, t = chess.parse_square(at), self._KIND_TYPE[kind]
+        foes = b.occupied_co[not color] & ~b.kings
+        empty = ~b.occupied & chess.BB_ALL
+        strike = {chess.parse_square("".join(p)) for p in self.bearing_from(position, side, kind, at)}
+        bits = 0
+        for s in strike:
+            bits |= chess.BB_SQUARES[s]
+        if t == chess.PAWN:
+            reach = bits & foes
+            ahead = sq + (8 if color else -8)
+            if 0 <= ahead < 64 and (chess.BB_SQUARES[ahead] & empty):
+                reach |= chess.BB_SQUARES[ahead]
+        else:
+            reach = bits & (empty | foes)
+        return [tuple(chess.square_name(s)) for s in chess.scan_forward(reach)]
+
     def unit_term(self, side: str, kind: str, tag: str) -> tuple:
         f, r = f"?f{tag}", f"?r{tag}"
         return f"(cell {f} {r} {side} {kind})", [f, r]
@@ -97,7 +159,7 @@ class ChessCodec:
     def find_move(self, position: str, origin: str, destination: str) -> "str | None":
         """The legal move (as the kernel names it) of the unit on handle `origin` to handle `destination`, None when there is none (plan 78.41: a way's first move)."""
         import chess
-        board = chess.Board(position)
+        board = self._board(position)                                                   # read only: the position's board is kept (plan 78.42: the sheet asks of one position again and again)
         found = [m for m in board.legal_moves if chess.square_name(m.from_square) == origin and chess.square_name(m.to_square) == destination]
         found.sort(key=lambda m: m.promotion != chess.QUEEN)
         return found[0].uci() if found else None
@@ -105,13 +167,13 @@ class ChessCodec:
     def kind_at(self, position: str, place: str) -> "str | None":
         """The kind (the description's word) of the unit standing on handle `place`, None when none does (plan 78.41 frames)."""
         import chess
-        p = chess.Board(position).piece_at(chess.parse_square(place))
+        p = self._board(position).piece_at(chess.parse_square(place))
         return self.KINDS[p.symbol().lower()] if p else None
 
     def takings_on(self, position: str, place: str, legal: list) -> list:
         """[(move, kind of the unit that plays it)] of the legal moves that land on handle `place` while a unit stands there (the takings of that unit's place); `legal` is the kernel's list."""
         import chess
-        b = chess.Board(position)
+        b = self._board(position)
         sq = chess.parse_square(place)
         if b.piece_at(sq) is None:
             return []
@@ -215,7 +277,7 @@ class ChessCodec:
     def without(self, position: str, place: str) -> str:
         """HYPOTHETICAL: the position with the unit on handle `place` removed (its side to move kept). Never a position of the game; the kernel may refuse it (a goal unit removed)."""
         import chess
-        b = chess.Board(position)
+        b = self._board(position).copy(stack=False)
         b.remove_piece_at(chess.parse_square(place))
         b.castling_rights = b.clean_castling_rights()
         b.ep_square = None
@@ -224,7 +286,7 @@ class ChessCodec:
     def relocate(self, position: str, origin: str, destination: str) -> "str | None":
         """HYPOTHETICAL: the position with the unit on `origin` standing on `destination` instead (a unit there is removed), the side to move kept; None when nothing stands on `origin`."""
         import chess
-        b = chess.Board(position)
+        b = self._board(position).copy(stack=False)
         p = b.remove_piece_at(chess.parse_square(origin))
         if p is None:
             return None

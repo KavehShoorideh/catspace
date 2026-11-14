@@ -7009,3 +7009,111 @@ READ. (1) The cost is gone: the question of the move went from the cost of a who
 WHAT THIS MEANS FOR THE PLAN. The reasoner is not to second-guess the search on what the search can already see. Its use is where the search does not reach: the order in which things are looked at when the clock is short, and the things more than a few plies away (a way of two or three preparing moves, a waiting record that comes true). Both are 78.42's own subject (routes followed whole, waiting, the clock), and both were too slow to try in play before the light reading.
 
 NEXT: (i) the whole sheet on the light reading (levels 0 to 2, the routes), with the audit against the full form, so that a position's sheet costs milliseconds; (ii) then the routes and the waiting records measured for what the search at its clock does NOT see: of the ways the sheet confirms at two or three moves, how many the search's own line at that clock contains or avoids; (iii) the sheet kept across the moves of a game on October's event kernel (what a move changes is re-asked, the rest served), which the light reading and the changed places make cheap; (iv) the goal sign in the light reading.
+
+
+78.42 THE WHOLE SHEET ON THE LIGHT READING; WHAT THE SHEET SEES THAT THE SEARCH DOES NOT (2026-11-13; question_sheet.py: every level on Reading(light=True), the move tables from the codec's bearing_from / reach_from, the goal's exits from the kernel's legal moves, scenario_light a port of the kernel's goal report; multi_move_records, classify_way, still_confirmed, condition_came_true; tests/test_plan78_42_light_sheet.py, 35). Audit of light against full, the cost in one process, then every ply of the 16 games of sn_13_02 with the plain search asked at its clock and at five times it; positions with the mover in check apart, since there the ways are read from the board as it stands and mean little:
+
+    OBS (audit) positions 314 from 16 games; questions 6587
+    OBS (audit) level l0: agree 6587 of 6587 (100.00%)
+    OBS (audit) level l1: agree 6273 of 6273 (100.00%)
+    OBS (audit) level deep: agree 3361 of 3361 (100.00%)
+    OBS (audit) level kind: agree 6587 of 6587 (100.00%)
+    OBS (audit) level kind_nongoal: agree 5959 of 5959 (100.00%)
+    OBS (audit) level kind_goal: agree 628 of 628 (100.00%)
+    OBS (audit) level danger: agree 6587 of 6587 (100.00%)
+    OBS (cost) full whole sheet: mean 2935.3 ms max 6138.8 ms median 3161.8 over 68
+    OBS (cost) full read: mean 140.27 ms
+    OBS (cost) full level 0: mean 138.8 ms max 205.8 ms
+    OBS (cost) full level 1: mean 89.9 ms max 246.1 ms
+    OBS (cost) full level 2: mean 2249.5 ms max 4444.3 ms
+    OBS (cost) full level 3: mean 202.3 ms max 2253.6 ms
+    OBS (cost) full level 4: mean 108.4 ms max 620.7 ms
+    OBS (cost) full steps of goal questions: mean 502.9 ms max 2806.2 ms
+    OBS (cost) full steps of other questions: mean 2286.0 ms max 4375.6 ms
+    OBS (cost) full kernel calls per position: census 2.6, facts 11.5, passed 8.4, reason 3.5, scenario 12.4, state 929.0; total 967.4
+    OBS (cost) full steps per position 63.9
+    OBS (cost) light whole sheet: mean 574.3 ms max 3057.8 ms median 418.0 over 68
+    OBS (cost) light read: mean 0.18 ms
+    OBS (cost) light level 0: mean 3.7 ms max 67.2 ms
+    OBS (cost) light level 1: mean 88.0 ms max 198.9 ms
+    OBS (cost) light level 2: mean 154.7 ms max 523.1 ms
+    OBS (cost) light level 3: mean 202.9 ms max 2357.6 ms
+    OBS (cost) light level 4: mean 108.9 ms max 630.6 ms
+    OBS (cost) light steps of goal questions: mean 368.4 ms max 2766.6 ms
+    OBS (cost) light steps of other questions: mean 189.8 ms max 427.6 ms
+    OBS (cost) light kernel calls per position: census 2.6, passed 18.9, reason 3.5, state 928.5; total 953.5
+    OBS (cost) light steps per position 63.9
+    OBS (audit) pairs 2407 from 0 ; agree 2407 (100.00%)  total time 605s
+    OBS (cost) light_reading: mean 0.26 ms max 0.74 ms over 313
+    OBS (cost) full_reading: mean 163.56 ms max 254.40 ms over 313
+    OBS (cost) full_standing: mean 0.80 ms max 87.00 ms over 313
+    OBS (cost) light_standing: mean 0.85 ms max 1.94 ms over 313
+    OBS (cost) standing_agree: mean 1000.00 ms max 1000.00 ms over 313
+    OBS (part2) WEIGHTY-ONLY False
+    OBS (part2) MODE nocheck: 1237 positions
+    OBS (part2) positions 1237 (every ply of the 16 games, 0 to the last); light sheet mean 811 ms a position
+    OBS (part2) records 4442: confirmed 225 (goal-unit targets 67), waiting 4217 (goal-unit targets 0)
+    OBS (part2) load: confirmed, any target: positions with at least one 154 (12.4%), records 225 (0.18 a position), distinct targets 188 (0.15 a position)
+    OBS (part2) load: confirmed, non-goal target: positions with at least one 117 (9.5%), records 158 (0.13 a position), distinct targets 139 (0.11 a position)
+    OBS (part2) load: confirmed, non-goal, target not already lost where it stands: positions with at least one 67 (5.4%), records 85 (0.07 a position), distinct targets 83 (0.07 a position)
+    OBS (part2) load: confirmed, non-goal, no standing loss, first move playable on the board: positions with at least one 43 (3.5%), records 52 (0.04 a position), distinct targets 51 (0.04 a position)
+    OBS (part2) load: waiting, non-goal target: positions with at least one 1082 (87.5%), records 4217 (3.41 a position), distinct targets 2926 (2.37 a position)
+    OBS (part2) base rate: a weighty non-goal unit of theirs owner is LOST within 8 plies: 186 of 6244 (3.0%)
+    OBS (part2) base rate: a weighty non-goal unit of mine owner is LOST within 8 plies: 144 of 6198 (2.3%)
+    OBS (part2) GOAL-UNIT confirmed records, owner theirs (the game won by the asker within 8 plies is the truth): 67 records, true 24 of 67 (35.8%) | 0.2s unseen 0 (true 0) | 1.0s unseen 1 (true 0)
+    OBS (part2) GOAL-UNIT confirmed records, owner mine (the game won by the asker within 8 plies is the truth): 0 records, true 0 of 0 (0.0%) | 0.2s unseen 0 (true 0) | 1.0s unseen 0 (true 0)
+    OBS (part2) confirmed owner theirs, target also lost where it stands, first move playable: 29 records, LOST within 8 27 of 29 (93.1%) (base 3.0%) | 0.2s: unseen 4, of them lost 3 of 4 (75.0%); seen 25, of them lost 24 of 25 (96.0%) | 1.0s: unseen 4, of them lost 3 of 4 (75.0%); seen 25, of them lost 24 of 25 (96.0%)
+    OBS (part2) confirmed owner theirs, target also lost where it stands, first move not playable (read static): 4 records, LOST within 8 3 of 4 (75.0%) (base 3.0%) | 0.2s: unseen 0, of them lost 0 of 0 (0.0%); seen 4, of them lost 3 of 4 (75.0%) | 1.0s: unseen 0, of them lost 0 of 0 (0.0%); seen 4, of them lost 3 of 4 (75.0%)
+    OBS (part2) confirmed owner theirs, NO standing loss, first move playable: 8 records, LOST within 8 4 of 8 (50.0%) (base 3.0%) | 0.2s: unseen 3, of them lost 1 of 3 (33.3%); seen 5, of them lost 3 of 5 (60.0%) | 1.0s: unseen 3, of them lost 1 of 3 (33.3%); seen 5, of them lost 3 of 5 (60.0%)
+    OBS (part2) confirmed owner theirs, NO standing loss, first move not playable (read static): 19 records, LOST within 8 4 of 19 (21.1%) (base 3.0%) | 0.2s: unseen 12, of them lost 1 of 12 (8.3%); seen 7, of them lost 3 of 7 (42.9%) | 1.0s: unseen 11, of them lost 0 of 11 (0.0%); seen 8, of them lost 4 of 8 (50.0%)
+    OBS (part2) confirmed owner mine, target also lost where it stands, first move playable: 31 records, LOST within 8 9 of 31 (29.0%) (base 2.3%) | 0.2s: unseen 14, of them lost 6 of 14 (42.9%); seen 17, of them lost 3 of 17 (17.6%) | 1.0s: unseen 13, of them lost 5 of 13 (38.5%); seen 18, of them lost 4 of 18 (22.2%)
+    OBS (part2) confirmed owner mine, target also lost where it stands, first move not playable (read static): 7 records, LOST within 8 4 of 7 (57.1%) (base 2.3%) | 0.2s: unseen 0, of them lost 0 of 0 (0.0%); seen 7, of them lost 4 of 7 (57.1%) | 1.0s: unseen 0, of them lost 0 of 0 (0.0%); seen 7, of them lost 4 of 7 (57.1%)
+    OBS (part2) confirmed owner mine, NO standing loss, first move playable: 30 records, LOST within 8 1 of 30 (3.3%) (base 2.3%) | 0.2s: unseen 2, of them lost 0 of 2 (0.0%); seen 28, of them lost 1 of 28 (3.6%) | 1.0s: unseen 4, of them lost 0 of 4 (0.0%); seen 26, of them lost 1 of 26 (3.8%)
+    OBS (part2) confirmed owner mine, NO standing loss, first move not playable (read static): 14 records, LOST within 8 3 of 14 (21.4%) (base 2.3%) | 0.2s: unseen 6, of them lost 1 of 6 (16.7%); seen 8, of them lost 2 of 8 (25.0%) | 1.0s: unseen 6, of them lost 1 of 6 (16.7%); seen 8, of them lost 2 of 8 (25.0%)
+    OBS (part2) confirmed owner theirs, no standing loss, hops 1: 27 records, lost 8 of 27 (29.6%)
+    OBS (part2) confirmed owner mine, no standing loss, hops 1: 44 records, lost 4 of 44 (9.1%)
+    OBS (part2) confirmed owner theirs at 0.2s, the flags that hold (a record can hold several) over 60: {'holds': 38, 'plays': 5, 'none (unseen)': 19, 'contains': 1}
+    OBS (part2) confirmed owner theirs at 1.0s, the flags that hold (a record can hold several) over 60: {'holds': 39, 'plays': 5, 'none (unseen)': 18, 'contains': 1}
+    OBS (part2) confirmed owner mine at 0.2s, the flags that hold (a record can hold several) over 82: {'answers': 59, 'none (unseen)': 22, 'contains': 3, 'shows_loss': 2}
+    OBS (part2) confirmed owner mine at 1.0s, the flags that hold (a record can hold several) over 82: {'answers': 57, 'none (unseen)': 23, 'contains': 3, 'shows_loss': 6}
+    OBS (part2) THE CELL, by distinct (position, target), non-goal, no standing loss, the sheet confirms a way of two or more moves:
+    OBS (part2)   owner theirs [all]: targets 27, lost 8 of 27 (29.6%) | 0.2s: sheet sees what the search does not 15 (lost 2 of 15 (13.3%)); search sees some way 12 (lost 6 of 12 (50.0%)) | 1.0s: sheet sees what the search does not 14 (lost 1 of 14 (7.1%)); search sees some way 13 (lost 7 of 13 (53.8%))
+    OBS (part2)   owner theirs [first move playable only]: targets 8, lost 4 of 8 (50.0%) | 0.2s: sheet sees what the search does not 3 (lost 1 of 3 (33.3%)); search sees some way 5 (lost 3 of 5 (60.0%)) | 1.0s: sheet sees what the search does not 3 (lost 1 of 3 (33.3%)); search sees some way 5 (lost 3 of 5 (60.0%))
+    OBS (part2)   owner mine [all]: targets 42, lost 3 of 42 (7.1%) | 0.2s: sheet sees what the search does not 8 (lost 1 of 8 (12.5%)); search sees some way 34 (lost 2 of 34 (5.9%)) | 1.0s: sheet sees what the search does not 9 (lost 1 of 9 (11.1%)); search sees some way 33 (lost 2 of 33 (6.1%))
+    OBS (part2)   owner mine [first move playable only]: targets 29, lost 1 of 29 (3.4%) | 0.2s: sheet sees what the search does not 2 (lost 0 of 2 (0.0%)); search sees some way 27 (lost 1 of 27 (3.7%)) | 1.0s: sheet sees what the search does not 3 (lost 0 of 3 (0.0%)); search sees some way 26 (lost 1 of 26 (3.8%))
+    OBS (part2) CELL owner theirs at 0.2s: 2 targets: the sheet confirms, the search neither plays, answers, contains nor values it, and the unit is LOST in the game
+    OBS (part2) CELL owner theirs at 1.0s: 1 targets: the sheet confirms, the search neither plays, answers, contains nor values it, and the unit is LOST in the game
+    OBS (part2) CELL owner mine at 0.2s: 1 targets: the sheet confirms, the search neither plays, answers, contains nor values it, and the unit is LOST in the game
+    OBS (part2) CELL owner mine at 1.0s: 1 targets: the sheet confirms, the search neither plays, answers, contains nor values it, and the unit is LOST in the game
+    OBS (part2) WAITING records (non-goal, truth known) 4008
+    OBS (part2) waiting owner theirs, target already lost where it stands: 57 records, lost 47 of 57 (82.5%) (base 3.0%); condition readable 52, came true 22: lost | came true 18 of 22 (81.8%), lost | not true 25 of 30 (83.3%)
+    OBS (part2) waiting owner theirs, no standing loss: 2022 records, lost 59 of 2022 (2.9%) (base 3.0%); condition readable 1886, came true 721: lost | came true 19 of 721 (2.6%), lost | not true 34 of 1165 (2.9%)
+    OBS (part2) waiting owner theirs, no standing loss, at 0.2s: unseen by the search 1995, of them lost 58 of 1995 (2.9%)
+    OBS (part2) waiting owner theirs, no standing loss, at 1.0s: unseen by the search 1993, of them lost 58 of 1993 (2.9%)
+    OBS (part2) waiting owner theirs, no standing loss, by distinct (position, target): 1387 targets, lost 43 of 1387 (3.1%); some condition came true 596, lost 14 of 596 (2.3%); none came true 791, lost 29 of 791 (3.7%)
+    OBS (part2) waiting owner mine, target already lost where it stands: 57 records, lost 14 of 57 (24.6%) (base 2.3%); condition readable 53, came true 24: lost | came true 6 of 24 (25.0%), lost | not true 8 of 29 (27.6%)
+    OBS (part2) waiting owner mine, no standing loss: 1872 records, lost 55 of 1872 (2.9%) (base 2.3%); condition readable 1736, came true 645: lost | came true 21 of 645 (3.3%), lost | not true 22 of 1091 (2.0%)
+    OBS (part2) waiting owner mine, no standing loss, at 0.2s: unseen by the search 1856, of them lost 55 of 1856 (3.0%)
+    OBS (part2) waiting owner mine, no standing loss, at 1.0s: unseen by the search 1854, of them lost 55 of 1854 (3.0%)
+    OBS (part2) waiting owner mine, no standing loss, by distinct (position, target): 1305 targets, lost 38 of 1305 (2.9%); some condition came true 550, lost 17 of 550 (3.1%); none came true 755, lost 21 of 755 (2.8%)
+  the mover in check:
+    OBS (part2) WEIGHTY-ONLY False
+    OBS (part2) MODE check: 100 positions
+    OBS (part2) positions 100 (every ply of the 16 games, 0 to the last); light sheet mean 156 ms a position
+    OBS (part2) records 743: confirmed 682 (goal-unit targets 6), waiting 61 (goal-unit targets 0)
+    OBS (part2) load: confirmed, any target: positions with at least one 95 (95.0%), records 682 (6.82 a position), distinct targets 367 (3.67 a position)
+    OBS (part2) load: confirmed, non-goal target: positions with at least one 95 (95.0%), records 676 (6.76 a position), distinct targets 363 (3.63 a position)
+    OBS (part2) load: confirmed, non-goal, target not already lost where it stands: positions with at least one 93 (93.0%), records 580 (5.80 a position), distinct targets 310 (3.10 a position)
+    OBS (part2) load: confirmed, non-goal, no standing loss, first move playable on the board: positions with at least one 0 (0.0%), records 0 (0.00 a position), distinct targets 0 (0.00 a position)
+    OBS (part2) load: waiting, non-goal target: positions with at least one 30 (30.0%), records 61 (0.61 a position), distinct targets 45 (0.45 a position)
+    OBS (part2) base rate: a weighty non-goal unit of theirs owner is LOST within 8 plies: 33 of 349 (9.5%)
+    OBS (part2) base rate: a weighty non-goal unit of mine owner is LOST within 8 plies: 25 of 324 (7.7%)
+    OBS (part2) GOAL-UNIT confirmed records, owner theirs (the game won by the asker within 8 plies is the truth): 6 records, true 0 of 6 (0.0%) | 0.2s unseen 0 (true 0) | 1.0s unseen 0 (true 0)
+
+READ. (1) The light sheet gives the same verdict kinds as the full one on every question read, and the question of the move now agrees wholly since the goal sign is read. (2) A whole sheet is several times cheaper, not yet milliseconds: what remains is level 1's geometry in Python and the kernel's reason and census on the goal questions. (3) THE FINDING. Where no unit stands lost already, the ways of two or more moves the sheet confirms are few a game, the search at its clock already plays, answers or values most of them, and those it does not see come true about as often as not at all: the cell "the sheet confirms, the search does not see, the unit is lost" holds a handful of targets in all 16 games. The waiting records are many, the search sees almost none by these flags, and they come true at the base rate whether or not their condition came true. (4) In positions with the mover in check the sheet confirms many ways read from the board as it stands; they come true at the base rate: an artifact, in the full sheet too.
+
+So on these games, at these clocks, the route reasoning does not see what the search misses often enough to count. The games are the search's own, which stops the comparison from being independent: a search that never walks into a prepared attack leaves none in its games to be found. The sheet's value against a stronger or a different opponent is unmeasured.
+
+OPEN, for Kaveh: where the reasoner is to earn its place. The measured facts: it explains (chains with because and if-gone), it is right about standing losses, it agrees with the search at one move and adds nothing over it there, and its multi-move ways are rare and mostly seen by the search. Candidates not yet tried: the puzzle sets October was measured on (a prepared attack exists by construction, so the cell is not empty); games against a stronger opponent; the reasoner as the source of the search's ORDER inside the search rather than beside it.
+
+STILL OWED: the sheet kept across the moves of a game on October's event kernel; a position in check read by the answers to the check, not as it stands.

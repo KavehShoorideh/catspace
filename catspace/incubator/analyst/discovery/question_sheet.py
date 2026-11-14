@@ -270,6 +270,28 @@ def kind_keys(codec, position: str) -> dict:
     return {d[1]: o[1] for o, d in zip(codec.owned(position), codec.describe(position))}
 
 
+class _Lazy:
+    """A move table computed on demand: `get((kind, side, place))` as the fact view's rows are read, the answer made by `fn` the first time and kept (the light reading's tables: a unit standing on ANY
+    place, present or not)."""
+
+    def __init__(self, fn, known: "dict | None" = None):
+        self.fn, self.known = fn, dict(known or {})
+
+    def get(self, key, default=()):
+        got = self.known.get(key)
+        if got is None:
+            got = self.known[key] = self.fn(key)
+        return got
+
+    def __eq__(self, other) -> bool:
+        """Equal to a table of rows ({key: places}) when it gives, for every key of that table, the same places (a lazy table holds every key)."""
+        if isinstance(other, dict):
+            return all(set(self.get(k)) == set(v) for k, v in other.items())
+        return self is other
+
+    __hash__ = None
+
+
 class Reading:
     """One position read once: its units, the strike table, the move tables, and the shared answers of the engine calls that several questions use."""
 
@@ -282,15 +304,18 @@ class Reading:
             raise ValueError("the position is over or has no legal moves")
         self.mover, self.legal = state[1], list(state[2])
         self._settled: dict = {}
+        self._goal_units: dict = {}        # side -> its goal unit (or None), once asked
+        self._strike_sets: dict = {}       # (kind, side, place) -> the set of places it bears on: asked again and again
         self._go: "list | None" = None
         self._kind_key: "dict | None" = None
         if light:
             codec = env.codec
             cells = [(SELF if side == self.mover else OTHER, kind, at) for side, kind, at in codec.cells(position)]
             self.units = sorted((Unit(side, kind, at) for side, kind, at in cells), key=lambda u: (u.side != SELF, u.kind, u.at))
-            self.acts = {}
+            known = {}
             for (side, kind, at), to in codec.bearing(position).items():
-                self.acts[(kind, SELF if side == self.mover else OTHER, at)] = to
+                known[(kind, SELF if side == self.mover else OTHER, at)] = to
+            self.acts = _Lazy(lambda key: self._from_codec(codec.bearing_from, key), known)          # a unit standing on any place: the table is asked for the places the routes name
         else:
             facts = CE.facts(env.variant, env.spec, env.vocabulary_json, position, [], True)
             rel = env.relations
@@ -312,7 +337,7 @@ class Reading:
         self._audit_n = 0
         self._refused: set = set()         # (position, move) the kernel refused as not a position
         self._states: dict = {}            # (position, move or None) -> the kernel's state: the route reasoner meets the same positions again and again
-        self._other: "str | None" = None
+        self._other: "str | None" = env.codec.opposite(self.mover) if light else None
         self.cf_cut = 0                    # blocked steps not examined because the question's cap was reached
         self.joint_log: list = []          # one dict per set of units that must all go: members, asked, dead, moves more
         self.cf_log: list = []             # one dict per blocked step examined by the counterfactual: ms, kernel calls, units found, describing words
@@ -322,11 +347,36 @@ class Reading:
 
     @property
     def go(self) -> list:
-        """The move tables (one hop, within two, within three): read from the fact view the first time they are asked of a light reading."""
+        """The move tables (one hop, within two, within three). A light reading makes them on demand from the codec's `reach_from` (the same rows as the fact view's, a unit standing on any place),
+        with no fact view; `full_go` on the light reading reads the fact view (the comparison)."""
         if self._go is None:
-            facts = CE.facts(self.env.variant, self.env.spec, self.env.vocabulary_json, self.position, [], True)
-            self._go = [_rows(facts, spec) for spec in self.env.relations["can_go"]]
+            if self.light and not self.full_go:
+                one = _Lazy(lambda key: tuple(self.env.codec.reach_from(self.position, self.absolute(key[1]), key[0], place_text(key[2]))))
+                self._go = [one]
+                for j in range(2, len(self.env.relations["can_go"]) + 1):
+                    self._go.append(_Lazy(self._within(j, one)))
+            else:
+                facts = CE.facts(self.env.variant, self.env.spec, self.env.vocabulary_json, self.position, [], True)
+                self._go = [_rows(facts, spec) for spec in self.env.relations["can_go"]]
         return self._go
+
+    full_go = False                    # on a light reading: the move tables from the fact view, as the full reading (the comparison)
+    full_goal = False                  # on a light reading: the goal unit's levels 0 and 1 by the scenario report, as the full reading (the comparison)
+
+    def _within(self, j: int, one: "_Lazy"):
+        """The places reached in at least one and at most `j` moves (the fact view's `go_within<j>`): the first move's places, and every place one move from a place reached in at most j - 1."""
+        def fn(key):
+            kind, side, at = key
+            first = set(one.get(key))
+            reach = set(first)
+            for _ in range(j - 1):
+                reach = first | {y for p in reach for y in one.get((kind, side, p))}
+            return tuple(sorted(reach))
+        return fn
+
+    def _from_codec(self, fn, key) -> tuple:
+        kind, side, at = key
+        return tuple(fn(self.position, self.absolute(side), kind, place_text(at)))
 
     @property
     def kind_key(self) -> dict:
@@ -386,7 +436,7 @@ class Reading:
         if self._goal_kind is None:
             kind = None
             for role in ("mover", "other"):
-                r = self.scenario(role)
+                r = self._kernel_scenario(role) if self.light else self.scenario(role)          # (the kind is the game's: read from the kernel once, then kept on the env)
                 if r.get("target"):
                     kind = r["target"]["kind"]
                     break
@@ -399,15 +449,24 @@ class Reading:
         k = self.goal_kind()
         if k is None:
             return None
-        found = [u for u in self.units if u.side == side and u.kind == k]
-        return found[0] if len(found) == 1 else None
+        if side not in self._goal_units:
+            found = [u for u in self.units if u.side == side and u.kind == k]
+            self._goal_units[side] = found[0] if len(found) == 1 else None
+        return self._goal_units[side]
 
     # ---- shared engine answers
     def scenario(self, role: str) -> dict:
-        """The scenario report with `role` ("mover" or "other") as the side that wants the goal (cached)."""
+        """The scenario report with `role` ("mover" or "other") as the side that wants the goal (cached). A light reading makes it itself (`scenario_light`: the goal unit's exits from the
+        kernel's legal moves on the position or the passed position, the bearings of the light tables), with no fact view; `full_goal` has the kernel read it (the comparison)."""
         if role not in self._scenario:
-            self._scenario[role] = CE.scenario(self.env.variant, self.env.spec, self.env.vocabulary_json, self.position, [], role=role, k=self.params_k)
+            if self.light and not self.full_goal and self.goal_kind() is not None:
+                self._scenario[role] = scenario_light(self, role)
+            else:
+                self._scenario[role] = self._kernel_scenario(role)
         return self._scenario[role]
+
+    def _kernel_scenario(self, role: str) -> dict:
+        return CE.scenario(self.env.variant, self.env.spec, self.env.vocabulary_json, self.position, [], role=role, k=self.params_k)
 
     params_k = 2
 
@@ -430,8 +489,12 @@ class Reading:
         return self._pass[0]
 
     # ---- the tables
-    def strikes_of(self, u: Unit) -> set:
-        return set(self.acts.get((u.kind, u.side, u.at), ()))
+    def strikes_of(self, u: Unit) -> frozenset:
+        key = (u.kind, u.side, u.at)
+        got = self._strike_sets.get(key)
+        if got is None:
+            got = self._strike_sets[key] = frozenset(self.acts.get(key, ()))
+        return got
 
     def strikers_of(self, target: Unit, side: str) -> list:
         return [u for u in self.units if u.side == side and u != target and target.at in self.strikes_of(u)]
@@ -646,6 +709,123 @@ def _names(units: list) -> str:
 
 def _role_of(asker: str) -> str:
     return "mover" if asker == SELF else "other"
+
+
+def goal_exits(r: Reading, t: Unit) -> tuple:
+    """(the places the goal unit `t` may move to, where they were read from) for the light reading's goal sign, with no scenario read: the kernel's own legal moves of the unit on the position (the
+    side to move) or on the position passed to the other side (the kernel's pass); when the pass is refused (the mover under attack on its own goal unit) the places its kind goes from where it
+    stands (the move table of the board as it stands). The same two sources as the scenario report's `exits_from`: moves (of the position or of the passed one), zone."""
+    key = ("exits", t.at)
+    if key in r._frames:
+        return r._frames[key]
+    codec = r.env.codec
+    legal, src = None, "moves"
+    if t.side == SELF:
+        legal = r.legal
+    else:
+        pos = r.passed_position()
+        st = r.try_state(pos) if pos is not None else None
+        if st is not None:
+            legal = list(st[2])
+    if legal is not None:
+        out = {tuple(codec.move_ends(m)[1]) for m in codec.moves_of(place_text(t.at), legal)}
+    else:
+        out, src = set(r.exits_of(t)), "zone"
+    r._frames[key] = (out, src)
+    return r._frames[key]
+
+
+SCENARIO_CAPS = {"max_holes": 8, "max_units": 16, "max_scenarios": 20, "max_nodes": 200_000}      # the kernel's scenario report's own caps
+
+
+def scenario_light(r: Reading, role: str) -> dict:
+    """The scenario report of the goal unit as the kernel reads it (holes, covered places, supply, scenarios, safe), made from the light reading: the goal unit's exits are its legal moves (see
+    `goal_exits`), a place is covered when a unit of the asker bears on it (the light bearings, a unit standing on any place), the units reach places by the move tables of the board as it stands,
+    a unit that moves must keep bearing on the places it alone covers, and the plans are found by the same backtracking (a unit at one place only, none that has a unit it does not need). The
+    same dict shape as the kernel's (places written "a:b"), so every level reads it unchanged."""
+    asker = SELF if role == "mover" else OTHER
+    kind = r.goal_kind()
+    owner = OTHER if asker == SELF else SELF
+    targets = [u for u in r.units if u.side == owner and u.kind == kind]
+    rep: dict = {"role": role, "target": None, "unreadable": None, "goal_holds": False, "exits_from": "none", "holes": [], "covered": [], "units": [], "supply": [], "scenarios": [], "safe": None, "notes": []}
+    if len(targets) != 1:
+        rep["unreadable"] = "no goal unit on the board" if not targets else "several goal units: the target is not one unit"
+        return rep
+    t = targets[0]
+    rep["target"] = {"kind": t.kind, "owner": owner, "at": ":".join(t.at)}
+    k = min(max(r.params_k, 1), len(r.go))
+    caps = SCENARIO_CAPS
+    mine = sorted((u for u in r.units if u.side == asker), key=lambda u: (u.kind, u.at))
+    units = mine[:caps["max_units"]]
+    show = lambda p: ":".join(p)
+    zone = set(r.go[0].get((t.kind, t.side, t.at), ())) if r.go else set()
+    exits, rep["exits_from"] = goal_exits(r, t)
+    acted_by = lambda place: [u for u in mine if place in r.strikes_of(u)]
+    acting = lambda u, at, place: place in r.acts.get((u.kind, u.side, at), ())
+    holes, covered = [], []
+    own_by = acted_by(t.at)
+    if not own_by:
+        holes.append((t.at, "own"))
+    else:
+        covered.append((t.at, True, own_by))
+    for place in sorted(zone | exits):
+        by = acted_by(place)
+        if not by:
+            if place in exits:
+                holes.append((place, "exit"))
+        else:
+            covered.append((place, False, by))
+    reach = []
+    for u in units:
+        m = {u.at: 0}
+        for j in range(1, k + 1):
+            for d in r.go[j - 1].get((u.kind, u.side, u.at), ()):
+                m.setdefault(d, j)
+        alone = [at for at, _own, by in covered if len(by) == 1 and by[0] == u]
+        reach.append({q: j for q, j in m.items() if j == 0 or all(acting(u, q, a) for a in alone)})
+    supply = []
+    for at, _kind in holes:
+        sup = sorted(((j, i, q) for i, u in enumerate(units) for q, j in reach[i].items() if acting(u, q, at)))
+        supply.append([(i, q, j) for j, i, q in sup])
+    found: list = []
+    nodes = [0]
+    cut = [False]
+
+    def search(h, chosen):
+        if cut[0]:
+            return
+        nodes[0] += 1
+        if nodes[0] > caps["max_nodes"] or len(found) >= caps["max_scenarios"]:
+            cut[0] = True
+            return
+        if h == len(supply):
+            found.append(list(chosen))
+            return
+        if any(x[0] == c[0] and x[1] == c[1] for x in supply[h] for c in chosen):
+            search(h + 1, chosen)
+            return
+        for x in supply[h]:
+            if any(c[0] == x[0] for c in chosen):
+                continue
+            chosen.append(x)
+            search(h + 1, chosen)
+            chosen.pop()
+            if cut[0]:
+                return
+    if len(holes) > caps["max_holes"]:
+        rep["notes"].append(f"{len(holes)} holes: more than {caps['max_holes']}: no scenario searched")
+    else:
+        search(0, [])
+        if holes:
+            found = [sc for sc in found if all(not all(any(i != skip and any(x[0] == c[0] and x[1] == c[1] for x in supply[hh]) for i, c in enumerate(sc)) for hh in range(len(holes))) for skip in range(len(sc)))]
+        plans = sorted({(sum(c[2] for c in sc), tuple(sorted(sc))) for sc in found})
+        rep["scenarios"] = [{"moves": total, "placements": [{"kind": units[i].kind, "from": show(units[i].at), "to": show(q), "moves": j} for i, q, j in sc]} for total, sc in plans]
+        rep["safe"] = None if cut[0] else not rep["scenarios"]
+    rep["holes"] = [{"at": show(at), "kind": kk} for at, kk in holes]
+    rep["covered"] = [{"at": show(at), "own": own, "by": [{"kind": u.kind, "at": show(u.at)} for u in by]} for at, own, by in covered]
+    rep["units"] = [{"kind": u.kind, "at": show(u.at)} for u in units]
+    rep["supply"] = [[{"kind": units[i].kind, "from": show(units[i].at), "to": show(q), "moves": j} for i, q, j in sup] for sup in supply]
+    return rep
 
 
 def level0(q: Question, r: Reading, params: Params) -> tuple:
@@ -1928,12 +2108,11 @@ def _lost_after(r: Reading, q: Question, v: Unit, child: str, params: Params) ->
 
 
 def _goal_newly_under_sign(r: Reading, q: Question, child: str, params: Params) -> bool:
-    if r.light:
-        return False                                                   # the light reading does not ask it: the report of the goal unit costs the kernel a whole scenario read for each side
     try:
         after_reading = r._frames.get(("reading", child))
         if after_reading is None:
-            after_reading = Reading(r.env, child, r.worth)
+            after_reading = Reading(r.env, child, r.worth, light=r.light)
+            after_reading.full_go, after_reading.full_goal = r.full_go, r.full_goal
             after_reading._goal_kind = r._goal_kind if r._goal_kind is not None else (r.goal_kind(),)      # the goal's kind is the game's, not the position's: not asked of the kernel again
             r._frames[("reading", child)] = after_reading
         if ("sign", q.asker) not in r._frames:
@@ -2700,21 +2879,25 @@ def _record(sheet: Sheet, f: Finding, costs: _Costs, params: Params) -> None:
 
 
 def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_seconds: "float | None" = None, budget_cost: "float | None" = None, env: "Env | None" = None, game: "str | None" = None,
-        params: Params = Params(), pool: "Pool | None" = None, on_step=None) -> Sheet:
+        params: Params = Params(), pool: "Pool | None" = None, on_step=None, light: bool = False, full_go: bool = False, full_goal: bool = False, only=None) -> Sheet:
     """The anytime schedule over the position's questions (see the module). Stops at `max_steps` steps, at `budget_seconds` of wall time (the reading of the position counted), or when the
     summed measured cost of the steps taken reaches `budget_cost` (seconds; the reproducible form of the budget); default 40 steps when none is given. A step is started only while
     the budget is not used up; one step already begun is finished, so the time may overrun by that step. `params.clock` is the order: "present" (every question's level 0 first, then stake x
     urgency over cost), "chance" (from the start by chance x stake at risk over cost, see `chance_priority`), "plain" (the first order, each question taken to its full depth before the next).
-    `on_step(sheet, step, elapsed)` is called after every step."""
+    `on_step(sheet, step, elapsed)` is called after every step. `light`: the whole sheet on the light reading (the units and bearings from the codec, the move tables on demand, the goal sign from the
+    goal unit's legal moves; no fact view and no scenario read); `full_go` and `full_goal` take the move tables / the goal unit's levels from the fact view on a light reading (the comparison). `only(unit) -> bool`: ask the questions of those units only (the rest are not on the sheet; ranks are kept)."""
     if env is None:
         if game is None:
             raise ValueError("run needs an Env or a game name")
         env = Env(game)
     t0 = time.perf_counter()
-    r = Reading(env, position, worth)
+    r = Reading(env, position, worth, light=light)
+    r.full_go, r.full_goal = full_go, full_goal
     r.params_k = params.reach_k
     r.pool = pool
     questions = first_order(r, params)
+    if only is not None:
+        questions = [q for q in questions if only(q.target)]
     sheet = Sheet(position, questions, read_seconds=r.read_seconds, reading=r)
     r.questions = sheet.questions
     if max_steps is None and budget_seconds is None and budget_cost is None:
@@ -2830,6 +3013,7 @@ def child_reading(r: Reading, child: str, params: Params) -> Reading:
     got = r._frames.get(("reading", child))
     if got is None:
         got = Reading(r.env, child, r.worth, light=r.light)
+        got.full_go, got.full_goal = r.full_go, r.full_goal
         got._goal_kind = r._goal_kind if r._goal_kind is not None else (r.goal_kind(),)
         r._frames[("reading", child)] = got
     got.params_k, got.passes = params.reach_k, params.passes
@@ -2979,7 +3163,7 @@ def move_question(env: Env, reading: Reading, move: str, params: Params = Params
         elif ex["open"]:
             unsettled.append({"unit": v, "part": "c", "words": f"the exchange on {unit_words(v)} was not read to its end (node cap)", "stake": r.weight(v)})
     goal = r.goal_unit(SELF)
-    if not r.light and goal is not None and goal != u and not any(x["unit"] == goal for x in unsettled) and changed & ({place_text(goal.at)} | {place_text(x) for x in r.exits_of(goal)}):
+    if goal is not None and goal != u and not any(x["unit"] == goal for x in unsettled) and changed & ({place_text(goal.at)} | {place_text(x) for x in r.exits_of(goal)}):
         if _goal_newly_under_sign(r, q, child, params):
             unsettled.append({"unit": goal, "part": "c", "words": f"{unit_words(goal)} comes newly under the sign", "stake": r.weight(goal)})
     out["answers"]["c"] = ("; ".join(newly + [x["words"] for x in unsettled if x["part"] == "c"])
@@ -4638,6 +4822,104 @@ def goal_verdict(dirs: list, env: Env, worth: dict, params: Params, limit: "int 
             if limit and len(endings) >= limit:
                 return rows, endings, positions
     return rows, endings, positions
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------- 78.42: what the sheet sees that the search does not
+
+def way_moves(r: Reading, q: Question, entry: dict) -> tuple:
+    """(the way's first move or None, the way's own moves): the first move of the entry's line (the way's arriving move, a real move of the asking side: from the position when the asker is to move,
+    from the passed position when it is not), and the moves of the asking side in the entry's line (every second move from the first). A way read in the static form has no moves; its first move is
+    then found from the first hop of its route (the codec's `find_move`) on the position or the passed one."""
+    line = [m for m in entry.get("line", ()) if isinstance(m, str) and len(m) >= 4 and entry.get("source") != "static"]
+    if line:
+        return line[0], tuple(line[0::2])
+    base = r.position if q.asker == SELF else (r.passed_position() if r.passes else None)
+    if base is None:
+        return None, ()
+    for o, d in _first_moves(r, q, entry["way"]):
+        mv = r.env.codec.find_move(base, o, d)
+        if mv is not None and mv in list(r.state_of(base)[2]):
+            return mv, (mv,)
+    return None, ()
+
+
+def multi_move_records(sheet: Sheet, params: Params = Params(), min_hops: int = 1) -> list:
+    """EVERY WAY THE SHEET CONFIRMS THAT NEEDS TWO OR MORE MOVES OF ONE SIDE, and every WAITING record, of a read position (the sheet run to its end). A way is `hops` moves of the arriving unit then
+    the strike itself: `min_hops` 1 takes the arrival after one or two preparing moves (the exchange where a unit stands, hops 0, is the one-move question and is not listed). Per record: the owner of
+    the target (mine: the other side arrives against the mover; theirs: the mover arrives), confirmed or waiting, the target and the arriving unit (kind, place), the arrival place, hops, the first move and the
+    asker's moves, the stake bounds (the way's own: confirmed both ends its value, waiting 0 to what it would be worth; and the question's), what a waiting record waits on and the chain in words."""
+    r, out = sheet.reading, []
+    for q in sheet.questions:
+        if q.quiet or q.target is None:
+            continue
+        deep = next((f for f in reversed(q.findings) if f.level >= 2 and f.detail.get("results")), None)
+        if deep is None:
+            continue
+        for x in deep.detail["results"]:
+            way = x.get("way")
+            if way is None or way[0] < min_hops or x["status"] not in (CONFIRMED_V, WAITING_V):
+                continue
+            first, own = way_moves(r, q, x)
+            value = float(x.get("value") or 0.0)
+            qlow, qhigh = stake_bounds(q, r)
+            low, high = (value, value) if x["status"] == CONFIRMED_V else (0.0, max(value, 0.0))
+            out.append({"owner": "mine" if q.owner == SELF else "theirs", "status": x["status"], "target": (q.target.kind, place_text(q.target.at)), "unit": (way[1].kind, place_text(way[1].at)),
+                        "arrival": place_text(way[2]), "hops": way[0], "first": first, "own_moves": tuple(own), "low": low, "high": high, "question_stake": (qlow, qhigh), "source": x.get("source"),
+                        "waits_on": [tuple(a[:2]) + (a[2],) for a in x.get("alts", ())], "answer": str(x.get("answer", "")), "chain": explain_chain(sheet, q)})
+    return out
+
+
+def _subsequence(moves: tuple, line: list, parity: int) -> bool:
+    """Do `moves` occur in `line`, in order, at the plies of one side (`parity` 0: the first side to move in the line, 1: the other)?"""
+    it = iter(line[parity::2])
+    return bool(moves) and all(any(m == x for x in it) for m in moves)
+
+
+def classify_way(rec: dict, search: dict, answered: "bool | None" = None) -> dict:
+    """THE SEARCH AGAINST ONE RECORD. `search` is what the plain search gave on the same position: {move, line (the principal line, moves of both sides from the side to move), value (the ledger value for
+    the side to move, a change from the present balance, or None), proved (a forced win of the side to move is proved: no ledger value is then given, and the win holds any gain)}. For a record of the MOVER (the target is theirs): `plays` (the search's best move is the way's first move), `contains` (the way's
+    moves are in the search's line on the mover's plies), `holds` (the value is at least the way's low bound; a waiting record has none, so its high bound; with neither, no value flag). `seen` is any of the three. For a record of the OTHER
+    side (the target is mine): `answers` (`answered`: after the search's move the sheet no longer confirms the way, read by the caller), `shows_loss` (the value is at most minus the low bound),
+    `contains` (the way's moves are in the line on the other side's plies); `seen` is any of the three. A flag that cannot be read (no line, no value, no answer asked) is None and counts as not seen."""
+    line, value = list(search.get("line") or []), search.get("value")
+    bound = rec["low"] if rec["low"] > 0 else rec.get("high", 0.0)          # a waiting record has no low bound: its stake is read from the high bound, and none known is no value flag
+    if rec["owner"] == "theirs":
+        flags = {"plays": bool(rec["first"]) and search.get("move") == rec["first"], "contains": _subsequence(rec["own_moves"], line, 0),
+                 "holds": bool(search.get("proved")) or (value is not None and bound > 0 and value >= bound)}
+    else:
+        flags = {"answers": answered, "shows_loss": (value is not None and bound > 0 and value <= -bound), "contains": _subsequence(rec["own_moves"], line, 1)}
+    flags["seen"] = any(bool(v) for v in flags.values())
+    return flags
+
+
+def still_confirmed(sheet: Sheet, rec: dict) -> bool:
+    """On the sheet of the position after the search's move (the other side now to move, the question asked on the one unit): does the sheet still confirm the record's way against that unit, or find
+    it lost where it stands? (the caller asks for the question of the unit, which may have moved)."""
+    for q in sheet.questions:
+        if q.quiet or q.target is None:
+            continue
+        kind = verdict_kind(q)
+        if kind == "lost":
+            return True
+        if kind == "confirmed":
+            deep = next(f for f in reversed(q.findings) if f.level >= 2)
+            if any(x.get("way") is not None and x["status"] == CONFIRMED_V and x["way"][1].kind == rec["unit"][0] for x in deep.detail["results"]):
+                return True
+    return False
+
+
+def condition_came_true(by_ply: list, ply: int, waits_on: list, horizon: int, unit_id=None) -> "bool | None":
+    """Did what a waiting record waits on become true in the game within `horizon` plies from `ply`? `waits_on` is the record's (kind, places, words); `by_ply[i]` maps a place to what stands there after i
+    plies (the codec's `tracks`). A place named "vacated" or "cleared" came true when it is empty at some ply of the window (vacated: after being occupied). Other conditions are not read (None)."""
+    known = [w for w in waits_on if w[0] in ("vacated", "cleared") and w[1]]
+    if not known:
+        return None
+    end = min(ply + horizon, len(by_ply) - 1)
+    for w in known:
+        if any(all(place not in by_ply[i] for place in w[1]) for i in range(ply + 1, end + 1)):
+            return True
+    return False
 
 
 def store_worth(game: str) -> dict:
