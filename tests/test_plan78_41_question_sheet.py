@@ -747,7 +747,7 @@ def test_the_pool_flags_what_a_move_touched_and_rereads_it_when_a_question_asks(
     assert env.codec.changed_places(OWN_IN_WAY, after) & rec.reads
     flagged = pool.advance(after)
     assert rec.id in flagged and rec.id in pool.store.stale and pool.queue()[0].id in {f for f in pool.store.stale}
-    sheet = Q.run(after, WORTH, env=env, max_steps=60, pool=pool)
+    sheet = Q.run(after, WORTH, env=env, max_steps=60, pool=pool, refresh=None)   # the drain off: the question itself asks for what the move touched
     Q.finish_levels(sheet, 1)
     Q.settle_flagged(sheet)
     assert pool.reread >= 1

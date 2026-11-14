@@ -7185,3 +7185,10 @@ WHY THE MEMORY DOES NOT PAY, as far as these numbers show: the unit of memory is
 NEXT, not started: file the PARTS (a unit's reach, a step's obstacle, a place's exchange) with their own small read sets, so that a move wakes only the parts it touches and a way is re-put-together from parts still good; the agenda's bookkeeping inside the budget; the woken-waiting kind fitted into the chance table.
 
 ENVIRONMENT: after the system update the installed engine extension would not load (the loader refuses the stripped library); reinstalled with `CARGO_PROFILE_RELEASE_STRIP=none maturin develop --release --offline`, no file changed.
+
+
+### 78.42: the event memory on by default (2026-11-14)
+
+Kaveh's rule: cache when caching is not slower. The measure of the last section showed the same time kept as fresh and no wrong serve, so `run` and `read_position` now drain the pool's agenda by
+default whenever a pool is carried (`refresh` defaults to `math.inf`; `refresh=None` is the old form, where a question asks for what a move touched). With no pool nothing changes, so the
+match player, which carries none, plays as before. The one test of the old form is pinned to `refresh=None`. The four test files of the sheet: 212 passed.

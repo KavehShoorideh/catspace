@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 from dataclasses import dataclass, field, replace
@@ -3282,15 +3283,15 @@ def _record(sheet: Sheet, f: Finding, costs: _Costs, params: Params) -> None:
 
 
 def run(position: str, worth: dict, *, max_steps: "int | None" = None, budget_seconds: "float | None" = None, budget_cost: "float | None" = None, env: "Env | None" = None, game: "str | None" = None,
-        params: Params = Params(), pool: "Pool | None" = None, on_step=None, light: bool = False, full_go: bool = False, full_goal: bool = False, only=None, refresh: "float | None" = None, shared: bool = False) -> Sheet:
+        params: Params = Params(), pool: "Pool | None" = None, on_step=None, light: bool = False, full_go: bool = False, full_goal: bool = False, only=None, refresh: "float | None" = math.inf, shared: bool = False) -> Sheet:
     """The anytime schedule over the position's questions (see the module). Stops at `max_steps` steps, at `budget_seconds` of wall time (the reading of the position counted), or when the
     summed measured cost of the steps taken reaches `budget_cost` (seconds; the reproducible form of the budget); default 40 steps when none is given. A step is started only while
     the budget is not used up; one step already begun is finished, so the time may overrun by that step. `params.clock` is the order: "present" (every question's level 0 first, then stake x
     urgency over cost), "chance" (from the start by chance x stake at risk over cost, see `chance_priority`), "plain" (the first order, each question taken to its full depth before the next).
     `on_step(sheet, step, elapsed)` is called after every step. `light`: the whole sheet on the light reading (the units and bearings from the codec, the move tables on demand, the goal sign from the
     goal unit's legal moves; no fact view and no scenario read); `full_go` and `full_goal` take the move tables / the goal unit's levels from the fact view on a light reading (the comparison). `only(unit) -> bool`: ask the questions of those units only (the rest are not on the sheet; ranks are kept).
-    `refresh` (seconds, with a pool): FIRST the events of the move (the pool is advanced to this position when it is not there yet), THEN the pool's agenda is drained under that budget (None: not drained,
-    the questions ask for what they need; `math.inf`: all of it), THEN the new questions; the time of the drain counts against `budget_cost`. What the drain leaves is on `sheet.stale`.
+    `refresh` (seconds, with a pool): FIRST the events of the move (the pool is advanced to this position when it is not there yet), THEN the pool's agenda is drained under that budget (`math.inf`, the default: all of it; None: not drained,
+    the questions ask for what they need), THEN the new questions; the time of the drain counts against `budget_cost`. What the drain leaves is on `sheet.stale`.
     `shared` (with a pool): THE SINGLE AGENDA. No drain phase: the woken facts to recheck and the questions' own next steps are ONE agenda, ordered by one priority (chance x stake at risk over expected
     cost, `chance_priority`; the table's chance for a recheck is that of the verdict kind of the fact; plain stake with no table), and the one budget (`budget_cost`, `budget_seconds`, `max_steps`)
     is spent on it from the top. A woken fact under `params.recheck_floor` is not rechecked. What is not reached is on `sheet.stale`, with its last verdict, never served as current."""
@@ -4303,7 +4304,7 @@ def format_frame_lines(records: list) -> list:
 BUCKETS = (("never", 0, 0), ("1-2", 1, 2), ("3-4", 3, 4), ("5-8", 5, 8), ("more", 9, 10 ** 9))
 
 
-def read_position(env: Env, worth: dict, params: Params, position: str, pool: "Pool | None" = None, max_steps: "int | None" = None, light: bool = False, refresh: "float | None" = None) -> Sheet:
+def read_position(env: Env, worth: dict, params: Params, position: str, pool: "Pool | None" = None, max_steps: "int | None" = None, light: bool = False, refresh: "float | None" = math.inf) -> Sheet:
     """One position read as the measures read it: the schedule, level 1 for every question, level 2 for every non-goal unit open after level 1; the pool (if any) carries the ways."""
     sheet = run(position, worth, max_steps=max_steps, env=env, params=params, pool=pool, light=light, refresh=refresh)
     finish_levels(sheet, 1, params)
