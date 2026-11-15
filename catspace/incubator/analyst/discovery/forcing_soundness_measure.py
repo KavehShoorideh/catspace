@@ -8,6 +8,8 @@ For every position of every game of a games directory (games.jsonl: `variant`, `
   and the captures after the horizon are resolved by the search itself (a quiet search, each side may stop). The search's value for the mover (what is won less what is lost from there on)
   must not be below what the read claims as certain from there on: the read's value less what the move itself took. A claim of the goal is checked against a won game (the ledger's number).
   A search the node fuse (`--search-nodes`) or the depth cap (`--depth-cap`) cut before the depth is NOT a check: it is counted apart, never as holding.
+PLAN 78.47 E: the read itself now has the search as the last word (a verdict CONFIRMED stands only after the ledger search to the covering depth does not contradict it; the others are NOT BORNE OUT, with both
+lines). So the measure here checks DEEPER than the verdict's own check: `--extra-plies` (default 2) plies more than the depth the read used, and counts apart the moves the read's own check turned into NOT BORNE OUT.
 Printed: positions, confirmed claims, checked, contradicted, unchecked (by reason), how often the read confirms anything, seconds per position; every contradiction with its position, move, the
 read's line (the reply that held the least, and its line) and the search's line.
 
@@ -29,6 +31,7 @@ from catspace.incubator.analyst.discovery import question_sheet as QS
 from catspace.incubator.analyst.discovery import sheet_rust as SR
 
 GOAL = 1e9
+EXTRA_PLIES = 2                    # plan 78.47 E: the measure checks this many plies deeper than the verdict's own check, so it is not the verdict checking itself
 _ST: dict = {}
 
 
@@ -67,7 +70,7 @@ def run_game(spec: dict) -> dict:
     model = st["model"]
     v, start, moves = spec["variant"], spec["start"], spec["moves"]
     out = {"positions": 0, "read": 0, "with_confirmed": 0, "confirmed": 0, "checked": 0, "holds": 0, "contradicted": 0, "unchecked": Counter(), "ends_game": 0, "seconds": 0.0, "nodes": 0, "cut": 0,
-           "found": 0, "unsettled": 0, "contradictions": [], "levels": Counter(), "check_seconds": 0.0}
+           "found": 0, "unsettled": 0, "contradictions": [], "levels": Counter(), "check_seconds": 0.0, "not_borne_out": 0, "not_borne_out_list": [], "in_read_unchecked": 0}
     for ply in range(len(moves) + 1):
         pos = CE.state(v, start, moves[:ply])[0]
         out["positions"] += 1
@@ -83,7 +86,15 @@ def run_game(spec: dict) -> dict:
         out["cut"] += bool(res["cut"])
         out["found"] += res["found"]
         out["unsettled"] += res["unsettled"]
+        for t in res["threats"]:
+            if t["verdict"] == "NOT BORNE OUT":
+                ck = t["search"]
+                w = weakest_reply(t)
+                out["not_borne_out"] += 1
+                out["not_borne_out_list"].append({"game": spec["game"], "ply": ply, "position": pos, "move": t["move"], "value": t["value"], "claimed": ck["claimed"], "search_value": ck["value"], "depth": ck["depth"],
+                                                  "read_line": [t["move"]] + list(w.get("line", [])), "search_line": [t["move"]] + list(ck["line"])})
         conf = [t for t in res["threats"] if t["verdict"] == "CONFIRMED"]
+        out["in_read_unchecked"] += sum(1 for t in conf if t["search"] and t["search"]["status"] == "unchecked")
         out["confirmed"] += len(conf)
         out["with_confirmed"] += bool(conf)
         for t in conf:
@@ -93,8 +104,8 @@ def run_game(spec: dict) -> dict:
                 continue
             if spec.get("skip_check"):
                 continue
-            depth = needed_depth(t)
-            if depth > spec["depth_cap"]:
+            depth = needed_depth(t) + spec.get("extra", EXTRA_PLIES)
+            if depth > spec["depth_cap"] + spec.get("extra", EXTRA_PLIES):
                 out["unchecked"]["depth over the cap"] += 1
                 continue
             t1 = time.perf_counter()
@@ -119,7 +130,7 @@ def run_game(spec: dict) -> dict:
 
 def merge(parts: list) -> dict:
     tot = {"positions": 0, "read": 0, "with_confirmed": 0, "confirmed": 0, "checked": 0, "holds": 0, "contradicted": 0, "unchecked": Counter(), "ends_game": 0, "seconds": 0.0, "nodes": 0, "cut": 0,
-           "found": 0, "unsettled": 0, "contradictions": [], "levels": Counter(), "check_seconds": 0.0}
+           "found": 0, "unsettled": 0, "contradictions": [], "levels": Counter(), "check_seconds": 0.0, "not_borne_out": 0, "not_borne_out_list": [], "in_read_unchecked": 0}
     for p in parts:
         for k, v in p.items():
             if k == "fuse":
@@ -137,12 +148,16 @@ def format_obs(tot: dict, label: str, wall: float, jobs: int, fuse: int) -> list
     n, rd = max(1, tot["positions"]), max(1, tot["read"])
     L = [f"OBS forcing soundness {label}: positions {tot['positions']} (read {tot['read']}), fuse {fuse} positions, jobs {jobs}, wall {wall:.1f} s",
          f"OBS forcing soundness {label}: confirmed claims {tot['confirmed']} (the move ends the game itself {tot['ends_game']}); checked {tot['checked']}, holds {tot['holds']}, CONTRADICTED {tot['contradicted']}; "
-         f"unchecked {dict(tot['unchecked'])}",
+         f"unchecked {dict(tot['unchecked'])}; checked {EXTRA_PLIES} plies deeper than the verdict's own check",
+         f"OBS forcing soundness {label}: the read's own check (the search as the last word): NOT BORNE OUT {tot['not_borne_out']}; confirmed moves it could not check (search cut or depth over the cap) {tot['in_read_unchecked']}",
          f"OBS forcing soundness {label}: positions with a confirmed claim {tot['with_confirmed']} ({100 * tot['with_confirmed'] / rd:.2f} pct of the read); confirmed claims per position {tot['confirmed'] / rd:.4f}; "
          f"by the level of the verdict {dict(sorted(tot['levels'].items()))}",
          f"OBS forcing soundness {label}: threat moves found per position {tot['found'] / rd:.2f}, not settled per position {tot['unsettled'] / rd:.2f}, positions where the fuse stopped the read {tot['cut']} ({100 * tot['cut'] / rd:.1f} pct), "
          f"positions read per position {tot['nodes'] / rd:.0f}",
          f"OBS forcing soundness {label}: seconds per position: the read {tot['seconds'] / rd:.4f}, the checks by search {tot['check_seconds'] / rd:.4f} (summed over workers)"]
+    for c in tot["not_borne_out_list"]:
+        L.append(f"OBS forcing soundness {label}: NOT BORNE OUT game {c['game']} ply {c['ply']} position {c['position']} move {c['move']} (value {c['value']:g}, claimed from there {c['claimed']:g}, search value {c['search_value']}, "
+                 f"depth {c['depth']}): the read's line {c['read_line']}; the search's line {c['search_line']}")
     for c in tot["contradictions"]:
         L.append(f"OBS forcing soundness {label}: CONTRADICTION game {c['game']} ply {c['ply']} position {c['position']} move {c['move']} (value {c['value']:g}, the move took {c['took_worth']:g}, level {c['level']}, "
                  f"search depth {c['depth']}): {c['why']}; claims {c['claims']}; the read's line {c['read_line']} (weakest reply {c['weakest_reply']} = {c['weakest_value']}); the search's line {c['search_line']} (depth read {c['search_depth']})")
@@ -156,6 +171,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--fuse", type=int, default=None, help="positions the forcing read may read (default: the engine's FUSE_POSITIONS)")
     ap.add_argument("--depth-cap", type=int, default=14)
+    ap.add_argument("--extra-plies", type=int, default=EXTRA_PLIES)
     ap.add_argument("--search-nodes", type=int, default=20_000_000)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--skip-check", action="store_true")
@@ -164,7 +180,7 @@ def main(argv: "list | None" = None) -> int:
     if a.games:
         recs = recs[:a.games]
     fuse = a.fuse
-    specs = [dict(variant=r["variant"], start=r.get("start"), moves=r["moves"], game=r.get("game", i), fuse=fuse, depth_cap=a.depth_cap, search_nodes=a.search_nodes, skip_check=a.skip_check) for i, r in enumerate(recs)]
+    specs = [dict(variant=r["variant"], start=r.get("start"), moves=r["moves"], game=r.get("game", i), fuse=fuse, depth_cap=a.depth_cap, search_nodes=a.search_nodes, skip_check=a.skip_check, extra=a.extra_plies) for i, r in enumerate(recs)]
     label = a.tag or Path(a.games_dir).name
     t0 = time.perf_counter()
     with multiprocessing.get_context("spawn").Pool(a.jobs) as pool:

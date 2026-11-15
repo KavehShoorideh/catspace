@@ -345,8 +345,9 @@ impl SheetModel {
 
     /// forcing(position, fuse=None, goal_nodes=None) -> the FORCING READ of the side to move (plan 78.46), plain data: {mover, legal, found, confirmed, unsettled, no_claim,
     /// unread, nodes, fuse, cut, level, seconds, threats: [{move, verdict, value, took, took_worth, claims, replies, level, plies}]}; see `forcing.rs`. ValueError when the position is over.
-    #[pyo3(signature = (position, fuse=None, goal_nodes=None))]
-    fn forcing(&self, py: Python<'_>, position: &str, fuse: Option<u64>, goal_nodes: Option<u64>) -> PyResult<PyObject> {
+    /// `shortcut=False` reads every reply in full (the read as built before plan 78.47 B); the default answers a reply that touches nothing the read looked at from the stored result of an earlier one.
+    #[pyo3(signature = (position, fuse=None, goal_nodes=None, shortcut=None))]
+    fn forcing(&self, py: Python<'_>, position: &str, fuse: Option<u64>, goal_nodes: Option<u64>, shortcut: Option<bool>) -> PyResult<PyObject> {
         let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
         let t0 = std::time::Instant::now();
         let g = KernelGame::from_fen(&self.variant, position).map_err(bad)?;
@@ -355,15 +356,17 @@ impl SheetModel {
         let mut fp = ForcingParams::default();
         if let Some(f) = fuse { fp.fuse = f; }
         if let Some(n) = goal_nodes { fp.goal_nodes = n; }
+        if let Some(b) = shortcut { fp.shortcut = b; }
         let read = forcing::Forcing::new(&r, fp).read();
         let d = PyDict::new(py);
         d.set_item("mover", self.model.names.roles[r.mover].as_str())?;
         d.set_item("seconds", t0.elapsed().as_secs_f64())?;
-        for (k, v) in [("legal", read.legal), ("found", read.found), ("confirmed", read.confirmed), ("unsettled", read.unsettled), ("no_claim", read.no_claim), ("unread", read.unread)] { d.set_item(k, v)?; }
+        for (k, v) in [("legal", read.legal), ("found", read.found), ("confirmed", read.confirmed), ("not_borne_out", read.not_borne_out), ("unsettled", read.unsettled), ("no_claim", read.no_claim), ("unread", read.unread)] { d.set_item(k, v)?; }
         d.set_item("nodes", read.nodes)?;
         d.set_item("fuse", read.fuse)?;
         d.set_item("cut", read.cut)?;
         d.set_item("level", read.level)?;
+        d.set_item("cost", cost_dict(py, &read.cost)?)?;
         d.set_item("threats", read.threats.iter().map(|t| threat_dict(py, t)).collect::<PyResult<Vec<_>>>()?)?;
         d.into_py_any(py)
     }
@@ -521,6 +524,27 @@ fn reply_dict<'py>(py: Python<'py>, r: &ReplyOut) -> PyResult<Bound<'py, PyDict>
     Ok(d)
 }
 
+/// The cost of a forcing read per kind of work (plan 78.47 A): {work: {positions, frame_nodes, goal_nodes, memory, seconds}} (a kind read inside a deeper threat move of ours is named "... (deeper)"), and the replies.
+fn cost_dict(py: Python<'_>, c: &forcing::Cost) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    for i in 0..14 {
+        let e = PyDict::new(py);
+        e.set_item("positions", c.positions[i])?;
+        e.set_item("frame_nodes", c.frame_nodes[i])?;
+        e.set_item("goal_nodes", c.goal_nodes[i])?;
+        e.set_item("memory", c.memory[i])?;
+        e.set_item("seconds", c.seconds[i])?;
+        d.set_item(format!("{}{}", forcing::WORK[i % 7], if i >= 7 { " (deeper)" } else { "" }), e)?;
+    }
+    d.set_item("replies_took", c.replies[0])?;
+    d.set_item("replies_quiet", c.replies[1])?;
+    d.set_item("unchanged_took", c.replies_unchanged[0])?;
+    d.set_item("unchanged_quiet", c.replies_unchanged[1])?;
+    d.set_item("untouched", c.untouched)?;
+    d.set_item("why", c.why.to_vec())?;
+    d.into_py_any(py)
+}
+
 fn threat_dict(py: Python<'_>, t: &ThreatOut) -> PyResult<PyObject> {
     let d = PyDict::new(py);
     d.set_item("move", t.mv.clone())?;
@@ -532,6 +556,21 @@ fn threat_dict(py: Python<'_>, t: &ThreatOut) -> PyResult<PyObject> {
     d.set_item("replies", t.replies.iter().map(|r| reply_dict(py, r)).collect::<PyResult<Vec<_>>>()?)?;
     d.set_item("level", t.level)?;
     d.set_item("plies", t.plies)?;
+    d.set_item("search", match &t.searched {
+        None => py.None(),
+        Some(c) => {
+            let e = PyDict::new(py);
+            e.set_item("status", c.status)?;
+            e.set_item("claimed", c.claimed)?;
+            e.set_item("value", c.value)?;
+            e.set_item("depth", c.depth)?;
+            e.set_item("depth_read", c.depth_read)?;
+            e.set_item("cut", c.cut)?;
+            e.set_item("line", c.line.clone())?;
+            e.set_item("nodes", c.nodes)?;
+            e.into_py_any(py)?
+        }
+    })?;
     d.into_py_any(py)
 }
 

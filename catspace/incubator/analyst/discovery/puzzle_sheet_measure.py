@@ -518,7 +518,7 @@ def tabulate(rows: list) -> dict:
             if a["held_by"]:
                 two["F_held"]["the plain-search line's first reply is that reply" if a.get("held_is_first_reply_of_line") else ("the plain-search line plays that reply later" if a.get("held_played_in_line") else "the plain-search line does not play that reply")] += 1
             else:
-                two["F_held"]["no reply held it (unread)"] += 1
+                two["F_held"]["no reply held it (unread, or not borne out by the search)"] += 1
         out["two"] = two
     out["detail"] = defaultdict(Counter)
     for r in rows:
