@@ -7586,3 +7586,65 @@ OBS sheet_rust_sheet events_games clock plain: sheets compared 321, sheets that 
 OBS sheet_rust_sheet events_games clock chance: sheets compared 321, sheets that differ 0, steps compared 17795
 OBS sheet_rust_sheet events_games clock budget: sheets compared 321, sheets that differ 0, steps compared 16467
 OBS sheet_rust_sheet events_games: differences per (config, part, field): none
+
+### 78.46 READ BY THE PARENT (2026-11-15)
+
+Merged to main (fast-forward), the extension rebuilt, the 78.45 and 78.46 test files pass on main. The builder's puzzle
+columns were not rerun by me. My own check was the soundness measure on held2_games (seeds 3000), a set the builder did
+not use; output in the scratchpad as sound_held2_parent.txt:
+
+OBS forcing soundness held2_parent: positions 2827 (read 2819), fuse 20000 positions, jobs 10, wall 309.6 s
+OBS forcing soundness held2_parent: confirmed claims 467 (the move ends the game itself 11); checked 456, holds 453, CONTRADICTED 3; unchecked {}
+OBS forcing soundness held2_parent: positions with a confirmed claim 245 (8.69 pct of the read); confirmed claims per position 0.1657; by the level of the verdict {0: 299, 1: 140, 2: 26, 3: 2}
+OBS forcing soundness held2_parent: seconds per position: the read 0.9319, the checks by search 0.0062 (summed over workers)
+
+Reading, directional (one run per set):
+- The three contradictions on the unseen set are of the kind the builder named: after our claim is carried out the other
+  side gains by a move that needs a second step (a strike on one unit, then the taking), or the exchange runs over two
+  places. So CONFIRMED is not yet a proof. It is a claim with reasons that the search bears out in most cases seen.
+- The check by search costs far less than the read in this measure (the two "seconds per position" figures above). So
+  the check can be part of the verdict, at no visible cost.
+- On puzzles the read adds many answers to the sheet, and the plain search given the same seconds still names more.
+  The read's worth is the reasons, and whatever it later lets the search skip. It is not yet a faster way to the move.
+- Most misses left are NOT SETTLED: the answer was read as a threat move and the fuse ran out, most often after the one
+  reply that holds. The fuse stops the read in most positions, by design, so where the positions go decides everything.
+
+## 78.47 THE FORCING READ, SPENT WHERE IT MATTERS: replies by what they touch, and the search as the last word (SYSTEM_SPEC sections 2 and 3)
+
+Serves: tactical reasoning (section 3), using the dependency idea of section 2: a change wakes only the claims that
+read it. Rust first. No game object named.
+
+A. WHERE THE POSITIONS GO (measure first, short). For the read as built, count the positions spent per kind of work
+   (standing claims of a child, the other side's gain, the goal read, deeper threat moves) and per reply kind, on
+   dev_300. Print as OBS. The rest of the plan is ordered by what this shows; if the cost sits elsewhere than assumed
+   below, say so and follow the cost.
+
+B. REPLIES BY WHAT THEY TOUCH. A claim made by a threat move has a read set: the places and units its exchange frame or
+   goal read looked at (the Reading already records what a frame read; plan 78.42). A reply is RELEVANT to the claim if
+   it moves a unit of the read set, ends on or passes over a place of it, takes something, or is itself a threat move
+   of the other side (its own gain or sign). A reply that is none of these leaves the claim exactly as the read after
+   our move found it, so it is answered by carrying the claim out, from the stored result, with no new frame read.
+   This must change NO verdict where the fuse does not bind: acceptance is zero differences in verdict and value
+   against the read as built, on positions where neither read is cut (run both with a large fuse on a few hundred
+   positions). Any difference is a hole in the read set and is fixed there, not waved through.
+
+C. A MEMORY OVER POSITIONS inside one read: the same position reached by two orders of moves is read once.
+
+D. ORDER. Among the unsettled threat moves, deepen first the one with the fewest holding replies, and inside it the
+   holding reply first. This is the proof-number idea in its plainest form; no tuned number.
+
+E. THE SEARCH AS THE LAST WORD. A verdict CONFIRMED is given only after the ledger search, from the position after the
+   move, to the depth that covers the read's longest line, does not contradict it. A claim the search contradicts is
+   printed as NOT BORNE OUT with both lines, and counted. The soundness measure is then run with a DEEPER check than
+   the verdict's own (two plies more), so the measure is not the verdict checking itself.
+
+Acceptance:
+1. B alone: zero verdict differences against the read as built where neither is cut.
+2. dev_300: SEES2 / PICKS2 and class F at the same fuse, before and after; fresh_300 once at the end.
+3. Soundness on held_games, with the deeper check; every contradiction printed.
+4. The 78.43 measures still at zero differences; the 78.46 tests pass.
+
+Not in this plan: the read as a level of the sheet's schedule, the Python mirror, use in play. They follow once the
+read settles more of what it starts.
+
+STATUS: given to a builder agent on 2026-11-15.
