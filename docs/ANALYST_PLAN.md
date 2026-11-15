@@ -8537,3 +8537,19 @@ Not in this plan: derived concepts dcN (layer 2), claims and conditions as nodes
 
 STATUS: written 2026-11-15; to be given to a builder agent when the 78.51 matches have finished (their clocks should
 not share the machine with a build).
+
+
+### 78.51 READ BY THE PARENT (2026-11-15)
+
+Merged to main (the 78.51 BUILT note stands above the 78.52 plan), the extension rebuilt, tests/test_plan78_51_root_order.py
+and tests/test_plan78.py pass on main. The builder's gate run in its worktree showed failures it traced, for the files it
+looked at, to data its worktree lacks. The gate run on main after the merge, machine otherwise idle:
+
+OBS gate engine: files 96, passed 1528, failed 0, xfailed 1, errors 0, wall 2062.5 s
+
+The match lines are the builder's runs, not rerun by me. Reading, directional (one run per match): the number as the
+tie-break of the root order scores above half against the control at equal clock and equal depth, a random tie-break
+scores below half, and a confirmed claim arrives more often for the ordered player. A second set of openings is owed
+before this is leaned on. Nothing is switched on in the wake.
+
+78.52 STATUS: given to a builder agent on 2026-11-15, after the gate above.
