@@ -17,7 +17,7 @@ beside the BASE: all units on the same rows by their kind and whether their owne
 THE FUSES, named (they are costs, not tuned to a result): FUSE = 5000 positions per reading (a short run showed frames cost milliseconds and a 20000 fuse spent minutes on a few big frames); ROW_FUSE = 100000 positions over all frames of one row; the depth of a line is one ply per
 member plus one (counted as BOUNDED); a frame of more than 12 members is refused and counted. The composition test (F) is run on every COMPOSE_EVERY-th row that has two frames apart, for a pair of at most 9 members together, with a fuse of 5000 (both in frames_py.rs).
 
-  .venv/bin/python -m catspace.incubator.analyst.discovery.frames_measure --game chess --games-dir D --reads R [--concepts-dir C] [--games N] [--threads K] [--out-dir O]
+  .venv/bin/python -m catspace.incubator.analyst.discovery.frames_measure --game NAME --games-dir D --reads R [--concepts-dir C] [--games N] [--threads K] [--out-dir O]
 """
 from __future__ import annotations
 

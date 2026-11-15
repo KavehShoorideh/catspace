@@ -547,3 +547,41 @@ def test_the_modules_name_no_object_of_any_game_and_no_worth_table():
             bad = re.findall(SCAN_WORDS, source, flags=re.I)
             assert not bad, (rel, label, sorted(set(bad))[:8])
         assert not re.search(r"\bworth\w*\s*[\[:=(]", code), rel
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------------- H. the check by eye
+def test_the_hand_positions_in_words(model):
+    """Prints, for each hand position, the frame found, what each side can force, the claims and conditional claims, in words (OBS lines, also written to the run's directory). Asserts only that every
+    position reads without refusal."""
+    from catspace.io import paths
+    out = []
+
+    def say(s):
+        out.append("OBS hand frames: " + s)
+        print(out[-1])
+
+    cases = dict(HAND)
+    cases["a rook arrives and then a unit that cannot leave is taken for nothing"] = CONDITIONAL
+    for what, (fen, seed) in cases.items():
+        r = model.frame_read(fen, seed_args(seed), [], True, False, 3, 20000)
+        say(f"[{what}] {fen}")
+        say(f"  frame {r['frame']['id']}: units {', '.join(m[5:] for m in r['frame']['members'])}; places {', '.join(p[6:] for p in r['frame']['places'])}; side to move {r['mover']}")
+        for t in r["tempo"]:
+            if t["flipped"] or tuple(t["budget"]) != (0, ALL) and tuple(t["budget"]) != (ALL, 0):
+                continue
+            mine = t["reading"]
+            sets = " | ".join(("NOTHING CAN BE CLAIMED (the side has no move in the frame and must pass: the worst outcome is stood for it)" if any(not x.startswith(f"unit:{mine}:") for x in a) else
+                               f"loses {[x[5:] for x in a] or 'nothing'} / the other loses {[x[5:] for x in b] or 'nothing'}") for a, b in t["pairs"])
+            say(f"  {t['reading']} can force (spends no pass, the other may pass at every ply): {sets}")
+        for c in r["claims"]:
+            if c["status"] != "no":
+                cond = f" after a {c['condition']['kind']} arrives on {c['condition']['to']}" if c.get("condition") else ""
+                say(f"  claim by {c['reading']}: {c['unit'][5:]} {c['kind']} -> {c['status']}{cond}")
+        say(f"  outcomes in the table {len(r['outcomes'])}; units that can leave {[x[5:] for x in r['leaves']]}; stats {r['stats']}")
+    two = model.frame_compose(APART, (seed_args(APART_A), []), (seed_args(APART_B), []), 20000)
+    say(f"[two frames far apart, one move in between] {APART}: in contact {two['in_contact']}; frames {[f['members'] for f in (two['a'], two['b'])]}")
+    for rd in two["readings"]:
+        say(f"  {rd['reading']}: composed {rd['composed']}; joint {rd['joint']}; {rd['cmp']}")
+    d = Path(paths.experiment("frames_78_55", "games_s5016_n500"))
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "hand_positions_obs.txt").write_text("\n".join(out) + "\n")
