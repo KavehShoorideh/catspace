@@ -8608,3 +8608,16 @@ OBS graph layer1 chess chess: position links at_unit: 32347 over 1000 positions,
 OBS graph layer1 chess chess: position links along: 144966 over 1000 positions, 145.0 per position
 OBS graph layer1 chess chess: position links between: 24946 over 1000 positions, 24.9 per position
 OBS graph layer1 chess chess: position part 191.8 nodes and 607.1 links per position on average
+
+
+### 78.52 READ BY THE PARENT (2026-11-15)
+
+Merged to main (fast-forward), the extension rebuilt; tests/test_plan78_52_graph_layer1.py and test_plan78_49_subgoal_fit.py
+pass on main. No protected file was needed: the steps by direction are read from the rules' static relations through a
+default method of the trait. I built the graph for one real position through the mirror and read it; the counts and the
+shut-line relation nodes are as the note describes. Limits kept in mind for the layers above: both variants share one
+board (a different board was checked on the static part only, by a small description inside a Rust test); a shut line is
+recorded for the side to move only, and not when its end place holds one of that side's own units.
+
+A second run of the 78.51 tie-break match on new openings (first seed 12000) was started by the parent the same day; its
+line is appended when it finishes.
