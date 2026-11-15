@@ -85,6 +85,70 @@ fn run_games(sp: &Spec, c: &Config, games: &[GameWire], threads: usize) -> Vec<G
     slots.into_inner().unwrap().into_iter().map(|x| x.unwrap_or_else(|| Err("not run".into()))).collect()
 }
 
+/// PLAN 78.48 A. One side's forcing read of one position, kept small: per threat move its verdict, value, level, the kinds and worths of its claims, what it took, the longest line.
+struct LiteThreat { verdict: &'static str, value: f64, level: u32, claims: Vec<(&'static str, f64)>, took_worth: f64, plies: usize }
+struct LiteRead { threats: Vec<LiteThreat>, nodes: u64, cut: bool, seconds: f64, goal_stake: f64 }
+/// A position of a game: the read of the side to move and, where the game gives a pass, the read of the other side on the position after the pass.
+struct LitePly { ours: LiteRead, theirs: Option<LiteRead>, mover: usize }
+type LiteRes = Result<Vec<Option<LitePly>>, String>;
+
+fn lite_read(g: &KernelGame, st: <KernelGame as cs_game::Game>::State, model: &Model, fp: &ForcingParams) -> Option<(LiteRead, usize)> {
+    let r = Reading::new(g, st, model).ok()?;
+    let t0 = std::time::Instant::now();
+    let read = forcing::Forcing::new(&r, fp.clone()).read();
+    let seconds = t0.elapsed().as_secs_f64();
+    let goal_stake = r.top_worth() * Params::default().goal_stake_multiple;
+    let threats = read.threats.iter().map(|t| LiteThreat { verdict: t.verdict.word(), value: t.value, level: t.level, claims: t.claims.iter().map(|c| (c.kind, c.value)).collect(), took_worth: t.took_worth, plies: t.plies }).collect();
+    Some((LiteRead { threats, nodes: read.nodes, cut: read.cut, seconds, goal_stake }, r.mover))
+}
+
+fn lite_game(sp: &Spec, model: &Model, game: &GameWire, fp: &ForcingParams) -> LiteRes {
+    let g = match &game.0 { Some(f) => KernelGame::from_fen(&sp.variant, f)?, None => KernelGame::new(&sp.variant, 518)? };
+    let mut st = cs_game::Game::initial(&g);
+    let mut out = Vec::with_capacity(game.1.len() + 1);
+    for ply in 0..=game.1.len() {
+        out.push(lite_read(&g, st.clone(), model, fp).map(|(ours, mover)| {
+            let theirs = cs_game::Game::pass(&g, &st).and_then(|p| lite_read(&g, p, model, fp)).map(|x| x.0);
+            LitePly { ours, theirs, mover }
+        }));
+        if ply < game.1.len() {
+            let mv = cs_game::Game::moves(&g, &st).into_iter().find(|x| cs_game::Game::move_name(&g, &st, x) == game.1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", game.1[ply]))?;
+            st = cs_game::Game::apply(&g, &st, &mv);
+        }
+    }
+    Ok(out)
+}
+
+fn run_lite(sp: &Spec, games: &[GameWire], threads: usize, fp: &ForcingParams) -> Vec<LiteRes> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: std::sync::Mutex<Vec<Option<LiteRes>>> = std::sync::Mutex::new((0..games.len()).map(|_| None).collect());
+    let workers = threads.max(1).min(games.len().max(1));
+    std::thread::scope(|sc| {
+        for _ in 0..workers {
+            sc.spawn(|| {
+                let model = build(sp);
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if i >= games.len() { break; }
+                    let r = match &model { Ok(m) => lite_game(sp, m, &games[i], fp), Err(e) => Err(e.clone()) };
+                    slots.lock().unwrap()[i] = Some(r);
+                }
+            });
+        }
+    });
+    slots.into_inner().unwrap().into_iter().map(|x| x.unwrap_or_else(|| Err("not run".into()))).collect()
+}
+
+fn lite_dict(py: Python<'_>, x: &LiteRead) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("nodes", x.nodes)?;
+    d.set_item("cut", x.cut)?;
+    d.set_item("seconds", x.seconds)?;
+    d.set_item("goal_stake", x.goal_stake)?;
+    d.set_item("threats", x.threats.iter().map(|t| (t.verdict, t.value, t.level, t.claims.clone(), t.took_worth, t.plies)).collect::<Vec<_>>())?;
+    d.into_py_any(py)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn config(reach_k: u32, max_open_exits: usize, clock: &str, max_steps: Option<usize>, budget_cost: Option<f64>, cost_model: Option<Vec<f64>>, chances: Option<Vec<(Vec<String>, Vec<(u32, (i64, i64))>)>>,
           chance_horizon: u32, risk: f64) -> Result<Config, String> {
@@ -369,6 +433,35 @@ impl SheetModel {
         d.set_item("cost", cost_dict(py, &read.cost)?)?;
         d.set_item("threats", read.threats.iter().map(|t| threat_dict(py, t)).collect::<PyResult<Vec<_>>>()?)?;
         d.into_py_any(py)
+    }
+
+    /// forcing_games(games, threads, fuse=None, goal_nodes=None) -> per game, per position (None where over): {mover, ours, theirs}: the forcing read of the side to move, and of the other
+    /// side on the position after the game's pass (None where the game gives none). Each read: {nodes, cut, seconds, goal_stake, threats: [(verdict, value, level, [(claim kind, worth)], took_worth, plies)]}.
+    /// Many games across `threads` std threads, the GIL released (plan 78.48 A).
+    #[pyo3(signature = (games, threads, fuse=None, goal_nodes=None))]
+    fn forcing_games(&self, py: Python<'_>, games: Vec<GameWire>, threads: usize, fuse: Option<u64>, goal_nodes: Option<u64>) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let mut fp = ForcingParams::default();
+        if let Some(f) = fuse { fp.fuse = f; }
+        if let Some(n) = goal_nodes { fp.goal_nodes = n; }
+        let spec = self.spec.clone();
+        let res = py.allow_threads(move || run_lite(&spec, &games, threads, &fp));
+        let n = &self.model.names;
+        let mut out = vec![];
+        for r in res {
+            let plies = r.map_err(bad)?;
+            out.push(plies.iter().map(|x| match x {
+                Some(p) => {
+                    let d = PyDict::new(py);
+                    d.set_item("mover", n.roles[p.mover].as_str())?;
+                    d.set_item("ours", lite_dict(py, &p.ours)?)?;
+                    d.set_item("theirs", match &p.theirs { Some(t) => lite_dict(py, t)?, None => py.None() })?;
+                    d.into_py_any(py)
+                }
+                None => Ok(py.None()),
+            }).collect::<PyResult<Vec<_>>>()?);
+        }
+        out.into_py_any(py)
     }
 
     /// forcing_check(position, mv, depth, nodes) -> {value, depth, cut, line, nodes, win}: the ledger search (the sheet's worth table, no pruning) from the position after the move `mv`, deepened to

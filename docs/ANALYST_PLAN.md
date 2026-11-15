@@ -7851,3 +7851,242 @@ No oracle, no human game, no puzzle enters. Rust for the read; the fit and the t
 opportunity_measure.py, game-free.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+
+78.48 BUILT (2026-11-15, branch worktree-agent-a55465c1599922796; journal entry 2026-11-15 05:28). catspace/incubator/analyst/discovery/forcing_opportunity_measure.py (game-free; `--probe`, the run, `--make-weak`, `--weak-dir`), tests/test_plan78_48_forcing_opportunity.py (in scripts/gate.py). Rust: `SheetModel.forcing_games(games, threads, fuse, goal_nodes)` in rust/engine/py/src/sheet_py.rs (std threads; per position the forcing read of the side to move and, by the game's `pass`, of the other side; a compact tuple per threat move), and `Reading::top_worth` made pub (reading.rs); the forcing read itself is unchanged. A measurement: nothing is wired into play, nothing reads its output.
+DEFINITIONS AS BUILT. Per threat move: verdict (CONFIRMED, NOT BORNE OUT, NOT SETTLED, NO CLAIM; a move the fuse left unread is counted NOT SETTLED), level, kind of claim (the first present of ends, goal, exchange, takes, sign), claimed worth (CONFIRMED: its value, the goal at the goal's stake; the others: the best claim it makes). Cell = (verdict, kind, level); the cell's chance is the sheet's `Chances` (counts smoothed by the chance of the coarser key: (verdict, kind, level) -> (verdict, kind) -> (verdict) -> all), so a thin cell falls back by the same smoothing as the 78.41 table, no count limit. 'Gained at least the claimed worth within h plies' = the mover's worth WON (78.44's outcome code, the balance at t+h) is at least the claimed worth and above zero, for the mover's threats; the mover's worth LOST for the other side's. The number at horizon h: FORCING = max over the mover's threat moves of chance x claimed worth, minus the same for the other side (the sum form is printed as a labelled second form; both forms and the choice of the max as primary were fixed before the long run). BOTH = the 78.44 number plus FORCING. Split by game: even game ids fit, odd ids are the test. Where the game gives no pass the other side's terms are empty (counted). The subset: net0 = 0 and the mover has no CONFIRMED threat. FUSE: probe on 10 games at the default 20000 and at a quarter of it (5000); the long run used 5000 on all 500 games because 20000 would have cost about 0.2 s of wall per position (about 150 minutes for 45179 positions) against 0.054 s (the run took 2299 s for the reads); at both fuses most reads were stopped by the fuse (1466 and 1519 of 1912) and the threat moves differ in 1401 of 1912 reads, so the numbers below are of a read that is mostly unsettled (see the verdict counts). Games: the 500 of 78.44 (artifacts/experiments/opportunity_78_44/games_s5016_n500), all of them. Stage E: 200 new games (seeds 5516 to 5715) of the control player in which one colour (alternating by seed pairs) searches 0.02 s a move against the control 0.2 s, cases split by whether the side that ANSWERS the threat is the weaker colour or the control colour, same games, fitted on the even half.
+Fuse probe, verbatim:
+OBS forcing_opportunity games_s5016_n500: fuse 20000: 10 games, 1000 positions, wall 200.8 s on 10 threads, read seconds per position 1.7541 (both sides, summed), wall seconds per position 0.2008, reads stopped by the fuse 1466 of 1912, threat moves per read 6.74, CONFIRMED per read 0.294, positions without the other side's read 88
+OBS forcing_opportunity games_s5016_n500: fuse 5000: 10 games, 1000 positions, wall 54.1 s on 10 threads, read seconds per position 0.4523 (both sides, summed), wall seconds per position 0.0541, reads stopped by the fuse 1519 of 1912, threat moves per read 6.74, CONFIRMED per read 0.239, positions without the other side's read 88
+OBS forcing_opportunity games_s5016_n500: reads whose threat moves (verdict, value, level) differ between fuse 20000 and fuse 5000: 1401 of 1912
+Run, verbatim (the 78.44 table is recomputed from the same games, sheet and chance table fit1112; of 181 cell lines printed only the 57 with at least 500 cases are copied here, all are in artifacts/experiments/forcing_opportunity_78_48/games_s5016_n500/result.json and the log):
+OBS 78.44 table of 500 games in 382.3 s
+OBS forcing_opportunity games_s5016_n500: games 500 (fit 250 even-numbered, test 250 odd-numbered); horizons (4, 8, 16); verdicts ('CONFIRMED', 'NOT BORNE OUT', 'NOT SETTLED', 'NO CLAIM'); kinds ('ends', 'goal', 'exchange', 'takes', 'sign'); fallback by smoothing to (verdict, kind), (verdict), all
+OBS forcing_opportunity games_s5016_n500: horizon 4: cases 275656, base rate (gained at least the claimed worth) 0.3307 (91147 of 275656), cells 63
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NOT SETTLED/exchange/0: cases 149863, gained 46016, rate 0.3071, fitted chance 0.3071
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NOT SETTLED/sign/0: cases 28994, gained 12792, rate 0.4412, fitted chance 0.4412
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NOT SETTLED/takes/0: cases 21766, gained 11828, rate 0.5434, fitted chance 0.5434
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NOT SETTLED/exchange/1: cases 19296, gained 3820, rate 0.1980, fitted chance 0.1980
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NO CLAIM/exchange/0: cases 12066, gained 1521, rate 0.1261, fitted chance 0.1261
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NOT SETTLED/sign/1: cases 11137, gained 4116, rate 0.3696, fitted chance 0.3696
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NO CLAIM/exchange/1: cases 5302, gained 816, rate 0.1539, fitted chance 0.1539
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NOT SETTLED/takes/1: cases 4483, gained 2488, rate 0.5550, fitted chance 0.5550
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NO CLAIM/takes/0: cases 3544, gained 1386, rate 0.3911, fitted chance 0.3911
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NOT SETTLED/goal/0: cases 3401, gained 0, rate 0.0000, fitted chance 0.0000
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell CONFIRMED/takes/0: cases 2552, gained 1551, rate 0.6078, fitted chance 0.6078
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NO CLAIM/sign/1: cases 2041, gained 554, rate 0.2714, fitted chance 0.2714
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell CONFIRMED/exchange/0: cases 1933, gained 1158, rate 0.5991, fitted chance 0.5991
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NO CLAIM/sign/0: cases 1884, gained 426, rate 0.2261, fitted chance 0.2261
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NO CLAIM/takes/1: cases 1188, gained 542, rate 0.4562, fitted chance 0.4562
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell CONFIRMED/sign/1: cases 949, gained 427, rate 0.4499, fitted chance 0.4499
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell CONFIRMED/sign/0: cases 903, gained 385, rate 0.4264, fitted chance 0.4264
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell CONFIRMED/exchange/1: cases 876, gained 549, rate 0.6267, fitted chance 0.6267
+OBS forcing_opportunity games_s5016_n500: horizon 4 cell NO CLAIM/exchange/2: cases 658, gained 94, rate 0.1429, fitted chance 0.1428
+OBS forcing_opportunity games_s5016_n500: horizon 8: cases 263124, base rate (gained at least the claimed worth) 0.5440 (143128 of 263124), cells 61
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NOT SETTLED/exchange/0: cases 144682, gained 75771, rate 0.5237, fitted chance 0.5237
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NOT SETTLED/sign/0: cases 27333, gained 19110, rate 0.6992, fitted chance 0.6992
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NOT SETTLED/takes/0: cases 21249, gained 16162, rate 0.7606, fitted chance 0.7606
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NOT SETTLED/exchange/1: cases 18543, gained 7267, rate 0.3919, fitted chance 0.3919
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NO CLAIM/exchange/0: cases 11076, gained 2965, rate 0.2677, fitted chance 0.2677
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NOT SETTLED/sign/1: cases 10191, gained 6599, rate 0.6475, fitted chance 0.6475
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NO CLAIM/exchange/1: cases 4919, gained 1453, rate 0.2954, fitted chance 0.2954
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NOT SETTLED/takes/1: cases 4369, gained 3182, rate 0.7283, fitted chance 0.7283
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NO CLAIM/takes/0: cases 3404, gained 2164, rate 0.6357, fitted chance 0.6357
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NOT SETTLED/goal/0: cases 3072, gained 39, rate 0.0127, fitted chance 0.0127
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell CONFIRMED/takes/0: cases 2470, gained 1795, rate 0.7267, fitted chance 0.7267
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell CONFIRMED/exchange/0: cases 1869, gained 1398, rate 0.7480, fitted chance 0.7480
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NO CLAIM/sign/1: cases 1805, gained 908, rate 0.5030, fitted chance 0.5030
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NO CLAIM/sign/0: cases 1587, gained 721, rate 0.4543, fitted chance 0.4543
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NO CLAIM/takes/1: cases 1151, gained 771, rate 0.6699, fitted chance 0.6698
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell CONFIRMED/exchange/1: cases 849, gained 715, rate 0.8422, fitted chance 0.8420
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell CONFIRMED/sign/0: cases 814, gained 508, rate 0.6241, fitted chance 0.6242
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell CONFIRMED/sign/1: cases 813, gained 551, rate 0.6777, fitted chance 0.6777
+OBS forcing_opportunity games_s5016_n500: horizon 8 cell NO CLAIM/exchange/2: cases 593, gained 165, rate 0.2782, fitted chance 0.2782
+OBS forcing_opportunity games_s5016_n500: horizon 16: cases 237582, base rate (gained at least the claimed worth) 0.7841 (186294 of 237582), cells 57
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NOT SETTLED/exchange/0: cases 132936, gained 103755, rate 0.7805, fitted chance 0.7805
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NOT SETTLED/sign/0: cases 23961, gained 22028, rate 0.9193, fitted chance 0.9193
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NOT SETTLED/takes/0: cases 19965, gained 18532, rate 0.9282, fitted chance 0.9282
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NOT SETTLED/exchange/1: cases 17061, gained 11276, rate 0.6609, fitted chance 0.6609
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NO CLAIM/exchange/0: cases 9156, gained 4777, rate 0.5217, fitted chance 0.5217
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NOT SETTLED/sign/1: cases 8526, gained 7700, rate 0.9031, fitted chance 0.9031
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NO CLAIM/exchange/1: cases 4222, gained 2249, rate 0.5327, fitted chance 0.5327
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NOT SETTLED/takes/1: cases 4068, gained 3629, rate 0.8921, fitted chance 0.8921
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NO CLAIM/takes/0: cases 3123, gained 2779, rate 0.8898, fitted chance 0.8898
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NOT SETTLED/goal/0: cases 2739, gained 216, rate 0.0789, fitted chance 0.0789
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell CONFIRMED/takes/0: cases 2210, gained 1872, rate 0.8471, fitted chance 0.8471
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell CONFIRMED/exchange/0: cases 1714, gained 1504, rate 0.8775, fitted chance 0.8775
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NO CLAIM/sign/1: cases 1411, gained 1159, rate 0.8214, fitted chance 0.8214
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NO CLAIM/sign/0: cases 1117, gained 917, rate 0.8209, fitted chance 0.8209
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NO CLAIM/takes/1: cases 1058, gained 933, rate 0.8819, fitted chance 0.8819
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell CONFIRMED/exchange/1: cases 726, gained 694, rate 0.9559, fitted chance 0.9558
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell CONFIRMED/sign/0: cases 648, gained 521, rate 0.8040, fitted chance 0.8040
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell CONFIRMED/sign/1: cases 627, gained 513, rate 0.8182, fitted chance 0.8182
+OBS forcing_opportunity games_s5016_n500: horizon 16 cell NO CLAIM/exchange/2: cases 500, gained 246, rate 0.4920, fitted chance 0.4921
+OBS forcing_opportunity games_s5016_n500: positions 45179, reads 86967, read seconds per position (both sides, summed over threads) 0.4495, reads stopped by the fuse 68692
+OBS forcing_opportunity games_s5016_n500: threat moves by verdict {'NOT SETTLED': 492282, 'NO CLAIM': 60740, 'CONFIRMED': 18087, 'NOT BORNE OUT': 291}
+OBS forcing_opportunity games_s5016_n500: test games 250, test positions 22461, positions where the other side has no pass (its terms empty) 1656, positions with net0 = 0 and no CONFIRMED threat 13507, positions with a CONFIRMED threat 1863
+OBS forcing_opportunity games_s5016_n500: horizon 4: test positions with an outcome 21461, of them in the subset 12902
+OBS forcing_opportunity games_s5016_n500: horizon 8: test positions with an outcome 20464, of them in the subset 12272
+OBS forcing_opportunity games_s5016_n500: horizon 16: test positions with an outcome 18472, of them in the subset 11199
+OBS forcing_opportunity games_s5016_n500: spearman h4 78.44 number vs outcome, all test positions: +0.3475  90% interval over games [+0.3361, +0.3610] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, all test positions: +0.0920  90% interval over games [+0.0786, +0.1067] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 both vs outcome, all test positions: +0.2934  90% interval over games [+0.2802, +0.3071] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number, sum form vs outcome, all test positions: +0.0615  90% interval over games [+0.0485, +0.0747] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: count of threat moves vs outcome, all test positions: +0.0161  90% interval over games [+0.0027, +0.0304] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: forcing number shuffled in game vs outcome, all test positions: +0.0040  90% interval over games [-0.0062, +0.0148] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs worth won, all test positions: +0.0759  90% interval over games [+0.0668, +0.0854] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, 78.44 number held out (partial rank), all test positions: +0.0129  90% interval over games [-0.0014, +0.0277] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 78.44 number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0145  90% interval over games [-0.0012, +0.0309] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0204  90% interval over games [+0.0035, +0.0373] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 both vs outcome, net0 = 0 and no CONFIRMED threat: +0.0313  90% interval over games [+0.0156, +0.0481] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number, sum form vs outcome, net0 = 0 and no CONFIRMED threat: +0.0280  90% interval over games [+0.0123, +0.0444] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: count of threat moves vs outcome, net0 = 0 and no CONFIRMED threat: +0.0067  90% interval over games [-0.0094, +0.0225] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: forcing number shuffled in game vs outcome, net0 = 0 and no CONFIRMED threat: -0.0011  90% interval over games [-0.0150, +0.0137] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs worth won, net0 = 0 and no CONFIRMED threat: +0.0080  90% interval over games [-0.0036, +0.0190] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, 78.44 number held out (partial rank), net0 = 0 and no CONFIRMED threat: +0.0180  90% interval over games [+0.0010, +0.0347] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 78.44 number vs outcome, all test positions: +0.3240  90% interval over games [+0.3091, +0.3404] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, all test positions: +0.0710  90% interval over games [+0.0561, +0.0875] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 both vs outcome, all test positions: +0.2380  90% interval over games [+0.2220, +0.2549] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number, sum form vs outcome, all test positions: +0.0794  90% interval over games [+0.0631, +0.0955] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: count of threat moves vs outcome, all test positions: +0.0819  90% interval over games [+0.0639, +0.0985] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: forcing number shuffled in game vs outcome, all test positions: +0.0027  90% interval over games [-0.0094, +0.0148] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs worth won, all test positions: +0.0584  90% interval over games [+0.0492, +0.0674] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, 78.44 number held out (partial rank), all test positions: +0.0159  90% interval over games [+0.0007, +0.0310] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 78.44 number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0293  90% interval over games [+0.0103, +0.0509] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0219  90% interval over games [+0.0033, +0.0408] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 both vs outcome, net0 = 0 and no CONFIRMED threat: +0.0340  90% interval over games [+0.0150, +0.0535] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number, sum form vs outcome, net0 = 0 and no CONFIRMED threat: +0.0691  90% interval over games [+0.0506, +0.0883] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: count of threat moves vs outcome, net0 = 0 and no CONFIRMED threat: +0.0768  90% interval over games [+0.0556, +0.0962] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: forcing number shuffled in game vs outcome, net0 = 0 and no CONFIRMED threat: +0.0155  90% interval over games [-0.0005, +0.0304] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs worth won, net0 = 0 and no CONFIRMED threat: +0.0033  90% interval over games [-0.0076, +0.0139] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, 78.44 number held out (partial rank), net0 = 0 and no CONFIRMED threat: +0.0164  90% interval over games [-0.0022, +0.0361] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 78.44 number vs outcome, all test positions: +0.2718  90% interval over games [+0.2505, +0.2946] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, all test positions: +0.0390  90% interval over games [+0.0171, +0.0611] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 both vs outcome, all test positions: +0.1679  90% interval over games [+0.1450, +0.1905] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number, sum form vs outcome, all test positions: +0.0696  90% interval over games [+0.0474, +0.0929] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: count of threat moves vs outcome, all test positions: +0.1106  90% interval over games [+0.0869, +0.1336] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: forcing number shuffled in game vs outcome, all test positions: +0.0091  90% interval over games [-0.0022, +0.0204] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs worth won, all test positions: +0.0394  90% interval over games [+0.0295, +0.0494] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, 78.44 number held out (partial rank), all test positions: +0.0090  90% interval over games [-0.0127, +0.0304] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 78.44 number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0353  90% interval over games [+0.0070, +0.0636] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0330  90% interval over games [+0.0069, +0.0594] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 both vs outcome, net0 = 0 and no CONFIRMED threat: +0.0400  90% interval over games [+0.0147, +0.0665] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number, sum form vs outcome, net0 = 0 and no CONFIRMED threat: +0.0807  90% interval over games [+0.0539, +0.1060] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: count of threat moves vs outcome, net0 = 0 and no CONFIRMED threat: +0.1094  90% interval over games [+0.0802, +0.1383] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: forcing number shuffled in game vs outcome, net0 = 0 and no CONFIRMED threat: +0.0069  90% interval over games [-0.0079, +0.0238] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs worth won, net0 = 0 and no CONFIRMED threat: -0.0045  90% interval over games [-0.0149, +0.0061] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, 78.44 number held out (partial rank), net0 = 0 and no CONFIRMED threat: +0.0267  90% interval over games [+0.0009, +0.0518] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: bootstrap seconds 81.4
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 1 of 5 of the forcing number: plies 4300, mean number -2.0016, mean outcome -0.2814, mean worth won 1.7895, mean worth lost 2.0709
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 2 of 5 of the forcing number: plies 4103, mean number -0.4377, mean outcome -0.1019, mean worth won 1.6154, mean worth lost 1.7173
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 3 of 5 of the forcing number: plies 4469, mean number +0.0023, mean outcome -0.2488, mean worth won 1.3448, mean worth lost 1.5936
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 4 of 5 of the forcing number: plies 4296, mean number +0.5261, mean outcome -0.0503, mean worth won 1.4977, mean worth lost 1.5480
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 5 of 5 of the forcing number: plies 4293, mean number +2.0222, mean outcome +0.6585, mean worth won 2.8376, mean worth lost 2.1791
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 1 of 5 of the forcing number: plies 4089, mean number -2.8137, mean outcome -0.2575, mean worth won 3.8432, mean worth lost 4.1008
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 2 of 5 of the forcing number: plies 3557, mean number -0.7085, mean outcome -0.1633, mean worth won 3.3104, mean worth lost 3.4737
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 3 of 5 of the forcing number: plies 4633, mean number +0.0075, mean outcome -0.1893, mean worth won 3.3445, mean worth lost 3.5338
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 4 of 5 of the forcing number: plies 4190, mean number +0.9317, mean outcome +0.0387, mean worth won 3.5074, mean worth lost 3.4687
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 5 of 5 of the forcing number: plies 3995, mean number +3.2196, mean outcome +0.5617, mean worth won 4.9292, mean worth lost 4.3675
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 1 of 5 of the forcing number: plies 3675, mean number -3.9501, mean outcome -0.1290, mean worth won 8.0259, mean worth lost 8.1548
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 2 of 5 of the forcing number: plies 3092, mean number -0.9458, mean outcome -0.2031, mean worth won 7.5006, mean worth lost 7.7038
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 3 of 5 of the forcing number: plies 4318, mean number +0.0107, mean outcome -0.1473, mean worth won 7.6119, mean worth lost 7.7591
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 4 of 5 of the forcing number: plies 3725, mean number +1.3287, mean outcome +0.0362, mean worth won 7.5203, mean worth lost 7.4840
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 5 of 5 of the forcing number: plies 3662, mean number +4.7085, mean outcome +0.3596, mean worth won 9.2332, mean worth lost 8.8736
+OBS forcing_opportunity games_s5016_n500: fuse 5000, total wall 2764.7 s
+Stage E, verbatim (cell lines of horizon 4 with at least 300 cases on both sides; all in long_run_e.log):
+OBS 78.44 table of 200 games in 139.7 s
+OBS forcing_opportunity games_s5016_n500: games 500 (fit 250 even-numbered, test 250 odd-numbered); horizons (4, 8, 16); verdicts ('CONFIRMED', 'NOT BORNE OUT', 'NOT SETTLED', 'NO CLAIM'); kinds ('ends', 'goal', 'exchange', 'takes', 'sign'); fallback by smoothing to (verdict, kind), (verdict), all
+OBS forcing_opportunity games_s5016_n500: horizon 4: cases 275656, base rate (gained at least the claimed worth) 0.3307 (91147 of 275656), cells 63
+OBS forcing_opportunity games_s5016_n500: horizon 8: cases 263124, base rate (gained at least the claimed worth) 0.5440 (143128 of 263124), cells 61
+OBS forcing_opportunity games_s5016_n500: horizon 16: cases 237582, base rate (gained at least the claimed worth) 0.7841 (186294 of 237582), cells 57
+OBS forcing_opportunity games_s5016_n500: positions 45179, reads 86967, read seconds per position (both sides, summed over threads) 0.4495, reads stopped by the fuse 68692
+OBS forcing_opportunity games_s5016_n500: threat moves by verdict {'NOT SETTLED': 492282, 'NO CLAIM': 60740, 'CONFIRMED': 18087, 'NOT BORNE OUT': 291}
+OBS forcing_opportunity games_s5016_n500: test games 250, test positions 22461, positions where the other side has no pass (its terms empty) 1656, positions with net0 = 0 and no CONFIRMED threat 13507, positions with a CONFIRMED threat 1863
+OBS forcing_opportunity games_s5016_n500: horizon 4: test positions with an outcome 21461, of them in the subset 12902
+OBS forcing_opportunity games_s5016_n500: horizon 8: test positions with an outcome 20464, of them in the subset 12272
+OBS forcing_opportunity games_s5016_n500: horizon 16: test positions with an outcome 18472, of them in the subset 11199
+OBS forcing_opportunity games_s5016_n500: spearman h4 78.44 number vs outcome, all test positions: +0.3475  90% interval over games [+0.3361, +0.3610] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, all test positions: +0.0920  90% interval over games [+0.0786, +0.1067] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 both vs outcome, all test positions: +0.2934  90% interval over games [+0.2802, +0.3071] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number, sum form vs outcome, all test positions: +0.0615  90% interval over games [+0.0485, +0.0747] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: count of threat moves vs outcome, all test positions: +0.0161  90% interval over games [+0.0027, +0.0304] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: forcing number shuffled in game vs outcome, all test positions: +0.0040  90% interval over games [-0.0062, +0.0148] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs worth won, all test positions: +0.0759  90% interval over games [+0.0668, +0.0854] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, 78.44 number held out (partial rank), all test positions: +0.0129  90% interval over games [-0.0014, +0.0277] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 78.44 number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0145  90% interval over games [-0.0012, +0.0309] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0204  90% interval over games [+0.0035, +0.0373] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 both vs outcome, net0 = 0 and no CONFIRMED threat: +0.0313  90% interval over games [+0.0156, +0.0481] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number, sum form vs outcome, net0 = 0 and no CONFIRMED threat: +0.0280  90% interval over games [+0.0123, +0.0444] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: count of threat moves vs outcome, net0 = 0 and no CONFIRMED threat: +0.0067  90% interval over games [-0.0094, +0.0225] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 control: forcing number shuffled in game vs outcome, net0 = 0 and no CONFIRMED threat: -0.0011  90% interval over games [-0.0150, +0.0137] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs worth won, net0 = 0 and no CONFIRMED threat: +0.0080  90% interval over games [-0.0036, +0.0190] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h4 forcing number vs outcome, 78.44 number held out (partial rank), net0 = 0 and no CONFIRMED threat: +0.0180  90% interval over games [+0.0010, +0.0347] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 78.44 number vs outcome, all test positions: +0.3240  90% interval over games [+0.3091, +0.3404] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, all test positions: +0.0710  90% interval over games [+0.0561, +0.0875] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 both vs outcome, all test positions: +0.2380  90% interval over games [+0.2220, +0.2549] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number, sum form vs outcome, all test positions: +0.0794  90% interval over games [+0.0631, +0.0955] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: count of threat moves vs outcome, all test positions: +0.0819  90% interval over games [+0.0639, +0.0985] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: forcing number shuffled in game vs outcome, all test positions: +0.0027  90% interval over games [-0.0094, +0.0148] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs worth won, all test positions: +0.0584  90% interval over games [+0.0492, +0.0674] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, 78.44 number held out (partial rank), all test positions: +0.0159  90% interval over games [+0.0007, +0.0310] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 78.44 number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0293  90% interval over games [+0.0103, +0.0509] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0219  90% interval over games [+0.0033, +0.0408] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 both vs outcome, net0 = 0 and no CONFIRMED threat: +0.0340  90% interval over games [+0.0150, +0.0535] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number, sum form vs outcome, net0 = 0 and no CONFIRMED threat: +0.0691  90% interval over games [+0.0506, +0.0883] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: count of threat moves vs outcome, net0 = 0 and no CONFIRMED threat: +0.0768  90% interval over games [+0.0556, +0.0962] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 control: forcing number shuffled in game vs outcome, net0 = 0 and no CONFIRMED threat: +0.0155  90% interval over games [-0.0005, +0.0304] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs worth won, net0 = 0 and no CONFIRMED threat: +0.0033  90% interval over games [-0.0076, +0.0139] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h8 forcing number vs outcome, 78.44 number held out (partial rank), net0 = 0 and no CONFIRMED threat: +0.0164  90% interval over games [-0.0022, +0.0361] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 78.44 number vs outcome, all test positions: +0.2718  90% interval over games [+0.2505, +0.2946] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, all test positions: +0.0390  90% interval over games [+0.0171, +0.0611] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 both vs outcome, all test positions: +0.1679  90% interval over games [+0.1450, +0.1905] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number, sum form vs outcome, all test positions: +0.0696  90% interval over games [+0.0474, +0.0929] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: count of threat moves vs outcome, all test positions: +0.1106  90% interval over games [+0.0869, +0.1336] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: forcing number shuffled in game vs outcome, all test positions: +0.0091  90% interval over games [-0.0022, +0.0204] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs worth won, all test positions: +0.0394  90% interval over games [+0.0295, +0.0494] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, 78.44 number held out (partial rank), all test positions: +0.0090  90% interval over games [-0.0127, +0.0304] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 78.44 number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0353  90% interval over games [+0.0070, +0.0636] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, net0 = 0 and no CONFIRMED threat: +0.0330  90% interval over games [+0.0069, +0.0594] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 both vs outcome, net0 = 0 and no CONFIRMED threat: +0.0400  90% interval over games [+0.0147, +0.0665] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number, sum form vs outcome, net0 = 0 and no CONFIRMED threat: +0.0807  90% interval over games [+0.0539, +0.1060] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: count of threat moves vs outcome, net0 = 0 and no CONFIRMED threat: +0.1094  90% interval over games [+0.0802, +0.1383] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 control: forcing number shuffled in game vs outcome, net0 = 0 and no CONFIRMED threat: +0.0069  90% interval over games [-0.0079, +0.0238] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs worth won, net0 = 0 and no CONFIRMED threat: -0.0045  90% interval over games [-0.0149, +0.0061] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: spearman h16 forcing number vs outcome, 78.44 number held out (partial rank), net0 = 0 and no CONFIRMED threat: +0.0267  90% interval over games [+0.0009, +0.0518] (1000 draws)
+OBS forcing_opportunity games_s5016_n500: bootstrap seconds 81.0
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 1 of 5 of the forcing number: plies 4300, mean number -2.0016, mean outcome -0.2814, mean worth won 1.7895, mean worth lost 2.0709
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 2 of 5 of the forcing number: plies 4103, mean number -0.4377, mean outcome -0.1019, mean worth won 1.6154, mean worth lost 1.7173
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 3 of 5 of the forcing number: plies 4469, mean number +0.0023, mean outcome -0.2488, mean worth won 1.3448, mean worth lost 1.5936
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 4 of 5 of the forcing number: plies 4296, mean number +0.5261, mean outcome -0.0503, mean worth won 1.4977, mean worth lost 1.5480
+OBS forcing_opportunity games_s5016_n500: horizon 4 band 5 of 5 of the forcing number: plies 4293, mean number +2.0222, mean outcome +0.6585, mean worth won 2.8376, mean worth lost 2.1791
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 1 of 5 of the forcing number: plies 4089, mean number -2.8137, mean outcome -0.2575, mean worth won 3.8432, mean worth lost 4.1008
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 2 of 5 of the forcing number: plies 3557, mean number -0.7085, mean outcome -0.1633, mean worth won 3.3104, mean worth lost 3.4737
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 3 of 5 of the forcing number: plies 4633, mean number +0.0075, mean outcome -0.1893, mean worth won 3.3445, mean worth lost 3.5338
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 4 of 5 of the forcing number: plies 4190, mean number +0.9317, mean outcome +0.0387, mean worth won 3.5074, mean worth lost 3.4687
+OBS forcing_opportunity games_s5016_n500: horizon 8 band 5 of 5 of the forcing number: plies 3995, mean number +3.2196, mean outcome +0.5617, mean worth won 4.9292, mean worth lost 4.3675
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 1 of 5 of the forcing number: plies 3675, mean number -3.9501, mean outcome -0.1290, mean worth won 8.0259, mean worth lost 8.1548
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 2 of 5 of the forcing number: plies 3092, mean number -0.9458, mean outcome -0.2031, mean worth won 7.5006, mean worth lost 7.7038
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 3 of 5 of the forcing number: plies 4318, mean number +0.0107, mean outcome -0.1473, mean worth won 7.6119, mean worth lost 7.7591
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 4 of 5 of the forcing number: plies 3725, mean number +1.3287, mean outcome +0.0362, mean worth won 7.5203, mean worth lost 7.4840
+OBS forcing_opportunity games_s5016_n500: horizon 16 band 5 of 5 of the forcing number: plies 3662, mean number +4.7085, mean outcome +0.3596, mean worth won 9.2332, mean worth lost 8.8736
+OBS forcing_opportunity games_s5016_n500: fuse 5000, total wall 83.0 s
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NOT SETTLED/exchange/0: answerer at the control clock cases 27112 rate 0.2905 chance 0.2905; answerer weaker (clock 0.02) cases 26964 rate 0.3248 chance 0.3248
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NOT SETTLED/sign/0: answerer at the control clock cases 3951 rate 0.4533 chance 0.4533; answerer weaker (clock 0.02) cases 5579 rate 0.5289 chance 0.5289
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NOT SETTLED/takes/0: answerer at the control clock cases 4003 rate 0.5094 chance 0.5094; answerer weaker (clock 0.02) cases 3901 rate 0.5714 chance 0.5714
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NOT SETTLED/exchange/1: answerer at the control clock cases 3452 rate 0.2097 chance 0.2098; answerer weaker (clock 0.02) cases 4164 rate 0.2171 chance 0.2171
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NO CLAIM/exchange/0: answerer at the control clock cases 2653 rate 0.1210 chance 0.1210; answerer weaker (clock 0.02) cases 1607 rate 0.1126 chance 0.1127
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NOT SETTLED/sign/1: answerer at the control clock cases 1454 rate 0.3686 chance 0.3687; answerer weaker (clock 0.02) cases 2418 rate 0.3991 chance 0.3992
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NO CLAIM/exchange/1: answerer at the control clock cases 1030 rate 0.1485 chance 0.1485; answerer weaker (clock 0.02) cases 724 rate 0.1961 chance 0.1960
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NOT SETTLED/takes/1: answerer at the control clock cases 702 rate 0.5385 chance 0.5384; answerer weaker (clock 0.02) cases 1047 rate 0.5941 chance 0.5940
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NO CLAIM/takes/0: answerer at the control clock cases 797 rate 0.4329 chance 0.4328; answerer weaker (clock 0.02) cases 618 rate 0.3948 chance 0.3950
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NOT SETTLED/goal/0: answerer at the control clock cases 352 rate 0.0000 chance 0.0000; answerer weaker (clock 0.02) cases 688 rate 0.0000 chance 0.0000
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell CONFIRMED/takes/0: answerer at the control clock cases 328 rate 0.5976 chance 0.5976; answerer weaker (clock 0.02) cases 644 rate 0.6413 chance 0.6414
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NO CLAIM/sign/1: answerer at the control clock cases 334 rate 0.1916 chance 0.1916; answerer weaker (clock 0.02) cases 324 rate 0.3858 chance 0.3852
+OBS forcing_opportunity weak_s5516_n200: horizon 4 cell NO CLAIM/sign/0: answerer at the control clock cases 310 rate 0.1903 chance 0.1903; answerer weaker (clock 0.02) cases 412 rate 0.1869 chance 0.1873
+OBS forcing_opportunity weak_s5516_n200: horizon 4 base rate: answerer at the control clock 0.3126 (47576 cases); answerer weaker (clock 0.02) 0.3657 (51876 cases)
+OBS forcing_opportunity weak_s5516_n200: horizon 8 base rate: answerer at the control clock 0.5202 (45379 cases); answerer weaker (clock 0.02) 0.6055 (48613 cases)
+OBS forcing_opportunity weak_s5516_n200: horizon 16 base rate: answerer at the control clock 0.7589 (40817 cases); answerer weaker (clock 0.02) 0.8446 (42660 cases)
+OBS forcing_opportunity weak_s5516_n200 against base: horizon 4 base rate: the 500-game set (control against control) 0.3307 (275656 cases); the weaker-answerer games, answerer weaker 0.3657 (51876 cases)
+OBS forcing_opportunity weak_s5516_n200 against base: horizon 8 base rate: the 500-game set (control against control) 0.5440 (263124 cases); the weaker-answerer games, answerer weaker 0.6055 (48613 cases)
+OBS forcing_opportunity weak_s5516_n200 against base: horizon 16 base rate: the 500-game set (control against control) 0.7841 (237582 cases); the weaker-answerer games, answerer weaker 0.8446 (42660 cases)
+READ (directional, one run on 500 games of one player, the test half 250 games; nothing here is a verdict). (1) The forcing number rises with the later material change much less than the 78.44 number on all test positions (about 0.09 / 0.07 / 0.04 against about 0.35 / 0.32 / 0.27 at 4 / 8 / 16 plies), and adding it to the 78.44 number LOWERS the correlation (both below the 78.44 number alone at every horizon). The shuffled control is near zero. (2) On the positions where the 78.44 first level is zero and no threat move is CONFIRMED (the part a policy would need), the 78.44 number is itself near zero at 4 plies (about 0.01, interval reaching zero) and the forcing number is also small (about 0.02 / 0.02 / 0.03, intervals above zero but only just); the partial rank correlation of the forcing number with the 78.44 number held out is about 0.02 there with the lower end of the interval near zero. At 8 and 16 plies the CONTROL, the plain count of threat moves (mover's less the other side's), is as high or higher than the forcing number (about 0.08 and 0.11 on the subset) and the sum form is higher than the max form (about 0.07 / 0.08 at 8 / 16); so at longer horizons what the forcing number picks up in the subset looks like how many threat moves there are, not the fitted chances. (3) The fitted chances barely separate the cells that matter: almost all threat moves (492282 of 571400) are NOT SETTLED because the fuse stopped the read (68692 of 86967 reads were stopped), the cell NOT SETTLED/exchange/0 alone holds 149863 of the 275656 cases at 4 plies, and CONFIRMED cells are rare (18087 threat moves; 1863 test positions had one). CONFIRMED cells have a chance of about 0.6 of gaining the claimed worth at 4 plies against 0.31 for the exchange cell of a not settled move and 0.33 for the base rate, so the verdict does carry information, but it is on few positions. (4) A flaw of the measure, named: the goal and ends claims are judged by MATERIAL; a goal claim cannot be paid in material, so the cells of kind goal show a rate of zero (NOT SETTLED/goal/0 gained 0 of 3401), and the goal terms contribute nothing to the number; the measure says nothing about goal claims. The claimed worth of a NO CLAIM or NOT SETTLED move is the best claim it makes at the move, not what a reply leaves, so its cell is a weak statement. (5) Stage E: with a weaker answerer (one colour at a tenth of the clock) the base rate of gaining the claimed worth is higher at all three horizons (about 0.31 to 0.37 at 4 plies, 0.52 to 0.61 at 8, 0.76 to 0.84 at 16, same games, cases split by who answers) and most cells with many cases move up in the same direction (the exchange cell of a not settled move from about 0.29 to 0.32, CONFIRMED/exchange/1 from about 0.51 to 0.63 on few control cases); a few cells go the other way and cells with tens of cases move by amounts that are not distinguishable from noise here. So the cells do move with the opponent in direction and in the base rate; how much per cell is not read from one run of 200 games. What would change the reading: a read that settles more of the moves (the fuse stopped 79 percent of the reads at 5000; the probe says the verdicts at 20000 differ in 1401 of 1912 reads, so the number is fuse-bound), games where prepared attacks come true more often than a search against itself allows, and an outcome that can pay a goal claim. Not done: the longer fuse on the long run (cost), the Python mirror of the read (still owed), goal-aware outcome. The shared editable install of cs_engine now points at the worktree agent-a55465c1599922796; the parent rebuilds main after the merge.

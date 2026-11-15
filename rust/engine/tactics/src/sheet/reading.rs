@@ -95,7 +95,7 @@ impl<'a, G: Game + Placed> Reading<'a, G> {
         &map[place as usize]
     }
 
-    fn top_worth(&self) -> f64 { self.units.iter().map(|x| self.worth_of(x.kind)).fold(1.0, f64::max) }
+    pub fn top_worth(&self) -> f64 { self.units.iter().map(|x| self.worth_of(x.kind)).fold(1.0, f64::max) }
 
     fn slot(&self, kind: Kind, side: Side, at: Place) -> usize { (kind as usize * 2 + side.ix()) * self.np + at as usize }
 
