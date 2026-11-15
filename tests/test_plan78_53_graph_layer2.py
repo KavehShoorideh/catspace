@@ -236,3 +236,24 @@ def test_hand_positions_differ_from_their_twins_by_some_concept_of_size_2_or_3(m
             h, r = chosen[j]
             print(f"   dc{j + 1} fires (size {pattern_of(r).size}, level {r['level']}, value {a[j]:+.0f}): {G2.plain_words(pattern_of(r), kinds)}")
         assert len(differ) > 0, what
+
+
+def test_hand_positions_against_the_concepts_file_of_the_run_when_it_is_there(model, kinds):
+    """The same check by eye with the concepts the measure mined on the 500 games (dcN as the concepts file names them); skipped when the run's file is not there."""
+    import json
+    from catspace.io import paths
+    f = Path(paths.experiment("graph_layer2_78_53", "games_s5016_n500", "concept_keys.json"))
+    if not f.is_file():
+        pytest.skip("the concepts file of the run is not there")
+    book = json.loads(f.read_text())
+    names = [n for n, c in book.items() if c["size"] in (2, 3)]
+    keys = [int(book[n]["key"]) for n in names]
+    fens = [x for pair in HAND.values() for x in pair]
+    vals = G2.evaluate(model, fens, keys, GOAL, 3)
+    for i, what in enumerate(HAND):
+        a, b = vals[2 * i], vals[2 * i + 1]
+        fires = np.flatnonzero((a != 0) & (b == 0))
+        print(f"\nstage E (the run's concepts): {what}: {int((a != b).sum())} concepts of size 2 or 3 differ from the twin; hold here and not in the twin: " + (", ".join(names[j] for j in fires) or "none"))
+        for j in fires[:6]:
+            print(f"   {names[j]} (value {a[j]:+.0f}): {G2.plain_words(G2.decode(bytes.fromhex(book[names[j]]['bytes'])), kinds)}")
+        assert (a != b).any(), what

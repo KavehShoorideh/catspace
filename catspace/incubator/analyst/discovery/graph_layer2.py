@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-FUSE = 400                       # the named fuse: patterns kept per size and per level, the most supported (a budget of the fit's columns, not tuned to a result)
+FUSE = 100                       # the named fuse: patterns kept per size and per level, the most supported (a budget of the fit's columns, not tuned to a result)
 MAX_SIZE = 3
 LEVELS = (0, 1, 2, 3)
 TYPES = ("bear", "move", "shut")

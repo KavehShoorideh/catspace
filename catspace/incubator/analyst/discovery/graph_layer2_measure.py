@@ -28,6 +28,8 @@ from catspace.io import paths
 
 HORIZON_OBS = 8
 TOP = 8
+PATH_ALPHAS = 30                  # the penalty path of the wide fits: 30 penalties from the largest that keeps nothing down to 1 pct of it (the 78.49 path of 60 down to 0.1 pct is kept for the 26 statements)
+PATH_EPS = 1e-2
 
 
 def layout(t: dict, idx: np.ndarray) -> "tuple[list, list]":
@@ -74,6 +76,19 @@ def reduce_patterns(kept: dict, counts: dict, key_col: dict, fit_games: np.ndarr
     return out
 
 
+def fit_wide(x: np.ndarray, y: np.ndarray, groups: np.ndarray) -> dict:
+    """The fit of 78.49 (L1, scikit-learn LassoCV, the penalty by cross-validation grouped by game on the fit rows, standardised columns) over many columns: the same, with the penalty path shortened
+    (PATH_ALPHAS penalties down to PATH_EPS of the largest) because the full path over thousands of columns does not finish in a day's patience; the cost is a coarser, less flexible fit."""
+    from sklearn.linear_model import LassoCV
+    from sklearn.model_selection import GroupKFold
+    x = x.astype(np.float64)
+    mean, scale = SF.standardise(x)
+    z = (x - mean) / scale
+    cv = list(GroupKFold(n_splits=SF.FOLDS).split(z, y, groups))
+    m = LassoCV(cv=cv, alphas=PATH_ALPHAS, eps=PATH_EPS, max_iter=3000, n_jobs=-1).fit(z, y)
+    return {"alpha": float(m.alpha_), "mean": mean, "scale": scale, "coef": m.coef_.copy(), "intercept": float(m.intercept_), "alphas": m.alphas_.copy(), "cv_mse": m.mse_path_.mean(axis=1)}
+
+
 def observe_losses(tab: np.ndarray, kinds: list, concept_counts, concept_cols: list, names: list, label: str) -> list:
     """The observation: per top concept, over the (position, side) instances where it held for a side, the units each side had lost HORIZON_OBS plies later, by kind, per instance; beside all instances."""
     nk = len(kinds)
@@ -84,13 +99,12 @@ def observe_losses(tab: np.ndarray, kinds: list, concept_counts, concept_cols: l
     lost_them = np.maximum(0, now_them - then_them).astype(float)
 
     def row_text(who: str, holder: np.ndarray, other: np.ndarray, n: int) -> str:
-        return f"{who}: " + ", ".join(f"{k} {holder[i]:.3f} / {other[i]:.3f}" for i, k in enumerate(kinds)) + f" (instances {n})"
+        return f"{who}: " + ", ".join(f"{k} {holder[i]:.0f} ({holder[i] / n:.3f}) / {other[i]:.0f} ({other[i] / n:.3f})" for i, k in enumerate(kinds)) + f" (instances {n})"
     lines = []
     # base: every valid quiet position, each side as the holder in turn
     nv = int(valid.sum())
-    base_h = (lost_us[valid].sum(0) + lost_them[valid].sum(0)) / (2 * max(1, nv))
-    base_o = base_h.copy()
-    lines.append(f"OBS graph layer2 {label}: lost {HORIZON_OBS} plies later, per instance, units of kind (the side holding / the other side), BASE all {2 * nv} (quiet position, side) instances: " + ", ".join(f"{k} {base_h[i]:.3f}" for i, k in enumerate(kinds)))
+    base = lost_us[valid].sum(0) + lost_them[valid].sum(0)
+    lines.append(f"OBS graph layer2 {label}: BASE all quiet positions, each side in turn as the holder {row_text(f'units lost {HORIZON_OBS} plies later by kind, total (per instance), holding side / other side', base, base, max(1, 2 * nv))}")
     us_m, them_m = concept_counts
     for c, name in zip(concept_cols, names):
         cu = us_m[:, c].toarray().ravel() > 0
@@ -100,9 +114,9 @@ def observe_losses(tab: np.ndarray, kinds: list, concept_counts, concept_cols: l
         if n == 0:
             lines.append(f"OBS graph layer2 {label}: {name}: held in no instance with the horizon inside the game")
             continue
-        holder = (lost_us[hu].sum(0) + lost_them[ht].sum(0)) / n
-        other = (lost_them[hu].sum(0) + lost_us[ht].sum(0)) / n
-        lines.append(f"OBS graph layer2 {label}: {name} {row_text('lost per instance by kind, holding side / other side', holder, other, n)}")
+        holder = lost_us[hu].sum(0) + lost_them[ht].sum(0)
+        other = lost_them[hu].sum(0) + lost_us[ht].sum(0)
+        lines.append(f"OBS graph layer2 {label}: {name} held for a side: {row_text(f'units lost {HORIZON_OBS} plies later by kind, total (per instance), holding side / other side', holder, other, n)}")
     return lines
 
 
@@ -148,7 +162,15 @@ def main(argv: "list | None" = None) -> int:
     # ---- B: mine on the fit rows
     fg, fr = layout(t, fit)
     t1 = time.perf_counter()
-    mined = G2.enumerate_patterns(model, [wires[g] for g in fg], fr, goal, a.threads, a.fuse, log=lambda m: lines.append(f"OBS graph layer2 {label}: {m}"))
+    cache = out / f"mined_fuse{a.fuse}.pkl"
+    if cache.exists():
+        import pickle
+        mined = pickle.loads(cache.read_bytes())
+        lines.append(f"OBS graph layer2 {label}: mining read from {cache.name} (made by this script on these games; the wall time below is the read)")
+    else:
+        import pickle
+        mined = G2.enumerate_patterns(model, [wires[g] for g in fg], fr, goal, a.threads, a.fuse, log=lambda m: lines.append(f"OBS graph layer2 {label}: {m}"))
+        cache.write_bytes(pickle.dumps(mined))
     lines.append(f"OBS graph layer2 {label}: mining on the fit rows {time.perf_counter() - t1:.1f} s wall over {a.threads} threads (fuse {a.fuse} patterns per size and level)")
     kept = mined["kept"]
     # ---- counts of every kept pattern and the kind-free parents of the kind-bound ones, on every quiet row
@@ -165,7 +187,12 @@ def main(argv: "list | None" = None) -> int:
                 keys.append(r["free_parent"])
     ag, ar = layout(t, all_idx)
     t2 = time.perf_counter()
-    raw = model.pattern_count([wires[g] for g in ag], ar, keys, G2.MAX_SIZE, list(G2.LEVELS), goal, a.threads)
+    rawf = out / f"counts_fuse{a.fuse}.bin"
+    if rawf.exists():
+        raw = rawf.read_bytes()
+    else:
+        raw = bytes(model.pattern_count([wires[g] for g in ag], ar, keys, G2.MAX_SIZE, list(G2.LEVELS), goal, a.threads))
+        rawf.write_bytes(raw)
     us, them = G2.counts_matrix(raw, len(all_idx), len(keys))
     lines.append(f"OBS graph layer2 {label}: counting {len(keys)} patterns on {len(all_idx)} quiet rows {time.perf_counter() - t2:.1f} s wall over {a.threads} threads")
     # ---- the reduction test on the fit rows
@@ -216,15 +243,13 @@ def main(argv: "list | None" = None) -> int:
             y = t[f"arr{h}"][fit]
             ok = ~np.isnan(y)
             rows = fit[ok]
-            m = SF.fit_sparse(feats[which][rows], t[f"arr{h}"][rows], t["game"][rows])
+            m = SF.fit_sparse(feats[which][rows], t[f"arr{h}"][rows], t["game"][rows]) if which == "P" else fit_wide(feats[which][rows], t[f"arr{h}"][rows], t["game"][rows])
             models[(which, h)] = m
             lines.append(f"OBS graph layer2 {label}: fit {which} arrival h={h}: penalty {m['alpha']:.5f} by {SF.FOLDS}-fold cross-validation grouped by game on the even games, features kept {int((m['coef'] != 0).sum())} of {len(m['coef'])}")
     ta = {k: t[k][test] for k in t if k not in ("P", "F")}
     for (which, h), m in models.items():
         p = SF.predict(m, feats[which][test])
         ta[f"pred_{which}_arr{h}"] = p
-    for i in range(len(cnames)):
-        ta[f"c{i}"] = cdiff[test][:, i]
     for h in SF.HORIZONS:
         y = f"arr{h}"
         readings = [(f"h={h} arrival target: fit on the 26 base statements", f"pred_P_{y}", y), (f"h={h} arrival target: fit on the concepts alone", f"pred_C_{y}", y),
@@ -240,7 +265,7 @@ def main(argv: "list | None" = None) -> int:
             nm = fnames[which][i]
             if nm.startswith("dc"):
                 k = int(nm[2:]) - 1
-                own = SF.spec_for(f"c{k}", y)(ta)
+                own = SF.spec_for("cc", y)({**{kk: ta[kk] for kk in (y,)}, "cc": cdiff[test][:, k]})
                 lines.append(f"OBS graph layer2 {label}: kept {which} h={h}: {nm} [size {concepts[k]['size']}, level {concepts[k]['level']}] weight {m['coef'][i]:+.5f} per standard deviation, own rank correlation on the test half {own:+.4f}: {concepts[k]['words']}")
             else:
                 lines.append(f"OBS graph layer2 {label}: kept {which} h={h}: {nm} (base statement) weight {m['coef'][i]:+.5f} per standard deviation")

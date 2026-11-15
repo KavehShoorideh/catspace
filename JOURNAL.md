@@ -36777,3 +36777,8 @@ of the sorts of its place object) and the step relation by direction (the one st
 set or it refuses. rust/engine/tactics/src/sheet/base_graph.rs builds the nodes (place, direction, line, edge, kind, side; per position unit and the relation nodes bear, may_move, shut) with ids that are their definitions, and the plain links;
 base_statements.rs the 26 statements of 78.49 as counts over it plus the new ones; py/src/base_graph_py.rs `cs_engine.BaseGraph`; the mirror is graph_layer1.py. Numbers are the OBS lines in docs/ANALYST_PLAN.md under 78.52 BUILT; one run, directional.
 Nothing is wired into any player; nothing fitted.
+
+## 2026-11-15 13:27 -- plan 78.53: the graph, layer 2 (builder agent, branch worktree-agent-af7ecd931e7a96755)
+Patterns over the layer-1 graph (rust/engine/tactics/src/sheet/patterns.rs; mirror graph_layer2.py, matcher graph_layer2_match.py, measure graph_layer2_measure.py): atoms bear / move / shut over unit, empty-place and line variables, sizes 1 to 3, levels by what is said of a unit (side; goal; edge; kind as the raw symbol),
+canonical form with the mirror, ESU matching in Rust, growth by size, a named fuse, a stated reduction test, dcN by order of mining and a concepts file with our name empty. Changed during the build by the user's direction: no worth in the language (kind as the rules' symbol instead; kind-free and kind-bound patterns both).
+Shut lines stay for the side to move only: the hypothetical board that would give the other side's is refused by the game exactly where it matters (measured). The fit over concepts uses a shortened penalty path. Numbers are the OBS lines in docs/ANALYST_PLAN.md under 78.53 BUILT; one run, directional.
