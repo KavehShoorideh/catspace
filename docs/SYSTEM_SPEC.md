@@ -257,3 +257,53 @@ Made by a read-only search of the journal, the plan file, the Lean files, the co
 Two things the earlier work already learned, to be kept: nesting one frame's threat scan inside another fails (the
 innermost in-between move is always left unanswered), so frames in contact are resolved jointly; and a tempo is worth
 what the other side proves with the move passed to it, never a constant (plan 72.3).
+
+
+
+### 12.2 The October Lean library against the game-free graph (inventory, 2026-11-15)
+
+Kaveh, 2026-11-15: "October has a bunch of chess specific stuff that i would love to consider for generalization, like
+this races. Lean". A read-only inventory of lean/ideas/Ideas was made by a search agent; the imports and the locations
+of the twelve theorems named below were spot-checked by the main agent; no proof was read in full and nothing was
+built, so whether the project builds today is not known. The rust/engine crates cite no Lean theorem yet; every citation
+is in catspace/incubator/analyst or rust/analyst_core.
+
+Three classes. ALREADY GENERIC: stated over any type and relation. LIGHTLY BOUND: the statement names chess types but
+the idea needs only what layer 1 gives. CHESS ONLY: no game-free counterpart.
+
+Five hypotheses carry nearly all of the lightly bound results. Each is a property the graph can state for any game:
+
+| Name | Says |
+|---|---|
+| touch | a move changes the board only at the places it touches |
+| line | whether a unit bears on a place depends only on the unit and on the places between being empty; emptying a place can only add bearings |
+| footprint | a unit that bears on a place stands in that place's footprint (the place, the lines through it, the leap sources) |
+| goal unit | a legal move leaves the mover's goal unit on a place no opposing unit bears on |
+| distance | a distance that changes by at most one along each step of the static step relation |
+
+| Result | File | Class | What a game-free form needs |
+|---|---|---|---|
+| forced_by_measure, Reach.bind, hold_blocks, toward_known | ForcedByMeasure.lean (no imports) | already generic | nothing; this file is the natural core |
+| race_sound, race_first | Race.lean, Game.lean | already generic | moved out of a file that imports the chess kernel |
+| frame_sound, frame_sound_pass, withPass | Race.lean | already generic | the same move |
+| neglect, neglect_step, frame_of_diff | Frame.lean | already generic | the same move |
+| forced_cycle_threefold, Record.step_sound | Draws.lean | already generic | drop the chess import; the move count as a parameter |
+| claim_mono, judge and route lemmas | Forcing.lean | already generic | the same move |
+| far_stays_off, far_not_bearing, deny_sound, plan_sound | Race.lean, Plan.lean | bound by the square type only | places for squares; one new lemma: shortest path in a kind's step relation is a distance. It replaces six chess distance lemmas |
+| overload_sound, overloaded_exclusive | Race.lean | bound by the square type only | a complete list of places |
+| path_lemma, attack_unchanged, lost_path_lemma | PathLemma.lean | lightly bound | touch and line |
+| frame_unchanged, chess_frame, chess_neglect | FrameLemma.lean, Frame.lean | lightly bound | touch, line and footprint |
+| discovered_attack, skewer_attack, battery_persists | Battery.lean, Skewer.lean | lightly bound | the `through` relation and line |
+| checkmate_of_unmeetable_check | Mate.lean | lightly bound | goal unit and line, over the board without the goal unit |
+| closed_binds, quiet_breaks, free_move_breaks, delayed_forcing | Forcing.lean | lightly bound | the Game structure of Game.lean in place of Position |
+| exchange value reads only the footprint (seeXB_local) | ExchangeLocal.lean | lightly bound | line, footprint and chains of `through`; it compares by a worth table, which section 12 no longer assumes |
+| forcedWithin_mirror | Mirror.lean | lightly bound | any map of states and moves that commutes with the rules |
+| unstoppable passer (race, race2), pawn pushes, promotion, castling, en passant, the 8 by 8 speed-ups | Passer.lean, Passer2.lean, Fast.lean, Spec | chess only | the passer race is written in the shape of race_sound but does not call it; a game-free form needs a relation the graph does not have yet: a unit that advances toward a place where it changes kind |
+| the exchange law | ExchangeLaw.lean | not a theorem | stated as definitions, never proved |
+
+Order suggested: (1) a core of files that import no chess, holding the already generic results; (2) the five hypotheses
+as a structure over places, units and the step relation, with chess shown to satisfy it from the existing chess lemmas;
+(3) the lightly bound results restated over that structure, the frame and path lemmas first because the frames of
+layer 3 rest on them; (4) the tests that tie the Rust graph to the Lean statements. Whether a game's rules satisfy the
+five hypotheses is a property to be checked per game, by the engine on sampled positions and in Lean for the games we
+have a kernel for.
