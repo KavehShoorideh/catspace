@@ -7241,3 +7241,19 @@ OBS sheet_rust ways 197685, routes 441213 in the Python results compared
 OBS sheet_rust seconds per position (the same work, jobs 11): python 0.12570, rust 0.02243 (of which the engine's own work 0.02006, the rest is handing the data to Python), ratio 5.6x
 Not in stage A: the goal unit's weak places (`weak_places`), `_old_reach` (compare_old is off in the measure), the counterfactual obstacles, frames, the schedule (stages B and C).
 
+
+
+### 78.43 A CHECKED ON GAMES THE BUILDER DID NOT SEE (2026-11-14, the parent)
+
+Merged to main at 93d77820 and the extension rebuilt. 32 new self-play games (the control player, seeds 2000 to 2031), one run, directional:
+
+OBS sheet_rust: games 32, positions compared 2769, unreadable (over) 8, python errors 0, jobs 10, wall 43.0 s
+OBS sheet_rust units (units and first order entries): items compared 114918, items that differ 0
+OBS sheet_rust level 0 verdicts (per target): items compared 57459, items that differ 0
+OBS sheet_rust level 1 route sets (per target): items compared 57459, items that differ 0
+OBS sheet_rust level 1 verdicts (per target): items compared 57459, items that differ 0
+OBS sheet_rust seconds per position (the same work, jobs 10): python 0.11726, rust 0.02103 (of which the engine's own work 0.01878, the rest is handing the data to Python), ratio 5.6x
+
+READ. The Rust form agrees with the oracle on unseen games. The speed is far from what the engine should give: places are carried as text and
+the routes rebuilt as lists of text. NEXT: stage B opens with the places and units as numbers (the same measure as the guard), then the
+obstacles and the frames.
