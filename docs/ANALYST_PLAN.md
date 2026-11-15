@@ -7192,3 +7192,8 @@ ENVIRONMENT: after the system update the installed engine extension would not lo
 Kaveh's rule: cache when caching is not slower. The measure of the last section showed the same time kept as fresh and no wrong serve, so `run` and `read_position` now drain the pool's agenda by
 default whenever a pool is carried (`refresh` defaults to `math.inf`; `refresh=None` is the old form, where a question asks for what a move touched). With no pool nothing changes, so the
 match player, which carries none, plays as before. The one test of the old form is pinned to `refresh=None`. The four test files of the sheet: 212 passed.
+
+
+### The high-level spec (2026-11-14)
+
+Kaveh restated the target system: one graph of units, frames, facts and claims; tactical reasoning; frames from the bottom up; a policy toward tactical opportunity that talks in subgoals; sleep as an agent with tools whose step goal is to explain a surprise; Rust in the hot paths. It is written in docs/SYSTEM_SPEC.md. Every plan from here names the piece of that spec it serves.

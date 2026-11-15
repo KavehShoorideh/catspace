@@ -349,3 +349,5 @@ Plan 78.39 stage 1: `rules/concepts/chess_scenario.gdl` is a DELTA composed afte
 carries it); `apply_audit` counts a firing that names no move as `silent`, not refuted.
 
 Plan 78.35, words and names: a defined word is named from the relations it is made of (discovery/word_names.composed_name; a hand word by its author) and glossed in plain English from the vocabulary record's optional `"glosses": {relation: template}` (discovery/word_terms.gloss; the key changes neither spec_texts nor vocabulary()); a store's words live in `<learned dir>/<game>/words.json` (discovery/word_registry.py, format words-1) and are composed as rules by game_store.spec_texts only for a vocabulary record with `"words": true` (optional `"word_delta": [names]` adds words to its `delta`); `rules/learned/` vocabulary records are unchanged.
+
+`docs/SYSTEM_SPEC.md` (2026-11-14): the high-level spec of the target system (one graph, tactical reasoning, bottom-up frames, the opportunity policy, the sleep agent and its tools, the wake, engineering rules). Changes are appended as dated sections.

@@ -36659,3 +36659,7 @@ Listeners, waking, the drain and one shared agenda built on October's fact store
 Kaveh's rule: cache when caching is not slower. The measure of the last section showed the same time kept as fresh and no wrong serve, so `run` and `read_position` now drain the pool's agenda by
 default whenever a pool is carried (`refresh` defaults to `math.inf`; `refresh=None` is the old form, where a question asks for what a move touched). With no pool nothing changes, so the
 match player, which carries none, plays as before. The one test of the old form is pinned to `refresh=None`. The four test files of the sheet: 212 passed.
+
+## 2026-11-14 -- the high-level spec written down
+
+Kaveh restated what the system must end up with. Written as docs/SYSTEM_SPEC.md; an inventory of what already exists per piece is under way. No runs.
