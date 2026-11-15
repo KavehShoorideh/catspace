@@ -212,3 +212,25 @@ the parent's, undecided.
 Decided by Kaveh the same day ("let's do it your way"): relations that a claim, a condition or a derived concept must
 point at are nodes of their own; the basic layer 1 facts (this place is on this line, this unit stands on this place)
 are plain links.
+
+## 12. Frames, outcomes and value (added 2026-11-15)
+
+Kaveh, on the mined concepts of layer 2:
+
+- **A concept involves a frame.** A frame is a few units and a limited set of places, occupied and empty. The whole
+  board is not involved.
+- **Inside a frame there are sequences**, and different sequences have different outcomes: this unit is lost or won,
+  that unit ends up there.
+- **An intermezzo links frames.** One move here, one move in another frame elsewhere, then back here.
+- **Units are variables.** "A unit that attacks here."
+- **No value is assumed.** He considered conditioning on relative value and took it back. Patterns are kept in the raw
+  symbols of the kinds ("when this kind attacks that kind"), and we learn what happens when each kind is left behind.
+- **Value comes from statistics.** Today's value is a statistic over whole games: that is the BASELINE. The value we
+  want is the same statistic asked under the condition that a given tactic, or a given fortress, is present: a
+  correction to the baseline. It is not a static number.
+- **Bring the earlier work over.** Frames and intermezzos were written up around early October. They are to be
+  brought over, not rediscovered.
+
+Consequences drawn by the parent, not yet his decisions: the outcome of a frame is a record of which kinds each side
+is left with, not a number; a concept's worth is then how the game's result statistics differ where the concept holds;
+and the worth table the sheet and the search use today is the baseline only.

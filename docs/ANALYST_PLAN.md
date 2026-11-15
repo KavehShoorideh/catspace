@@ -8662,3 +8662,11 @@ Rust for the matching and counting (hot path); the enumeration may start in Pyth
 No oracle, no human game, no puzzle.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+
+78.53 CHANGE (2026-11-15, Kaveh's direction, sent to the builder while it worked): no worth in the pattern language. A
+unit variable carries mine / theirs and its kind as the raw symbol the rules give, read from the graph. Patterns are
+enumerated with kinds bound and with kinds free; a kind-bound pattern that adds nothing to its kind-free parent is
+recorded as reduced to it. For the top concepts, a plain table of which kinds each side had lost 8 plies later, beside
+the same table over all quiet positions. See SYSTEM_SPEC section 12. The October work on frames and intermezzos is
+being gathered by a search of the history before layer 3 is planned.
