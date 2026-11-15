@@ -25,10 +25,17 @@ def model(env: "QS.Env", worth: dict, goal_kind: "str | None" = None):
     overs = [(k, s, f, t, o) for (k, s, f, t), places in med.over_of.items() for o in places]
     worth_of = env.worth_fn(worth)
     by_kind = {kind: worth_of(kind) for kind in env.kind_keys_all()}
-    return CE.SheetModel(env.variant, hops, overs, sorted(med.takes), by_kind, goal_kind, len(env.relations["can_go"]))
+    ledger = {k: int(v) for k, v in worth.items()}                       # the table the tactics search is judged by (by the kernel's own key of a kind)
+    return CE.SheetModel(env.variant, hops, overs, sorted(med.takes), by_kind, goal_kind, len(env.relations["can_go"]), ledger, dict(env.kind_keys_all()))
 
 
 def read(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" = None) -> dict:
     """The questions of `position` in the first order with level 0 and level 1 (ValueError when the position is over)."""
     p = params or QS.Params()
     return sheet_model.read(position, p.reach_k, p.max_open_exits)
+
+
+def settle(sheet_model, env: "QS.Env", position: str, steps: list, params: "QS.Params | None" = None) -> dict:
+    """STAGE B: the deeper levels (level 2 and on) of the questions named by `steps`, a list of (side, kind, place, level) taken in that order, as plain data (see `SheetModel.settle`)."""
+    p = params or QS.Params()
+    return sheet_model.settle(position, steps, p.reach_k, p.max_open_exits)

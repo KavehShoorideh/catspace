@@ -1,4 +1,4 @@
-"""Plan 78.43 stage A: the question sheet's light reading and its levels 0 and 1 by geometry in the Rust engine (rust/engine/tactics/src/sheet, the game's part behind
+"""Plan 78.43 stages A, B0 and B: the question sheet's light reading and its levels 0 and 1 by geometry, then the obstacles, the frames and the verdict of a way (stage B), in the Rust engine (rust/engine/tactics/src/sheet, the game's part behind
 `cs_game::placed::Placed` in kernel.rs, the data table of the medium of movement supplied from Python). The Python sheet (question_sheet.py) is the oracle: on a handful of fixed
 positions the two forms must give the same units, level 0 verdicts, level 1 route sets and verdicts. The measure over whole games is sheet_rust_measure.py."""
 import re
@@ -8,6 +8,7 @@ import pytest
 
 from catspace.incubator.analyst.discovery import question_sheet as Q
 from catspace.incubator.analyst.discovery import sheet_rust as SR
+from catspace.incubator.analyst.discovery import sheet_rust_deep_measure as D
 from catspace.incubator.analyst.discovery import sheet_rust_measure as M
 
 WORTH = {"k": 0, "q": 14, "r": 8, "b": 5, "n": 4, "p": 2}
@@ -27,7 +28,7 @@ EN_PASSANT = "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"
 FIXED = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT]
 ROOT = Path(__file__).resolve().parents[1]
 SHEET = ROOT / "rust" / "engine" / "tactics" / "src" / "sheet"
-NEW_SOURCES = [SHEET / n for n in ("mod.rs", "medium.rs", "reading.rs", "goal_report.rs", "levels.rs")] + [ROOT / "rust" / "engine" / "game" / "src" / "placed.rs", ROOT / "rust" / "engine" / "py" / "src" / "sheet_py.rs"]
+NEW_SOURCES = [SHEET / n for n in ("mod.rs", "medium.rs", "reading.rs", "goal_report.rs", "levels.rs", "cf.rs", "frame.rs", "settle.rs", "walk.rs")] + [ROOT / "rust" / "engine" / "game" / "src" / "placed.rs", ROOT / "rust" / "engine" / "py" / "src" / "sheet_py.rs"]
 CHESS_WORDS = r"\b(king|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check|mate|stalemate|uci|fen|san|chess\w*|shakmaty|[a-h][1-8])\b"
 
 
@@ -125,3 +126,59 @@ def test_python_wrapper_names_no_game_object():
     for name in ("sheet_rust.py",):
         text = (ROOT / "catspace" / "incubator" / "analyst" / "discovery" / name).read_text()
         assert not re.search(r"\b(king|queen|rook|bishop|knight|pawn)\b", text, flags=re.I)
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ stage B: the obstacles, the frames, the verdict of a way
+
+TWO_ROUTES = "r3k3/8/8/3p4/8/2N5/8/R3K3 w - - 0 1"
+JOINT = "4k3/8/7p/7P/7R/8/8/4K3 b - - 0 1"            # a rook whose line to the far end has three units in it
+MIDDLE_2 = "r1bq1rk1/ppp2ppp/2n2n2/3pp3/1bPP4/2N1PN2/PP3PPP/R1BQKB1R w KQ - 0 7"
+DEEP = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT, JOINT, MIDDLE_2, TWO_ROUTES]
+
+
+@pytest.fixture(scope="module")
+def deep_state(state):
+    return state
+
+
+@pytest.mark.parametrize("fen", DEEP)
+def test_the_deeper_levels_agree_with_the_python_sheet_step_by_step(deep_state, fen):
+    """The Python sheet reads the position (schedule, levels 0 and 1, the flagged units to level 2); its steps of level 2 and on are replayed in the Rust engine in the same order: every
+    finding (the verdict kind of every way, the obstacles, the stops, the cornering, the search, the census) is the same."""
+    try:
+        out = D.compare_position(deep_state, fen)
+    except ValueError:
+        pytest.skip("the position is over")
+    assert out["stage_a"] == [], out["stage_a"][:2]
+    assert out["deep"] == [], out["deep"][:3]
+
+
+def test_some_deeper_steps_are_really_compared(deep_state):
+    """The comparison has something to compare: frames with settled ways, and the goal units' search and census."""
+    modes, ways = set(), 0
+    for fen in (START, MIDDLE, KING_ROUTE, OWN_IN_WAY, THEIR_IN_WAY, MIDDLE_2):
+        out = D.compare_position(deep_state, fen)
+        for q, f in out["steps"]:
+            modes.add(f.detail.get("mode", "").split(",")[0])
+            ways += len([x for x in f.detail.get("results", []) if x.get("way") is not None])
+    assert {"frame", "search", "census"} <= modes and ways > 0
+
+
+def test_a_finding_of_another_question_is_seen_as_a_difference(deep_state):
+    """The deeper comparison can fire: the Rust finding of one question set against the Python finding of another differs."""
+    out = D.compare_position(deep_state, MIDDLE)
+    frames = [(q, f) for q, f in out["steps"] if f.detail.get("mode") == "frame" and f.detail["results"][1:]]
+    assert len(frames) >= 2
+    (q1, f1), (q2, f2) = frames[0], frames[-1]
+    sheet_steps = [(q.target.side, q.target.kind, Q.place_text(q.target.at), f.level) for q, f in (frames[0], frames[-1])]
+    rs = SR.settle(deep_state["model"], deep_state["env"], MIDDLE, sheet_steps, deep_state["params"])
+    mix = D.diff_finding(D.canon_finding_python(q1, f1), D.canon_finding_rust(rs["steps"][1]))
+    assert mix, "another question's finding must differ"
+
+
+def test_the_game_names_the_counterfactual_board_not_the_layer():
+    """The counterfactual boards (a unit taken off, a unit put elsewhere) are the game's to make: the trait names them, the chess binding implements them beside the kernel."""
+    placed = (ROOT / "rust" / "engine" / "game" / "src" / "placed.rs").read_text()
+    assert "fn without" in placed and "fn relocate" in placed and "fn find_step" in placed and "fn why_not" in placed
+    outside = (ROOT / "rust" / "engine" / "game" / "src" / "outside.rs").read_text()
+    assert "fn without" in outside and "fn relocate" in outside

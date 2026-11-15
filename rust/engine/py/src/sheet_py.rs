@@ -3,10 +3,13 @@
 //! of one position with their level 0 and level 1 as plain data. The Python sheet (question_sheet.py) is the oracle it is compared with. Text is made here and only here.
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
+use cs_tactics::sheet::cf::CfObstacle;
 use cs_tactics::sheet::levels::{self, Level0, Level1, Obstacle, Route, Way, Why};
 use cs_tactics::sheet::medium::Medium;
 use cs_tactics::sheet::reading::Reading;
-use cs_tactics::sheet::{Model, Names, Params, Unit};
+use cs_tactics::sheet::settle::{Ask, Cornering, Detail, Duty, Entry, Finding, Q, Settler};
+use cs_tactics::sheet::walk::Stop;
+use cs_tactics::sheet::{Model, Names, Params, Side, Unit};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3::IntoPyObjectExt;
@@ -79,7 +82,10 @@ impl SheetModel {
     /// take-only), places passed over (kind, side, from, to, over), the (kind, side) pairs with take-only hops), the worth of each kind by the game's word, the goal's kind or None,
     /// the number of move relations the vocabulary names.
     #[new]
-    fn new(variant: &str, hops: Vec<Hop>, overs: Vec<Over>, takes: Vec<(String, String)>, worth: HashMap<String, f64>, goal_kind: Option<String>, can_go: usize) -> PyResult<SheetModel> {
+    #[pyo3(signature = (variant, hops, overs, takes, worth, goal_kind, can_go, ledger_worth=HashMap::new(), letters=HashMap::new()))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(variant: &str, hops: Vec<Hop>, overs: Vec<Over>, takes: Vec<(String, String)>, worth: HashMap<String, f64>, goal_kind: Option<String>, can_go: usize,
+           ledger_worth: HashMap<String, i64>, letters: HashMap<String, String>) -> PyResult<SheetModel> {
         let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
         if hops.is_empty() { return Err(bad("the game's vocabulary names no medium of movement".into())); }
         let g = KernelGame::new(variant, 518).map_err(bad)?;
@@ -87,7 +93,8 @@ impl SheetModel {
         let medium = Medium::new(&names, &hops, &overs, &takes).map_err(bad)?;
         let w: Vec<f64> = names.kinds.iter().map(|k| worth.get(k).copied().unwrap_or(0.0)).collect();
         let goal_kind = match goal_kind { Some(k) => Some(names.kind(&k).map_err(bad)?), None => None };
-        Ok(SheetModel { variant: variant.to_string(), model: Model { names, medium, worth: w, goal_kind, can_go } })
+        let letters: Vec<String> = names.kinds.iter().map(|k| letters.get(k).cloned().unwrap_or_else(|| k.clone())).collect();
+        Ok(SheetModel { variant: variant.to_string(), model: Model { names, medium, worth: w, goal_kind, can_go, ledger_worth, letters } })
     }
 
     /// read(position, reach_k=2, max_open_exits=1) -> {mover, seconds (the engine's own, before the data is handed over), units: [(side, kind, place, worth)], order: [(side, kind,
@@ -111,4 +118,127 @@ impl SheetModel {
         d.set_item("level1", sheet.level1.iter().map(|l| level1_dict(py, n, l)).collect::<PyResult<Vec<_>>>()?)?;
         d.into_py_any(py)
     }
+
+    /// settle(position, steps, reach_k=2, max_open_exits=1) -> {seconds, steps: [dict per step]}: the deeper levels of the light sheet (stage B), driven by `steps`, a list of
+    /// (side, kind, place, level) in the order the Python sheet took them (level 2 and on). A question keeps what the deeper levels keep of it across its steps; the answers the
+    /// sheet keeps on its reading are kept across questions, so the order matters. Each step's dict: {status, mode, ...} (see `finding_dict`).
+    #[pyo3(signature = (position, steps, reach_k=2, max_open_exits=1))]
+    fn settle(&self, py: Python<'_>, position: &str, steps: Vec<(String, String, String, usize)>, reach_k: u32, max_open_exits: usize) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let t0 = std::time::Instant::now();
+        let g = KernelGame::from_fen(&self.variant, position).map_err(bad)?;
+        let s = cs_game::Game::initial(&g);
+        let r = Reading::new(&g, s, &self.model).map_err(bad)?;
+        let p = Params { reach_k, max_open_exits, ..Params::default() };
+        let settler = Settler::new(&r, &p);
+        let order = r.first_order(&p);
+        let n = &self.model.names;
+        let mut qs: HashMap<Unit, Q> = HashMap::new();
+        let mut done: Vec<Finding> = vec![];
+        for (side, kind, place, level) in &steps {
+            let side = if side == "us" { Side::Us } else { Side::Them };
+            let u = Unit { side, kind: n.kind(kind).map_err(bad)?, at: n.place(place).map_err(bad)? };
+            if !qs.contains_key(&u) {
+                let (_, stake, goal, _) = order.iter().find(|o| o.0 == u).ok_or_else(|| bad(format!("no such unit on the board: {kind} on {place}")))?;
+                let l1 = levels::level1(&r, &u, side.other(), *goal, &p);
+                qs.insert(u, Q { t: u, asker: side.other(), stake: *stake, goal: *goal, blocked: 0, l1: std::rc::Rc::new(l1) });
+            }
+            let q = qs.get_mut(&u).unwrap();
+            done.push(settler.deep(q, *level));
+        }
+        let compute = t0.elapsed().as_secs_f64();
+        let d = PyDict::new(py);
+        d.set_item("seconds", compute)?;
+        d.set_item("steps", done.iter().map(|f| finding_dict(py, n, f)).collect::<PyResult<Vec<_>>>()?)?;
+        d.into_py_any(py)
+    }
+}
+
+type Wire3 = (String, String, String);
+type DutyWire = (Wire3, f64, String, f64);
+type StopWire = (bool, Option<String>, usize, Option<usize>, String, Vec<String>, Option<(String, String)>);
+
+fn side_text(s: Side) -> String { s.word().to_string() }
+
+fn duty_of(n: &Names, d: &Duty) -> DutyWire { (unit3(n, &d.unit), d.stake, d.kind.to_string(), d.value) }
+
+fn stop_of(n: &Names, s: &Stop) -> StopWire {
+    (s.hard, s.answer.clone(), s.after, s.step, s.reason.to_string(), s.places.iter().map(|p| n.place_text(*p).to_string()).collect(),
+     s.mover.map(|(a, b)| (n.place_text(a).to_string(), n.place_text(b).to_string())))
+}
+
+fn cf_of(n: &Names, o: &CfObstacle) -> (String, Option<Wire3>, String, usize, bool, Vec<String>, Option<String>) {
+    (o.kind.to_string(), o.unit.as_ref().map(|u| unit3(n, u)), n.place_text(o.place).to_string(), o.hop, o.dead, o.joint.iter().map(|p| n.place_text(*p).to_string()).collect(), o.aside.map(|p| n.place_text(p).to_string()))
+}
+
+fn ask_of(n: &Names, a: &Ask) -> (String, f64, u32, Vec<DutyWire>, Option<String>) {
+    (a.verdict.to_string(), a.cost, a.more, a.duties.iter().map(|d| duty_of(n, d)).collect(), a.mv.clone())
+}
+
+fn entry_dict(py: Python<'_>, n: &Names, e: &Entry) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("way", e.way.as_ref().map(|w| way_of(n, w)))?;
+    d.set_item("status", e.status.word())?;
+    d.set_item("value", e.value)?;
+    d.set_item("line", e.line.clone())?;
+    d.set_item("source", e.source)?;
+    d.set_item("open", e.open)?;
+    d.set_item("nodes", e.nodes)?;
+    d.set_item("move", e.mv.clone())?;
+    d.set_item("route", e.route.as_ref().map(|r| r.places.iter().map(|p| n.place_text(*p).to_string()).collect::<Vec<_>>()))?;
+    d.set_item("obstacles", e.obstacles.iter().map(|(o, a)| (cf_of(n, o), ask_of(n, a))).collect::<Vec<_>>())?;
+    d.set_item("first_obstacles", e.first_obstacles.as_ref().map(|v| v.iter().map(|(s, k, dd)| (s.map(side_text), k.to_string(), *dd)).collect::<Vec<_>>()))?;
+    d.set_item("stops", e.stops.iter().map(|s| stop_of(n, s)).collect::<Vec<_>>())?;
+    d.set_item("alts", e.alts.iter().map(|(k, ps)| (k.to_string(), ps.iter().map(|p| n.place_text(*p).to_string()).collect::<Vec<_>>())).collect::<Vec<_>>())?;
+    d.set_item("breaks", e.breaks.iter().map(|s| stop_of(n, s)).collect::<Vec<_>>())?;
+    d.set_item("duties", e.duties.as_ref().map(|v| v.iter().map(|x| duty_of(n, x)).collect::<Vec<_>>()))?;
+    d.set_item("held_back", e.held_back)?;
+    d.set_item("skipped", e.skipped)?;
+    d.set_item("dead_routes", e.dead_routes)?;
+    d.set_item("unread_routes", e.unread_routes)?;
+    d.set_item("without_stopper", e.without_stopper.as_ref().map(|(u, v, val)| (unit3(n, u), v.word().to_string(), *val)))?;
+    d.set_item("tried", e.tried)?;
+    d.set_item("cut", e.cut)?;
+    d.set_item("routes_tried", e.routes_tried)?;
+    d.set_item("answer", e.answer.clone())?;
+    d.into_py_any(py)
+}
+
+fn cornering_dict(py: Python<'_>, n: &Names, c: &Cornering) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("cornered", c.cornered)?;
+    d.set_item("lost_now", c.lost_now)?;
+    d.set_item("places", c.places.iter().map(|(p, lost)| (n.place_text(*p).to_string(), *lost)).collect::<Vec<_>>())?;
+    d.set_item("open_exits", c.open_exits)?;
+    d.into_py_any(py)
+}
+
+fn finding_dict(py: Python<'_>, n: &Names, f: &Finding) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("status", f.status.word())?;
+    match &f.detail {
+        Detail::Frame(x) => {
+            d.set_item("mode", "frame")?;
+            d.set_item("results", x.results.iter().map(|e| entry_dict(py, n, e)).collect::<PyResult<Vec<_>>>()?)?;
+            d.set_item("confirmed", x.confirmed)?; d.set_item("refuted", x.refuted)?; d.set_item("waiting", x.waiting)?; d.set_item("open", x.open)?;
+            d.set_item("lost_where_it_stands", x.lost_where_it_stands)?;
+            d.set_item("value", x.value)?;
+            d.set_item("line", x.line.clone())?;
+            d.set_item("sources", x.sources.clone())?;
+            if let Some(c) = &x.cornering { d.set_item("cornering", cornering_dict(py, n, c)?)?; }
+        }
+        Detail::Search(x) => {
+            d.set_item("mode", "search")?;
+            d.set_item("depth", x.depth)?;
+            d.set_item("ways", x.ways.iter().map(|w| way_of(n, w)).collect::<Vec<_>>())?;
+            d.set_item("results", x.results.iter().map(|s| (s.mv.clone(), s.status.to_string(), s.value, s.reply.clone())).collect::<Vec<_>>())?;
+            d.set_item("confirmed", x.confirmed)?; d.set_item("refuted", x.refuted)?; d.set_item("open", x.open)?;
+            d.set_item("value", x.value)?; d.set_item("line", x.line.clone())?;
+        }
+        Detail::Census(x) => {
+            d.set_item("mode", "census")?;
+            d.set_item("depth", x.depth)?; d.set_item("tactics", x.tactics)?; d.set_item("value", x.value)?; d.set_item("line", x.line.clone())?;
+        }
+    }
+    d.into_py_any(py)
 }

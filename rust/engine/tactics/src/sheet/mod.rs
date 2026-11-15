@@ -9,10 +9,14 @@
 //!
 //! STAGE B0: places and kinds are NUMBERS (`Place`, `Kind`: the game's own lists of names, in the order of the text), sets of places are bit sets; the text is made only at the
 //! boundary (`Names`). Units, ways and routes are small copyable or cheaply cloned values, nothing is hashed by text.
+pub mod cf;
+pub mod frame;
 pub mod goal_report;
 pub mod levels;
 pub mod medium;
 pub mod reading;
+pub mod settle;
+pub mod walk;
 
 pub use cs_game::placed::{Kind, Place};
 use std::collections::HashMap;
@@ -100,10 +104,36 @@ pub struct Params {
     pub goal_stake_multiple: f64,
     /// No unit's stake is lower.
     pub min_stake: f64,
+    // ---- stage B: the deeper levels (the Python sheet's own defaults)
+    /// Ways settled per step.
+    pub max_ways: usize,
+    /// Nodes one frame search may expand.
+    pub frame_budget: u64,
+    /// Routes of a way the route follower takes, the best-ordered first.
+    pub max_routes: usize,
+    /// Nodes one way may use over all its routes; past it the way is NOT SETTLED, never refuted.
+    pub route_nodes: u64,
+    /// Blocked steps one question may examine by the counterfactual.
+    pub max_blocked_steps: usize,
+    /// Places tried when a unit the game will not read the board without is moved aside instead of removed.
+    pub aside_places: usize,
+    /// Units in a joint set; more is recorded as "more than the cap in the way".
+    pub max_joint: usize,
+    /// Moves of an own unit in the way tried when asking whether it can move away.
+    pub max_obstacle_moves: usize,
+    /// The search is not deepened past this many plies.
+    pub search_depth_cap: usize,
+    /// Nodes the reasoning search may use on one child.
+    pub reason_fuse: u64,
+    /// Nodes the census may use.
+    pub census_fuse: u64,
+    /// The deepest level; a question that finds nothing there is closed.
+    pub max_level: usize,
 }
 
 impl Default for Params {
-    fn default() -> Params { Params { reach_k: 2, max_open_exits: 1, goal_stake_multiple: 2.0, min_stake: 0.1 } }
+    fn default() -> Params { Params { reach_k: 2, max_open_exits: 1, goal_stake_multiple: 2.0, min_stake: 0.1, max_ways: 4, frame_budget: 20_000, max_routes: 3, route_nodes: 2500, max_blocked_steps: 12,
+                    aside_places: 4, max_joint: 3, max_obstacle_moves: 8, search_depth_cap: 3, reason_fuse: 50_000, census_fuse: 2_000_000, max_level: 4 } }
 }
 
 /// What belongs to the game and not to the position, made once per model: the names, the medium of movement, the worth of each kind (by number), the goal's kind and how many move
@@ -114,6 +144,9 @@ pub struct Model {
     pub worth: Vec<f64>,
     pub goal_kind: Option<Kind>,
     pub can_go: usize,
+    /// The table the tactics search is judged by (its worth by the game's own key of a kind) and the key of each kind in it and in the tactics' names.
+    pub ledger_worth: HashMap<String, i64>,
+    pub letters: Vec<String>,
 }
 
 /// A cheap hasher for the small keys of the layer (numbers, units, ways): no text is ever hashed here.

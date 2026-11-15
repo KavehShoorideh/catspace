@@ -1,10 +1,10 @@
 //! THE UCI TEACHER (plan 78.4): an outside engine that speaks UCI -- the chess family's engine protocol, so it lives beside the chess kernel (rules ingestion's
 //! side of the stack, not a layer) -- driven over its pipes. The learning layer sees it only as a `Teacher` (cs_learn::watch): a source of moves to watch.
 use crate::kernel::KernelGame;
-use crate::placed::{Kind, Place, Placed};
-use crate::Role;
+use crate::placed::{Kind, NoStep, Place, Placed};
+use crate::{Game, Role};
 use shakmaty::variant::VariantPosition;
-use shakmaty::{Color, Move, Position};
+use shakmaty::{Color, EnPassantMode, Move, Position};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
@@ -141,5 +141,47 @@ impl Placed for KernelGame {
             (Some(a), Some(b)) => (place_of(a), place_of(b)),
             _ => (place_of(m.to()), place_of(m.to())),
         }
+    }
+    fn kind_at(&self, s: &VariantPosition, at: Place) -> Option<Kind> { s.board().role_at(square_of(at)).map(kind_of) }
+    fn find_step(&self, s: &VariantPosition, from: Place, to: Place) -> Option<Move> {
+        let mut found: Vec<Move> = self.moves(s).into_iter().filter(|m| self.move_ends(s, m) == (from, to)).collect();
+        found.sort_by_key(|m| m.promotion() != Some(shakmaty::Role::Queen));
+        found.into_iter().next()
+    }
+    fn why_not(&self, s: &VariantPosition, from: Place, to: Place) -> (NoStep, Vec<Place>) {
+        let (f, t) = (square_of(from), square_of(to));
+        let board = s.board();
+        let (p, occ) = (board.piece_at(f), board.piece_at(t));
+        let Some(p) = p.filter(|p| p.color == s.turn()) else { return (NoStep::UnitGone, vec![]) };
+        if occ.is_some_and(|o| o.color == p.color) { return (NoStep::PlaceTaken, vec![to]); }
+        if p.role == shakmaty::Role::Pawn && occ.is_some() && f.file() == t.file() { return (NoStep::PlaceTaken, vec![to]); }
+        if matches!(p.role, shakmaty::Role::Bishop | shakmaty::Role::Rook | shakmaty::Role::Queen) {
+            let between = shakmaty::attacks::between(f, t) & board.occupied();
+            if between.any() { return (NoStep::LineShut, between.into_iter().map(place_of).collect()); }
+        }
+        (NoStep::MayNotMove, vec![from])
+    }
+    fn move_info(&self, _s: &VariantPosition, m: &Move) -> (Kind, Option<Kind>) { (kind_of(m.role()), m.capture().map(kind_of)) }
+    fn strikes_place(&self, s: &VariantPosition, owner: Role, at: Place) -> bool {
+        let board = s.board();
+        board.attacks_to(square_of(at), colour_of(owner), board.occupied()).any()
+    }
+    fn without(&self, s: &VariantPosition, at: Place) -> Option<VariantPosition> {
+        self.edited(s, |b| { b.discard_piece_at(square_of(at)); Some(()) })
+    }
+    fn relocate(&self, s: &VariantPosition, from: Place, to: Place) -> Option<VariantPosition> {
+        self.edited(s, |b| { let p = b.remove_piece_at(square_of(from))?; b.set_piece_at(square_of(to), p); Some(()) })
+    }
+}
+
+impl KernelGame {
+    /// A hypothetical board: `s` with its pieces edited, the en passant right gone, the castling rights kept only where the king and the rook still stand, and the result
+    /// accepted only if the kernel takes it as a position.
+    fn edited(&self, s: &VariantPosition, f: impl FnOnce(&mut shakmaty::Board) -> Option<()>) -> Option<VariantPosition> {
+        let mut setup = s.clone().into_setup(EnPassantMode::Always);
+        f(&mut setup.board)?;
+        setup.ep_square = None;
+        setup.castling_rights = match shakmaty::Castles::from_setup(&setup, self.mode) { Ok(c) | Err(c) => c.castling_rights() };
+        VariantPosition::from_setup(self.variant, setup, self.mode).ok()
     }
 }
