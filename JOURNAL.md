@@ -36764,3 +36764,9 @@ now points at the worktree agent-af54c0b4e6a72a8bb; the parent rebuilds main aft
 Built `cs_engine.solve_equals_batch` (the search's equal root moves by name, null-window reading, cut flagged) and subgoal_play_measure.py; five matches of 300 opening pairs each (candidate, control, random-among-equals, the search's own move
 with the same reading, candidate against that), stage A on the 500 kept games and the arrival read on 60 games. Numbers are the OBS lines in docs/ANALYST_PLAN.md under 78.50 BUILT, one run each, directional. What to keep in mind
 reading them: the equal reading costs clock, so every equals-based player searches shallower than the control (the depth lines); the comparison that isolates the number is candidate_v_engine.
+
+## 2026-11-15 -- plan 78.51: the fitted number as the order of the root moves (builder agent, branch worktree-agent-a8fe97cf0e7b5df5f)
+The search takes an optional order of its root moves (`root_orders`, `root_order_mode` strict|ties on `cs_engine.solve_batch` and `solve_equals_batch`; the default path is proved unchanged against a golden recorded before the change).
+Strict: the order replaces the root's own, and the move kept is the first in the order among the moves held equal (tested against the equals entry). Ties: the order breaks ties inside the root's own order only. Stage B measured the
+cost (strict loses about a ply, ties none), the decision for the matches was written before any match, then three matches of 300 pairs (ordered ties, random order ties, ordered strict) and stage D. Numbers are the OBS lines in
+docs/ANALYST_PLAN.md under 78.51 BUILT; one run each, directional.

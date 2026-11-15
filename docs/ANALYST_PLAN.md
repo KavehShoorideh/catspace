@@ -8469,3 +8469,34 @@ OBS subgoal_order stage B: order random_ties: mean ledger depth 8.104 (median 8.
    DECISION (made from these lines alone, before any match): the matches use the stable variant, "ties" (mode `ties`): ordered_ties_v_control and random_order_ties_v_control are the two matches the plan names.
    Because the two modes differ by about a ply of depth, I also play the other variant, "strict", against the control as a third match (ordered_v_control, said here before it is played); the random-order check for "strict"
    is not played. The random-order control pays no clock for a number; the ordered player pays its measured reading time (as the 78.50 candidate).
+
+C. THE MATCHES (300 opening pairs both colours, 0.2 s a move both sides, 8 workers, seeds from 9000, the move cap of 78.50; one run each; the short run of 10 pairs came first and ran end to end). Matches played:
+   ordered_ties against the control, the random root order (ties mode) against the control, and, as said above, the "strict" variant against the control (no random-order check for it). The ordered player pays its
+   measured number-reading time off its clock; the random-order player pays nothing. Lines as printed (wins, draws, losses are the first player's):
+OBS subgoal_play match ordered_ties_v_control: player ordered_ties against player control: games 600, opening pairs 300; ordered_ties: W 74 D 485 L 41 (draws include 92 games stopped at the move cap), score 0.5275 [0.5133, 0.5408] 90 pct band by bootstrap over opening pairs (1000 draws)
+OBS subgoal_play match ordered_ties_v_control: ordered_ties (a): decisions 24384, mean wall 200.4 ms a move, mean ledger depth 8.27
+OBS subgoal_play match ordered_ties_v_control: control (b): decisions 24345, mean wall 200.3 ms a move, mean ledger depth 8.49
+OBS subgoal_order match ordered_ties_v_control: workers 8 (cores 11), clock 0.2 s a move for both sides, wall 1232 s in this run
+OBS subgoal_play match random_order_ties_v_control: player random_order_ties against player control: games 600, opening pairs 300; random_order_ties: W 51 D 467 L 82 (draws include 394 games stopped at the move cap), score 0.4742 [0.4592, 0.4892] 90 pct band by bootstrap over opening pairs (1000 draws)
+OBS subgoal_play match random_order_ties_v_control: random_order_ties (a): decisions 31586, mean wall 200.9 ms a move, mean ledger depth 8.26
+OBS subgoal_play match random_order_ties_v_control: control (b): decisions 31572, mean wall 200.6 ms a move, mean ledger depth 8.22
+OBS subgoal_order match random_order_ties_v_control: workers 8 (cores 11), clock 0.2 s a move for both sides, wall 1596 s in this run
+OBS subgoal_play match ordered_v_control: player ordered_strict against player control: games 600, opening pairs 300; ordered_strict: W 98 D 444 L 58 (draws include 148 games stopped at the move cap), score 0.5333 [0.5183, 0.5500] 90 pct band by bootstrap over opening pairs (1000 draws)
+OBS subgoal_play match ordered_v_control: ordered_strict (a): decisions 26009, mean wall 199.7 ms a move, mean ledger depth 7.13
+OBS subgoal_play match ordered_v_control: control (b): decisions 25972, mean wall 199.6 ms a move, mean ledger depth 8.52
+OBS subgoal_order match ordered_v_control: workers 8 (cores 11), clock 0.2 s a move for both sides, wall 1306 s in this run
+D. ARRIVAL OF CONFIRMED CLAIMS (60 games = the first 30 opening pairs of each match, forcing read at fuse 5000, horizon 8; as 78.50) and how often the ordered player's move differs from the control's default call on the
+   same position (a fresh call at 0.2 s outside the game clock; the control called twice gives the clock's noise):
+OBS subgoal_play arrival ordered_ties_v_control: games read 60, forcing read at fuse 5000, horizon 8 plies
+OBS subgoal_play arrival ordered_ties_v_control: ordered_ties to move: a CONFIRMED threat move held at 267 of 2609 positions (10.2 pct [8.9, 11.6]); of 1751 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 519 (29.6 pct [26.1, 33.1])
+OBS subgoal_play arrival ordered_ties_v_control: control to move: a CONFIRMED threat move held at 241 of 2612 positions (9.2 pct [7.5, 11.2]); of 1779 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 383 (21.5 pct [19.0, 24.2])
+OBS subgoal_order differs: ordered_ties in 60 games, 2453 decisions with two or more legal moves; its move differed from the control's default call on the same position (0.2 s, outside the game clock) in 1397 (57.0 pct); two default calls of the control on the same positions differed from each other in 2 (0.1 pct)
+OBS subgoal_order differs: ordered_strict in 60 games, 2671 decisions with two or more legal moves; its move differed from the control's default call on the same position (0.2 s, outside the game clock) in 1688 (63.2 pct); two default calls of the control on the same positions differed from each other in 5 (0.2 pct)
+OBS subgoal_play arrival ordered_v_control: games read 60, forcing read at fuse 5000, horizon 8 plies
+OBS subgoal_play arrival ordered_v_control: ordered_strict to move: a CONFIRMED threat move held at 593 of 2829 positions (21.0 pct [18.1, 23.9]); of 1633 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 701 (42.9 pct [38.8, 47.2])
+OBS subgoal_play arrival ordered_v_control: control to move: a CONFIRMED threat move held at 222 of 2828 positions (7.9 pct [6.3, 9.5]); of 1799 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 356 (19.8 pct [17.3, 22.3])
+READING (directional; one run per match; no verdict). (1) The stable "ties" order costs no depth beyond the clock's noise in stage B and, played against the control, scores above half with its band above half; the random
+root order in the same mode scores below half with its band below half (and 394 of its games reached the move cap, many more than in the other matches), so the order alone is not what moved the result in the ordered
+match. (2) The "strict" variant searches about 1.4 plies shallower than the control in the games (the depth lines) and still scores above half with its band above half, with the confirmed-claim rate and the
+arrival rate of its side well above the control's in the same games; in the "ties" games the arrival rate of the ordered side is above the control's by a smaller margin and the held rate about the same. (3) The ordered "ties" player's move differs from the control's default call in a bit over half of the decisions, the control's two calls differ from each
+other in almost none, so the difference is the order's. Not read here: how much of each gain is the number's pick among equals and how much the different search (there is no strict-mode random-order match); other time budgets; other games.
