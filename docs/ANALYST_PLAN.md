@@ -7446,3 +7446,16 @@ solution line, the themes, the rating. Measure only: nothing of the puzzles reac
 The classes of misses are the work list for the reasoner; nothing is fixed in this plan.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+78.45 BUILT (2026-11-15, branch worktree-agent-a709c6cc37930dd42; journal entry 2026-11-15 01:10). catspace/incubator/analyst/discovery/puzzle_sheet_measure.py (game-free), tests/test_plan78_45_puzzle_sheet.py. Definitions as built are in the script's docstring: SEES by the sheet's own DANGER kinds (live0, lost, confirmed); PICKS the first move of the top such claim by stake; classes T R X W N other (O = seen, not picked). Changes from the plan, fixed before fresh_300: the set files carry no solution and no rating, so no rating bands, the length comes from the themes, and the line the target is derived from is a plain-search line; ways of two moves or more listed without routes get derived first steps from the medium. One run each, directional (dev_300 first on 20, then 300; fresh_300 once, nothing changed after):
+
+OBS puzzle sheet dev_300: puzzles read 300; sheet SEES 114 (38.0 pct) at the default budget, 136 (45.3 pct) at five times; PICKS 102 (34.0 pct) (names anything for 170 (56.7 pct)); at five times PICKS 122 (40.7 pct)
+OBS puzzle sheet dev_300: classes (misses T R X W N other; seen outranked O; seen and picked not listed): T 0 R 81 X 24 W 1 N 57 other 23 O 12
+OBS puzzle sheet dev_300: misses the five-times budget turns into SEES 26 (by class {'N': 13, 'X': 6, 'R': 7})
+OBS puzzle sheet dev_300: four-way (sheet sees / search 0.2 s finds): yes/yes 106, yes/no 8, no/yes 142, no/no 44
+OBS puzzle sheet fresh_300: puzzles read 300; sheet SEES 118 (39.3 pct) at the default budget, 146 (48.7 pct) at five times; PICKS 102 (34.0 pct) (names anything for 160 (53.3 pct)); at five times PICKS 131 (43.7 pct)
+OBS puzzle sheet fresh_300: classes (misses T R X W N other; seen outranked O; seen and picked not listed): T 0 R 84 X 28 W 2 N 47 other 21 O 16
+OBS puzzle sheet fresh_300: misses the five-times budget turns into SEES 32 (by class {'R': 13, 'N': 17, 'W': 1, 'X': 1})
+OBS puzzle sheet fresh_300: four-way (sheet sees / search 0.2 s finds): yes/yes 115, yes/no 3, no/yes 159, no/no 23
+
+READ (directional, one run per set, a derived line in place of the puzzle's solution). What the route reasoning lacks, by how many puzzles it costs on both sets: (1) R, the target is on the sheet and no way of it begins with the answer (the largest class on both sets): mostly an answer that is a quiet move or a move of another unit, and mates by a move that the goal question's few scenario ways (the first three scenarios) do not list; (2) N, a way begins with the answer but its deep reading was not reached under 40 steps (five times the budget turns about a quarter to a third of these into SEES); (3) X, the way is read and refuted, mostly by a reply carried in the way's own line (few stops are recorded); (4) 'other', mostly a line that takes nothing (no target to name). T is zero: every unit is a question. The plain search finds most puzzles the sheet does not see; the puzzles the sheet sees and the 0.2 s search does not are few (8 and 3). Nothing is fixed here.
