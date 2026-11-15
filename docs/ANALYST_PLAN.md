@@ -8435,3 +8435,37 @@ The number's weights are the 78.50 file, unchanged. No oracle, no human game, no
 wake: the order is passed by the measure script only.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+
+78.51 BUILT (branch worktree-agent-a8fe97cf0e7b5df5f, 2026-11-15, builder agent; stage A in commit e33370e6). Written in stages; the stage B decision below is dated BEFORE any match was played.
+
+A. THE OPTIONAL ROOT ORDER. `cs_engine.solve_batch` and `cs_engine.solve_equals_batch` take `root_orders` (default None: per position None, or a permutation of that position's legal-move indices, first read first; a
+   wrong one is an error row, never repaired; `ordering=False` with an order is refused) and `root_order_mode` ("strict" or "ties", default "strict"); also `ledger_depth` (default None = the engine's own cap), added so a
+   test can fix the depth. The Rust: `Search::set_root_order` (rust/engine/tactics/src/ledger.rs), `LedgerOp.root_order`, `Params.root_order`; no Cargo file touched. With no order the code path is the one that was.
+   What the search does with an order. Between its deepenings it puts the PREVIOUS deepening's best root move first (the table's best), and in a node of the main search reads late quiet moves shallow first (LMR);
+   the root is no exception to either. So under today's reading order the pick is sticky: the previous best while it still holds the best value, else the first of the best value in the root's own order.
+   - "strict": the given order REPLACES the root's reading order (the previous best is not read first, the lemma / claim orders are not read at the root, and no root move is read shallow first). The move kept
+     (`v > best`, the first of the best value) is then exactly: THE FIRST MOVE IN THE GIVEN ORDER AMONG THE MOVES WHOSE VALUE AT THE FINISHED DEPTH EQUALS THE BEST. Tested against `solve_equals_batch` on 40 positions read
+     whole, 3 random orders and the identity order, at ledger depth 3, and on 14 positions at depth 4: the pick was that move every time (tests/test_plan78_51_root_order.py). It is "the highest-numbered move among the
+     equals" because the order is by number. By reading the code: with the root's late-move reduction left on, a root move equal at full depth could be screened out by its shallow reading, so the statement
+     would not be exact; the reduction is therefore off at the root under "strict" (sound: more search, the value unchanged). I did not run the reduced variant to see how often it would have differed.
+   - "ties" (the stable variant the plan names): the root's own order stays and the given order breaks ties only inside the groups the root's order treats alike (same previous-best / lemma-claim rank, same gain,
+     same killer or history standing; the many quiet moves of no history are one group). The pick is then: the previous deepening's pick while it still holds the best value, else the first, in that reading order, of
+     the best value. It is NOT "the highest number among the equals". Tested: the pick is among the equals, the value and depth equal the plain search's.
+   An order never changes value or depth of the finished reading (tested: the same depth, value and set of equals with and without an order).
+   DEFAULT UNCHANGED: tests/golden_78_51_default_path.json was recorded from the build BEFORE the order existed (the `ledger_depth` knob only), 40 positions, ledger depth fixed at 3, no clock cut: for each the move, proof flag, the
+   ledger step's depth, value and nodes of `solve_batch`, and the move, equal indices, depth and value of `solve_equals_batch`. The new build with no order (`root_orders` absent, None, or a list of Nones) reproduces every
+   field (test_without_an_order_the_search_is_what_it_was, test_an_absent_order_is_the_same_whichever_way_it_is_absent).
+B. THE COST (`--stage b`, 1000 positions drawn at seed 5151 from the 500 kept games, 0.2 s, 8 threads, "today" read twice as the clock's own noise):
+OBS subgoal_order stage B: 1000 positions drawn (seed 5151) from 500 kept games, 996 with two or more legal moves; the search at 0.2 s a move on 8 threads, no equal reading; the number of every legal move of the 1000 positions read in 0.2 s in all (0.2 ms a position, outside the clock here, inside the candidate's in a match)
+OBS subgoal_order stage B: order today: mean ledger depth 8.162 (median 8.0), mean ledger nodes 66634, mean all nodes 116211; against today's order on the same positions: deeper in 0, shallower in 0, same in 1000; mean depth difference +0.000; same move as today's order in 1000 of 1000
+OBS subgoal_order stage B: order today_again: mean ledger depth 8.166 (median 8.0), mean ledger nodes 66919, mean all nodes 116587; against today's order on the same positions: deeper in 17, shallower in 14, same in 969; mean depth difference +0.004; same move as today's order in 1000 of 1000
+OBS subgoal_order stage B: order number_strict: mean ledger depth 7.060 (median 7.0), mean ledger nodes 70236, mean all nodes 119767; against today's order on the same positions: deeper in 6, shallower in 820, same in 174; mean depth difference -1.102; same move as today's order in 283 of 1000
+OBS subgoal_order stage B: order random_strict: mean ledger depth 6.995 (median 7.0), mean ledger nodes 69556, mean all nodes 119086; against today's order on the same positions: deeper in 7, shallower in 838, same in 155; mean depth difference -1.167; same move as today's order in 280 of 1000
+OBS subgoal_order stage B: order number_ties: mean ledger depth 8.155 (median 8.0), mean ledger nodes 66976, mean all nodes 116555; against today's order on the same positions: deeper in 105, shallower in 64, same in 831; mean depth difference -0.007; same move as today's order in 422 of 1000
+OBS subgoal_order stage B: order random_ties: mean ledger depth 8.104 (median 8.0), mean ledger nodes 66739, mean all nodes 116260; against today's order on the same positions: deeper in 70, shallower in 78, same in 852; mean depth difference -0.058; same move as today's order in 429 of 1000
+   Reading (directional): the number's order in "strict" mode loses about one ply of depth (and so does a random order in "strict": the loss is the price of replacing the root's own order, not of the number); the "ties"
+   mode loses none beyond the clock's noise (today against today again differs by 0.004 of a ply).
+   DECISION (made from these lines alone, before any match): the matches use the stable variant, "ties" (mode `ties`): ordered_ties_v_control and random_order_ties_v_control are the two matches the plan names.
+   Because the two modes differ by about a ply of depth, I also play the other variant, "strict", against the control as a third match (ordered_v_control, said here before it is played); the random-order check for "strict"
+   is not played. The random-order control pays no clock for a number; the ordered player pays its measured reading time (as the 78.50 candidate).
