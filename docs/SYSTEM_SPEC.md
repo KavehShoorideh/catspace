@@ -199,3 +199,8 @@ Working suggestions, not decisions:
   same thing section 5 calls a subgoal. The night's measurements point the same way: what foretold anything was a
   confirmed claim ARRIVING, and a conditional claim says what would make one arrive.
 - The mapping file holds names only, never knowledge (the standing rule on supplied names).
+
+Kaveh, the same day: "this means the edges will also be as graph nodes". Read as: a relation is itself a node. "This
+unit bears on that unit along this line" is a node joined to the two units and the line, so a claim, a condition or a
+derived concept can point at the relation itself. The graph is then two-sided: concept nodes and relation nodes, with
+plain links between them. (If he meant the board's edge: that is a concept node of layer 1 either way.)
