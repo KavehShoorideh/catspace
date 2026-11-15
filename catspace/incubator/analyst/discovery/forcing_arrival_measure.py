@@ -31,27 +31,36 @@ def counts(read: "dict | None") -> "tuple[int, int, int]":
     return len(words), sum(1 for w in words if w in ("NOT SETTLED", "UNREAD")), sum(1 for w in words if w == "CONFIRMED")
 
 
+def counts_of_game(plies: list) -> "tuple[list, list]":
+    """(the mover's counts, the other side's counts) per position of a game, `counts` of each read; a position that is over counts nothing."""
+    return [counts(p["ours"]) if p else (0, 0, 0) for p in plies], [counts(p["theirs"]) if p else (0, 0, 0) for p in plies]
+
+
+def quiet_indices(plies: list, own: list, oth: list) -> list:
+    """The positions of a game at which neither side holds a CONFIRMED threat move (the quiet ones); a position that is over is not."""
+    return [t for t in range(len(plies)) if plies[t] is not None and not own[t][2] and not oth[t][2]]
+
+
+def arrival_targets(own: list, n: int, t: int) -> list:
+    """Per horizon, (the mover's CONFIRMED threat move arrives, the other side's arrives) as 0 or 1 for the quiet position t of a game of n positions; None where the horizon runs past the game."""
+    targets = []
+    for h in HORIZONS:
+        if t + h >= n:
+            targets.append(None)
+            continue
+        mine = any(own[u][2] for u in range(t + 2, t + h + 1, 2))
+        theirs = any(own[u][2] for u in range(t + 1, t + h + 1, 2))
+        targets.append((int(mine), int(theirs)))
+    return targets
+
+
 def rows_of_game(plies: list, rng: random.Random) -> list:
     """One row per quiet position: (predictors..., targets per horizon or None where the game ends before the horizon)."""
-    own = [counts(p["ours"]) if p else (0, 0, 0) for p in plies]
-    oth = [counts(p["theirs"]) if p else (0, 0, 0) for p in plies]
+    own, oth = counts_of_game(plies)
     diffs = [own[t][0] - oth[t][0] for t in range(len(plies))]
     shuffled = diffs[:]
     rng.shuffle(shuffled)
-    rows = []
-    for t in range(len(plies)):
-        if plies[t] is None or own[t][2] or oth[t][2]:
-            continue
-        targets = []
-        for h in HORIZONS:
-            if t + h >= len(plies):
-                targets.append(None)
-                continue
-            mine = any(own[u][2] for u in range(t + 2, t + h + 1, 2))
-            theirs = any(own[u][2] for u in range(t + 1, t + h + 1, 2))
-            targets.append((int(mine), int(theirs)))
-        rows.append(((own[t][0], oth[t][0], diffs[t], own[t][1] - oth[t][1], shuffled[t]), targets))
-    return rows
+    return [((own[t][0], oth[t][0], diffs[t], own[t][1] - oth[t][1], shuffled[t]), arrival_targets(own, len(plies), t)) for t in quiet_indices(plies, own, oth)]
 
 
 NAMES = ("count of the mover's threat moves", "count of the other side's", "difference of the counts", "difference of the NOT SETTLED counts", "difference shuffled within the game")

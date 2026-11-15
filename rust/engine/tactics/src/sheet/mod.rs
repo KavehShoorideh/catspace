@@ -19,6 +19,7 @@ pub mod mv;
 pub mod reading;
 pub mod run;
 pub mod settle;
+pub mod subgoal;
 pub mod walk;
 
 pub use cs_game::placed::{Kind, Place};

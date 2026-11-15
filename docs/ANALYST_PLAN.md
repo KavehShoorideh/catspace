@@ -8152,3 +8152,165 @@ Acceptance: tests for the statements (each on small hand-made positions of two v
 78.43 measures at zero differences if the sheet's files are touched. No oracle, no human game, no puzzle.
 
 STATUS: stage A done by the parent; B to D given to a builder agent on 2026-11-15.
+
+
+78.49 BUILT (branch worktree-agent-af54c0b4e6a72a8bb, 2026-11-15; stages B, C and D by the builder agent). A measurement; nothing is wired into play, no subgoal enters any value.
+B. rust/engine/tactics/src/sheet/subgoal.rs: 26 game-free statements, each one line of text and one number per side, from the `Placed` trait through the light `Reading` (units, kinds, places, bearing, reach,
+   the goal unit of each side, the worth of each kind) and nothing else; batch entries `SheetModel.subgoal_names`, `subgoal_games` and `subgoal_children` in rust/engine/py/src/sheet_py.rs (std threads over games).
+   LEFT OUT because the trait does not give them: which units have not yet moved (no history is asked of a game) and a unit's distance to the far edge (a place is a number and a name, no geometry); the
+   "long-range" reach has no game-free definition either (the bearing of a unit stands for it: widest_bearing, bearing_total). The forcing terms are the counts of threat moves by verdict from the kept 78.48
+   reads (fuse 5000), not rerun. Where a statement counts "the other side's units borne on" it is made once from each side, so ours less theirs of a statement and of its mirror would be the same number; the mirrors are not listed.
+C. catspace/incubator/analyst/discovery/subgoal_fit_measure.py (stage A's functions `counts_of_game`, `quiet_indices`, `arrival_targets` were cut out of `rows_of_game` so that the fit imports them; its output
+   is byte-identical on the kept reads). Fit half: the even game ids; L1 linear (scikit-learn LassoCV), the penalty chosen by 5-fold cross-validation grouped by game on the even games only; the test half: the odd
+   games only; bands: 300 draws over games. Two feature sets: P (the statements) and P+F (with the three counts of threat moves by verdict that a quiet position can have). Targets: the arrival target at 4, 8, 16
+   plies, and material won less lost (the 78.44 outcome, read at the quiet positions only: not the test of 78.48, which took every position). D: run only at a horizon where the lower end of the P fit's band is
+   above the upper end of the count difference's band (arrival target); one step of control, the sign convention in the module docstring (the number of a child is read from the side that moved) and tested with a
+   weight on the material statement alone.
+Output kept as artifacts/experiments/subgoal_fit_78_49/full/obs.txt (all lines, the kept statements at every horizon for every fit) and result.json; never staged. The OBS lines (the kept statements of the P fit on the
+arrival target; the others are in the file):
+
+OBS subgoal games_s5016_n500: statements 26 per side; the position's quiet rows 35055 (fit half, even game ids: 17593 rows, 250 games; test half, odd: 17462 rows, 250 games)
+OBS subgoal games_s5016_n500: statement moves: places its units may move to, summed over its units
+OBS subgoal games_s5016_n500: statement movers: its units that may move at all
+OBS subgoal games_s5016_n500: statement units: its units
+OBS subgoal games_s5016_n500: statement material: the worth of its units, summed
+OBS subgoal games_s5016_n500: statement attackers: its units that bear on a unit of the other side
+OBS subgoal games_s5016_n500: statement attacks: pairs of one of its units and one of the other side's that it bears on
+OBS subgoal games_s5016_n500: statement attack_worth: the worth of the other side's units it bears on, each counted once
+OBS subgoal games_s5016_n500: statement cheap_attacks: pairs where the unit that bears is worth less than the unit borne on
+OBS subgoal games_s5016_n500: statement loose_targets: the other side's units it bears on that no unit of the other side bears on
+OBS subgoal games_s5016_n500: statement loose_worth: the worth of those loose units
+OBS subgoal games_s5016_n500: statement overloaded: the other side's units it bears on with more of its units than the other side bears on that place
+OBS subgoal games_s5016_n500: statement favourable_targets: the other side's units it bears on that are worth more than the cheapest of its units bearing on them
+OBS subgoal games_s5016_n500: statement guarded: its own units that another of its own units bears on
+OBS subgoal games_s5016_n500: statement unguarded: its own units that none of its own units bears on
+OBS subgoal games_s5016_n500: statement mutual_pairs: pairs of its own units that bear on each other
+OBS subgoal games_s5016_n500: statement goal_steps: places its goal unit may move to
+OBS subgoal games_s5016_n500: statement goal_free_steps: of them, the places no unit of the other side bears on
+OBS subgoal games_s5016_n500: statement goal_cover: its own units that bear on a place its goal unit may move to
+OBS subgoal games_s5016_n500: statement goal_struck: 1 when it bears on the place of the other side's goal unit
+OBS subgoal games_s5016_n500: statement ring_struck: places the other side's goal unit may move to that it bears on
+OBS subgoal games_s5016_n500: statement controlled: distinct places it bears on
+OBS subgoal games_s5016_n500: statement controlled_empty: of them, the places no unit stands on
+OBS subgoal games_s5016_n500: statement only_controlled: places it bears on that the other side does not
+OBS subgoal games_s5016_n500: statement bearing_total: places borne on, summed over its units (a place borne on twice counts twice)
+OBS subgoal games_s5016_n500: statement widest_bearing: the most places any one of its units bears on
+OBS subgoal games_s5016_n500: statement cheapest_units: its units, other than the goal unit, of the least worth of any unit on the board other than a goal unit
+OBS subgoal games_s5016_n500: fit P arrival h=4: penalty 0.00105 by 5-fold cross-validation grouped by game on the even games, statements kept 18 of 26
+OBS subgoal games_s5016_n500: fit P arrival h=8: penalty 0.00145 by 5-fold cross-validation grouped by game on the even games, statements kept 19 of 26
+OBS subgoal games_s5016_n500: fit P arrival h=16: penalty 0.00259 by 5-fold cross-validation grouped by game on the even games, statements kept 18 of 26
+OBS subgoal games_s5016_n500: fit P material h=4: penalty 0.00041 by 5-fold cross-validation grouped by game on the even games, statements kept 24 of 26
+OBS subgoal games_s5016_n500: fit P material h=8: penalty 0.00059 by 5-fold cross-validation grouped by game on the even games, statements kept 22 of 26
+OBS subgoal games_s5016_n500: fit P material h=16: penalty 0.04114 by 5-fold cross-validation grouped by game on the even games, statements kept 14 of 26
+OBS subgoal games_s5016_n500: fit PF arrival h=4: penalty 0.00052 by 5-fold cross-validation grouped by game on the even games, statements kept 24 of 29
+OBS subgoal games_s5016_n500: fit PF arrival h=8: penalty 0.00163 by 5-fold cross-validation grouped by game on the even games, statements kept 22 of 29
+OBS subgoal games_s5016_n500: fit PF arrival h=16: penalty 0.00259 by 5-fold cross-validation grouped by game on the even games, statements kept 20 of 29
+OBS subgoal games_s5016_n500: fit PF material h=4: penalty 0.00041 by 5-fold cross-validation grouped by game on the even games, statements kept 27 of 29
+OBS subgoal games_s5016_n500: fit PF material h=8: penalty 0.00059 by 5-fold cross-validation grouped by game on the even games, statements kept 25 of 29
+OBS subgoal games_s5016_n500: fit PF material h=16: penalty 0.04114 by 5-fold cross-validation grouped by game on the even games, statements kept 16 of 29
+OBS subgoal games_s5016_n500: test half h=4 the arrival target (ours arrives less theirs): rows with the target 16749, mean +0.0079
+OBS subgoal games_s5016_n500: h=4 the arrival target (ours arrives less theirs): fit P: rank correlation +0.1530 [+0.1343, +0.1738] (300 draws)
+OBS subgoal games_s5016_n500: h=4 the arrival target (ours arrives less theirs): fit P+F: rank correlation +0.1787 [+0.1608, +0.1982] (300 draws)
+OBS subgoal games_s5016_n500: h=4 the arrival target (ours arrives less theirs): count difference of stage A: rank correlation +0.0931 [+0.0767, +0.1109] (300 draws)
+OBS subgoal games_s5016_n500: h=4 the arrival target (ours arrives less theirs): fit P shuffled within the game: rank correlation -0.0070 [-0.0197, +0.0043] (300 draws)
+OBS subgoal games_s5016_n500: h=4 the arrival target (ours arrives less theirs): fit P+F shuffled within the game: rank correlation -0.0054 [-0.0175, +0.0058] (300 draws)
+OBS subgoal games_s5016_n500: test half h=8 the arrival target (ours arrives less theirs): rows with the target 15990, mean +0.0094
+OBS subgoal games_s5016_n500: h=8 the arrival target (ours arrives less theirs): fit P: rank correlation +0.1476 [+0.1189, +0.1782] (300 draws)
+OBS subgoal games_s5016_n500: h=8 the arrival target (ours arrives less theirs): fit P+F: rank correlation +0.1681 [+0.1441, +0.1960] (300 draws)
+OBS subgoal games_s5016_n500: h=8 the arrival target (ours arrives less theirs): count difference of stage A: rank correlation +0.1017 [+0.0796, +0.1247] (300 draws)
+OBS subgoal games_s5016_n500: h=8 the arrival target (ours arrives less theirs): fit P shuffled within the game: rank correlation +0.0073 [-0.0068, +0.0220] (300 draws)
+OBS subgoal games_s5016_n500: h=8 the arrival target (ours arrives less theirs): fit P+F shuffled within the game: rank correlation +0.0074 [-0.0054, +0.0201] (300 draws)
+OBS subgoal games_s5016_n500: test half h=16 the arrival target (ours arrives less theirs): rows with the target 14551, mean +0.0064
+OBS subgoal games_s5016_n500: h=16 the arrival target (ours arrives less theirs): fit P: rank correlation +0.1311 [+0.0899, +0.1720] (300 draws)
+OBS subgoal games_s5016_n500: h=16 the arrival target (ours arrives less theirs): fit P+F: rank correlation +0.1442 [+0.1078, +0.1820] (300 draws)
+OBS subgoal games_s5016_n500: h=16 the arrival target (ours arrives less theirs): count difference of stage A: rank correlation +0.0918 [+0.0590, +0.1236] (300 draws)
+OBS subgoal games_s5016_n500: h=16 the arrival target (ours arrives less theirs): fit P shuffled within the game: rank correlation +0.0124 [-0.0009, +0.0232] (300 draws)
+OBS subgoal games_s5016_n500: h=16 the arrival target (ours arrives less theirs): fit P+F shuffled within the game: rank correlation +0.0014 [-0.0123, +0.0135] (300 draws)
+OBS subgoal games_s5016_n500: test half h=4 material won less lost (the 78.44 outcome): rows with the target 16702, mean -0.3012
+OBS subgoal games_s5016_n500: h=4 material won less lost (the 78.44 outcome): fit P: rank correlation +0.2776 [+0.2639, +0.2908] (300 draws)
+OBS subgoal games_s5016_n500: h=4 material won less lost (the 78.44 outcome): fit P+F: rank correlation +0.2789 [+0.2655, +0.2921] (300 draws)
+OBS subgoal games_s5016_n500: h=4 material won less lost (the 78.44 outcome): count difference of stage A: rank correlation -0.0358 [-0.0480, -0.0238] (300 draws)
+OBS subgoal games_s5016_n500: h=4 material won less lost (the 78.44 outcome): fit P shuffled within the game: rank correlation -0.0046 [-0.0155, +0.0082] (300 draws)
+OBS subgoal games_s5016_n500: h=4 material won less lost (the 78.44 outcome): fit P+F shuffled within the game: rank correlation -0.0052 [-0.0163, +0.0072] (300 draws)
+OBS subgoal games_s5016_n500: test half h=8 material won less lost (the 78.44 outcome): rows with the target 15954, mean -0.3387
+OBS subgoal games_s5016_n500: h=8 material won less lost (the 78.44 outcome): fit P: rank correlation +0.2404 [+0.2196, +0.2601] (300 draws)
+OBS subgoal games_s5016_n500: h=8 material won less lost (the 78.44 outcome): fit P+F: rank correlation +0.2438 [+0.2225, +0.2636] (300 draws)
+OBS subgoal games_s5016_n500: h=8 material won less lost (the 78.44 outcome): count difference of stage A: rank correlation +0.0355 [+0.0215, +0.0515] (300 draws)
+OBS subgoal games_s5016_n500: h=8 material won less lost (the 78.44 outcome): fit P shuffled within the game: rank correlation +0.0173 [+0.0064, +0.0291] (300 draws)
+OBS subgoal games_s5016_n500: h=8 material won less lost (the 78.44 outcome): fit P+F shuffled within the game: rank correlation +0.0121 [+0.0009, +0.0242] (300 draws)
+OBS subgoal games_s5016_n500: test half h=16 material won less lost (the 78.44 outcome): rows with the target 14512, mean -0.3312
+OBS subgoal games_s5016_n500: h=16 material won less lost (the 78.44 outcome): fit P: rank correlation +0.1907 [+0.1665, +0.2190] (300 draws)
+OBS subgoal games_s5016_n500: h=16 material won less lost (the 78.44 outcome): fit P+F: rank correlation +0.1995 [+0.1737, +0.2268] (300 draws)
+OBS subgoal games_s5016_n500: h=16 material won less lost (the 78.44 outcome): count difference of stage A: rank correlation +0.0819 [+0.0583, +0.1024] (300 draws)
+OBS subgoal games_s5016_n500: h=16 material won less lost (the 78.44 outcome): fit P shuffled within the game: rank correlation -0.0030 [-0.0169, +0.0122] (300 draws)
+OBS subgoal games_s5016_n500: h=16 material won less lost (the 78.44 outcome): fit P+F shuffled within the game: rank correlation -0.0018 [-0.0153, +0.0121] (300 draws)
+OBS subgoal games_s5016_n500: kept P arrival h=4: material (ours less theirs): weight +0.05922 per standard deviation, single-statement rank correlation on the test half +0.0862
+OBS subgoal games_s5016_n500: kept P arrival h=4: bearing_total (ours less theirs): weight +0.04512 per standard deviation, single-statement rank correlation on the test half +0.0965
+OBS subgoal games_s5016_n500: kept P arrival h=4: units (ours less theirs): weight -0.03893 per standard deviation, single-statement rank correlation on the test half +0.0346
+OBS subgoal games_s5016_n500: kept P arrival h=4: overloaded (ours less theirs): weight +0.03500 per standard deviation, single-statement rank correlation on the test half +0.0694
+OBS subgoal games_s5016_n500: kept P arrival h=4: goal_struck (ours less theirs): weight +0.03110 per standard deviation, single-statement rank correlation on the test half +0.0810
+OBS subgoal games_s5016_n500: kept P arrival h=4: controlled_empty (ours less theirs): weight -0.02450 per standard deviation, single-statement rank correlation on the test half +0.0561
+OBS subgoal games_s5016_n500: kept P arrival h=4: movers (ours less theirs): weight +0.01620 per standard deviation, single-statement rank correlation on the test half +0.0493
+OBS subgoal games_s5016_n500: kept P arrival h=4: loose_targets (ours less theirs): weight -0.01508 per standard deviation, single-statement rank correlation on the test half +0.0506
+OBS subgoal games_s5016_n500: kept P arrival h=4: attackers (ours less theirs): weight -0.01356 per standard deviation, single-statement rank correlation on the test half -0.0004
+OBS subgoal games_s5016_n500: kept P arrival h=4: unguarded (ours less theirs): weight -0.01330 per standard deviation, single-statement rank correlation on the test half -0.0277
+OBS subgoal games_s5016_n500: kept P arrival h=4: cheap_attacks (ours less theirs): weight -0.01283 per standard deviation, single-statement rank correlation on the test half -0.0533
+OBS subgoal games_s5016_n500: kept P arrival h=4: widest_bearing (ours less theirs): weight +0.01226 per standard deviation, single-statement rank correlation on the test half +0.0450
+OBS subgoal games_s5016_n500: kept P arrival h=4: goal_steps (ours less theirs): weight -0.01011 per standard deviation, single-statement rank correlation on the test half -0.0246
+OBS subgoal games_s5016_n500: kept P arrival h=4: attack_worth (ours less theirs): weight -0.00729 per standard deviation, single-statement rank correlation on the test half -0.0182
+OBS subgoal games_s5016_n500: kept P arrival h=4: ring_struck (ours less theirs): weight +0.00636 per standard deviation, single-statement rank correlation on the test half +0.0560
+OBS subgoal games_s5016_n500: kept P arrival h=4: moves (ours less theirs): weight -0.00507 per standard deviation, single-statement rank correlation on the test half +0.0784
+OBS subgoal games_s5016_n500: kept P arrival h=4: loose_worth (ours less theirs): weight +0.00287 per standard deviation, single-statement rank correlation on the test half +0.0330
+OBS subgoal games_s5016_n500: kept P arrival h=4: goal_cover (ours less theirs): weight +0.00264 per standard deviation, single-statement rank correlation on the test half +0.0277
+OBS subgoal games_s5016_n500: kept P arrival h=8: bearing_total (ours less theirs): weight +0.09754 per standard deviation, single-statement rank correlation on the test half +0.0897
+OBS subgoal games_s5016_n500: kept P arrival h=8: material (ours less theirs): weight +0.08492 per standard deviation, single-statement rank correlation on the test half +0.0883
+OBS subgoal games_s5016_n500: kept P arrival h=8: units (ours less theirs): weight -0.07227 per standard deviation, single-statement rank correlation on the test half +0.0283
+OBS subgoal games_s5016_n500: kept P arrival h=8: moves (ours less theirs): weight -0.06417 per standard deviation, single-statement rank correlation on the test half +0.0650
+OBS subgoal games_s5016_n500: kept P arrival h=8: overloaded (ours less theirs): weight +0.03801 per standard deviation, single-statement rank correlation on the test half +0.0442
+OBS subgoal games_s5016_n500: kept P arrival h=8: movers (ours less theirs): weight +0.03387 per standard deviation, single-statement rank correlation on the test half +0.0422
+OBS subgoal games_s5016_n500: kept P arrival h=8: controlled_empty (ours less theirs): weight -0.02946 per standard deviation, single-statement rank correlation on the test half +0.0432
+OBS subgoal games_s5016_n500: kept P arrival h=8: goal_steps (ours less theirs): weight -0.02478 per standard deviation, single-statement rank correlation on the test half -0.0426
+OBS subgoal games_s5016_n500: kept P arrival h=8: attack_worth (ours less theirs): weight -0.02119 per standard deviation, single-statement rank correlation on the test half -0.0140
+OBS subgoal games_s5016_n500: kept P arrival h=8: goal_struck (ours less theirs): weight +0.01853 per standard deviation, single-statement rank correlation on the test half +0.0544
+OBS subgoal games_s5016_n500: kept P arrival h=8: widest_bearing (ours less theirs): weight +0.01777 per standard deviation, single-statement rank correlation on the test half +0.0339
+OBS subgoal games_s5016_n500: kept P arrival h=8: loose_targets (ours less theirs): weight -0.01222 per standard deviation, single-statement rank correlation on the test half +0.0267
+OBS subgoal games_s5016_n500: kept P arrival h=8: goal_cover (ours less theirs): weight +0.01164 per standard deviation, single-statement rank correlation on the test half +0.0167
+OBS subgoal games_s5016_n500: kept P arrival h=8: cheap_attacks (ours less theirs): weight -0.00700 per standard deviation, single-statement rank correlation on the test half -0.0478
+OBS subgoal games_s5016_n500: kept P arrival h=8: ring_struck (ours less theirs): weight +0.00600 per standard deviation, single-statement rank correlation on the test half +0.0535
+OBS subgoal games_s5016_n500: kept P arrival h=8: mutual_pairs (ours less theirs): weight +0.00581 per standard deviation, single-statement rank correlation on the test half +0.0299
+OBS subgoal games_s5016_n500: kept P arrival h=8: attackers (ours less theirs): weight -0.00558 per standard deviation, single-statement rank correlation on the test half -0.0083
+OBS subgoal games_s5016_n500: kept P arrival h=8: cheapest_units (ours less theirs): weight -0.00113 per standard deviation, single-statement rank correlation on the test half -0.0220
+OBS subgoal games_s5016_n500: kept P arrival h=8: unguarded (ours less theirs): weight -0.00043 per standard deviation, single-statement rank correlation on the test half -0.0443
+OBS subgoal games_s5016_n500: kept P arrival h=16: bearing_total (ours less theirs): weight +0.10630 per standard deviation, single-statement rank correlation on the test half +0.0814
+OBS subgoal games_s5016_n500: kept P arrival h=16: material (ours less theirs): weight +0.10160 per standard deviation, single-statement rank correlation on the test half +0.0748
+OBS subgoal games_s5016_n500: kept P arrival h=16: units (ours less theirs): weight -0.09491 per standard deviation, single-statement rank correlation on the test half +0.0016
+OBS subgoal games_s5016_n500: kept P arrival h=16: moves (ours less theirs): weight -0.06143 per standard deviation, single-statement rank correlation on the test half +0.0542
+OBS subgoal games_s5016_n500: kept P arrival h=16: goal_steps (ours less theirs): weight -0.04524 per standard deviation, single-statement rank correlation on the test half -0.0412
+OBS subgoal games_s5016_n500: kept P arrival h=16: movers (ours less theirs): weight +0.04430 per standard deviation, single-statement rank correlation on the test half +0.0131
+OBS subgoal games_s5016_n500: kept P arrival h=16: attack_worth (ours less theirs): weight -0.04304 per standard deviation, single-statement rank correlation on the test half -0.0104
+OBS subgoal games_s5016_n500: kept P arrival h=16: overloaded (ours less theirs): weight +0.02787 per standard deviation, single-statement rank correlation on the test half +0.0289
+OBS subgoal games_s5016_n500: kept P arrival h=16: mutual_pairs (ours less theirs): weight +0.02521 per standard deviation, single-statement rank correlation on the test half +0.0303
+OBS subgoal games_s5016_n500: kept P arrival h=16: guarded (ours less theirs): weight -0.01808 per standard deviation, single-statement rank correlation on the test half +0.0549
+OBS subgoal games_s5016_n500: kept P arrival h=16: goal_struck (ours less theirs): weight +0.01359 per standard deviation, single-statement rank correlation on the test half +0.0334
+OBS subgoal games_s5016_n500: kept P arrival h=16: controlled_empty (ours less theirs): weight -0.01277 per standard deviation, single-statement rank correlation on the test half +0.0280
+OBS subgoal games_s5016_n500: kept P arrival h=16: controlled (ours less theirs): weight -0.01178 per standard deviation, single-statement rank correlation on the test half +0.0477
+OBS subgoal games_s5016_n500: kept P arrival h=16: attacks (ours less theirs): weight +0.00989 per standard deviation, single-statement rank correlation on the test half +0.0141
+OBS subgoal games_s5016_n500: kept P arrival h=16: loose_targets (ours less theirs): weight -0.00702 per standard deviation, single-statement rank correlation on the test half +0.0174
+OBS subgoal games_s5016_n500: kept P arrival h=16: goal_free_steps (ours less theirs): weight -0.00380 per standard deviation, single-statement rank correlation on the test half -0.0153
+OBS subgoal games_s5016_n500: kept P arrival h=16: cheap_attacks (ours less theirs): weight -0.00131 per standard deviation, single-statement rank correlation on the test half -0.0340
+OBS subgoal games_s5016_n500: kept P arrival h=16: cheapest_units (ours less theirs): weight -0.00113 per standard deviation, single-statement rank correlation on the test half -0.0487
+OBS subgoal games_s5016_n500: stage D h=4: children read for 250 test games in 0.5 s wall
+OBS subgoal games_s5016_n500: stage D h=4: quiet test positions with the played move's position read and two or more moves listed 17172; the number after the played move less the mean over the legal moves: mean +0.0023 [+0.0016, +0.0031], above the mean in 7268 (42.3 pct) [41.6, 42.9], below in 9903
+OBS subgoal games_s5016_n500: stage D h=4: the played move beats 49.0 pct of the listed moves on average [48.6, 49.4] (50 is chance)
+OBS subgoal games_s5016_n500: stage D h=4: control, one random listed move in place of the played one: mean +0.0000, above the mean in 7564 (44.0 pct)
+OBS subgoal games_s5016_n500: stage D h=8: skipped, the P fit is not clear of the count difference of stage A (lower end of its band not above the upper end of the count's)
+OBS subgoal games_s5016_n500: stage D h=16: skipped, the P fit is not clear of the count difference of stage A (lower end of its band not above the upper end of the count's)
+OBS subgoal games_s5016_n500: total wall 26.6 s
+
+Reading, directional (one run; no verdict): the sparse fit of the statements foretells the arrival target better than the count difference of stage A at 4 plies, clear of it on the band, and at 8 and 16 plies
+its band overlaps the count's; with the counts of threat moves by verdict added (P+F) its point value is higher at all three horizons (the bands overlap). Against material won less lost the statement fit reads a good deal higher than the count
+difference, which has almost none, but it carries the statements that say a unit is loose or overloaded, which is the next move's material, so this is not evidence that it goes beyond the first level. The fit
+keeps most of the 26 statements (the cross-validated penalty is small); the weights of collinear statements (controlled_empty against only_controlled in the material fit) are large with opposite signs and
+should not be read one by one. The single-statement correlations on the test half are all small (the largest of the P statements on the arrival target about 0.10). Stage D ran at 4 plies only: the mean of the number after the move the game's
+player chose less the mean over the legal moves is a tiny positive number with its band above zero, but the played move is above that mean in fewer positions than not and beats a little under half of the
+listed moves, against the control of a random move: mixed and small, no sign that the player follows the number. Not built: the unmoved-units, edge-distance and long-range statements (above); the fit on any set but the 500 games of 78.48; any use of the fitted number in play.

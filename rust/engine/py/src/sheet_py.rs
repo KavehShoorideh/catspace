@@ -11,6 +11,7 @@ use cs_tactics::sheet::mv::{self, Event, Loss, MoveAnswer};
 use cs_tactics::sheet::reading::Reading;
 use cs_tactics::sheet::run::{play_game, Chances, Clock, Costing, Fnd, Found, PlySummary, Qn, Runner, Schedule, DANGER};
 use cs_tactics::sheet::settle::{Ask, Cornering, Detail, Duty, Entry, Finding, Q, Settler};
+use cs_tactics::sheet::subgoal;
 use cs_tactics::sheet::walk::Stop;
 use cs_tactics::sheet::{Model, Names, Params, Side, Unit};
 use pyo3::prelude::*;
@@ -131,6 +132,63 @@ fn run_lite(sp: &Spec, games: &[GameWire], threads: usize, fp: &ForcingParams) -
                     let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     if i >= games.len() { break; }
                     let r = match &model { Ok(m) => lite_game(sp, m, &games[i], fp), Err(e) => Err(e.clone()) };
+                    slots.lock().unwrap()[i] = Some(r);
+                }
+            });
+        }
+    });
+    slots.into_inner().unwrap().into_iter().map(|x| x.unwrap_or_else(|| Err("not run".into()))).collect()
+}
+
+/// PLAN 78.49 B: the statements of every position of a game (`us` then `them`, `subgoal::N` each), None where the position is over.
+fn subgoal_game(sp: &Spec, model: &Model, game: &GameWire) -> Result<Vec<Option<Vec<f64>>>, String> {
+    let g = match &game.0 { Some(f) => KernelGame::from_fen(&sp.variant, f)?, None => KernelGame::new(&sp.variant, 518)? };
+    let mut st = cs_game::Game::initial(&g);
+    let mut out = Vec::with_capacity(game.1.len() + 1);
+    for ply in 0..=game.1.len() {
+        out.push(Reading::new(&g, st.clone(), model).ok().map(|r| { let [a, b] = subgoal::statements(&r); a.into_iter().chain(b).collect() }));
+        if ply < game.1.len() {
+            let mv = cs_game::Game::find_move(&g, &st, &game.1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", game.1[ply]))?;
+            st = cs_game::Game::apply(&g, &st, &mv);
+        }
+    }
+    Ok(out)
+}
+
+/// PLAN 78.49 D: for each wanted ply of a game, (ply, the index of the move played, [(index of a legal move, the weighted statements of the position after it, from the side that moved:
+/// sum of weight x (its statement - the other side's statement of the child))]); `weights` has one number per statement.
+type ChildRes = Vec<(usize, Option<usize>, Vec<(usize, f64)>)>;
+fn subgoal_children_game(sp: &Spec, model: &Model, game: &GameWire, wanted: &[usize], weights: &[f64]) -> Result<ChildRes, String> {
+    let g = match &game.0 { Some(f) => KernelGame::from_fen(&sp.variant, f)?, None => KernelGame::new(&sp.variant, 518)? };
+    let mut st = cs_game::Game::initial(&g);
+    let mut out = vec![];
+    for ply in 0..game.1.len() {
+        if wanted.contains(&ply) {
+            if let Ok(r) = Reading::new(&g, st.clone(), model) {
+                let played = cs_game::Game::moves(&g, &st).iter().position(|m| cs_game::Game::move_name(&g, &st, m) == game.1[ply]);
+                let vals = subgoal::children(&r, model).into_iter().map(|(ix, _name, [us, them])| (ix, weights.iter().zip(them.iter().zip(us.iter())).map(|(w, (t, u))| w * (t - u)).sum::<f64>())).collect();
+                out.push((ply, played, vals));
+            }
+        }
+        let mv = cs_game::Game::find_move(&g, &st, &game.1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", game.1[ply]))?;
+        st = cs_game::Game::apply(&g, &st, &mv);
+    }
+    Ok(out)
+}
+
+/// Many games across `threads` std threads, each making its own model once; the results in the order of the games.
+fn pool<T: Send>(sp: &Spec, n: usize, threads: usize, f: impl Fn(&Model, usize) -> Result<T, String> + Sync) -> Vec<Result<T, String>> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: std::sync::Mutex<Vec<Option<Result<T, String>>>> = std::sync::Mutex::new((0..n).map(|_| None).collect());
+    let workers = threads.max(1).min(n.max(1));
+    std::thread::scope(|sc| {
+        for _ in 0..workers {
+            sc.spawn(|| {
+                let model = build(sp);
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if i >= n { break; }
+                    let r = match &model { Ok(m) => f(m, i), Err(e) => Err(e.clone()) };
                     slots.lock().unwrap()[i] = Some(r);
                 }
             });
@@ -462,6 +520,28 @@ impl SheetModel {
             }).collect::<PyResult<Vec<_>>>()?);
         }
         out.into_py_any(py)
+    }
+
+    /// subgoal_names() -> [(name, plain text)]: the statements of plan 78.49 B in the order of their numbers.
+    fn subgoal_names(&self) -> Vec<(String, String)> { subgoal::STATEMENTS.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect() }
+
+    /// subgoal_games(games, threads) -> per game, per position: None where over, else the statements of the side to move followed by those of the other side (`len(subgoal_names())` each).
+    /// Many games across `threads` std threads, the GIL released (plan 78.49 B).
+    fn subgoal_games(&self, py: Python<'_>, games: Vec<GameWire>, threads: usize) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let spec = self.spec.clone();
+        let res = py.allow_threads(move || pool(&spec, games.len(), threads, |m, i| subgoal_game(&spec, m, &games[i])));
+        res.into_iter().map(|r| r.map_err(bad)).collect::<PyResult<Vec<_>>>()?.into_py_any(py)
+    }
+
+    /// subgoal_children(games, threads, wanted, weights) -> per game: [(ply, index of the move played, [(index of a legal move, number after it)])] for the plies in `wanted[game]`; the number
+    /// after a move is sum of weight x (statement of the side that moved - statement of the other side) on the position after it, a move to a finished position left out (plan 78.49 D).
+    fn subgoal_children(&self, py: Python<'_>, games: Vec<GameWire>, threads: usize, wanted: Vec<Vec<usize>>, weights: Vec<f64>) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        if wanted.len() != games.len() || weights.len() != subgoal::N { return Err(bad("wanted must have one list per game and weights one number per statement".into())); }
+        let spec = self.spec.clone();
+        let res = py.allow_threads(move || pool(&spec, games.len(), threads, |m, i| subgoal_children_game(&spec, m, &games[i], &wanted[i], &weights)));
+        res.into_iter().map(|r| r.map_err(bad)).collect::<PyResult<Vec<_>>>()?.into_py_any(py)
     }
 
     /// forcing_check(position, mv, depth, nodes) -> {value, depth, cut, line, nodes, win}: the ledger search (the sheet's worth table, no pruning) from the position after the move `mv`, deepened to
