@@ -78,6 +78,54 @@ pub fn fate_code(tr: &Track, plies: &[Vec<Cell>], t: usize, i: usize, h: usize) 
     if plies[t + h][cur].2 == plies[t][i].2 { 0 } else { 1 }
 }
 
+/// PLAN 78.55 STAGE 0. WHAT A UNIT TOOK AND WHEN, BEFORE ITS OWN END. `fate_code` reads only how a unit ends; a unit that takes and is then taken (an exchange) reads there as TAKEN, the same as a unit lost for
+/// nothing. The history follows the same chain and also records, in order, the kind of every unit the unit took (a step in which it moves onto a place where a unit of the other owner stood and was taken in
+/// that step). A taking that leaves the victim's place is not seen (the victim's place is not the mover's destination): it reads as the victim's OTHER, as in the tracker. The CLASS of a history, by number:
+///   0 stayed, 1 moved, 2 other   (none of them took anything)
+///   3 took and is alive           (the kinds it took are in `took`)
+///   4 + k           taken by a unit of kind k, having taken nothing: LOST FOR NOTHING
+///   4 + nk + k      taken by a unit of kind k after having taken: AN EXCHANGE
+/// A horizon past the end of the game has no history (`NO_FATE`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct History { pub took: Vec<Kind>, pub end: End }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum End { Stayed, Moved, Taken(Kind), Other, NoFate }
+
+/// The kind this unit (index `i` of `prev`, now `j` of `next`) took in one step, if it moved onto a place that a unit of the other owner left by being taken.
+fn took_in_step(prev: &[Cell], next: &[Cell], i: usize, j: usize) -> Option<Kind> {
+    let (o, _, from) = prev[i];
+    let to = next[j].2;
+    if to == from { return None; }
+    prev.iter().find(|c| c.2 == to && c.0 != o).map(|c| c.1)
+}
+
+pub fn fate_history(tr: &Track, plies: &[Vec<Cell>], t: usize, i: usize, h: usize) -> History {
+    if t + h >= plies.len() { return History { took: vec![], end: End::NoFate }; }
+    let (mut cur, mut took) = (i, vec![]);
+    for s in t..t + h {
+        match tr.steps[s][cur] {
+            Step::Alive(j) => { if let Some(k) = took_in_step(&plies[s], &plies[s + 1], cur, j as usize) { took.push(k); } cur = j as usize; }
+            Step::Taken(k) => return History { took, end: End::Taken(k) },
+            Step::Other => return History { took, end: End::Other },
+        }
+    }
+    History { took, end: if plies[t + h][cur].2 == plies[t][i].2 { End::Stayed } else { End::Moved } }
+}
+
+/// The class number of a history (see above); `nk` the number of kinds. `NO_FATE` for a horizon past the end.
+pub fn history_class(h: &History, nk: usize) -> u8 {
+    let took = !h.took.is_empty();
+    match h.end {
+        End::NoFate => NO_FATE,
+        End::Other => 2,
+        End::Stayed | End::Moved if took => 3,
+        End::Stayed => 0,
+        End::Moved => 1,
+        End::Taken(k) => (4 + if took { nk } else { 0 } + k as usize) as u8,
+    }
+}
+
 /// The base counts of one thread's games: [(group, horizon, kind, side-to-move state)] x (ncls classes then the total with a fate).
 pub struct BaseSpec { pub nk: usize, pub ncls: usize, pub nh: usize }
 
@@ -207,6 +255,28 @@ mod tests {
         let (s, amb) = step_between(&a, &b);
         assert_eq!(amb, 2);
         assert_eq!(s, vec![Step::Alive(0), Step::Alive(1)]);
+    }
+
+    #[test]
+    fn a_unit_that_took_before_it_was_taken_is_an_exchange_not_a_loss_for_nothing() {
+        // owner 0's kind 1 on 5 takes owner 1's kind 0 on 8, then owner 1's kind 2 on 9 takes it back on 8; owner 0's kind 3 on 2 is taken for nothing by owner 1's kind 2 later
+        let plies = vec![p(&[(0, 1, 5), (1, 0, 8), (1, 2, 9), (0, 3, 2)]), p(&[(0, 1, 8), (1, 2, 9), (0, 3, 2)]), p(&[(0, 1, 8), (1, 2, 9), (0, 3, 2)]), p(&[(1, 2, 8), (0, 3, 2)]), p(&[(1, 2, 2)])];
+        let tr = track(&plies);
+        let a = plies[0].iter().position(|x| *x == (0, 1, 5)).unwrap();
+        let b = plies[0].iter().position(|x| *x == (0, 3, 2)).unwrap();
+        let h1 = fate_history(&tr, &plies, 0, a, 1);
+        assert_eq!(h1.took, vec![0]);
+        assert_eq!(h1.end, End::Moved);
+        assert_eq!(history_class(&h1, 4), 3);
+        let h3 = fate_history(&tr, &plies, 0, a, 3);
+        assert_eq!(h3.took, vec![0]);
+        assert_eq!(h3.end, End::Taken(2));
+        assert_eq!(history_class(&h3, 4), 4 + 4 + 2);            // an exchange
+        let hb = fate_history(&tr, &plies, 0, b, 4);
+        assert!(hb.took.is_empty());
+        assert_eq!(hb.end, End::Taken(2));
+        assert_eq!(history_class(&hb, 4), 4 + 2);                // lost for nothing
+        assert_eq!(fate_history(&tr, &plies, 0, a, 9).end, End::NoFate);
     }
 
     #[test]

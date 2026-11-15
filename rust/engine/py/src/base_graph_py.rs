@@ -25,9 +25,9 @@ type LinkWire = (String, u32, u32, i32, i32);
 
 fn nodes_of(v: &[NodeRec]) -> Vec<NodeWire> { v.iter().map(|n| (n.kind.word().to_string(), n.id.clone())).collect() }
 fn links_of(v: &[LinkRec]) -> Vec<LinkWire> { v.iter().map(|l| (l.kind.word().to_string(), l.a, l.b, l.via, l.value)).collect() }
-fn bad(e: String) -> PyErr { pyo3::exceptions::PyValueError::new_err(e) }
+pub(crate) fn bad(e: String) -> PyErr { pyo3::exceptions::PyValueError::new_err(e) }
 
-type GameWire = (Option<String>, Vec<String>);
+pub(crate) type GameWire = (Option<String>, Vec<String>);
 
 /// The boards of the wanted plies of one game: (row number within the call, the board, the position part's units by (owner is the side to move, kind) counts are made by the callers).
 fn walk_rows<T>(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wanted: &[usize], mut f: impl FnMut(usize, &Board, &cs_tactics::sheet::base_graph::PositionPart) -> T) -> Result<Vec<Option<T>>, String> {
@@ -90,7 +90,7 @@ fn walk_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, want
 }
 
 /// Threads each keeping its own accumulator of the games they pull; the accumulators are returned for the caller to merge.
-fn run_acc<A: Send>(n: usize, threads: usize, make: impl Fn() -> A + Sync, f: impl Fn(usize, &mut A) -> Result<(), String> + Sync) -> Result<Vec<A>, String> {
+pub(crate) fn run_acc<A: Send>(n: usize, threads: usize, make: impl Fn() -> A + Sync, f: impl Fn(usize, &mut A) -> Result<(), String> + Sync) -> Result<Vec<A>, String> {
     let next = std::sync::atomic::AtomicUsize::new(0);
     let out: std::sync::Mutex<Vec<Result<A, String>>> = std::sync::Mutex::new(vec![]);
     std::thread::scope(|sc| {
@@ -502,5 +502,59 @@ impl BaseGraph {
         let mut tot = vec![0u64; 6];
         for v in res { for (a, b) in tot.iter_mut().zip(v) { *a += b; } }
         Ok(tot)
+    }
+
+    /// unit_histories(game, horizons) -> (kinds, [per ply: [(owner, kind, place, [(class, [kinds it took]) at each horizon])]]): the tracker's history of 78.55 stage 0 on one game (class numbers: see
+    /// `fates::History`).
+    #[allow(clippy::type_complexity)]
+    fn unit_histories(&self, game: GameWire, horizons: Vec<usize>) -> PyResult<(Vec<String>, Vec<Vec<(String, String, String, Vec<(u8, Vec<String>)>)>>)> {
+        let (plies, _m, _) = walk_game(&self.variant, &self.st, None, &game, &[]).map_err(bad)?;
+        let tr = fates::track(&plies);
+        let n = &self.st.names;
+        let nk = n.kinds.len();
+        let out = (0..plies.len()).map(|t| plies[t].iter().enumerate().map(|(i, c)| (n.roles[c.0].clone(), n.kinds[c.1 as usize].clone(), n.places[c.2 as usize].clone(),
+            horizons.iter().map(|h| { let hist = fates::fate_history(&tr, &plies, t, i, *h); (fates::history_class(&hist, nk), hist.took.iter().map(|k| n.kinds[*k as usize].clone()).collect()) }).collect())).collect()).collect();
+        Ok((n.kinds.clone(), out))
+    }
+
+    /// frame_seeds(fen, keys, goal_kind, max_size) -> [(concept number, unit ids, place ids)]: the units and empty places each match of the concepts (by key) binds on a position.
+    fn frame_seeds(&self, fen: &str, keys: Vec<u64>, goal_kind: Option<String>, max_size: usize) -> PyResult<Vec<(u32, Vec<String>, Vec<String>)>> {
+        let goal = self.goal_of(&goal_kind)?;
+        let (g, s) = self.game(fen)?;
+        let part = self.st.position(&g, &s);
+        let b = Board::new(&self.st, &part, goal);
+        let want: FxHashMap<u64, u32> = keys.iter().enumerate().map(|(i, k)| (*k, i as u32)).collect();
+        let levels: Vec<u8> = (0..patterns::LEVELS).collect();
+        Ok(cs_tactics::sheet::frames::seeds_of_board(&b, &part, max_size, &levels, &want).into_iter()
+            .map(|(c, sd)| (c, sd.units.iter().map(|u| cs_tactics::sheet::frames::unit_id(&self.st, u)).collect(), sd.places.iter().map(|p| format!("place:{}", self.st.names.places[*p as usize])).collect())).collect())
+    }
+
+    /// frame_read(fen, units, places, conditional, full_tempo, table_passes, fuse) -> the frame of the seed on the position, its claims with their status, the tempo table, the outcomes table
+    /// (when `table_passes` is given), the layer 3 nodes and links, and what the reading cost (78.55 A to E).
+    #[allow(clippy::too_many_arguments)]
+    fn frame_read(&self, py: Python<'_>, fen: &str, units: Vec<String>, places: Vec<String>, conditional: bool, full_tempo: bool, table_passes: Option<u8>, fuse: u64) -> PyResult<PyObject> {
+        let seed = crate::frames_py::parse_seed(&self.st, &units, &places).map_err(bad)?;
+        crate::frames_py::frame_read(py, &self.variant, &self.st, fen, &seed, conditional, full_tempo, table_passes, fuse)
+    }
+
+    /// frame_join(fen, seeds) -> {frames, refused}: the frames of the seeds [(unit ids, place ids)] on a position, those in contact joined.
+    fn frame_join(&self, py: Python<'_>, fen: &str, seeds: Vec<(Vec<String>, Vec<String>)>) -> PyResult<PyObject> {
+        let sds: Vec<_> = seeds.iter().map(|(u, p)| crate::frames_py::parse_seed(&self.st, u, p)).collect::<Result<_, _>>().map_err(bad)?;
+        crate::frames_py::frame_join(py, &self.variant, &self.st, fen, &sds)
+    }
+
+    /// frame_compose(fen, seed_a, seed_b, fuse) -> the composition of two frames and the joint read of the union frame, for both sides (78.55 F: checked, not proved).
+    fn frame_compose(&self, py: Python<'_>, fen: &str, a: (Vec<String>, Vec<String>), b: (Vec<String>, Vec<String>), fuse: u64) -> PyResult<PyObject> {
+        let sa = crate::frames_py::parse_seed(&self.st, &a.0, &a.1).map_err(bad)?;
+        let sb = crate::frames_py::parse_seed(&self.st, &b.0, &b.1).map_err(bad)?;
+        crate::frames_py::frame_compose(py, &self.variant, &self.st, fen, &sa, &sb, fuse)
+    }
+
+    /// frames_measure(games, rows, keys, goal_kind, horizons, fuse, row_fuse, compose_every, max_size, conditional, threads) -> {obs, count, secs, dump}: stage G over the wanted rows of the games.
+    #[allow(clippy::too_many_arguments)]
+    fn frames_measure(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, horizons: Vec<usize>, fuse: u64, row_fuse: u64, compose_every: usize, max_size: usize, conditional: bool, threads: usize) -> PyResult<PyObject> {
+        let goal = self.goal_of(&goal_kind)?;
+        let params = crate::frames_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional };
+        crate::frames_py::frames_measure(py, &self.variant, &self.st, goal, games, rows, keys, params, threads)
     }
 }

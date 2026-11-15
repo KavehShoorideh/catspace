@@ -78,6 +78,43 @@ def fate(plies: list, kinds: list, t: int, i: int, h: int) -> int:
     return STAYED if plies[t + h][cur][2] == plies[t][i][2] else MOVED
 
 
+def history(plies: list, kinds: list, t: int, i: int, h: int) -> "tuple[list, str, int | None]":
+    """PLAN 78.55 STAGE 0, the mirror of `fates::fate_history`: what unit i of ply t took and how it ended within h plies. -> (the kinds it took, in order; the end: 'stayed' | 'moved' | 'taken' | 'other'
+    | 'nofate'; the kind that took it, when taken). A unit takes when it moves onto a place where a unit of the other owner stood and was taken in that step."""
+    if t + h >= len(plies):
+        return [], "nofate", None
+    cur, took = i, []
+    for s in range(t, t + h):
+        st = steps_between(plies[s], plies[s + 1])[0][cur]
+        if st[0] == "alive":
+            j = st[1]
+            a, b = plies[s][cur], plies[s + 1][j]
+            if a[2] != b[2]:
+                for c in plies[s]:
+                    if c[2] == b[2] and c[0] != a[0]:
+                        took.append(c[1])
+                        break
+            cur = j
+        elif st[0] == "taken":
+            return took, "taken", st[1]
+        else:
+            return took, "other", None
+    return took, ("stayed" if plies[t + h][cur][2] == plies[t][i][2] else "moved"), None
+
+
+def history_class(h: "tuple", kinds: list) -> int:
+    """The class number of a history, as `fates::history_class`: 0 stayed, 1 moved, 2 other (nothing taken), 3 took and is alive, 4 + k taken by kind k having taken nothing (lost for nothing),
+    4 + nk + k taken by kind k after having taken (an exchange); NO_FATE past the end."""
+    took, end, by = h
+    if end == "nofate":
+        return NO_FATE
+    if end == "other":
+        return 2
+    if end in ("stayed", "moved"):
+        return 3 if took else (0 if end == "stayed" else 1)
+    return 4 + (len(kinds) if took else 0) + kinds.index(by)
+
+
 def through_walk(g, profile: set) -> set:
     """THE BRUTE WALK of the line through one unit, over a layer-1 `Graph` `g` and a profile {(kind word, line direction word, forward)}: {(unit id, id of the place beyond)} for every bear node of a unit
     on a unit along a line where the unit's kind continues, the next place along the line beyond the unit borne on that holds a unit, with exactly one unit between the actor and that place."""
