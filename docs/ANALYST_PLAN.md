@@ -8437,6 +8437,70 @@ wake: the order is passed by the measure script only.
 STATUS: given to a builder agent on 2026-11-15.
 
 
+78.51 BUILT (branch worktree-agent-a8fe97cf0e7b5df5f, 2026-11-15, builder agent; stage A in commit e33370e6). Written in stages; the stage B decision below is dated BEFORE any match was played.
+
+A. THE OPTIONAL ROOT ORDER. `cs_engine.solve_batch` and `cs_engine.solve_equals_batch` take `root_orders` (default None: per position None, or a permutation of that position's legal-move indices, first read first; a
+   wrong one is an error row, never repaired; `ordering=False` with an order is refused) and `root_order_mode` ("strict" or "ties", default "strict"); also `ledger_depth` (default None = the engine's own cap), added so a
+   test can fix the depth. The Rust: `Search::set_root_order` (rust/engine/tactics/src/ledger.rs), `LedgerOp.root_order`, `Params.root_order`; no Cargo file touched. With no order the code path is the one that was.
+   What the search does with an order. Between its deepenings it puts the PREVIOUS deepening's best root move first (the table's best), and in a node of the main search reads late quiet moves shallow first (LMR);
+   the root is no exception to either. So under today's reading order the pick is sticky: the previous best while it still holds the best value, else the first of the best value in the root's own order.
+   - "strict": the given order REPLACES the root's reading order (the previous best is not read first, the lemma / claim orders are not read at the root, and no root move is read shallow first). The move kept
+     (`v > best`, the first of the best value) is then exactly: THE FIRST MOVE IN THE GIVEN ORDER AMONG THE MOVES WHOSE VALUE AT THE FINISHED DEPTH EQUALS THE BEST. Tested against `solve_equals_batch` on 40 positions read
+     whole, 3 random orders and the identity order, at ledger depth 3, and on 14 positions at depth 4: the pick was that move every time (tests/test_plan78_51_root_order.py). It is "the highest-numbered move among the
+     equals" because the order is by number. By reading the code: with the root's late-move reduction left on, a root move equal at full depth could be screened out by its shallow reading, so the statement
+     would not be exact; the reduction is therefore off at the root under "strict" (sound: more search, the value unchanged). I did not run the reduced variant to see how often it would have differed.
+   - "ties" (the stable variant the plan names): the root's own order stays and the given order breaks ties only inside the groups the root's order treats alike (same previous-best / lemma-claim rank, same gain,
+     same killer or history standing; the many quiet moves of no history are one group). The pick is then: the previous deepening's pick while it still holds the best value, else the first, in that reading order, of
+     the best value. It is NOT "the highest number among the equals". Tested: the pick is among the equals, the value and depth equal the plain search's.
+   An order never changes value or depth of the finished reading (tested: the same depth, value and set of equals with and without an order).
+   DEFAULT UNCHANGED: tests/golden_78_51_default_path.json was recorded from the build BEFORE the order existed (the `ledger_depth` knob only), 40 positions, ledger depth fixed at 3, no clock cut: for each the move, proof flag, the
+   ledger step's depth, value and nodes of `solve_batch`, and the move, equal indices, depth and value of `solve_equals_batch`. The new build with no order (`root_orders` absent, None, or a list of Nones) reproduces every
+   field (test_without_an_order_the_search_is_what_it_was, test_an_absent_order_is_the_same_whichever_way_it_is_absent).
+B. THE COST (`--stage b`, 1000 positions drawn at seed 5151 from the 500 kept games, 0.2 s, 8 threads, "today" read twice as the clock's own noise):
+OBS subgoal_order stage B: 1000 positions drawn (seed 5151) from 500 kept games, 996 with two or more legal moves; the search at 0.2 s a move on 8 threads, no equal reading; the number of every legal move of the 1000 positions read in 0.2 s in all (0.2 ms a position, outside the clock here, inside the candidate's in a match)
+OBS subgoal_order stage B: order today: mean ledger depth 8.162 (median 8.0), mean ledger nodes 66634, mean all nodes 116211; against today's order on the same positions: deeper in 0, shallower in 0, same in 1000; mean depth difference +0.000; same move as today's order in 1000 of 1000
+OBS subgoal_order stage B: order today_again: mean ledger depth 8.166 (median 8.0), mean ledger nodes 66919, mean all nodes 116587; against today's order on the same positions: deeper in 17, shallower in 14, same in 969; mean depth difference +0.004; same move as today's order in 1000 of 1000
+OBS subgoal_order stage B: order number_strict: mean ledger depth 7.060 (median 7.0), mean ledger nodes 70236, mean all nodes 119767; against today's order on the same positions: deeper in 6, shallower in 820, same in 174; mean depth difference -1.102; same move as today's order in 283 of 1000
+OBS subgoal_order stage B: order random_strict: mean ledger depth 6.995 (median 7.0), mean ledger nodes 69556, mean all nodes 119086; against today's order on the same positions: deeper in 7, shallower in 838, same in 155; mean depth difference -1.167; same move as today's order in 280 of 1000
+OBS subgoal_order stage B: order number_ties: mean ledger depth 8.155 (median 8.0), mean ledger nodes 66976, mean all nodes 116555; against today's order on the same positions: deeper in 105, shallower in 64, same in 831; mean depth difference -0.007; same move as today's order in 422 of 1000
+OBS subgoal_order stage B: order random_ties: mean ledger depth 8.104 (median 8.0), mean ledger nodes 66739, mean all nodes 116260; against today's order on the same positions: deeper in 70, shallower in 78, same in 852; mean depth difference -0.058; same move as today's order in 429 of 1000
+   Reading (directional): the number's order in "strict" mode loses about one ply of depth (and so does a random order in "strict": the loss is the price of replacing the root's own order, not of the number); the "ties"
+   mode loses none beyond the clock's noise (today against today again differs by 0.004 of a ply).
+   DECISION (made from these lines alone, before any match): the matches use the stable variant, "ties" (mode `ties`): ordered_ties_v_control and random_order_ties_v_control are the two matches the plan names.
+   Because the two modes differ by about a ply of depth, I also play the other variant, "strict", against the control as a third match (ordered_v_control, said here before it is played); the random-order check for "strict"
+   is not played. The random-order control pays no clock for a number; the ordered player pays its measured reading time (as the 78.50 candidate).
+
+C. THE MATCHES (300 opening pairs both colours, 0.2 s a move both sides, 8 workers, seeds from 9000, the move cap of 78.50; one run each; the short run of 10 pairs came first and ran end to end). Matches played:
+   ordered_ties against the control, the random root order (ties mode) against the control, and, as said above, the "strict" variant against the control (no random-order check for it). The ordered player pays its
+   measured number-reading time off its clock; the random-order player pays nothing. Lines as printed (wins, draws, losses are the first player's):
+OBS subgoal_play match ordered_ties_v_control: player ordered_ties against player control: games 600, opening pairs 300; ordered_ties: W 74 D 485 L 41 (draws include 92 games stopped at the move cap), score 0.5275 [0.5133, 0.5408] 90 pct band by bootstrap over opening pairs (1000 draws)
+OBS subgoal_play match ordered_ties_v_control: ordered_ties (a): decisions 24384, mean wall 200.4 ms a move, mean ledger depth 8.27
+OBS subgoal_play match ordered_ties_v_control: control (b): decisions 24345, mean wall 200.3 ms a move, mean ledger depth 8.49
+OBS subgoal_order match ordered_ties_v_control: workers 8 (cores 11), clock 0.2 s a move for both sides, wall 1232 s in this run
+OBS subgoal_play match random_order_ties_v_control: player random_order_ties against player control: games 600, opening pairs 300; random_order_ties: W 51 D 467 L 82 (draws include 394 games stopped at the move cap), score 0.4742 [0.4592, 0.4892] 90 pct band by bootstrap over opening pairs (1000 draws)
+OBS subgoal_play match random_order_ties_v_control: random_order_ties (a): decisions 31586, mean wall 200.9 ms a move, mean ledger depth 8.26
+OBS subgoal_play match random_order_ties_v_control: control (b): decisions 31572, mean wall 200.6 ms a move, mean ledger depth 8.22
+OBS subgoal_order match random_order_ties_v_control: workers 8 (cores 11), clock 0.2 s a move for both sides, wall 1596 s in this run
+OBS subgoal_play match ordered_v_control: player ordered_strict against player control: games 600, opening pairs 300; ordered_strict: W 98 D 444 L 58 (draws include 148 games stopped at the move cap), score 0.5333 [0.5183, 0.5500] 90 pct band by bootstrap over opening pairs (1000 draws)
+OBS subgoal_play match ordered_v_control: ordered_strict (a): decisions 26009, mean wall 199.7 ms a move, mean ledger depth 7.13
+OBS subgoal_play match ordered_v_control: control (b): decisions 25972, mean wall 199.6 ms a move, mean ledger depth 8.52
+OBS subgoal_order match ordered_v_control: workers 8 (cores 11), clock 0.2 s a move for both sides, wall 1306 s in this run
+D. ARRIVAL OF CONFIRMED CLAIMS (60 games = the first 30 opening pairs of each match, forcing read at fuse 5000, horizon 8; as 78.50) and how often the ordered player's move differs from the control's default call on the
+   same position (a fresh call at 0.2 s outside the game clock; the control called twice gives the clock's noise):
+OBS subgoal_play arrival ordered_ties_v_control: games read 60, forcing read at fuse 5000, horizon 8 plies
+OBS subgoal_play arrival ordered_ties_v_control: ordered_ties to move: a CONFIRMED threat move held at 267 of 2609 positions (10.2 pct [8.9, 11.6]); of 1751 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 519 (29.6 pct [26.1, 33.1])
+OBS subgoal_play arrival ordered_ties_v_control: control to move: a CONFIRMED threat move held at 241 of 2612 positions (9.2 pct [7.5, 11.2]); of 1779 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 383 (21.5 pct [19.0, 24.2])
+OBS subgoal_order differs: ordered_ties in 60 games, 2453 decisions with two or more legal moves; its move differed from the control's default call on the same position (0.2 s, outside the game clock) in 1397 (57.0 pct); two default calls of the control on the same positions differed from each other in 2 (0.1 pct)
+OBS subgoal_order differs: ordered_strict in 60 games, 2671 decisions with two or more legal moves; its move differed from the control's default call on the same position (0.2 s, outside the game clock) in 1688 (63.2 pct); two default calls of the control on the same positions differed from each other in 5 (0.2 pct)
+OBS subgoal_play arrival ordered_v_control: games read 60, forcing read at fuse 5000, horizon 8 plies
+OBS subgoal_play arrival ordered_v_control: ordered_strict to move: a CONFIRMED threat move held at 593 of 2829 positions (21.0 pct [18.1, 23.9]); of 1633 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 701 (42.9 pct [38.8, 47.2])
+OBS subgoal_play arrival ordered_v_control: control to move: a CONFIRMED threat move held at 222 of 2828 positions (7.9 pct [6.3, 9.5]); of 1799 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 356 (19.8 pct [17.3, 22.3])
+READING (directional; one run per match; no verdict). (1) The stable "ties" order costs no depth beyond the clock's noise in stage B and, played against the control, scores above half with its band above half; the random
+root order in the same mode scores below half with its band below half (and 394 of its games reached the move cap, many more than in the other matches), so the order alone is not what moved the result in the ordered
+match. (2) The "strict" variant searches about 1.4 plies shallower than the control in the games (the depth lines) and still scores above half with its band above half, with the confirmed-claim rate and the
+arrival rate of its side well above the control's in the same games; in the "ties" games the arrival rate of the ordered side is above the control's by a smaller margin and the held rate about the same. (3) The ordered "ties" player's move differs from the control's default call in a bit over half of the decisions, the control's two calls differ from each
+other in almost none, so the difference is the order's. Not read here: how much of each gain is the number's pick among equals and how much the different search (there is no strict-mode random-order match); other time budgets; other games.
+
 ## 78.52 THE GRAPH, LAYER 1: concepts and basic facts derived from the rules (SYSTEM_SPEC section 11; Rust first)
 
 Serves: the one graph (sections 2 and 11). Kaveh's go of 2026-11-15. Nothing here plays; it is the base the mined
