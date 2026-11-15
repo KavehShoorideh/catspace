@@ -234,3 +234,26 @@ Kaveh, on the mined concepts of layer 2:
 Consequences drawn by the parent, not yet his decisions: the outcome of a frame is a record of which kinds each side
 is left with, not a number; a concept's worth is then how the game's result statistics differ where the concept holds;
 and the worth table the sheet and the search use today is the baseline only.
+
+### 12.1 What exists for frames and intermezzos (search of 2026-11-15)
+
+Made by a read-only search of the journal, the plan file, the Lean files, the code and the notes for 2026-09-20 to
+2026-10-31. The parent spot-checked that the files and the named definitions exist; nothing was run.
+
+| Piece | Where | State |
+|---|---|---|
+| A frame as a pattern of relations over typed slots, units as variables | catspace/incubator/analyst/lemma_gen.py (`Domain`, `Frame`) | Built, game-free |
+| A frame as a set of places, its units whatever bears on them | catspace/incubator/analyst/fates.py (`local_resolve`, `square_frame`, `joint_frame`) | Built, chess-bound |
+| A frame as a small game with exits | catspace/incubator/analyst/frame_search.py | Built, game-free |
+| Outcome as a FATE RECORD: per unit alive or taken, by which slot, at which ply, ending where; every sequence with its outcome; goals as predicates over fates | fates.py (`Fate`, `Outcome`, `outcomes_table`, `achievable`) | Built, chess-bound |
+| Intermezzo: a pass imposed at a ply; one frame's line inserted into another's at ply k, units disjoint | fates.py (`intermezzi`, `with_passes`, `compose`) | Built with tests; one review finding left open (the passes use up the frame's own plies; baselines differ) |
+| A move elsewhere counts as a pass | lean/ideas/Ideas/Race.lean (`withPass`, `frame_sound_pass`, `far_stays_off`), Frame.lean (`neglect`, `frame_of_diff`) | Proved in Lean |
+| The exchange law with named hypotheses, the intermezzo exchange among them | exchange_law.py, ExchangeLaw.lean (`intermezzoB`, `composedValue`) | Built; the law itself is stated and checked per position, not proved |
+| Waiting frames: active, dormant, far; the one board change missing; breakers | rust/analyst_core/src/waiting.rs | Built, chess-bound |
+| Worth from results | catspace/incubator/analyst/discovery/valuation_miner.py; earlier piece_values.py, frame_placement.py | Built; the hand table was kept in use all the same |
+| Splitting a large frame into smaller overlapping or sequential ones | plan 38.6 | Plan text only |
+| A Lean theorem for composing two frames through an intermezzo | | Not found |
+
+Two things the earlier work already learned, to be kept: nesting one frame's threat scan inside another fails (the
+innermost in-between move is always left unanswered), so frames in contact are resolved jointly; and a tempo is worth
+what the other side proves with the move passed to it, never a constant (plan 72.3).
