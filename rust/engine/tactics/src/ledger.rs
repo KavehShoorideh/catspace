@@ -70,6 +70,10 @@ const FEW_REPLIES: usize = 2;           // a node with this few legal moves is a
 pub const NODE_FUSE: u64 = 200_000_000;
 const QUIET_FUSE: u32 = 16;            // the deepest capture run resolved at a horizon (a named fuse: captures end sooner)
 
+/// A caller's ORDER of the root moves (plan 78.51): indices of the root's legal moves, first read first; `strict` replaces the root's own order, else it breaks ties inside it (see `Search::root_pos`).
+#[derive(Clone, Debug)]
+pub struct RootOrder { pub order: Vec<usize>, pub strict: bool }
+
 #[derive(Clone, Copy)]
 enum Bound { Exact, Lower, Upper }
 
@@ -103,6 +107,12 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// ROOT LAST (plan 78.36): indices of the root's legal moves a claim search refutes; read after every other root move, so a move of equal value that is not refuted comes first
     /// (the search keeps the first of equal values). A move of strictly better value is still kept: an order, never a verdict.
     pub root_last: Vec<usize>,
+    /// ROOT ORDER (plan 78.51, optional; absent = the search exactly as it was): `root_pos[i]` is the place of the root move numbered `i` in a caller's order (`set_root_order`; a move the
+    /// order does not name has `usize::MAX`). With `root_strict` the order REPLACES the root's reading order (the previous best is not read first, `root_first` and `root_last` are not
+    /// read), so the first move of the best value in the caller's order is the one kept (`v > best`). Without it the order only breaks ties inside the groups the root's own order
+    /// treats alike (same previous-best / `root_last` / `root_first` rank, same gain, same killer or history standing), the rest as before. An order, never a verdict.
+    root_pos: Vec<usize>,
+    root_strict: bool,
     /// The deepening steps of the runs so far, as measured (the granular cost of the search).
     pub reads: Vec<DepthRead>,
 }
@@ -117,14 +127,25 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
         Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true,
-                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], reads: vec![] }
+                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
+
+    /// Plan 78.51: read the root moves in `order` (indices of the root's legal moves, first read first; each at most once). `strict`: see `root_pos`. An empty order is no order.
+    pub fn set_root_order(&mut self, order: &[usize], strict: bool) {
+        self.root_pos.clear();
+        self.root_strict = strict && !order.is_empty();
+        if order.is_empty() { return; }
+        self.root_pos = vec![usize::MAX; order.iter().copied().max().map_or(0, |m| m + 1)];
+        for (k, i) in order.iter().enumerate() { if self.root_pos[*i] == usize::MAX { self.root_pos[*i] = k; } }
+    }
+
+    fn root_place(&self, i: usize) -> usize { self.root_pos.get(i).copied().unwrap_or(usize::MAX) }
 
     /// The node fuse (a named cap; the interface's budget sets it).
     pub fn set_fuse(&mut self, nodes: u64) { self.fuse = nodes; }
@@ -236,14 +257,15 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         }
         let mover = self.g.mover(s).unwrap_or(self.me);
         let k = self.killers.get(ply as usize);
+        let ro = ply == 0 && !self.root_pos.is_empty();         // (plan 78.51: a caller's root order is given)
         let mut v: Vec<(usize, G::Move, i64, i64)> = self.g.moves(s).into_iter().enumerate().map(|(i, m)| {
             let d = self.gain(s, &m);
-            let rank = if Some(i) == hint { i64::MIN } else if ply == 0 && self.root_last.contains(&i) { i64::MAX / 2 } else if ply == 0 && self.root_first.contains(&i) { i64::MIN / 2 + self.root_first.iter().position(|x| *x == i).unwrap() as i64 } else if d != 0 { -(1 << 40) + if maxing { -d } else { d } }
+            let rank = if ro && self.root_strict { self.root_place(i).min(1 << 60) as i64 } else if Some(i) == hint { i64::MIN } else if ply == 0 && self.root_last.contains(&i) { i64::MAX / 2 } else if ply == 0 && self.root_first.contains(&i) { i64::MIN / 2 + self.root_first.iter().position(|x| *x == i).unwrap() as i64 } else if d != 0 { -(1 << 40) + if maxing { -d } else { d } }
                        else if k.is_some_and(|k| k.iter().any(|x| x.as_ref() == Some(&m))) { -(1 << 30) }
                        else { -*self.hist.get(&(mover, m.clone())).unwrap_or(&0) };
             (i, m, d, rank)
         }).collect();
-        v.sort_by_key(|(i, _, _, r)| (*r, *i));
+        if ro && !self.root_strict { v.sort_by_key(|(i, _, _, r)| (*r, self.root_place(*i), *i)); } else { v.sort_by_key(|(i, _, _, r)| (*r, *i)); }
         v.into_iter().map(|(i, m, d, _)| (i, m, d)).collect()
     }
 
@@ -311,7 +333,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let depth = depth + ext;
         for (n_read, (i, m, d)) in order.into_iter().enumerate() {
             let q = self.g.apply(s, &m);
-            let late = self.prune && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint;
+            let late = self.prune && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint && !(ply == 0 && self.root_strict);          // (plan 78.51: under a strict root order no root move is read shallow first, so the first of the best value IS the first one that holds it at this depth)
             let mut v = if late { d + self.value(&q, depth - 3, ply + 1, alpha - d, beta - d) } else { 0 };
             if !late || (maxing && v > alpha) || (!maxing && v < beta) {
                 v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);

@@ -218,13 +218,23 @@ class EqualsPlayer:
         return pick, {"legal": r["legal"], "equals": len(eq), "differs": int(pick != r["move"]), "cut": int(bool(r["cut"])), "depth": r["depth"], "proved": int(bool(r["proved"]))}
 
 
+EXTRA_PLAYERS: dict = {}          # plan 78.51: players another script registers by kind (a worker imports the spec's "plugin" module, which fills this)
+WEIGHTED = {"candidate"}          # the kinds that read the fitted number: a match with one of them carries the weights file
+PLUGIN: dict = {}                 # match name -> the module a worker imports before it builds its players
+
+
 def make_player(kind: str, w: dict, seconds: float, seed: str):
+    if kind in EXTRA_PLAYERS:
+        return EXTRA_PLAYERS[kind](w, seconds, kind, seed)
     return Control(w, seconds) if kind == "control" else EqualsPlayer(w, seconds, kind, seed)
 
 
 def play_game(spec: dict) -> dict:
     """One game: player `a` (colour `colour`: 0 moves first) against player `b`, from the opening `spec['opening']`.  The end rules are the wake's `play_self` as `sheet_player.play_game` has them:
     the game's own outcome, a position met three times is a draw, a move cap is unfinished.  -> the game with, per decision of each player, its log row [ply, wall seconds, log]."""
+    if spec.get("plugin"):
+        import importlib
+        importlib.import_module(spec["plugin"])
     w = world(spec)
     variant = spec["variant"]
     players = {0: make_player(spec["a"] if spec["colour"] == 0 else spec["b"], w, spec["seconds"], f"{spec['gid']}:0"), 1: make_player(spec["a"] if spec["colour"] == 1 else spec["b"], w, spec["seconds"], f"{spec['gid']}:1")}
@@ -350,7 +360,7 @@ def specs_of(name: str, variant: str, pairs: int, seconds: float, weights: "str 
         opening = OM.random_opening(variant, s, OPENING_PLIES)
         for colour in (0, 1):
             specs.append({"variant": variant, "scratch": scratch, "gid": f"{s}:{colour}", "seed": s, "colour": colour, "a": a, "b": b, "opening": opening, "seconds": seconds, "max_plies": MAX_PLIES,
-                          "weights": weights if "candidate" in (a, b) else None})
+                          "weights": weights if WEIGHTED & {a, b} else None, "plugin": PLUGIN.get(name)})
     return specs
 
 

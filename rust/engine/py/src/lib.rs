@@ -445,6 +445,22 @@ fn reason(py: Python<'_>, variant: &str, fen: Option<&str>, moves: Vec<String>, 
     Ok(d.into())
 }
 
+/// Plan 78.51: the optional root order of each position, checked: `orders` (None, or one entry per position, each None or a permutation of the position's legal move indices) and
+/// `mode` ("strict": the order replaces the search's root order; "ties": it only breaks ties inside it).
+fn root_orders_of(orders: Option<Vec<Option<Vec<usize>>>>, mode: &str, n: usize) -> PyResult<Vec<Option<cs_tactics::ledger::RootOrder>>> {
+    let strict = match mode { "strict" => true, "ties" => false, other => return Err(pyo3::exceptions::PyValueError::new_err(format!("root_order_mode: 'strict' or 'ties', not {other:?}"))) };
+    match orders {
+        None => Ok(vec![None; n]),
+        Some(o) if o.len() != n => Err(pyo3::exceptions::PyValueError::new_err("root_orders: one entry per position")),
+        Some(o) => Ok(o.into_iter().map(|x| x.map(|order| cs_tactics::ledger::RootOrder { order, strict })).collect()),
+    }
+}
+
+/// An order is a permutation of the `n` legal move indices, or the position is an error row (the order is the caller's, so a wrong one is told, not repaired).
+fn order_is_valid(o: &Option<cs_tactics::ledger::RootOrder>, n: usize) -> bool {
+    o.as_ref().map_or(true, |r| { let mut seen = vec![false; n]; r.order.len() == n && r.order.iter().all(|&i| i < n && !std::mem::replace(&mut seen[i], true)) })
+}
+
 type BatchItem = (String, Option<String>, Vec<String>);
 type BatchRow = (Option<String>, bool, u64, f64, Option<String>);
 
@@ -471,7 +487,7 @@ fn view_for(store: &Store, variant: &str) -> Option<std::rc::Rc<cs_game::gdl_gam
 /// snapshot's lemma operator when the batch has a store and the variant a description; the row for the log and the summary for the caller. A position that does
 /// not parse, or is over, is an error row; the batch goes on.
 fn batch_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, label: &str, judge: &J, seconds: f64, snapshot: &str, params: &cs_decision::Params, record: bool,
-                                           store: Option<&Store>, ablate: &std::collections::BTreeSet<String>) -> (cs_decision::batch::Summary, serde_json::Value) {
+                                           store: Option<&Store>, ablate: &std::collections::BTreeSet<String>, root_order: Option<cs_tactics::ledger::RootOrder>) -> (cs_decision::batch::Summary, serde_json::Value) {
     use cs_decision::batch;
     let label = if label.is_empty() { format!("{} {} {}", it.0, it.1.as_deref().unwrap_or("startpos"), it.2.join(" ")) } else { label.to_string() };
     let (g, s, keys) = match record_of(&it.0, it.1.as_deref(), 518, &it.2) {
@@ -480,6 +496,8 @@ fn batch_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, label: &str
     };
     let mut p = params.clone();
     p.history = if record { keys } else { vec![] };
+    if !order_is_valid(&root_order, Game::moves(&g, &s).len()) { return batch::error_row(i, snapshot, &label, "root_orders: not a permutation of the legal move indices"); }
+    p.root_order = root_order;
     // (plan 78.36: the claims of the snapshot are read by the claim search when the batch asks for it; a snapshot of response rules only reads exactly as it did)
     let with_claims = p.claims && store.map_or(false, |st| !st.snapshot.claims.is_empty());
     let view = store.and_then(|st| if st.snapshot.lemmas.is_empty() && !with_claims { None } else { view_for(st, &it.0) });
@@ -517,13 +535,15 @@ fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
 /// that JSON Lines log. Plan 78.36: `claims` (default True) lets the snapshot's CLAIM rules be read by the search toward claims (operator "claim"); False leaves it out (the A / B
 /// measurement; a snapshot with no claim rule decides the same either way).
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false, wdl=false, wdl_table=None, claims=true))]
+#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false, wdl=false, wdl_table=None, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string()))]
 #[allow(clippy::too_many_arguments)]
 fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, snapshot: String,
                trace_path: Option<String>, threads: usize, prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool,
-               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool, wdl: bool, wdl_table: Option<String>, claims: bool) -> PyResult<Vec<BatchRow>> {
+               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool, wdl: bool, wdl_table: Option<String>, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String) -> PyResult<Vec<BatchRow>> {
+    if root_orders.is_some() && !ordering { return Err(pyo3::exceptions::PyValueError::new_err("root_orders are read by the ordered search only (ordering=True)")); }
+    let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
     let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
-    let params = cs_decision::Params { prior, ties, reason, wdl, wdl_table: table, claims, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ..cs_decision::Params::default() };
+    let params = cs_decision::Params { prior, ties, reason, wdl, wdl_table: table, claims, prior_depth, ledger_share, prior_defects, ordering, prune, extend, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let snapshot = store.as_ref().map(|s| s.snapshot.id.clone()).unwrap_or(snapshot);
     if let Some(l) = &labels { if l.len() != positions.len() { return Err(pyo3::exceptions::PyValueError::new_err("labels: one per position")); } }
@@ -534,10 +554,10 @@ fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: H
     } else { Some((worth.clone(), ours_first, valuation.clone())) };
     let lab = |i: usize| labels.as_ref().map(|l| l[i].clone()).unwrap_or_default();
     let done = py.allow_threads(|| match &judge_worth {
-        None => cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &cs_tactics::ledger::Count, seconds, &snapshot, &params, record, store.as_ref(), &ablate)),
+        None => cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &cs_tactics::ledger::Count, seconds, &snapshot, &params, record, store.as_ref(), &ablate, orders[i].clone())),
         Some((w, of, name)) => {
             let j = cs_tactics::ledger::Worth { name: name.clone(), table: w.clone(), ours_first: *of };
-            cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &j, seconds, &snapshot, &params, record, store.as_ref(), &ablate))
+            cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &j, seconds, &snapshot, &params, record, store.as_ref(), &ablate, orders[i].clone()))
         }
     });
     if let Some(path) = trace_path {
@@ -573,6 +593,7 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         ls.extend = self.params.extend;
         ls.root_first = prefer.clone();
         ls.root_last = avoid.clone();
+        if let Some(ro) = &self.params.root_order { ls.set_root_order(&ro.order, ro.strict); }
         let ln = ls.run(s, b.max_depth.map_or(cs_decision::LEDGER_DEPTH, |d| d as i32));
         let moves = g.moves(s);
         let Some(i) = ln.first_index else {
@@ -622,7 +643,7 @@ impl<'p, G: Game> cs_operator::Controller<G> for EqualsController<'p> {
 /// The decision of `batch_one` (proof, claims, lemma order, then the ledger) with the equal reading on and its candidates handed back by NAME and INDEX. The move played is the
 /// ledger's move, as the engine plays it. The moves listed are those whose probe held the best value and the ledger's own move (its value IS the best); where the line decides the
 /// game the reading is skipped and the list is that move alone.
-fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J, seconds: f64, params: &cs_decision::Params, record: bool, store: Option<&Store>)
+fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J, seconds: f64, params: &cs_decision::Params, record: bool, store: Option<&Store>, root_order: Option<cs_tactics::ledger::RootOrder>)
                                             -> (cs_decision::batch::Summary, serde_json::Value) {
     use cs_decision::batch;
     let label = format!("{} {} {}", it.0, it.1.as_deref().unwrap_or("startpos"), it.2.join(" "));
@@ -634,6 +655,8 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
     p.history = if record { keys } else { vec![] };
     let moves = Game::moves(&g, &s);
     if moves.is_empty() { return batch::error_row(i, "", &label, "the game is over"); }
+    if !order_is_valid(&root_order, moves.len()) { return batch::error_row(i, "", &label, "root_orders: not a permutation of the legal move indices"); }
+    p.root_order = root_order;
     let me = match Game::mover(&g, &s) { Some(m) => m, None => return batch::error_row(i, "", &label, "the game is over") };
     let trace = vec![format!("decide: {} to move, {} legal moves, {:.2} s", Game::roles(&g)[me], moves.len(), seconds)];
     let with_claims = p.claims && store.map_or(false, |st| !st.snapshot.claims.is_empty());
@@ -681,20 +704,21 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string()))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
-                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool) -> PyResult<Vec<EqualsRow>> {
-    let params = cs_decision::Params { ties: true, claims, ledger_share, ..cs_decision::Params::default() };
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String) -> PyResult<Vec<EqualsRow>> {
+    let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
+    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
         store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
     } else { Some((worth.clone(), ours_first, valuation.clone())) };
     let done = py.allow_threads(|| match &judge_worth {
-        None => cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &cs_tactics::ledger::Count, seconds, &params, record, store.as_ref())),
+        None => cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &cs_tactics::ledger::Count, seconds, &params, record, store.as_ref(), orders[i].clone())),
         Some((w, of, name)) => {
             let j = cs_tactics::ledger::Worth { name: name.clone(), table: w.clone(), ours_first: *of };
-            cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &j, seconds, &params, record, store.as_ref()))
+            cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &j, seconds, &params, record, store.as_ref(), orders[i].clone()))
         }
     });
     Ok(done.into_iter().map(|(s, v)| {
