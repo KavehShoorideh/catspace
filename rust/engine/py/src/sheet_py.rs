@@ -6,6 +6,7 @@ use cs_game::placed::Placed;
 use cs_tactics::sheet::cf::CfObstacle;
 use cs_tactics::sheet::levels::{self, Level0, Level1, Obstacle, Route, Way, Why};
 use cs_tactics::sheet::medium::Medium;
+use cs_tactics::sheet::mv::{self, Event, Loss, MoveAnswer};
 use cs_tactics::sheet::reading::Reading;
 use cs_tactics::sheet::settle::{Ask, Cornering, Detail, Duty, Entry, Finding, Q, Settler};
 use cs_tactics::sheet::walk::Stop;
@@ -152,6 +153,98 @@ impl SheetModel {
         d.set_item("steps", done.iter().map(|f| finding_dict(py, n, f)).collect::<PyResult<Vec<_>>>()?)?;
         d.into_py_any(py)
     }
+
+    /// move_question(position, mv, reach_k=2, max_open_exits=1) -> the question of one move of the side to move as plain data (see `answer_dict`); ValueError when the move is not
+    /// a legal move of a unit of the side to move.
+    #[pyo3(signature = (position, mv, reach_k=2, max_open_exits=1))]
+    fn move_question(&self, py: Python<'_>, position: &str, mv: &str, reach_k: u32, max_open_exits: usize) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let t0 = std::time::Instant::now();
+        let g = KernelGame::from_fen(&self.variant, position).map_err(bad)?;
+        let s = cs_game::Game::initial(&g);
+        let r = Reading::new(&g, s, &self.model).map_err(bad)?;
+        let p = Params { reach_k, max_open_exits, ..Params::default() };
+        let settler = Settler::new(&r, &p);
+        let m = cs_game::Game::moves(&g, &r.s).into_iter().find(|m| cs_game::Game::move_name(&g, &r.s, m) == mv).ok_or_else(|| bad(format!("{mv} is not a legal move")))?;
+        let a = settler.move_question(&m).map_err(bad)?;
+        let d = answer_dict(py, &self.model.names, &a)?;
+        d.set_item("seconds", t0.elapsed().as_secs_f64())?;
+        d.into_py_any(py)
+    }
+
+    /// move_sheet(position, reach_k=2, max_open_exits=1, max_moves=None) -> {order, unread, results: [answer dict per move asked], seconds}: the question of the move for each legal move.
+    #[pyo3(signature = (position, reach_k=2, max_open_exits=1, max_moves=None))]
+    fn move_sheet(&self, py: Python<'_>, position: &str, reach_k: u32, max_open_exits: usize, max_moves: Option<usize>) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let t0 = std::time::Instant::now();
+        let g = KernelGame::from_fen(&self.variant, position).map_err(bad)?;
+        let s = cs_game::Game::initial(&g);
+        let r = Reading::new(&g, s, &self.model).map_err(bad)?;
+        let p = Params { reach_k, max_open_exits, ..Params::default() };
+        let settler = Settler::new(&r, &p);
+        let sheet = settler.move_sheet(max_moves);
+        let compute = t0.elapsed().as_secs_f64();
+        let d = PyDict::new(py);
+        d.set_item("seconds", compute)?;
+        d.set_item("order", sheet.order.clone())?;
+        d.set_item("unread", sheet.unread.clone())?;
+        d.set_item("results", sheet.results.iter().map(|a| answer_dict(py, &self.model.names, a)).collect::<PyResult<Vec<_>>>()?)?;
+        d.into_py_any(py)
+    }
+
+    /// unit_loss(events, unit_id, start, horizon) -> None | {status, balance, place, ply, run, arrival, charged}: the loss of a unit followed through a game's real moves (`events`: one
+    /// (mover id, mover side, mover kind, destination, taken (id, side, kind) | None, taken_at | None, arrives | None) per move). `charged` is the move a lost unit is charged to.
+    fn unit_loss(&self, py: Python<'_>, events: Vec<EventWire>, unit_id: i64, start: usize, horizon: usize) -> PyResult<PyObject> {
+        let evs: Vec<Event> = events.into_iter().map(event_of).collect();
+        let m = &self.model;
+        let worth = |k: &str| mv::worth_by_word(m, k);
+        match mv::unit_loss(&evs, unit_id, start, horizon, &worth) {
+            None => Ok(py.None()),
+            Some(l) => loss_dict(py, &evs, &l),
+        }
+    }
+}
+
+type EventWire = (i64, String, String, String, Option<(i64, String, String)>, Option<String>, Option<String>);
+
+fn event_of(e: EventWire) -> Event { Event { mover: (e.0, e.1, e.2), dest: e.3, taken: e.4, taken_at: e.5, arrives: e.6 } }
+
+fn loss_dict(py: Python<'_>, evs: &[Event], l: &Loss) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("status", l.status.word())?;
+    d.set_item("balance", l.balance)?;
+    d.set_item("place", l.place.clone())?;
+    d.set_item("ply", l.ply)?;
+    d.set_item("run", l.run.clone())?;
+    d.set_item("arrival", l.arrival)?;
+    d.set_item("charged", if l.status == mv::LossStatus::Lost { mv::charged_ply(evs, l) } else { None })?;
+    d.into_py_any(py)
+}
+
+type ThreatWire = (Unit3, String, String, String, f64, Vec<String>, bool, String);
+
+fn threat_of(n: &Names, t: &mv::Threat) -> ThreatWire {
+    (unit3(n, &t.unit), n.place_text(t.place).to_string(), t.part.to_string(), t.kind.to_string(), t.value, t.line.clone(), t.open, t.words.clone())
+}
+
+fn answer_dict<'py>(py: Python<'py>, n: &Names, a: &MoveAnswer) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("move", a.mv.clone())?;
+    d.set_item("unit", unit3(n, &a.unit))?;
+    d.set_item("dest", n.place_text(a.dest))?;
+    d.set_item("took", a.took)?;
+    d.set_item("credit", a.credit)?;
+    d.set_item("took_units", a.took_units.iter().map(|u| unit3(n, u)).collect::<Vec<_>>())?;
+    d.set_item("answers", a.answers.to_vec())?;
+    d.set_item("threats", a.threats.iter().map(|t| threat_of(n, t)).collect::<Vec<_>>())?;
+    d.set_item("unsettled", a.unsettled.iter().map(|x| (unit3(n, &x.unit), x.part.to_string(), x.words.clone(), x.stake)).collect::<Vec<_>>())?;
+    d.set_item("verdict", a.verdict)?;
+    d.set_item("named", a.named.as_ref().map(|x| (unit3(n, &x.unit), n.place_text(x.place).to_string(), x.part.to_string(), x.words.clone(), x.kind.map(|k| k.to_string()), x.value)))?;
+    d.set_item("low", a.low)?;
+    d.set_item("high", a.high)?;
+    d.set_item("line", a.line.clone())?;
+    d.set_item("because", a.because.clone())?;
+    Ok(d)
 }
 
 type Wire3 = (String, String, String);

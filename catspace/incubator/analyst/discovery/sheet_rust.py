@@ -35,6 +35,32 @@ def read(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" =
     return sheet_model.read(position, p.reach_k, p.max_open_exits)
 
 
+def move_sheet(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" = None, max_moves: "int | None" = None) -> dict:
+    """STAGE C1: the question of each legal move of `position` in the order asked ({order, unread, results, seconds}; see `SheetModel.move_sheet`; ValueError when the position is over)."""
+    p = params or QS.Params()
+    return sheet_model.move_sheet(position, p.reach_k, p.max_open_exits, max_moves)
+
+
+def move_question(sheet_model, env: "QS.Env", position: str, move: str, params: "QS.Params | None" = None) -> dict:
+    """STAGE C1: the question of one move (see `SheetModel.move_question`)."""
+    p = params or QS.Params()
+    return sheet_model.move_question(position, move, p.reach_k, p.max_open_exits)
+
+
+def _event(e: dict) -> tuple:
+    return (e["mover"][0], e["mover"][1], e["mover"][2], e["dest"], None if e["taken"] is None else tuple(e["taken"]), e["taken_at"], e.get("arrives"))
+
+
+def event_wire(events: list) -> list:
+    """The events of a game (`codec.events`) in the form the Rust `unit_loss` takes."""
+    return [_event(e) for e in events]
+
+
+def unit_loss(sheet_model, wire_events: list, unit_id: int, start: int, horizon: int) -> "dict | None":
+    """STAGE C1: `QS.unit_loss` in Rust, over `event_wire(events)`: None, or {status, balance, place, ply, run, arrival, charged (the ply a lost unit is charged to)}."""
+    return sheet_model.unit_loss(wire_events, unit_id, start, horizon)
+
+
 def settle(sheet_model, env: "QS.Env", position: str, steps: list, params: "QS.Params | None" = None) -> dict:
     """STAGE B: the deeper levels (level 2 and on) of the questions named by `steps`, a list of (side, kind, place, level) taken in that order, as plain data (see `SheetModel.settle`)."""
     p = params or QS.Params()

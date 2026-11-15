@@ -139,14 +139,14 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
     }
 
     /// The position the asker reads from: the position as it stands when the asker is to move, else the game's pass of it (None when refused).
-    fn base(&self, asker: Side) -> Option<G::State> { if asker == Side::Us { Some(self.r.s.clone()) } else { self.r.passed_state() } }
+    pub fn base(&self, asker: Side) -> Option<G::State> { if asker == Side::Us { Some(self.r.s.clone()) } else { self.r.passed_state() } }
 
-    fn worth(&self, kind: super::Kind) -> f64 { self.r.worth_of(kind) }
+    pub fn worth(&self, kind: super::Kind) -> f64 { self.r.worth_of(kind) }
 
     fn lowest_worth(&self) -> f64 { self.r.m.worth.iter().copied().filter(|w| *w > 0.0).fold(None, |m: Option<f64>, w| Some(m.map_or(w, |x| x.min(w)))).unwrap_or(0.0) }
 
     /// A goal unit, or a unit whose kind is worth more than the lowest worth.
-    fn weighty(&self, u: &Unit) -> bool { Some(*u) == self.r.goal_unit(u.side) || self.worth(u.kind) > self.lowest_worth() }
+    pub fn weighty(&self, u: &Unit) -> bool { Some(*u) == self.r.goal_unit(u.side) || self.worth(u.kind) > self.lowest_worth() }
 
     // ------------------------------------------------------------------------------------------------------------------------------------------ the exchange frames
 
@@ -261,9 +261,9 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
     // ------------------------------------------------------------------------------------------------------------------------------------------ the cost of leaving
 
     /// The value of the other side's exchange on `v`'s place in `child` when that is a newly lost unit (it was not lost where it stands before), else None.
-    fn lost_after(&self, q: &Q, v: &Unit, child: &G::State) -> Option<f64> {
+    fn lost_after(&self, asker: Side, v: &Unit, child: &G::State) -> Option<f64> {
         self.r.g.kind_at(child, v.at)?;
-        if self.exchange_stands(v, q.owner()).value > 0.0 { return None; }
+        if self.exchange_stands(v, asker.other()).value > 0.0 { return None; }
         let ex = solve_real(self.r, v.at, child, self.p.frame_budget, "given");
         if ex.value > 0.0 { Some(ex.value) } else { None }
     }
@@ -275,7 +275,7 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
         levels::level0(r, &gu, asker, true).status == Status::Live || levels::level1(r, &gu, asker, true, self.p).status == Status::Live
     }
 
-    fn goal_newly_under_sign(&self, q: &Q, child: &G::State) -> bool {
+    pub fn goal_newly_under_sign(&self, asker: Side, child: &G::State) -> bool {
         let key = self.r.g.key(child);
         let after = match self.sign_child.borrow().get(&key) { Some(b) => Some(*b), None => None };
         let after = match after {
@@ -286,17 +286,17 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
                 b
             }
         };
-        let before = match self.sign.borrow().get(&q.asker) { Some(b) => Some(*b), None => None };
-        let before = match before { Some(b) => b, None => { let b = self.goal_sign(self.r, q.asker); self.sign.borrow_mut().insert(q.asker, b); b } };
+        let before = match self.sign.borrow().get(&asker) { Some(b) => Some(*b), None => None };
+        let before = match before { Some(b) => b, None => { let b = self.goal_sign(self.r, asker); self.sign.borrow_mut().insert(asker, b); b } };
         after && !before
     }
 
     /// (units of the asker's side whose standing the leaving can change, whether the goal unit's sign may change): the leaving empties the unit's place and fills its new place.
-    fn leaving_candidates(&self, q: &Q, u: &Unit, new: Option<Place>) -> (Vec<Unit>, bool) {
+    pub fn leaving_candidates(&self, asker: Side, u: &Unit, new: Option<Place>) -> (Vec<Unit>, bool) {
         let (r, med) = (self.r, &self.r.m.medium);
         let origin = u.at;
-        let own: Vec<Unit> = r.units.iter().filter(|v| v.side == q.asker && *v != u).copied().collect();
-        let foes: Vec<Unit> = r.units.iter().filter(|w| w.side != q.asker).copied().collect();
+        let own: Vec<Unit> = r.units.iter().filter(|v| v.side == asker && *v != u).copied().collect();
+        let foes: Vec<Unit> = r.units.iter().filter(|w| w.side != asker).copied().collect();
         let strikes = r.strikes_of(u);
         let mut got: Vec<Unit> = vec![];
         for v in &own { if strikes.contains(v.at) { got.push(*v); } }
@@ -306,7 +306,7 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
                 if !got.contains(v) && own.iter().any(|g| g != v && r.strikes(g, v.at) && med.over(g.kind, r.owner(g.side), g.at, v.at).contains(&nw)) { got.push(*v); }
             }
         }
-        let gu = r.goal_unit(q.asker);
+        let gu = r.goal_unit(asker);
         let mut sign = false;
         if let Some(gu) = gu.filter(|gu| gu != u) {
             let near: Vec<Place> = med.hops(gu.kind, r.owner(gu.side), gu.at).iter().map(|x| x.0).collect();
@@ -321,9 +321,9 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
     /// What changes for the asker's side when `u` is no longer on its place. Its first step `mv` is played for real from `base` (the other side then to move); when the step is not legal
     /// the board without the unit is used and the other side is given the move by the game's pass. In that position the exchange frame is read for the asker's side's units that the
     /// leaving can change, and the goal unit's sign when it may have changed.
-    pub fn cost_of_leaving(&self, q: &Q, u: &Unit, mv: Option<&G::Move>, base: &G::State) -> Rc<Leaving> {
+    pub fn cost_of_leaving(&self, asker: Side, u: &Unit, mv: Option<&G::Move>, base: &G::State) -> Rc<Leaving> {
         let (r, g) = (self.r, self.r.g);
-        let key = (q.asker, u.at, mv.map(|m| g.move_name(base, m)));
+        let key = (asker, u.at, mv.map(|m| g.move_name(base, m)));
         if let Some(l) = self.duty.borrow().get(&key) { return l.clone(); }
         let child: Option<G::State> = match mv {
             Some(m) => { let c = g.apply(base, m); if g.outcome(&c).is_none() { Some(c) } else { None } }
@@ -333,15 +333,15 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
             None => Leaving { read: false, duties: vec![] },
             Some(child) => {
                 let new = mv.map(|m| g.move_ends(base, m).1);
-                let (cands, sign) = self.leaving_candidates(q, u, new);
-                let goal = r.goal_unit(q.asker);
+                let (cands, sign) = self.leaving_candidates(asker, u, new);
+                let goal = r.goal_unit(asker);
                 let mut duties = vec![];
                 for v in &r.units {
                     if !cands.contains(v) || !self.weighty(v) || Some(*v) == goal { continue; }
-                    if let Some(value) = self.lost_after(q, v, &child) { duties.push(Duty { unit: *v, stake: r.weight(v), kind: "newly lost", value }); }
+                    if let Some(value) = self.lost_after(asker, v, &child) { duties.push(Duty { unit: *v, stake: r.weight(v), kind: "newly lost", value }); }
                 }
                 if let Some(gu) = goal {
-                    if gu != *u && sign && self.goal_newly_under_sign(q, &child) { duties.push(Duty { unit: gu, stake: r.weight(&gu), kind: "goal unit newly under the sign", value: 0.0 }); }
+                    if gu != *u && sign && self.goal_newly_under_sign(asker, &child) { duties.push(Duty { unit: gu, stake: r.weight(&gu), kind: "goal unit newly under the sign", value: 0.0 }); }
                 }
                 Leaving { read: true, duties }
             }
@@ -352,11 +352,11 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
     }
 
     /// The first question about a unit that is to join: what changes if it leaves, read after its first step on the route (or on the board without it when the step is not legal).
-    fn duty_reading(&self, q: &Q, way: &Way, route: &Route, base: &G::State) -> Rc<Leaving> {
+    fn duty_reading(&self, asker: Side, way: &Way, route: &Route, base: &G::State) -> Rc<Leaving> {
         let g = self.r.g;
         let u = way.unit;
         let mv = g.find_step(base, u.at, route.places[0]);
-        self.cost_of_leaving(q, &u, mv.as_ref(), base)
+        self.cost_of_leaving(asker, &u, mv.as_ref(), base)
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------------ the follow-up on an obstacle
@@ -393,7 +393,7 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
                     if cost <= 0.0 { break; }
                 }
                 let (cost, m) = best.unwrap();
-                let duties = self.cost_of_leaving(q, &u, Some(&m), base).duties.clone();
+                let duties = self.cost_of_leaving(q.asker, &u, Some(&m), base).duties.clone();
                 Ask { verdict: "movable", cost, more: 1, duties, mv: Some(g.move_name(base, &m)) }
             }
         } else if Some(u) == r.goal_unit(u.side) {
@@ -431,7 +431,7 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
         if j >= 1 {
             if let (Some(b), Some(rt0)) = (&base, routes.first()) {
                 if !rt0.places.is_empty() {
-                    let early = self.duty_reading(q, way, rt0, b);
+                    let early = self.duty_reading(q.asker, way, rt0, b);
                     let mut big: Option<&Duty> = None;
                     for d in &early.duties { if big.is_none_or(|b| d.stake > b.stake) { big = Some(d); } }
                     if let Some(big) = big {
@@ -549,7 +549,7 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
         let route = entry.route.clone().or_else(|| routes.first().cloned());
         let Some(route) = route else { return };
         if route.places.is_empty() { return; }
-        let cost = self.duty_reading(q, way, &route, &base);
+        let cost = self.duty_reading(q.asker, way, &route, &base);
         entry.duties = Some(cost.duties.clone());
         if cost.duties.is_empty() { return; }
         let mut biggest = &cost.duties[0];

@@ -28,7 +28,7 @@ EN_PASSANT = "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"
 FIXED = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT]
 ROOT = Path(__file__).resolve().parents[1]
 SHEET = ROOT / "rust" / "engine" / "tactics" / "src" / "sheet"
-NEW_SOURCES = [SHEET / n for n in ("mod.rs", "medium.rs", "reading.rs", "goal_report.rs", "levels.rs", "cf.rs", "frame.rs", "settle.rs", "walk.rs")] + [ROOT / "rust" / "engine" / "game" / "src" / "placed.rs", ROOT / "rust" / "engine" / "py" / "src" / "sheet_py.rs"]
+NEW_SOURCES = [SHEET / n for n in ("mod.rs", "medium.rs", "reading.rs", "goal_report.rs", "levels.rs", "cf.rs", "frame.rs", "settle.rs", "walk.rs", "mv.rs")] + [ROOT / "rust" / "engine" / "game" / "src" / "placed.rs", ROOT / "rust" / "engine" / "py" / "src" / "sheet_py.rs"]
 CHESS_WORDS = r"\b(king|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check|mate|stalemate|uci|fen|san|chess\w*|shakmaty|[a-h][1-8])\b"
 
 
@@ -183,3 +183,90 @@ def test_the_game_names_the_counterfactual_board_not_the_layer():
     assert "fn without" in placed and "fn relocate" in placed and "fn find_step" in placed and "fn why_not" in placed
     outside = (ROOT / "rust" / "engine" / "game" / "src" / "outside.rs").read_text()
     assert "fn without" in outside and "fn relocate" in outside
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ stage C, step one: the question of the move and the loss of a unit
+
+from catspace.incubator.analyst.discovery import sheet_rust_move_measure as MM
+
+MOVES = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT, JOINT, MIDDLE_2, TWO_ROUTES, BARE]
+
+
+def _move_both(state, fen):
+    env, params = state["env"], state["params"]
+    r = Q.Reading(env, fen, WORTH, light=True)
+    py = Q.move_sheet(env, r, params)
+    rs = SR.move_sheet(state["model"], env, fen, params)
+    return py, rs
+
+
+@pytest.mark.parametrize("fen", MOVES)
+def test_the_question_of_every_move_agrees_with_the_python_sheet(state, fen):
+    """Every legal move of the position: the order they are asked in, the verdict kind, the three answers, the figures and the units named are the Python sheet's."""
+    try:
+        py, rs = _move_both(state, fen)
+    except ValueError:
+        pytest.skip("the position is over")
+    assert list(py.order) == rs["order"]
+    a = {x["move"]: MM.canon_python(x) for x in py.results}
+    b = {x["move"]: MM.canon_rust(x) for x in rs["results"]}
+    assert a.keys() == b.keys()
+    for mv in a:
+        assert MM.diff_moves(a[mv], b[mv]) == [], mv
+
+
+def test_the_move_question_names_a_loss_a_taking_and_a_safe_move(state):
+    """A hanging piece moved onto a struck place LOSES, a move that takes a guarded unit is read as a balance, a quiet move is SAFE."""
+    _py, rs = _move_both(state, "4k3/8/8/3p4/4P3/8/8/3RK3 w - - 0 1")
+    by = {x["move"]: x for x in rs["results"]}
+    assert by["e4d5"]["took"] == 2.0 and by["e4d5"]["took_units"] == [("them", "pawn", "d5")]
+    assert by["d1d5"]["took"] == 2.0 and by["d1d5"]["verdict"] in ("SAFE", "LOSES")
+    assert {x["verdict"] for x in rs["results"]} >= {"SAFE"}
+    losing = [x for x in rs["results"] if x["verdict"] == "LOSES"]
+    for x in losing:
+        assert x["named"] is not None and x["high"] >= x["low"] > 0 and x["because"]
+
+
+def test_a_move_that_is_not_ours_is_refused(state):
+    with pytest.raises(ValueError):
+        state["model"].move_question(START, "e7e5", 2, 1)
+
+
+def test_a_wrong_move_answer_is_seen_as_a_difference(state):
+    """The comparison can fire: the answer of one move set against the Python answer of another differs."""
+    py, rs = _move_both(state, MIDDLE)
+    a = {x["move"]: MM.canon_python(x) for x in py.results}
+    b = {x["move"]: MM.canon_rust(x) for x in rs["results"]}
+    keys = sorted(a)
+    assert any(MM.diff_moves(a[keys[0]], b[k]) for k in keys[1:])
+
+
+def test_the_general_format_of_a_number_is_the_python_one():
+    """The words carry the numbers with Python's `:g`: the measure compares the words, so the format is the same (tested in the layer too)."""
+    r = Q.Reading(Q.Env("chess"), "4k3/8/8/3p4/4P3/8/8/3RK3 w - - 0 1", WORTH, light=True)
+    assert f"{2.0:g}" == "2" and f"{1e9:g}" == "1e+09" and f"{2.0:+g}" == "+2" and r.legal
+
+
+def test_the_loss_of_a_unit_agrees_with_the_python_form_on_a_game_with_exchanges(state):
+    env, model = state["env"], state["model"]
+    worth_of = env.worth_fn(WORTH)
+    moves = ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5", "g1f3", "c8g4", "h2h3", "g4f3", "d1f3"]
+    events = env.codec.events(None, moves)
+    wire = SR.event_wire(events)
+    by_ply, _taken = env.codec.tracks(None, moves)
+    found = lost = 0
+    for ply in range(len(moves) + 1):
+        for _place, (uid, _s, _k) in by_ply[ply].items():
+            for h in (4, 8):
+                py, rs = Q.unit_loss(events, uid, ply, h, worth_of), SR.unit_loss(model, wire, uid, ply, h)
+                assert (py is None) == (rs is None)
+                if py is None:
+                    continue
+                found += 1
+                assert (py["status"], float(py["balance"]), py["place"], py["ply"], list(py["run"]), py["arrival"]) == (rs["status"], rs["balance"], rs["place"], rs["ply"], rs["run"], rs["arrival"])
+                if py["status"] == Q.LOST:
+                    lost += 1
+                    assert Q.charged_ply(events, py) == rs["charged"]
+                else:
+                    assert rs["charged"] is None
+    assert found > 0 and lost > 0
