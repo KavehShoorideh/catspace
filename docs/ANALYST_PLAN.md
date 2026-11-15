@@ -8090,3 +8090,65 @@ OBS forcing_opportunity weak_s5516_n200 against base: horizon 4 base rate: the 5
 OBS forcing_opportunity weak_s5516_n200 against base: horizon 8 base rate: the 500-game set (control against control) 0.5440 (263124 cases); the weaker-answerer games, answerer weaker 0.6055 (48613 cases)
 OBS forcing_opportunity weak_s5516_n200 against base: horizon 16 base rate: the 500-game set (control against control) 0.7841 (237582 cases); the weaker-answerer games, answerer weaker 0.8446 (42660 cases)
 READ (directional, one run on 500 games of one player, the test half 250 games; nothing here is a verdict). (1) The forcing number rises with the later material change much less than the 78.44 number on all test positions (about 0.09 / 0.07 / 0.04 against about 0.35 / 0.32 / 0.27 at 4 / 8 / 16 plies), and adding it to the 78.44 number LOWERS the correlation (both below the 78.44 number alone at every horizon). The shuffled control is near zero. (2) On the positions where the 78.44 first level is zero and no threat move is CONFIRMED (the part a policy would need), the 78.44 number is itself near zero at 4 plies (about 0.01, interval reaching zero) and the forcing number is also small (about 0.02 / 0.02 / 0.03, intervals above zero but only just); the partial rank correlation of the forcing number with the 78.44 number held out is about 0.02 there with the lower end of the interval near zero. At 8 and 16 plies the CONTROL, the plain count of threat moves (mover's less the other side's), is as high or higher than the forcing number (about 0.08 and 0.11 on the subset) and the sum form is higher than the max form (about 0.07 / 0.08 at 8 / 16); so at longer horizons what the forcing number picks up in the subset looks like how many threat moves there are, not the fitted chances. (3) The fitted chances barely separate the cells that matter: almost all threat moves (492282 of 571400) are NOT SETTLED because the fuse stopped the read (68692 of 86967 reads were stopped), the cell NOT SETTLED/exchange/0 alone holds 149863 of the 275656 cases at 4 plies, and CONFIRMED cells are rare (18087 threat moves; 1863 test positions had one). CONFIRMED cells have a chance of about 0.6 of gaining the claimed worth at 4 plies against 0.31 for the exchange cell of a not settled move and 0.33 for the base rate, so the verdict does carry information, but it is on few positions. (4) A flaw of the measure, named: the goal and ends claims are judged by MATERIAL; a goal claim cannot be paid in material, so the cells of kind goal show a rate of zero (NOT SETTLED/goal/0 gained 0 of 3401), and the goal terms contribute nothing to the number; the measure says nothing about goal claims. The claimed worth of a NO CLAIM or NOT SETTLED move is the best claim it makes at the move, not what a reply leaves, so its cell is a weak statement. (5) Stage E: with a weaker answerer (one colour at a tenth of the clock) the base rate of gaining the claimed worth is higher at all three horizons (about 0.31 to 0.37 at 4 plies, 0.52 to 0.61 at 8, 0.76 to 0.84 at 16, same games, cases split by who answers) and most cells with many cases move up in the same direction (the exchange cell of a not settled move from about 0.29 to 0.32, CONFIRMED/exchange/1 from about 0.51 to 0.63 on few control cases); a few cells go the other way and cells with tens of cases move by amounts that are not distinguishable from noise here. So the cells do move with the opponent in direction and in the base rate; how much per cell is not read from one run of 200 games. What would change the reading: a read that settles more of the moves (the fuse stopped 79 percent of the reads at 5000; the probe says the verdicts at 20000 differ in 1401 of 1912 reads, so the number is fuse-bound), games where prepared attacks come true more often than a search against itself allows, and an outcome that can pay a goal claim. Not done: the longer fuse on the long run (cost), the Python mirror of the read (still owed), goal-aware outcome. The shared editable install of cs_engine now points at the worktree agent-a55465c1599922796; the parent rebuilds main after the merge.
+
+
+### 78.48 READ BY THE PARENT (2026-11-15)
+
+Merged to main (fast-forward), the extension rebuilt, the 78.47 and 78.48 test files pass on main. The stage D and E
+numbers above are the builder's run; I did not rerun them. Reading, directional (one run, and at the smaller fuse, where
+most reads are cut):
+- Two measurements now agree (78.44 and this one): chance times stake over the OPEN claims, credited by material some
+  plies later, foretells little beyond the next move in games between two equal searchers. Where the first level is
+  silent and nothing is confirmed, the forcing number is near the shuffle, and the plain count of threat moves does as
+  well or better at the longer horizons.
+- A CONFIRMED claim does carry information (its cells sit well above the base rate), and such claims are few.
+- The cells move with the opponent (stage E): against the weaker answerer most large cells and the base rate are higher.
+  So section 10's table key is real in direction; its size is not read from this run.
+- Consequence for section 5: the policy's target, as a number credited by later material, is not supported yet. A
+  nearer target is tried next: does a CONFIRMED claim ARRIVE.
+
+## 78.49 GO TOWARD THE TACTICS: what, read in a quiet position, foretells a confirmed claim arriving (SYSTEM_SPEC section 5)
+
+Serves: the opportunity policy, its first half ("go toward the tactics"). A measurement; nothing is used in play.
+
+A. BUILT BY THE PARENT: catspace/incubator/analyst/discovery/forcing_arrival_measure.py, on the reads kept by 78.48
+   (fuse 5000, the odd games). A position is quiet when neither side holds a CONFIRMED threat move. Target: a CONFIRMED
+   threat move arrives for the mover within h plies, less the same for the other side. Output kept as
+   artifacts/experiments/forcing_opportunity_78_48/arrival_obs.txt. Lines (the full file has the rest):
+
+OBS forcing arrival arrival: test games 250, quiet positions 17462
+OBS forcing arrival arrival h=4: quiet positions with the horizon inside the game 16749; a CONFIRMED threat move arrives for the mover in 1980 (11.8 pct), for the other side in 1847 (11.0 pct)
+OBS forcing arrival arrival h=4: difference of the counts against 'ours less theirs': rank correlation +0.0931 [+0.0762, +0.1090]
+OBS forcing arrival arrival h=4: difference of the NOT SETTLED counts against 'ours less theirs': rank correlation +0.1024 [+0.0833, +0.1209]
+OBS forcing arrival arrival h=4: difference shuffled within the game against 'ours less theirs': rank correlation -0.0038 [-0.0158, +0.0079]
+OBS forcing arrival arrival h=8: quiet positions with the horizon inside the game 15990; a CONFIRMED threat move arrives for the mover in 3639 (22.8 pct), for the other side in 3489 (21.8 pct)
+OBS forcing arrival arrival h=8: difference of the counts against 'ours less theirs': rank correlation +0.1017 [+0.0767, +0.1227]
+OBS forcing arrival arrival h=8: difference of the NOT SETTLED counts against 'ours less theirs': rank correlation +0.1066 [+0.0812, +0.1302]
+OBS forcing arrival arrival h=8: difference shuffled within the game against 'ours less theirs': rank correlation -0.0033 [-0.0148, +0.0084]
+OBS forcing arrival arrival h=16: quiet positions with the horizon inside the game 14551; a CONFIRMED threat move arrives for the mover in 6027 (41.4 pct), for the other side in 5934 (40.8 pct)
+OBS forcing arrival arrival h=16: difference of the counts against 'ours less theirs': rank correlation +0.0918 [+0.0590, +0.1219]
+OBS forcing arrival arrival h=16: difference of the NOT SETTLED counts against 'ours less theirs': rank correlation +0.0966 [+0.0632, +0.1274]
+OBS forcing arrival arrival h=16: difference shuffled within the game against 'ours less theirs': rank correlation -0.0071 [-0.0185, +0.0067]
+
+   Reading, directional: the difference of the two sides' counts of threat moves foretells the arrival weakly, clear of
+   the shuffle, and about as well at 16 plies as at 4. Weak, but it is the first term seen to carry past the next move.
+
+B. STATEMENTS. A set of game-free statements over the position, counted for each side, from the `Placed` trait and the
+   reads only: for example the moves a side has; its units that bear on a unit of the other side; its units borne on by
+   its own (guarded); pairs of its units that bear on each other along a line with nothing between; places beside the
+   other side's goal unit that it bears on; the free steps of its own goal unit; its units that have not yet moved; the
+   reach of its long-range units; its units of least worth by their distance to the far edge; its threat moves by
+   verdict. Each statement is one line of text and one number. In Rust, a batch entry over games.
+C. THE SPARSE FIT. On the even games: a sparse linear fit (L1, scikit-learn, the penalty chosen by cross-validation over
+   games) of the arrival target at 4, 8, 16 plies on the differences of the statements, ours less theirs. On the odd
+   games: the rank correlation of the fit with the target with bands by game, beside the count difference of stage A and
+   the shuffle; then the same against material won, which is what finally counts. Print each kept statement with its
+   weight: these are the candidate subgoals, each with its own evidence.
+D. ONE STEP OF CONTROL, only if C is clear of stage A's line: for each quiet test position, does the move the game's
+   player chose raise the fitted number more than the average legal move does. This says whether a searcher already
+   follows it without knowing.
+
+Acceptance: tests for the statements (each on small hand-made positions of two variants), the fit and the split; the
+78.43 measures at zero differences if the sheet's files are touched. No oracle, no human game, no puzzle.
+
+STATUS: stage A done by the parent; B to D given to a builder agent on 2026-11-15.
