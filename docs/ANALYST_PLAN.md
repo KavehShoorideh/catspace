@@ -7459,3 +7459,35 @@ OBS puzzle sheet fresh_300: misses the five-times budget turns into SEES 32 (by 
 OBS puzzle sheet fresh_300: four-way (sheet sees / search 0.2 s finds): yes/yes 115, yes/no 3, no/yes 159, no/no 23
 
 READ (directional, one run per set, a derived line in place of the puzzle's solution). What the route reasoning lacks, by how many puzzles it costs on both sets: (1) R, the target is on the sheet and no way of it begins with the answer (the largest class on both sets): mostly an answer that is a quiet move or a move of another unit, and mates by a move that the goal question's few scenario ways (the first three scenarios) do not list; (2) N, a way begins with the answer but its deep reading was not reached under 40 steps (five times the budget turns about a quarter to a third of these into SEES); (3) X, the way is read and refuted, mostly by a reply carried in the way's own line (few stops are recorded); (4) 'other', mostly a line that takes nothing (no target to name). T is zero: every unit is a question. The plain search finds most puzzles the sheet does not see; the puzzles the sheet sees and the 0.2 s search does not are few (8 and 3). Nothing is fixed here.
+
+
+### 78.45 READ BY THE PARENT (2026-11-15)
+
+Merged at 0c60c7c2. On both sets the sheet holds a danger claim beginning with the answer in about four puzzles of ten and the plain search
+names the answer in more than eight of ten at the same time; the sheet sees what the search misses in a handful only. So the first reading
+of 78.44 holds: the sheet's claims of more than one move are the weak part, whoever answers. The misses by the builder's classes say what is
+lacking. A way of the sheet is ONE unit travelling to strike ONE target. The answers it does not hold are moves that are not a step of such a
+way: a move that makes a claim elsewhere and so forces the reply (a taking that removes a guard, a threat that draws a unit off, two claims
+at once), and wins of the goal by a move outside the three scenarios kept. A way read alone is refuted by the target stepping aside (class
+X) where the line works because the reply had to answer something else. The budget (class N) is the smaller part.
+
+## 78.46 THE FORCING READ: a move, the claims it makes, every reply, the claims that stand (SYSTEM_SPEC section 3; Rust first, section 8)
+
+Kaveh's design of 78.41 already names it: per move, what changes, and the opponent's reply; a double threat is a move whose claims no one
+reply answers. October measured the same idea as lambda frames (catspace/incubator/analyst/lambda_frames.py); the literature calls it a
+threat-space search. It is built in the Rust sheet first; the Python mirror is owed afterwards.
+ - A THREAT MOVE of the side to move: a legal move after which, the board read as if that side moved again, a unit of the other side or
+   their goal stands in danger that did not before, or a move that itself takes a unit.
+ - THE READ. After a threat move EVERY legal reply is read (soundness: no reply is left out). For each reply: what the reply took, the claims
+   of the move that still stand and what carrying out the best of them wins by the exchange on its place, and, where none stands, the mover's
+   next threat moves, one level deeper, while the budget lasts. The goal is read by the engine's own forced-win clause (`force`). The value
+   of the move is the least over the replies. A cut is NOT SETTLED, never a refutation and never a confirmation.
+ - THE ANSWER, as claims: the move, the claims it makes, and for every reply which claim stands (the explanation of why the reply fails), the
+   units won, the nodes read.
+ - ACCEPTANCE. (1) Puzzles (78.45's measure, a second column): SEES and PICKS with the forcing read beside the sheet alone and the plain
+   search, on dev_300 while building and fresh_300 once at the end; the misses left, by class. (2) SOUNDNESS, on ordinary positions of the
+   held games: every claim the forcing read confirms is checked against the engine's ledger search at a depth that covers the line; the
+   share it contradicts is printed, and each contradiction is read. A confirmation the search contradicts is a bug or a named limit, never
+   a tolerated rate. (3) The sheet's existing answers do not change: the 78.43 measures still print zero differences.
+
+STATUS: given to a builder agent on 2026-11-15.
