@@ -16,6 +16,7 @@ pub mod goal_target;   // plan 78.39: the goal's target unit, read from the desc
 pub mod kernel;
 pub mod rng;
 pub mod outside;      // the binding to outside engines (their protocol), beside the kernel
+pub mod placed;       // plan 78.43: what stands where, what bears on what, from any place (the question sheet's light reading)
 
 /// A role, by its index in `Game::roles`.
 pub type Role = usize;

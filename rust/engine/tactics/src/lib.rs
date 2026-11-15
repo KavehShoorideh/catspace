@@ -8,6 +8,7 @@ pub mod ledger;
 pub mod operators;
 pub mod reason;
 pub mod scenario;
+pub mod sheet;
 pub mod toward;
 
 use cs_game::{Game, Role};

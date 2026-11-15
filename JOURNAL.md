@@ -36665,3 +36665,10 @@ match player, which carries none, plays as before. The one test of the old form 
 Kaveh restated what the system must end up with. Written as docs/SYSTEM_SPEC.md; an inventory of what already exists per piece is under way. No runs.
 
 Inventory done and appended to docs/SYSTEM_SPEC.md section 9.1. scripts/gate.py: a missing space had joined test_plan78_14 and test_plan78_17 into one name, so the engine gate skipped both; fixed, the two files pass.
+
+## 2026-11-14 20:20 -- plan 78.43 stage A: the question sheet's light reading and levels 0 and 1 by geometry in the Rust engine (branch worktree-agent-a2959333be59fa312)
+
+Built rust/engine/tactics/src/sheet (game-free) over a new trait `cs_game::placed::Placed` (cells, bearing_from, reach_from from any place, move_ends; its chess binding sits at the end of game/src/outside.rs, not kernel.rs, because the kernel's certificates hash kernel.rs). The medium of movement is the one data table handed in from Python (read once from the description by `Env.medium()`); worth table and goal kind likewise. Exposed as `cs_engine.SheetModel`; thin wrapper sheet_rust.py; the measure is sheet_rust_measure.py (Rust against the Python light sheet, the oracle).
+
+Measure on the 16 saved games (one run, directional): `OBS sheet_rust: games 16, positions compared 1258`; units 55790 items, level 0 27895 targets, level 1 route sets 27895 targets, level 1 verdicts 27895 targets: 0 items differ in all four. Seconds per position for the same work, python 0.1257, rust 0.0224 (jobs 11, so under contention); one game alone: python 0.076, rust 0.0136. A deliberately wrong build (a strict instead of non-strict worth comparison in the place-to-stand link) made 482 of 1760 route sets and 1527 of 1760 verdicts differ on one game: the comparison fires. Not built: stage B on.
+

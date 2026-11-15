@@ -22,6 +22,7 @@ fn record_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) 
     Ok((g, s, keys))
 }
 
+mod sheet_py;
 mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>::State; }
 
 /// best_move(variant, fen=None, moves=[], seconds=1.0, worth={}, start960=518) -> (move or None, proved, [trace], nodes, fen after the moves): THE END-TO-END
@@ -1113,5 +1114,6 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(reason, m)?)?;
     m.add_function(wrap_pyfunction!(scenario, m)?)?;
     m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
+    m.add_class::<sheet_py::SheetModel>()?;
     Ok(())
 }

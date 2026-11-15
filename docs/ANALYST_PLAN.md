@@ -7230,3 +7230,14 @@ Then the uses that waited on speed: the opportunity number logged along every se
 as nodes of the engine's graph (section 2).
 
 STATUS: A given to a builder agent on 2026-11-14.
+
+78.43 A BUILT (2026-11-14, branch worktree-agent-a2959333be59fa312; journal entry 2026-11-14 20:20). Rust: tactics/src/sheet/{mod,medium,reading,goal_report,levels}.rs over the new trait cs_game::placed::Placed (placed.rs; the chess binding `impl Placed for KernelGame` is at the end of game/src/outside.rs so the kernel's certificates, which hash kernel.rs, stay fresh); py/src/sheet_py.rs the `cs_engine.SheetModel`; Python: discovery/sheet_rust.py (wrapper) and discovery/sheet_rust_measure.py (the measure). The game's part reaches the layer by ONE trait (what stands where, what bears on what and where a unit may move from ANY place) and ONE data table (the medium of movement, read from the description by Env.medium()), plus the worth table and the goal kind. Compared on every position of the 16 saved games (directional, one run):
+OBS sheet_rust: games 16, positions compared 1258, unreadable (over) 5, python errors 0, jobs 11
+OBS sheet_rust units (units and first order entries): items compared 55790, items that differ 0
+OBS sheet_rust level 0 verdicts (per target): items compared 27895, items that differ 0
+OBS sheet_rust level 1 route sets (per target): items compared 27895, items that differ 0
+OBS sheet_rust level 1 verdicts (per target): items compared 27895, items that differ 0
+OBS sheet_rust ways 197685, routes 441213 in the Python results compared
+OBS sheet_rust seconds per position (the same work, jobs 11): python 0.12570, rust 0.02243 (of which the engine's own work 0.02006, the rest is handing the data to Python), ratio 5.6x
+Not in stage A: the goal unit's weak places (`weak_places`), `_old_reach` (compare_old is off in the measure), the counterfactual obstacles, frames, the schedule (stages B and C).
+

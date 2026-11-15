@@ -1,0 +1,127 @@
+"""Plan 78.43 stage A: the question sheet's light reading and its levels 0 and 1 by geometry in the Rust engine (rust/engine/tactics/src/sheet, the game's part behind
+`cs_game::placed::Placed` in kernel.rs, the data table of the medium of movement supplied from Python). The Python sheet (question_sheet.py) is the oracle: on a handful of fixed
+positions the two forms must give the same units, level 0 verdicts, level 1 route sets and verdicts. The measure over whole games is sheet_rust_measure.py."""
+import re
+from pathlib import Path
+
+import pytest
+
+from catspace.incubator.analyst.discovery import question_sheet as Q
+from catspace.incubator.analyst.discovery import sheet_rust as SR
+from catspace.incubator.analyst.discovery import sheet_rust_measure as M
+
+WORTH = {"k": 0, "q": 14, "r": 8, "b": 5, "n": 4, "p": 2}
+HANGING = "4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1"
+PAWNS = "4k3/p7/8/3q4/8/8/P2R4/4K3 w - - 0 1"
+KING_ROUTE = "8/6Np/8/1P6/2p1P2K/8/8/4k3 w - - 0 1"
+OWN_IN_WAY = "4k3/8/8/3b4/8/8/2P5/N3K3 w - - 0 1"
+PAWN_TAKES = "7k/8/8/3b4/8/3p4/8/N3K3 w - - 0 1"
+THEIR_IN_WAY = "7k/8/8/7n/1p6/p7/8/R3K3 w - - 0 1"
+CONFINED_NEAR = "7k/6pp/8/8/8/8/8/R3K3 w - - 0 1"
+IN_CHECK = "4k3/8/8/4q3/8/8/3R4/4K3 w - - 0 1"
+START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+MIDDLE = "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"
+CASTLING = "r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1"
+PROMOTING = "4k3/P7/8/8/8/8/p7/4K3 w - - 0 1"
+EN_PASSANT = "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"
+FIXED = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT]
+ROOT = Path(__file__).resolve().parents[1]
+SHEET = ROOT / "rust" / "engine" / "tactics" / "src" / "sheet"
+NEW_SOURCES = [SHEET / n for n in ("mod.rs", "medium.rs", "reading.rs", "goal_report.rs", "levels.rs")] + [ROOT / "rust" / "engine" / "game" / "src" / "placed.rs", ROOT / "rust" / "engine" / "py" / "src" / "sheet_py.rs"]
+CHESS_WORDS = r"\b(king|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check|mate|stalemate|uci|fen|san|chess\w*|shakmaty|[a-h][1-8])\b"
+
+
+@pytest.fixture(scope="module")
+def env():
+    return Q.Env("chess")
+
+
+@pytest.fixture(scope="module")
+def state(env):
+    params = Q.Params(compare_old=False)
+    return {"env": env, "worth": WORTH, "params": params, "model": SR.model(env, WORTH)}
+
+
+def _both(state, fen):
+    py = M.canon_python(M.python_side(fen, state))
+    rs = M.canon_rust(SR.read(state["model"], state["env"], fen, state["params"]))
+    return py, rs
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ the pieces
+
+def test_the_units_are_read_with_their_worth_and_ordered_by_stake(state):
+    _py, rs = _both(state, START)
+    assert len(rs["units"]) == 32
+    assert ("us", "queen", "d1", 14.0) in rs["units"] and ("them", "pawn", "a7", 2.0) in rs["units"] and ("us", "king", "e1", 0.0) in rs["units"]
+    first = rs["order"][:2]
+    assert [o[:3] for o in first] == [("us", "king", "e1"), ("them", "king", "e8")]                            # the goal unit of each side first, ours then theirs
+    assert all(o[4] for o in first) and not any(o[4] for o in rs["order"][2:])
+    assert [o[5] for o in rs["order"]] == list(range(1, 33))
+
+
+def test_level0_reads_what_strikes_and_guards_a_target_and_its_open_exits(state):
+    _py, rs = _both(state, HANGING)
+    queen = rs["level0"][("them", "queen", "d5")]
+    assert ("rook", "d2") in queen["strikers"] and queen["status"] == "live" and queen["guards"] == []          # struck by our rook, nothing guards it
+    assert rs["level0"][("us", "rook", "d2")]["strikers"] == [("queen", "d5")]
+    cornered = _both(state, CONFINED_NEAR)[1]["level0"][("them", "king", "h8")]
+    assert cornered["struck"] is False and cornered["open_exits"] >= 0 and cornered["exits"] >= 1             # the goal unit is read by the report
+
+
+def test_the_goal_unit_in_check_has_its_exits_from_the_zone_not_a_pass(state):
+    py, rs = _both(state, IN_CHECK)
+    assert py["level0"] == rs["level0"] and py["level1"] == rs["level1"]
+    assert rs["level0"][("us", "king", "e1")]["struck"] is True
+
+
+def test_level1_names_the_ways_of_the_asking_side_with_their_routes_and_obstacles(state):
+    _py, rs = _both(state, OWN_IN_WAY)
+    key = ("them", "bishop", "d5")
+    assert rs["level1"][key]["ways"], "some unit of ours can come to strike the bishop"
+    assert any(way[1] == "knight" for way, _routes in rs["routes"][key])
+    routes = [r for _way, rr in rs["routes"][key] for r in rr]
+    assert all(len(r) == 8 for r in routes) and any(r[6] for r in routes)                                      # obstacles are listed on the routes that have them
+
+
+def test_a_target_nothing_can_reach_is_closed_with_its_failed_link(state):
+    _py, rs = _both(state, THEIR_IN_WAY)
+    closed = [k for k, v in rs["level1"].items() if v["status"] == "closed"]
+    assert closed and all(rs["level1"][k]["failed_at"] in (1, 2, 3) for k in closed)
+
+
+def test_a_made_up_worth_table_is_seen_as_a_difference(state):
+    """The comparison can fire: the same position under a different worth table differs in the units' worth."""
+    other = dict(state, model=SR.model(state["env"], {**WORTH, "q": 99}))
+    py = M.canon_python(M.python_side(HANGING, state))
+    rs = M.canon_rust(SR.read(other["model"], state["env"], HANGING, state["params"]))
+    assert M.diff_position(py, rs), "a wrong worth must differ"
+
+
+def test_a_position_that_is_over_is_refused(state):
+    with pytest.raises(ValueError):
+        SR.read(state["model"], state["env"], "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", state["params"])           # stalemate: no legal move
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ rust against python
+
+@pytest.mark.parametrize("fen", FIXED)
+def test_the_rust_form_and_the_python_form_agree(state, fen):
+    py, rs = _both(state, fen)
+    assert M.diff_position(py, rs) == []
+    assert py["routes"] == rs["routes"]
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ the layer stays game-free
+
+def test_the_new_layer_sources_name_no_game_object_in_code_or_comments():
+    for p in NEW_SOURCES:
+        text = re.sub(r'"(?:\\.|[^"\\])*"', '""', p.read_text())
+        hit = re.search(CHESS_WORDS, text, flags=re.I)
+        assert hit is None, (p.name, hit.group(0) if hit else None)
+
+
+def test_python_wrapper_names_no_game_object():
+    for name in ("sheet_rust.py",):
+        text = (ROOT / "catspace" / "incubator" / "analyst" / "discovery" / name).read_text()
+        assert not re.search(r"\b(king|queen|rook|bishop|knight|pawn)\b", text, flags=re.I)
