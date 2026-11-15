@@ -102,3 +102,16 @@ def settle(sheet_model, env: "QS.Env", position: str, steps: list, params: "QS.P
     """STAGE B: the deeper levels (level 2 and on) of the questions named by `steps`, a list of (side, kind, place, level) taken in that order, as plain data (see `SheetModel.settle`)."""
     p = params or QS.Params()
     return sheet_model.settle(position, steps, p.reach_k, p.max_open_exits)
+
+
+def forcing(sheet_model, position: str, fuse: "int | None" = None, goal_nodes: "int | None" = None) -> dict:
+    """PLAN 78.46 THE FORCING READ of the side to move, in Rust only (rust/engine/tactics/src/sheet/forcing.rs): every threat move, every reply to it, the claims that stand after each reply; a verdict per
+    move (CONFIRMED | NOT SETTLED | NO CLAIM | UNREAD), its value, the nodes read, whether the fuse (positions read) stopped it. See `SheetModel.forcing`. ValueError when the position is over.
+    THE PYTHON MIRROR OF THIS READ IS OWED (SYSTEM_SPEC section 8: validated in Rust first, then mirrored for readability); until it is written this call has no oracle."""
+    return sheet_model.forcing(position, fuse, goal_nodes)
+
+
+def forcing_check(sheet_model, position: str, move: str, depth: int, nodes: int) -> dict:
+    """The ledger search (the sheet's worth table, no pruning) from the position after `move`, deepened to `depth` plies under `nodes`: {value, depth, cut, line, nodes, win} (what a confirmed claim
+    is checked against)."""
+    return sheet_model.forcing_check(position, move, depth, nodes)

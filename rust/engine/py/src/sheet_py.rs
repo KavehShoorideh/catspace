@@ -4,6 +4,7 @@
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
 use cs_tactics::sheet::cf::CfObstacle;
+use cs_tactics::sheet::forcing::{self, ClaimOut, ForcingParams, ReplyOut, ThreatOut};
 use cs_tactics::sheet::levels::{self, Level0, Level1, Obstacle, Route, WeakPlace, Way, Why};
 use cs_tactics::sheet::medium::Medium;
 use cs_tactics::sheet::mv::{self, Event, Loss, MoveAnswer};
@@ -342,6 +343,50 @@ impl SheetModel {
         out.into_py_any(py)
     }
 
+    /// forcing(position, fuse=None, goal_nodes=None) -> the FORCING READ of the side to move (plan 78.46), plain data: {mover, legal, found, confirmed, unsettled, no_claim,
+    /// unread, nodes, fuse, cut, level, seconds, threats: [{move, verdict, value, took, took_worth, claims, replies, level, plies}]}; see `forcing.rs`. ValueError when the position is over.
+    #[pyo3(signature = (position, fuse=None, goal_nodes=None))]
+    fn forcing(&self, py: Python<'_>, position: &str, fuse: Option<u64>, goal_nodes: Option<u64>) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let t0 = std::time::Instant::now();
+        let g = KernelGame::from_fen(&self.variant, position).map_err(bad)?;
+        let s = cs_game::Game::initial(&g);
+        let r = Reading::new(&g, s, &self.model).map_err(bad)?;
+        let mut fp = ForcingParams::default();
+        if let Some(f) = fuse { fp.fuse = f; }
+        if let Some(n) = goal_nodes { fp.goal_nodes = n; }
+        let read = forcing::Forcing::new(&r, fp).read();
+        let d = PyDict::new(py);
+        d.set_item("mover", self.model.names.roles[r.mover].as_str())?;
+        d.set_item("seconds", t0.elapsed().as_secs_f64())?;
+        for (k, v) in [("legal", read.legal), ("found", read.found), ("confirmed", read.confirmed), ("unsettled", read.unsettled), ("no_claim", read.no_claim), ("unread", read.unread)] { d.set_item(k, v)?; }
+        d.set_item("nodes", read.nodes)?;
+        d.set_item("fuse", read.fuse)?;
+        d.set_item("cut", read.cut)?;
+        d.set_item("level", read.level)?;
+        d.set_item("threats", read.threats.iter().map(|t| threat_dict(py, t)).collect::<PyResult<Vec<_>>>()?)?;
+        d.into_py_any(py)
+    }
+
+    /// forcing_check(position, mv, depth, nodes) -> {value, depth, cut, line, nodes, win}: the ledger search (the sheet's worth table, no pruning) from the position after the move `mv`, deepened to
+    /// `depth` plies under `nodes`; `value` is the future for the mover (the move's own taking not counted), `win` the ledger's number of a won game.
+    fn forcing_check(&self, py: Python<'_>, position: &str, mv: &str, depth: i32, nodes: u64) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let g = KernelGame::from_fen(&self.variant, position).map_err(bad)?;
+        let s = cs_game::Game::initial(&g);
+        let r = Reading::new(&g, s, &self.model).map_err(bad)?;
+        let m = cs_game::Game::moves(&g, &r.s).into_iter().find(|m| cs_game::Game::move_name(&g, &r.s, m) == mv).ok_or_else(|| bad(format!("{mv} is not a legal move")))?;
+        let (value, depth, cut, line, n) = forcing::ledger_check(&r, &r.s, &m, depth, nodes);
+        let d = PyDict::new(py);
+        d.set_item("value", value)?;
+        d.set_item("depth", depth)?;
+        d.set_item("cut", cut)?;
+        d.set_item("line", line)?;
+        d.set_item("nodes", n)?;
+        d.set_item("win", forcing::win_value())?;
+        d.into_py_any(py)
+    }
+
     /// unit_loss(events, unit_id, start, horizon) -> None | {status, balance, place, ply, run, arrival, charged}: the loss of a unit followed through a game's real moves (`events`: one
     /// (mover id, mover side, mover kind, destination, taken (id, side, kind) | None, taken_at | None, arrives | None) per move). `charged` is the move a lost unit is charged to.
     fn unit_loss(&self, py: Python<'_>, events: Vec<EventWire>, unit_id: i64, start: usize, horizon: usize) -> PyResult<PyObject> {
@@ -451,6 +496,43 @@ fn answer_dict<'py>(py: Python<'py>, n: &Names, a: &MoveAnswer) -> PyResult<Boun
     d.set_item("line", a.line.clone())?;
     d.set_item("because", a.because.clone())?;
     Ok(d)
+}
+
+fn claim_dict<'py>(py: Python<'py>, c: &ClaimOut) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("target", c.target.clone())?;
+    d.set_item("kind", c.kind)?;
+    d.set_item("value", c.value)?;
+    d.set_item("line", c.line.clone())?;
+    Ok(d)
+}
+
+fn reply_dict<'py>(py: Python<'py>, r: &ReplyOut) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("reply", r.reply.clone())?;
+    d.set_item("took", r.took.clone())?;
+    d.set_item("took_worth", r.took_worth)?;
+    d.set_item("stands", r.stands.as_ref().map(|c| claim_dict(py, c)).transpose()?)?;
+    d.set_item("deeper", r.deeper.clone())?;
+    d.set_item("line", r.line.clone())?;
+    d.set_item("value", r.value)?;
+    d.set_item("open", r.open)?;
+    d.set_item("ends", r.ends)?;
+    Ok(d)
+}
+
+fn threat_dict(py: Python<'_>, t: &ThreatOut) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("move", t.mv.clone())?;
+    d.set_item("verdict", t.verdict.word())?;
+    d.set_item("value", t.value)?;
+    d.set_item("took", t.took.clone())?;
+    d.set_item("took_worth", t.took_worth)?;
+    d.set_item("claims", t.claims.iter().map(|c| claim_dict(py, c)).collect::<PyResult<Vec<_>>>()?)?;
+    d.set_item("replies", t.replies.iter().map(|r| reply_dict(py, r)).collect::<PyResult<Vec<_>>>()?)?;
+    d.set_item("level", t.level)?;
+    d.set_item("plies", t.plies)?;
+    d.into_py_any(py)
 }
 
 type Wire3 = (String, String, String);

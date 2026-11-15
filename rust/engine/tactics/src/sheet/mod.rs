@@ -10,6 +10,7 @@
 //! STAGE B0: places and kinds are NUMBERS (`Place`, `Kind`: the game's own lists of names, in the order of the text), sets of places are bit sets; the text is made only at the
 //! boundary (`Names`). Units, ways and routes are small copyable or cheaply cloned values, nothing is hashed by text.
 pub mod cf;
+pub mod forcing;
 pub mod frame;
 pub mod goal_report;
 pub mod levels;
