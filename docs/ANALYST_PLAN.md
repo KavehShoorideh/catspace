@@ -8314,3 +8314,38 @@ keeps most of the 26 statements (the cross-validated penalty is small); the weig
 should not be read one by one. The single-statement correlations on the test half are all small (the largest of the P statements on the arrival target about 0.10). Stage D ran at 4 plies only: the mean of the number after the move the game's
 player chose less the mean over the legal moves is a tiny positive number with its band above zero, but the played move is above that mean in fewer positions than not and beats a little under half of the
 listed moves, against the control of a random move: mixed and small, no sign that the player follows the number. Not built: the unmoved-units, edge-distance and long-range statements (above); the fit on any set but the 500 games of 78.48; any use of the fitted number in play.
+
+
+### 78.49 READ BY THE PARENT (2026-11-15)
+
+Merged to main (fast-forward), the extension rebuilt, the 78.48 and 78.49 test files pass on main. I reran the fit with
+stage D on main; the lines for the fit P, the fit P+F, the count difference and the shuffles on the arrival target, and
+the first material lines, came out the same as in the builder's note above. Reading, directional (one set of games):
+- The fit over the statements foretells the arrival of a confirmed claim better than the count of threat moves, clearly
+  at 4 plies, with overlapping bands at 8 and 16. It is still a weak signal.
+- The weights are not yet a vocabulary of subgoals. Many statements are kept, pairs of near-equal statements take
+  opposite signs, and the leading ones (material, the sum of bearings) are the plainest. No single statement stands out.
+- The moves the player chose do not follow the number (stage D). So if the number is worth anything, the player is
+  leaving it unused, and the only way to learn whether it is worth anything is to play with it.
+
+## 78.50 PLAY WITH IT: the fitted number as the choice among moves the search holds equal (SYSTEM_SPEC sections 5 and 7; AGENTS rule 7)
+
+Serves: the wake's second half ("where no tactic is confirmed, follow the policy"). A measurement by matches; the wake
+itself is not changed.
+
+A. HOW THE CONTROL PLAYER CHOOSES AMONG EQUALS. Read the control player of the 78.4x measures and say how it picks when
+   several root moves have the best value. Print, on the 500 games, how often that happens and how many moves are tied.
+B. THE CANDIDATE. The same search at the same time. Among the root moves whose value EQUALS the best (no margin), it
+   plays the one whose child has the highest fitted number (the fit P of 78.49 on the arrival target; weights fitted on
+   the even games and kept in a file under artifacts, passed by path; no forcing read at play time). The number enters
+   only as this choice among equals: the value is untouched (rule 7).
+C. THE MATCHES, same openings played with both colours, a few hundred games each, results with a band by paired
+   openings: candidate against control; control against control with a different seed as the noise floor; and a
+   candidate that picks among the equals at random, to separate "any change of the pick" from "this number".
+D. Printed beside the results: how often the candidate's pick differed from the control's, and the arrival rate of
+   confirmed claims for each side in the games (by the forcing read at the 78.48 fuse on a sample), which is what the
+   number is meant to move.
+
+No oracle, no human game, no puzzle. The player lives in the measure script, game-free, and is read by no other code.
+
+STATUS: given to a builder agent on 2026-11-15.
