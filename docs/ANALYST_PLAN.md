@@ -7796,3 +7796,58 @@ OBS sheet_rust_sheet events_games: differences listed 0 (printed up to --max-dif
 Tests: tests/test_plan78_43_rust_sheet.py 117 passed, test_plan78_45_puzzle_sheet.py 18 passed, test_plan78_46_forcing_read.py 12 passed, test_plan78_47_forcing_spent.py 12 passed (scripts/gate.py engine --only, one file per call).
 
 NOT BUILT: B as a large saving (it is exact and nearly empty on these positions); the Python mirror of the read (still owed); the other side's threats read as deep as ours (what the deeper check still finds); the read as a level of the sheet's schedule; use in play.
+
+
+### 78.47 READ BY THE PARENT (2026-11-15)
+
+Merged to main (fast-forward), the extension rebuilt, the 78.46 and 78.47 test files pass on main. The engine gate run on
+main before this merge (at ecef9cfd) printed:
+
+OBS gate engine: files 91, passed 1453, failed 1, xfailed 1, errors 0, wall 1730.8 s
+
+The one failure was tests/test_offbuilt64.py::test_69_pool_discovery_decides_within_15_s, a clocked test of the October
+agenda, run while a builder loaded the machine. Rerun alone on an idle machine after the merge it passed. The gate was not
+rerun after the merge. The builder's puzzle columns were not rerun by me. My own check, soundness on held2_games (unseen by
+the builder), output kept as artifacts/experiments/forcing_78_47/sound_held2_parent_47.txt:
+
+OBS forcing soundness held2_parent_47: confirmed claims 531 (the move ends the game itself 11); checked 520, holds 514, CONTRADICTED 6; unchecked {}; checked 2 plies deeper than the verdict's own check
+OBS forcing soundness held2_parent_47: the read's own check (the search as the last word): NOT BORNE OUT 3; confirmed moves it could not check (search cut or depth over the cap) 0
+OBS forcing soundness held2_parent_47: seconds per position: the read 0.8801, the checks by search 0.0897 (summed over workers)
+
+Reading, directional:
+- The search as the last word turns away exactly the three claims of the 78.46 run on this set. A check two plies deeper
+  then finds six more. A deeper check will find others again: a claim of material is true to a horizon, not for ever.
+  So CONFIRMED is to be read as "holds to the depth of its own line", and its chance of coming true is a fitted number
+  like every other verdict's (SYSTEM_SPEC section 3), not a certainty.
+- Stage B, the reply relevance by read set, is exact and saves next to nothing: nearly every reply is by a unit that takes
+  part in some exchange or line. The cost is in what the other side keeps, above all its sign moves.
+- At the same fuse the read now settles more puzzle answers; the plain search given the same seconds still names more.
+  Squeezing the read further is not the next step. The next step is the question the policy waits on.
+
+## 78.48 THE OPPORTUNITY NUMBER WITH THE FORCING READ: do its claims foretell what is won, beyond the next move (SYSTEM_SPEC sections 3, 5, 10)
+
+Serves: the opportunity policy (section 5) and the chances as currency (section 3). Plan 78.44 found the sheet's number
+is mostly its first level. The forcing read now holds the prepared attacks the sheet missed. This plan asks whether its
+verdicts, with fitted chances, foretell later material where the first level says nothing. A measurement; nothing is
+used in play.
+
+A. THE TERMS, per position of a game, for the side to move and (by the game's pass where it gives one, else from the
+   next position) for the other side: the threat moves by verdict (CONFIRMED, NOT BORNE OUT, NOT SETTLED, NO CLAIM), each
+   with its value or floor, its level, and the kind of its claim (takes, exchange, goal sign). The fuse is a parameter;
+   take the cost per position at two fuses on a short run first and say which the long run uses and why.
+B. THE CHANCES. For each (verdict, kind of claim, level) cell: how often the side gained at least the claimed worth
+   within 4, 8, 16 plies. Fitted on one half of the games (split by game), with the plain base rate beside it.
+C. THE NUMBER. Ours minus theirs of chance times stake, by the fitted table, on the other half of the games.
+D. THE TEST, on the held half, with bootstrap bands by game as in 78.44: rank correlation with material won 4, 8, 16
+   plies later, for (1) the 78.44 number, (2) the forcing number, (3) both; and the same on the positions where the
+   78.44 first level is zero and no threat move is CONFIRMED, which is where a policy would need it. Controls: the
+   count alone; the number shuffled within a game.
+E. OPPONENT (section 10), only if A to D are done: the same table fitted on games where the answering side is a weaker
+   player (the control player at a smaller budget), printed beside the first. The question is only whether the cells
+   move with the opponent.
+
+Games: artifacts/experiments/opportunity_78_44/games_s5016_n500 for A to D (a subset if the cost demands; say how many).
+No oracle, no human game, no puzzle enters. Rust for the read; the fit and the test in Python beside
+opportunity_measure.py, game-free.
+
+STATUS: given to a builder agent on 2026-11-15.
