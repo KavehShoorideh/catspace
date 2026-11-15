@@ -17,6 +17,12 @@
 //!   may_move     `may_move(<unit id>,<place id>)`                      a RELATION node: the unit may move to the place (`Placed::reach_from`)
 //!   shut         `shut(<unit id>,<place id>)`                          a RELATION node, for the side to move: the unit runs along a line and the line is shut before the place, by units
 //!                                                                      standing between (`Placed::why_not` says LineShut)
+//!   through      `through(<unit id>,<place id>)`                      PLAN 78.54, a RELATION node, for BOTH sides, no hypothetical board: the unit bears on a unit b along a line (a bear node), the unit is of a kind that
+//!                                                                      CONTINUES along that line in that heading, and the next place beyond b that holds a unit is the place of the node. Its links: by, at_place, at_unit (the unit
+//!                                                                      there), along (the line), between (b). It exists only once a profile of the kinds has been learned (`Static::learn`): see below.
+//! HOW A UNIT IS KNOWN TO CONTINUE ALONG A LINE (78.54 A). From the bear nodes alone: a kind continues along a line family in a heading (the line's direction and the sign of the way along it) when some
+//! unit of that kind, in some position of the sample the profile is learned from, bears on a place two or more steps from it along a line of that family in that heading (the places between are then passed
+//! over). No list of units or movements is written; a kind the sample never shows bearing at two steps in a heading is read as not continuing there (a limit: it is a sample).
 //! PLAIN LINKS (a kind, two nodes, optionally a node it goes by and a number):
 //!   on_line (place -> line, the index along the line), next (place -> place, by a direction), on_edge (place -> edge), edge_distance (place -> edge, the steps until the chain
 //!   ends under that direction), line_along (line -> direction), reverse (direction -> direction), edge_of (edge -> direction), unit_on (unit -> place), unit_kind, unit_side.
@@ -27,15 +33,15 @@ use cs_game::placed::{NoStep, Placed, Steps};
 use cs_game::{Game, Role};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum NodeType { Place, Direction, Line, Edge, Kind, Side, Unit, Bear, MayMove, Shut }
+pub enum NodeType { Place, Direction, Line, Edge, Kind, Side, Unit, Bear, MayMove, Shut, Through }
 
 impl NodeType {
-    pub const ALL: [NodeType; 10] = [NodeType::Place, NodeType::Direction, NodeType::Line, NodeType::Edge, NodeType::Kind, NodeType::Side, NodeType::Unit, NodeType::Bear, NodeType::MayMove, NodeType::Shut];
+    pub const ALL: [NodeType; 11] = [NodeType::Place, NodeType::Direction, NodeType::Line, NodeType::Edge, NodeType::Kind, NodeType::Side, NodeType::Unit, NodeType::Bear, NodeType::MayMove, NodeType::Shut, NodeType::Through];
     pub fn word(self) -> &'static str {
         match self { NodeType::Place => "place", NodeType::Direction => "direction", NodeType::Line => "line", NodeType::Edge => "edge", NodeType::Kind => "kind", NodeType::Side => "side",
-                     NodeType::Unit => "unit", NodeType::Bear => "bear", NodeType::MayMove => "may_move", NodeType::Shut => "shut" }
+                     NodeType::Unit => "unit", NodeType::Bear => "bear", NodeType::MayMove => "may_move", NodeType::Shut => "shut", NodeType::Through => "through" }
     }
-    pub fn is_relation(self) -> bool { matches!(self, NodeType::Bear | NodeType::MayMove | NodeType::Shut) }
+    pub fn is_relation(self) -> bool { matches!(self, NodeType::Bear | NodeType::MayMove | NodeType::Shut | NodeType::Through) }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -82,6 +88,8 @@ pub struct Static {
     pub edge_node: Vec<u32>,
     pub kind_node: Vec<u32>,
     pub side_node: Vec<u32>,
+    /// [kind][direction][heading]: the kind has been seen bearing two or more steps along a line named in that direction, heading 1 forward and 0 backward; empty until `learn`
+    pub cont: Vec<bool>,
 }
 
 /// One unit of a position: the owner as the game names it, the side as the reading names it (the side to move is `Us`), the kind, the place and its node.
@@ -103,6 +111,7 @@ pub struct PositionPart {
     pub bears: Vec<RelRec>,
     pub moves: Vec<RelRec>,
     pub shuts: Vec<RelRec>,
+    pub throughs: Vec<RelRec>,
     /// place -> index in `units` + 1 (0: nothing stands there)
     pub occupant: Vec<u16>,
 }
@@ -162,7 +171,7 @@ impl Static {
                 link(LinkType::EdgeDistance, place_node[p], edge_node[d], -1, edge_distance[d][p] as i32);
             }
         }
-        Ok(Static { nodes, links, names: names.clone(), directions: steps.directions.clone(), lines, place_lines, edge_distance, next, reverse, place_node, direction_node, line_node, edge_node, kind_node, side_node })
+        Ok(Static { nodes, links, names: names.clone(), directions: steps.directions.clone(), lines, place_lines, edge_distance, next, reverse, place_node, direction_node, line_node, edge_node, kind_node, side_node, cont: vec![] })
     }
 
     /// The lines on which both places lie.
@@ -205,7 +214,7 @@ impl Static {
             occupant[at as usize] = units.len() as u16 + 1;
             units.push(UnitRec { owner, side, kind, at, node });
         }
-        let mut part = PositionPart { mover, nodes, links, units, bears: vec![], moves: vec![], shuts: vec![], occupant };
+        let mut part = PositionPart { mover, nodes, links, units, bears: vec![], moves: vec![], shuts: vec![], throughs: vec![], occupant };
         let nu = part.units.len();
         for ui in 0..nu {
             let u = part.units[ui];
@@ -213,7 +222,55 @@ impl Static {
             for p in g.reach_from(s, u.owner, u.kind, u.at) { let r = self.relation(&mut part, NodeType::MayMove, ui, p, ns); part.moves.push(r); }
         }
         if let Some(m) = mover { self.shut_lines(g, s, m, &mut part, ns); }
+        if !self.cont.is_empty() { self.through_lines(&mut part, ns); }
         part
+    }
+
+    fn cont_ix(&self, kind: Kind, line: u32, forward: bool) -> usize { (kind as usize * self.directions.len() + self.lines[line as usize].direction) * 2 + forward as usize }
+
+    /// Whether the kind continues along the line in the heading (false until a profile is learned).
+    pub fn continues(&self, kind: Kind, line: u32, forward: bool) -> bool { self.cont.get(self.cont_ix(kind, line, forward)).copied().unwrap_or(false) }
+
+    /// LEARN THE PROFILE of the kinds from the bear nodes of a position (78.54 A): a unit bearing on a place two or more steps away along a line marks its kind as continuing along that line family
+    /// in that heading. Call it on the parts of a sample of positions.
+    pub fn learn(&mut self, p: &PositionPart) {
+        if self.cont.is_empty() { self.cont = vec![false; self.names.kinds.len() * self.directions.len() * 2]; }
+        for r in &p.bears {
+            let u = p.units[r.unit];
+            for &l in &r.along {
+                let (i, j) = (self.index_on(l, u.at), self.index_on(l, r.place));
+                if i >= 0 && j >= 0 && (j - i).abs() >= 2 { let ix = self.cont_ix(u.kind, l, j > i); self.cont[ix] = true; }
+            }
+        }
+    }
+
+    /// THE LINE THROUGH ONE UNIT, FOR BOTH SIDES (78.54 A): for each bearing of a unit on a unit b along a line, where the unit's kind continues along that line in that heading, the next place beyond b that
+    /// holds a unit; one relation node per (unit, that place). Only where b is the one unit between (a unit that jumps others is left out: a limit).
+    fn through_lines(&self, part: &mut PositionPart, ns: u32) {
+        let mut found: Vec<(usize, Place)> = vec![];
+        for r in &part.bears {
+            let u = part.units[r.unit];
+            let b = part.occupant[r.place as usize];
+            if b == 0 { continue; }
+            for &l in &r.along {
+                let (i, j) = (self.index_on(l, u.at), self.index_on(l, r.place));
+                if i < 0 || j < 0 || j == i || !self.continues(u.kind, l, j > i) { continue; }
+                let sign = if j > i { 1 } else { -1 };
+                let line = &self.lines[l as usize];
+                let mut k = j + sign;
+                while k >= 0 && (k as usize) < line.places.len() {
+                    let q = line.places[k as usize];
+                    if part.occupant[q as usize] != 0 {
+                        if self.strictly_between(l, u.at, q).iter().filter(|x| part.occupant[**x as usize] != 0).count() == 1 { found.push((r.unit, q)); }
+                        break;
+                    }
+                    k += sign;
+                }
+            }
+        }
+        found.sort_unstable();
+        found.dedup();
+        for (ui, q) in found { let r = self.relation(part, NodeType::Through, ui, q, ns); part.throughs.push(r); }
     }
 
     /// One relation node with its links.

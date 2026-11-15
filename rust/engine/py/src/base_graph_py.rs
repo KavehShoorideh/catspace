@@ -5,6 +5,7 @@ use cs_game::placed::Placed;
 use cs_game::Game;
 use cs_tactics::sheet::base_graph::{LinkRec, LinkType, NodeRec, NodeType, PositionPart, Static};
 use cs_tactics::sheet::base_statements;
+use cs_tactics::sheet::fates::{self, Cell, RowBoard};
 use cs_tactics::sheet::patterns::{self, Board};
 use cs_tactics::sheet::patterns::{FxHashMap, FxHashSet};
 use cs_tactics::sheet::Names;
@@ -61,6 +62,51 @@ fn run_pool<T: Send>(n: usize, threads: usize, f: impl Fn(usize) -> Result<T, St
         }
     });
     slots.into_inner().unwrap().into_iter().map(|x| x.unwrap_or_else(|| Err("not run".into()))).collect()
+}
+
+/// One game walked for the fates (78.54): the sorted units of every ply, the mover of every ply, and the boards of the wanted rows (those with a side to move).
+type Walked = (Vec<Vec<Cell>>, Vec<Option<usize>>, Vec<RowBoard>);
+
+fn walk_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wanted: &[usize]) -> Result<Walked, String> {
+    let g = match &game.0 { Some(fen) => KernelGame::from_fen(variant, fen)?, None => KernelGame::new(variant, 518)? };
+    let mut s = g.initial();
+    let n = game.1.len();
+    let (mut plies, mut movers, mut boards) = (vec![], vec![], vec![]);
+    for ply in 0..=n {
+        let mut cells = g.cells(&s);
+        cells.sort_by_key(|(o, k, p)| (*o, *k, *p));
+        if wanted.contains(&ply) {
+            let p = st.position(&g, &s);
+            if p.mover.is_some() { let b = Board::new(st, &p, goal); boards.push(RowBoard::of(ply, b, &p)); }
+        }
+        plies.push(cells);
+        movers.push(g.mover(&s));
+        if ply < n {
+            let mv = g.find_move(&s, &game.1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", game.1[ply]))?;
+            s = g.apply(&s, &mv);
+        }
+    }
+    Ok((plies, movers, boards))
+}
+
+/// Threads each keeping its own accumulator of the games they pull; the accumulators are returned for the caller to merge.
+fn run_acc<A: Send>(n: usize, threads: usize, make: impl Fn() -> A + Sync, f: impl Fn(usize, &mut A) -> Result<(), String> + Sync) -> Result<Vec<A>, String> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let out: std::sync::Mutex<Vec<Result<A, String>>> = std::sync::Mutex::new(vec![]);
+    std::thread::scope(|sc| {
+        for _ in 0..threads.max(1).min(n.max(1)) {
+            sc.spawn(|| {
+                let mut acc = make();
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if i >= n { break; }
+                    if let Err(e) = f(i, &mut acc) { out.lock().unwrap().push(Err(e)); return; }
+                }
+                out.lock().unwrap().push(Ok(acc));
+            });
+        }
+    });
+    out.into_inner().unwrap().into_iter().collect()
 }
 
 impl BaseGraph {
@@ -302,5 +348,159 @@ impl BaseGraph {
         for ui in 0..p.units.len() { if p.units[ui].owner == m { self.st.first_blocker_shuts(&g, &s, ui, &mut p, ns); } }
         let b = key(&p, before);
         Ok((a.len(), b.len(), a == b))
+    }
+
+    /// learn_profile(games) -> [(kind, direction, forward)]: learn which kinds continue along which line families from the bear nodes of every position of the given games (78.54 A);
+    /// from then on every position part also holds its `through` relation nodes. Sequential, a sample.
+    fn learn_profile(&mut self, games: Vec<GameWire>) -> PyResult<Vec<(String, String, bool)>> {
+        for game in &games {
+            let g = match &game.0 { Some(fen) => KernelGame::from_fen(&self.variant, fen).map_err(bad)?, None => KernelGame::new(&self.variant, 518).map_err(bad)? };
+            let mut s = g.initial();
+            for ply in 0..=game.1.len() {
+                let p = self.st.position(&g, &s);
+                self.st.learn(&p);
+                if ply < game.1.len() {
+                    let mv = g.find_move(&s, &game.1[ply]).ok_or_else(|| bad(format!("ply {ply}: {} is not a legal move", game.1[ply])))?;
+                    s = g.apply(&s, &mv);
+                }
+            }
+        }
+        Ok(self.profile())
+    }
+
+    /// profile() -> [(kind word, line direction word, forward)]: what has been learned to continue.
+    fn profile(&self) -> Vec<(String, String, bool)> {
+        let (nd, n) = (self.st.directions.len(), &self.st.names);
+        let mut out = vec![];
+        for (i, c) in self.st.cont.iter().enumerate() { if *c { out.push((n.kinds[i / 2 / nd].clone(), self.st.directions[i / 2 % nd].clone(), i % 2 == 1)); } }
+        out
+    }
+
+    /// through_check(fen) -> (through relations of the side to move, shut relations of the side to move, in both, through only, shut only): THE AGREEMENT of 78.54 A with the rules' own answer for the side
+    /// to move. A shut node (`why_not` says the line is shut) with exactly one unit between, whose end place holds a unit of the other side, is compared with a through node of the same unit and end place
+    /// (the rules say nothing of an end place held by the unit's own side, so those are left out of both).
+    fn through_check(&self, fen: &str) -> PyResult<(usize, usize, usize, usize, usize)> {
+        let (g, s) = self.game(fen)?;
+        let p = self.st.position(&g, &s);
+        let Some(m) = p.mover else { return Ok((0, 0, 0, 0, 0)) };
+        let other = |r: &cs_tactics::sheet::base_graph::RelRec| p.units[r.unit].owner == m && match p.occupant[r.place as usize] { 0 => false, i => p.units[i as usize - 1].owner != m };
+        let t: std::collections::BTreeSet<(usize, u16)> = p.throughs.iter().filter(|r| other(r)).map(|r| (r.unit, r.place)).collect();
+        let sh: std::collections::BTreeSet<(usize, u16)> = p.shuts.iter().filter(|r| r.between.len() == 1 && other(r)).map(|r| (r.unit, r.place)).collect();
+        Ok((t.len(), sh.len(), t.intersection(&sh).count(), t.difference(&sh).count(), sh.difference(&t).count()))
+    }
+
+    /// unit_fates(game, horizons) -> (kinds, [per ply: (mover, [(owner, kind, place, [fate class at each horizon])])]): the tracker on one game.
+    #[allow(clippy::type_complexity)]
+    fn unit_fates(&self, game: GameWire, horizons: Vec<usize>) -> PyResult<(Vec<String>, Vec<(Option<String>, Vec<(String, String, String, Vec<u8>)>)>)> {
+        let (plies, movers, _) = walk_game(&self.variant, &self.st, None, &game, &[]).map_err(bad)?;
+        let tr = fates::track(&plies);
+        let n = &self.st.names;
+        let out = (0..plies.len()).map(|t| (movers[t].map(|m| n.roles[m].clone()), plies[t].iter().enumerate().map(|(i, c)| (n.roles[c.0].clone(), n.kinds[c.1 as usize].clone(), n.places[c.2 as usize].clone(),
+            horizons.iter().map(|h| fates::fate_code(&tr, &plies, t, i, *h)).collect())).collect())).collect();
+        Ok((n.kinds.clone(), out))
+    }
+
+    /// pattern_mine(games, rows, size, levels, allowed, goal_kind, threads, min_support) -> (found per level, [(hash, level, support, total, bytes, parts, maps)] those with at least `min_support`
+    /// rows): `pattern_freq` by a minimum support, a candidate when every connected part is in `allowed` (78.54 D); `maps` says where each variable of the pattern stands in each part.
+    #[allow(clippy::too_many_arguments)]
+    fn pattern_mine(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, size: usize, levels: Vec<u8>, allowed: Option<Vec<u64>>, goal_kind: Option<String>, threads: usize, min_support: u32) -> PyResult<PyObject> {
+        let goal = self.goal_of(&goal_kind)?;
+        let st = self.st.clone();
+        let variant = self.variant.clone();
+        let allowed: Option<FxHashSet<u64>> = allowed.map(|v| v.into_iter().collect());
+        let mut base = vec![0u32; games.len() + 1];
+        for i in 0..games.len() { base[i + 1] = base[i] + rows[i].len() as u32; }
+        let res = py.allow_threads(|| run_pool(games.len(), threads, |i| {
+            let mut m: FxHashMap<u64, patterns::Mined> = FxHashMap::default();
+            walk_rows(&variant, &st, goal, &games[i], &rows[i], |ri, b, _| patterns::mine_board(b, size, &levels, allowed.as_ref(), base[i] + ri as u32, &mut m))?;
+            Ok(m)
+        })).map_err(bad)?;
+        let mut all: FxHashMap<u64, patterns::Mined> = FxHashMap::default();
+        for m in res {
+            for (h, e) in m {
+                match all.get_mut(&h) { Some(x) => { x.total += e.total; x.support += e.support; } None => { all.insert(h, e); } }
+            }
+        }
+        let mut found = vec![0usize; patterns::LEVELS as usize];
+        let mut kept = vec![];
+        let mut keys: Vec<&u64> = all.keys().collect();
+        keys.sort();
+        for h in keys {
+            let e = &all[h];
+            let lv = e.bytes[0] as usize;
+            found[lv] += 1;
+            if e.support >= min_support { kept.push((*h, lv, e.support, e.total, pyo3::types::PyBytes::new(py, &e.bytes).unbind(), e.parts.clone(), e.maps.clone())); }
+        }
+        (found, kept).into_py_any(py)
+    }
+
+    /// fate_base(games, rows, group, groups, horizons, threads) -> (kinds, counts): per group of games, horizon, kind and side-to-move state the number of units of each fate class and the number with a fate
+    /// (u64, laid out [group][horizon][kind][state][classes then total]). `group[i]` the group of game i.
+    #[allow(clippy::too_many_arguments)]
+    fn fate_base(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, group: Vec<usize>, groups: usize, horizons: Vec<usize>, threads: usize) -> PyResult<PyObject> {
+        let st = self.st.clone();
+        let variant = self.variant.clone();
+        let spec = fates::BaseSpec::new(st.names.kinds.len(), horizons.len());
+        let size = groups * horizons.len() * spec.nk * 2 * (spec.ncls + 1);
+        let res = py.allow_threads(|| run_acc(games.len(), threads, || vec![0u64; size], |i, acc| {
+            let (plies, movers, _) = walk_game(&variant, &st, None, &games[i], &[])?;
+            let tr = fates::track(&plies);
+            fates::add_base(&spec, group[i], &horizons, &tr, &plies, &movers, &rows[i], acc);
+            Ok(())
+        })).map_err(bad)?;
+        let mut tot = vec![0u64; size];
+        for v in res { for (a, b) in tot.iter_mut().zip(v) { *a += b; } }
+        (self.st.names.kinds.clone(), tot).into_py_any(py)
+    }
+
+    /// fate_cells(games, rows, keys, rates, horizons, max_size, goal_kind, threads) -> (classes, [f64]) rows of 7 + 2 classes numbers: [pattern index, variable, horizon index, n, games, sum of the games'
+    /// residuals, sum of their squares, counts by class, expected by class]; `rates` the base rates [horizon][kind][state][class] (78.54 C).
+    #[allow(clippy::too_many_arguments)]
+    fn fate_cells(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, rates: Vec<f64>, horizons: Vec<usize>, max_size: usize, goal_kind: Option<String>, threads: usize) -> PyResult<PyObject> {
+        let goal = self.goal_of(&goal_kind)?;
+        let st = self.st.clone();
+        let variant = self.variant.clone();
+        let spec = fates::BaseSpec::new(st.names.kinds.len(), horizons.len());
+        let want: FxHashMap<u64, u32> = keys.iter().enumerate().map(|(i, k)| (*k, i as u32)).collect();
+        let levels: Vec<u8> = (0..patterns::LEVELS).collect();
+        let res = py.allow_threads(|| run_acc(games.len(), threads, fates::Cells::default, |i, acc| {
+            let (plies, _movers, boards) = walk_game(&variant, &st, goal, &games[i], &rows[i])?;
+            let tr = fates::track(&plies);
+            fates::add_cells(&spec, &horizons, &rates, &want, max_size, &levels, &tr, &plies, &boards, acc);
+            Ok(())
+        })).map_err(bad)?;
+        let mut all = fates::Cells::default();
+        for c in res { fates::merge_cells(&mut all, c); }
+        let nh = horizons.len();
+        let mut cells: Vec<(&u32, &Vec<f64>)> = all.iter().collect();
+        cells.sort_by_key(|x| *x.0);
+        let mut out: Vec<f64> = Vec::with_capacity(cells.len() * (7 + 2 * spec.ncls));
+        for (c, v) in cells {
+            let c = *c as usize;
+            let (hi, rest) = (c % nh, c / nh);
+            out.extend([(rest / fates::MAXV) as f64, (rest % fates::MAXV) as f64, hi as f64]);
+            out.extend(v.iter());
+        }
+        (spec.ncls, out).into_py_any(py)
+    }
+
+    /// track_counts(games, threads) -> [plies walked, unit steps, alive, taken, other, units paired among several of one owner and kind]: what the tracker made of every step of every unit of the games.
+    fn track_counts(&self, py: Python<'_>, games: Vec<GameWire>, threads: usize) -> PyResult<Vec<u64>> {
+        let st = self.st.clone();
+        let variant = self.variant.clone();
+        let res = py.allow_threads(|| run_acc(games.len(), threads, || vec![0u64; 6], |i, acc| {
+            let (plies, _m, _b) = walk_game(&variant, &st, None, &games[i], &[])?;
+            let tr = fates::track(&plies);
+            acc[0] += plies.len() as u64;
+            acc[5] += tr.ambiguous as u64;
+            for s in tr.steps.iter().flatten() {
+                acc[1] += 1;
+                match s { fates::Step::Alive(_) => acc[2] += 1, fates::Step::Taken(_) => acc[3] += 1, fates::Step::Other => acc[4] += 1 }
+            }
+            Ok(())
+        })).map_err(bad)?;
+        let mut tot = vec![0u64; 6];
+        for v in res { for (a, b) in tot.iter_mut().zip(v) { *a += b; } }
+        Ok(tot)
     }
 }
