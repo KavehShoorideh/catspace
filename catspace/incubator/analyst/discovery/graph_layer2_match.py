@@ -30,7 +30,7 @@ def graph_items(g, goal_kind: "str | None") -> "tuple[list, dict]":
                 units[of[0]]["goal"] = True
     at = {u["place"]: i for i, u in units.items()}
     items = []
-    for ty, name in (("bear", "bear"), ("move", "may_move"), ("shut", "shut")):
+    for ty, name in (("bear", "bear"), ("move", "may_move"), ("shut", "shut"), ("through", "through")):
         for nid in g.of_type(name):
             ls = [(lt, o) for lt, _v, _x, o, fwd in g.neighbours(nid) if fwd]
             actor = [o for lt, o in ls if lt == "by"][0]
@@ -38,7 +38,7 @@ def graph_items(g, goal_kind: "str | None") -> "tuple[list, dict]":
             along = [o for lt, o in ls if lt == "along"]
             between = [o for lt, o in ls if lt == "between"]
             target = ("u", at[place]) if place in at else ("p", place)
-            if ty == "shut":
+            if ty in ("shut", "through"):
                 if len(between) != 1 or not along:
                     continue
                 items.append((ty, actor, target, along[0], between[0]))
@@ -102,4 +102,43 @@ def match_counts(items: list, units: dict, p: Pattern, kinds: list) -> "tuple[in
                 if ok:
                     out[side] += 1
                     break
+    return out[0], out[1]
+
+
+def match_binds(items: list, units: dict, p: Pattern, kinds: list) -> "tuple[list, list]":
+    """PLAN 78.54: like `match_counts`, but the BINDINGS: per side (0: read for the side to move, 1: for the other) one entry per matched set of atoms, the set of distinct tuples of unit ids by unit variable
+    (one tuple where the set matches one way; more than one where the pattern has a symmetry that lets two variables swap their units)."""
+    k = p.size
+    objs = [{v for v in (it[1], it[2][1], it[3], it[4]) if v is not None} for it in items]
+    adj = [[j for j in range(len(items)) if j != i and objs[i] & objs[j]] for i in range(len(items))]
+    sets: set = set()
+
+    def grow(cur: tuple, cand: set) -> None:
+        if len(cur) == k:
+            sets.add(tuple(sorted(cur)))
+            return
+        for j in sorted(cand):
+            grow(cur + (j,), (cand | set(adj[j])) - set(cur) - {j})
+    for i in range(len(items)):
+        grow((i,), set(adj[i]))
+    out: "list[list]" = [[], []]
+    for s in sets:
+        for side in (0, 1):
+            found = set()
+            for perm in permutations(s):
+                bound = _bind(p.atoms, tuple(items[j] for j in perm))
+                if not bound:
+                    continue
+                uvars = {v[1]: o for v, o in bound.items() if v[0] == "u"}
+                ok = True
+                for u in range(p.n_units()):
+                    un = units[uvars[u]]
+                    mine = un["mine"] if side == 0 else not un["mine"]
+                    if mine != p.sides[u] or (p.level >= 1 and un["goal"] != p.goal[u]) or (p.level == 2 and un["edge"] != p.edge[u]) or (p.level == 3 and kinds[p.kind[u]] != un["kind"]):
+                        ok = False
+                        break
+                if ok:
+                    found.add(tuple(uvars[u] for u in range(p.n_units())))
+            if found:
+                out[side].append(found)
     return out[0], out[1]

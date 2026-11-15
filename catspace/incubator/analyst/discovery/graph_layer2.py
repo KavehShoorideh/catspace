@@ -5,6 +5,7 @@ THE LANGUAGE (the matching and counting are in Rust: rust/engine/tactics/src/she
   A pattern is a small connected set of RELATION NODES of layer 1 (its SIZE), over variables: u0, u1 ... for units, p0 ... for EMPTY places, l0 ... for lines. The atoms:
       bear(u, t, l)       unit u bears on t (a unit variable, or an empty place variable), along line l where the bearing follows one (`-` where it follows none)
       move(u, t, l)       unit u may move to t
+      through(u, t, l, b) (78.54) unit u bears on unit b along l and is of a kind that continues along l; t is the next unit beyond b on l (layer 1's `through` node, BOTH sides)
       shut(u, t, l, b)    unit u runs along l and the one unit b between shuts it before t (first-blocker form; the SIDE TO MOVE ONLY: the rules' `why_not` answers for it alone, and the
                           hypothetical board that would answer for the other side is refused by the game where it leaves the side not to move exposed to a line -- measured by `first_blocker_check`)
   Two atoms that name one object share its variable. The LEVEL is what is said of the units, relative to the side the pattern is counted for:
@@ -36,7 +37,7 @@ import numpy as np
 FUSE = 100                       # the named fuse: patterns kept per size and per level, the most supported (a budget of the fit's columns, not tuned to a result)
 MAX_SIZE = 3
 LEVELS = (0, 1, 2, 3)
-TYPES = ("bear", "move", "shut")
+TYPES = ("bear", "move", "shut", "through")
 NONE = 255
 
 
@@ -130,6 +131,8 @@ def plain_words(p: Pattern, kinds: list) -> str:
             out.append(f"{u_(a)} bears on {tgt}{line}")
         elif ty == "move":
             out.append(f"{u_(a)} may move to {tgt}{line}")
+        elif ty == "through":
+            out.append(f"{u_(a)} bears on {u_(b)}{line} and, going on past it, next meets {tgt}")
         else:
             out.append(f"{u_(a)} would bear on {tgt}{line} but {u_(b)} stands between")
     return "; ".join(out)

@@ -4,7 +4,8 @@
 //! PLACE variable for an EMPTY place, a LINE variable for a line. The atoms are the relation nodes of layer 1, with their plain links:
 //!   bear(u, t, l)      a unit bears on a target (a unit, or an empty place), along a line where the bearing follows one
 //!   move(u, t, l)      a unit may move to a target
-//!   shut(u, t, l, b)   a unit runs along a line and unit b, the one unit between, shuts it before the target (the first-blocker form of layer 1, for BOTH sides)
+//!   shut(u, t, l, b)   a unit runs along a line and unit b, the one unit between, shuts it before the target (the first-blocker form of layer 1, for the side to move only)
+//!   through(u, t, l, b) PLAN 78.54: a unit bears on unit b along a line and is of a kind that continues along it; t is the next unit beyond b on the line (layer 1's `through` node, BOTH sides)
 //! The line is absent where the relation follows no line (a leap). A relation that holds two lines takes its first. Two atoms that name the same object share the variable: an embedding of a
 //! set of relation nodes in a position gives the pattern, the sharing is the pattern's structure. No kind, place or line is named. Unit attributes, by LEVEL (a coarser level forgets):
 //!   level 0  the side of each unit, "mine" or "theirs" (written as the bit 1 = theirs), relative to the side the pattern is counted for
@@ -59,6 +60,10 @@ impl Board {
         for r in &p.shuts {
             if r.between.len() != 1 || r.along.is_empty() { continue; }
             items.push(Item { ty: 2, actor: r.unit as u16, target: target_of(r.place), line: r.along[0] as i32, between: r.between[0] as i32 });
+        }
+        for r in &p.throughs {
+            if r.between.len() != 1 || r.along.is_empty() { continue; }
+            items.push(Item { ty: 3, actor: r.unit as u16, target: target_of(r.place), line: r.along[0] as i32, between: r.between[0] as i32 });
         }
         let goal_of = |side: Side| -> Option<usize> {
             let k = goal_kind?;
@@ -144,7 +149,7 @@ fn obj_ids(it: &Item, nu: usize, np: usize) -> [i64; 4] {
 /// The key of an embedding at one level: the hash of its canonical encoding, the encoding itself, and the sign (+1 the embedding is the concept read for the side to move, -1 for the other
 /// side, 0 an embedding that is its own swap).
 #[derive(Clone)]
-pub struct Key { pub hash: u64, pub sign: i8, pub bytes: Vec<u8> }
+pub struct Key { pub hash: u64, pub sign: i8, pub bytes: Vec<u8>, pub units: Vec<u16> }
 
 const PERMS: [&[&[usize]]; 5] = [
     &[],
@@ -205,6 +210,7 @@ impl Board {
         }
         levels.iter().map(|&level| {
             let mut win: Option<Vec<u8>> = None;
+            let mut win_units: &[u16] = &[];
             let (mut plain, mut swapped) = (false, false);
             for c in &best {
                 for swap in [false, true] {
@@ -214,14 +220,14 @@ impl Board {
                     match &win {
                         Some(w) if full > *w => {}
                         Some(w) if full == *w => { if swap { swapped = true } else { plain = true } }
-                        _ => { win = Some(full); plain = !swap; swapped = swap; }
+                        _ => { win = Some(full); win_units = &c.units; plain = !swap; swapped = swap; }
                     }
                 }
             }
             let bytes = win.unwrap();
             let mut h = FxHasher::default();
             h.write(&bytes);
-            Key { hash: h.finish(), sign: if plain && swapped { 0 } else if plain { 1 } else { -1 }, bytes }
+            Key { hash: h.finish(), sign: if plain && swapped { 0 } else if plain { 1 } else { -1 }, bytes, units: win_units.to_vec() }
         }).collect()
     }
 
@@ -244,6 +250,34 @@ pub fn freq_board(b: &Board, size: usize, levels: &[u8], allowed: Option<&FxHash
             if size > 1 { for p in &parts { part_keys.push(b.hash_at(p, level).0); } }
             if let Some(a) = allowed { if !part_keys.iter().any(|h| a.contains(h)) { continue; } }
             let e = into.entry(key.hash).or_insert_with(|| { let mut pk = part_keys.clone(); pk.sort_unstable(); pk.dedup(); Seen { support: 0, total: 0, bytes: key.bytes.clone(), parts: pk, free_parent: if level == 3 { b.hash_at(its, 1).0 } else { 0 }, last_row: u32::MAX } });
+            e.total += 1;
+            if e.last_row != row { e.support += 1; e.last_row = row; }
+        }
+    });
+}
+
+/// What `mine_board` learns of a key (78.54): the support in rows, the total, the encoding, the hashes of its parts, and for the first embedding met, for each part, where each of this key's unit
+/// variables stands in the part's variables (255: not in the part).
+pub struct Mined { pub support: u32, pub total: u64, pub bytes: Vec<u8>, pub parts: Vec<u64>, pub maps: Vec<(u64, Vec<u8>)>, last_row: u32 }
+
+/// Like `freq_board`, for mining by a MINIMUM SUPPORT (78.54 D): a pattern of more than one relation node is a candidate only when EVERY one of its connected parts of one node less (a part that is its
+/// own mirror counts nothing and is not asked for) is in `allowed`, the patterns of the size below that met the minimum (a pattern that occurs in n rows has every part in at least n).
+pub fn mine_board(b: &Board, size: usize, levels: &[u8], allowed: Option<&FxHashSet<u64>>, row: u32, into: &mut FxHashMap<u64, Mined>) {
+    b.connected_sets(size, &mut |its| {
+        let own = b.keys(its, levels);
+        let parts = if size > 1 { b.parts_of(its) } else { vec![] };
+        for (li, key) in own.iter().enumerate() {
+            if key.sign == 0 { continue; }
+            let level = levels[li];
+            let pks: Vec<Key> = parts.iter().map(|p| b.keys(p, &[level]).pop().unwrap()).collect();
+            if let Some(a) = allowed { if !pks.iter().all(|k| k.sign == 0 || a.contains(&k.hash)) { continue; } }
+            let e = into.entry(key.hash).or_insert_with(|| {
+                let mut pk: Vec<u64> = pks.iter().filter(|k| k.sign != 0).map(|k| k.hash).collect();
+                pk.sort_unstable();
+                pk.dedup();
+                let maps = pks.iter().filter(|k| k.sign != 0).map(|k| (k.hash, key.units.iter().map(|u| k.units.iter().position(|x| x == u).map_or(255u8, |j| j as u8)).collect())).collect();
+                Mined { support: 0, total: 0, bytes: key.bytes.clone(), parts: pk, maps, last_row: u32::MAX }
+            });
             e.total += 1;
             if e.last_row != row { e.support += 1; e.last_row = row; }
         }
