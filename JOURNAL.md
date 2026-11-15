@@ -36758,3 +36758,9 @@ the count's, overlapping it at 8 and 16; adding the counts of threat moves by ve
 that name a loose or overloaded unit (the next move's material). Stage D (4 plies only): mixed and small: the mean difference of the played move's number from the mean over the legal moves is slightly positive, but the played move is above that mean in fewer positions than not. Left out as not reachable through
 `Placed`: unmoved units, distance to the far edge, long-range reach. Stage A's `rows_of_game` was split into `counts_of_game`, `quiet_indices`, `arrival_targets` with identical output. The shared editable install of cs_engine
 now points at the worktree agent-af54c0b4e6a72a8bb; the parent rebuilds main after the merge.
+
+
+## 2026-11-15 07:50 -- plan 78.50: the fitted number as the pick among the moves the search holds equal (builder agent, branch worktree-agent-a5cde659be768d4f1)
+Built `cs_engine.solve_equals_batch` (the search's equal root moves by name, null-window reading, cut flagged) and subgoal_play_measure.py; five matches of 300 opening pairs each (candidate, control, random-among-equals, the search's own move
+with the same reading, candidate against that), stage A on the 500 kept games and the arrival read on 60 games. Numbers are the OBS lines in docs/ANALYST_PLAN.md under 78.50 BUILT, one run each, directional. What to keep in mind
+reading them: the equal reading costs clock, so every equals-based player searches shallower than the control (the depth lines); the comparison that isolates the number is candidate_v_engine.
