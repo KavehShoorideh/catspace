@@ -208,3 +208,7 @@ plain links between them. (If he meant the board's edge: that is a concept node 
 Correction, the same day: Kaveh meant the BOARD's edge. It is a concept, so it is a node of layer 1, like place and
 line. The reading above, that every relation is itself a node, is not his statement. It stays only as a suggestion of
 the parent's, undecided.
+
+Decided by Kaveh the same day ("let's do it your way"): relations that a claim, a condition or a derived concept must
+point at are nodes of their own; the basic layer 1 facts (this place is on this line, this unit stands on this place)
+are plain links.

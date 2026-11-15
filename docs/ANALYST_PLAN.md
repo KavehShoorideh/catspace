@@ -8435,3 +8435,41 @@ The number's weights are the 78.50 file, unchanged. No oracle, no human game, no
 wake: the order is passed by the measure script only.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+
+## 78.52 THE GRAPH, LAYER 1: concepts and basic facts derived from the rules (SYSTEM_SPEC section 11; Rust first)
+
+Serves: the one graph (sections 2 and 11). Kaveh's go of 2026-11-15. Nothing here plays; it is the base the mined
+concepts (layer 2) and the claims and conditions (layer 3) attach to.
+
+A. WHAT THE RULES GIVE. Read how the rules state the board: the places, and the step relations between them by
+   direction (chess.gdl states steps by direction). Find how the engine can ask the rules for these statically, through
+   the existing crates and the bound names (as the sheet's medium of movement is bound), without touching the
+   protected files. If it cannot be done without them, stop and report; do not work around it.
+B. THE NODES, derived, none supplied:
+   - place: one per place of the rules.
+   - direction: one per step relation.
+   - line: a maximal chain of places under one direction and its reverse. (For chess the ranks, files and diagonals
+     come out of this; no name of them is written anywhere.)
+   - edge: for each direction, the set of places with no next place under it; and the edge distance of a place per
+     direction (steps until the chain ends). The edge is a concept node; a place links to the edges it lies on.
+   - kind: one per kind of unit of the rules; unit: one per unit standing, per position.
+   Plain links: place on line (with its index along the line), place next to place by direction, place on edge,
+   unit on place, unit of kind, unit of side.
+   Relation nodes (they will be pointed at): unit bears on place / on unit, with the line it runs along where the
+   bearing follows one line, and the units standing between where a line is shut (from the existing why_not).
+C. FORM. A game-free Rust module in an existing crate: the static part built once per game, the per-position part
+   built from a state through `Placed`, with stable ids (a node's id is its definition, not a counter). A Python
+   entry returns the graph as node and link lists; a small Python mirror reads it for inspection.
+D. CHECKS. On chess and one other variant with a different board or movement: counts of places, directions, lines and
+   edge places against what the rules imply; every bearing of `Placed` appears as exactly one relation node; the
+   static part is identical across positions. The names rank, file, diagonal appear only in a TEST's expected counts
+   for chess, never in the module.
+E. THE STATEMENTS OVER THE GRAPH. Re-express the 26 statements of 78.49 as counts over the graph (equal numbers,
+   tested), and add the ones 78.49 could not state: units by edge distance, pairs of own units bearing on each other
+   along one open line, the open length of a line. Unmoved units need the game's record and are left for layer 3.
+
+Not in this plan: derived concepts dcN (layer 2), claims and conditions as nodes (layer 3), any network.
+
+STATUS: written 2026-11-15; to be given to a builder agent when the 78.51 matches have finished (their clocks should
+not share the machine with a build).
