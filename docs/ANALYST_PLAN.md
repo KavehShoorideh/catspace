@@ -8621,3 +8621,44 @@ recorded for the side to move only, and not when its end place holds one of that
 
 A second run of the 78.51 tie-break match on new openings (first seed 12000) was started by the parent the same day; its
 line is appended when it finishes.
+
+
+### 78.51 SECOND RUN BY THE PARENT (2026-11-15): the tie-break match on new openings (first seed 12000, tag rep2)
+
+OBS subgoal_play match ordered_ties_v_control: player ordered_ties against player control: games 600, opening pairs 300; ordered_ties: W 76 D 486 L 38 (draws include 95 games stopped at the move cap), score 0.5317 [0.5175, 0.5467] 90 pct band by bootstrap over opening pairs (1000 draws)
+OBS subgoal_play match ordered_ties_v_control: ordered_ties (a): decisions 24261, mean wall 200.7 ms a move, mean ledger depth 8.03
+OBS subgoal_play match ordered_ties_v_control: control (b): decisions 24233, mean wall 200.8 ms a move, mean ledger depth 8.23
+
+Two runs on separate openings now point the same way. Still directional: one clock, one opponent, one set of weights.
+
+## 78.53 THE GRAPH, LAYER 2: concepts mined bottom-up as patterns over the graph (SYSTEM_SPEC sections 4, 6, 11)
+
+Serves: the first sleep's bottom-up analysis (section 4) in the form of section 11, layer 2. A measurement and a store
+in a sandbox; nothing is wired into play and nothing is written to the real store.
+
+A. WHAT A CONCEPT IS. A small connected PATTERN over the layer 1 graph: a few variables standing for units, places and
+   lines, joined by the graph's own link and relation types, with the side of each unit given only as "mine" or
+   "theirs" (relative to the side the pattern is counted for), and the worth of a unit given only relative to another
+   unit of the pattern (less, equal, more) or as "the goal kind". No kind, place or line is named: placing is relative,
+   and absoluteness enters only through edge distance (section 4).
+B. BOTTOM-UP ENUMERATION by size. Size is the number of relation nodes in the pattern. All patterns of size 1 that
+   occur in the games, then size 2 grown from size 1 by one more relation node sharing a variable, then size 3. A larger
+   pattern is kept as its own concept only if it is not implied by its smaller parts' counts (its count is not a
+   function of theirs on the fit games); otherwise it is recorded as REDUCED to them. Canonical form so the same
+   pattern met two ways is one concept. The enumeration is cut by a named fuse on patterns per size, the most frequent
+   kept; say how many were dropped.
+C. NAMES. A concept's identity is the hash of its canonical definition. Its display name is dcN, N by order of first
+   mining, written with the hash and the definition text to a concepts file under the experiment directory, with an
+   empty column for our name. A separate mapping file (hash to our name) is read if present; none is written by us.
+D. EVIDENCE. Each concept is counted per side per position (ours less theirs) on the kept games. On the even games:
+   the sparse fit of 78.49 on the arrival target, now over the concepts (with the 26 base statements as the baseline to
+   beat). On the odd games: the fit's rank correlation with bands, beside the 78.49 fit; and per kept concept its own
+   correlation and weight. Print the top concepts with their definition text in plain words.
+E. A CHECK BY EYE, without telling the miner: print which dcN, if any, fires on a few hand-made positions that hold a
+   pinned unit, a line opened by moving the unit between, two units of theirs borne on by one of ours, and a unit of
+   theirs behind their goal unit on one line. These are positions in a TEST file; the names stay in the test.
+
+Rust for the matching and counting (hot path); the enumeration may start in Python if it is not the cost, and says so.
+No oracle, no human game, no puzzle.
+
+STATUS: given to a builder agent on 2026-11-15.
