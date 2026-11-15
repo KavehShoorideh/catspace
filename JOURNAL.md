@@ -36770,3 +36770,10 @@ The search takes an optional order of its root moves (`root_orders`, `root_order
 Strict: the order replaces the root's own, and the move kept is the first in the order among the moves held equal (tested against the equals entry). Ties: the order breaks ties inside the root's own order only. Stage B measured the
 cost (strict loses about a ply, ties none), the decision for the matches was written before any match, then three matches of 300 pairs (ordered ties, random order ties, ordered strict) and stage D. Numbers are the OBS lines in
 docs/ANALYST_PLAN.md under 78.51 BUILT; one run each, directional.
+
+## 2026-11-15 11:40 -- plan 78.52: the graph, layer 1 (builder agent, branch worktree-agent-a5b0e5910717155cf)
+The static part of the graph is derived from the rules: `Placed::steps` / `read_steps` (rust/engine/game/src/placed.rs) ask the description's static relations, through the bound names of the game's graph vocabulary, for the places (the product
+of the sorts of its place object) and the step relation by direction (the one static relation whose signature is a direction sort and two places); no file protected, no geometry written, the engine's numbering and the rules' board must be the same
+set or it refuses. rust/engine/tactics/src/sheet/base_graph.rs builds the nodes (place, direction, line, edge, kind, side; per position unit and the relation nodes bear, may_move, shut) with ids that are their definitions, and the plain links;
+base_statements.rs the 26 statements of 78.49 as counts over it plus the new ones; py/src/base_graph_py.rs `cs_engine.BaseGraph`; the mirror is graph_layer1.py. Numbers are the OBS lines in docs/ANALYST_PLAN.md under 78.52 BUILT; one run, directional.
+Nothing is wired into any player; nothing fitted.

@@ -22,6 +22,7 @@ fn record_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) 
     Ok((g, s, keys))
 }
 
+mod base_graph_py;
 mod sheet_py;
 mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>::State; }
 
@@ -1298,5 +1299,6 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scenario, m)?)?;
     m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
     m.add_class::<sheet_py::SheetModel>()?;
+    m.add_class::<base_graph_py::BaseGraph>()?;
     Ok(())
 }

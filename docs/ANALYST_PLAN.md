@@ -8553,3 +8553,58 @@ scores below half, and a confirmed claim arrives more often for the ordered play
 before this is leaned on. Nothing is switched on in the wake.
 
 78.52 STATUS: given to a builder agent on 2026-11-15, after the gate above.
+
+
+78.52 BUILT (branch worktree-agent-a5b0e5910717155cf, 2026-11-15 11:40 by the builder agent; stages A to E). Nothing is wired into any player; nothing is fitted; no match, no fit.
+A. HOW THE RULES ARE ASKED. `Placed::steps` (a default method of the trait, rust/engine/game/src/placed.rs, `read_steps`) loads the game's description (cs_gdl `Program`), takes from the graph vocabulary's bound names
+   (rules/learned/<game>/graph_vocabulary.json: its static relations and its objects) the one static relation whose signature is a direction sort followed by two places (the object's component sorts twice), reads
+   its rows (static, no state) and the place object's component sorts, joins the components of a place to its text and requires the set to equal the game's own `place_names` (else an error). No protected file was
+   touched; no geometry written; no place name parsed (the components are joined, as the medium's tables join them). The text of the description and the bound names are handed in by the Python entry (as the medium
+   is); a variant without a description of its own reads the first game's (as 78.49's tests do).
+   Reused: the description reader (cs_gdl `Program`), `Placed` (cells, bearing_from, reach_from, why_not), `Names`, `PlaceSet`, the graph vocabulary's bound names, game_store.graph_spec_texts. Not reused: decision/graph.rs
+   (cs_decision; terms and facts of the description, not the board's lines, edges and units; cs_tactics cannot depend on it) and fact_graph.py (the term / fact / move graph; it holds the static `step` rows as facts, which is
+   the same source, but has no line, edge or relation node): this graph sits beside them.
+B. NODES (ids are their definitions): place:<text>, direction:<word>, line:<first direction word of the pair>@<id of its first place>, edge:<direction word>, kind:<word>, side:<role word>; per position unit:<side>:<kind>:<place>;
+   relation nodes bear(<unit>,<place>) (each bearing `Placed::bearing_from` reports, once), may_move(<unit>,<place>) (`reach_from`), shut(<unit>,<place>) (for the side to move: a line the unit runs along, shut beyond its
+   farthest bearing, where `why_not` says LineShut; units standing between). Plain links: on_line (index), next (by a direction), on_edge, edge_distance (steps until the chain ends under the direction), line_along, reverse,
+   edge_of, unit_on, unit_kind, unit_side; relation links by, at_place, at_unit, along (the line it runs along where from and to lie on one line; none for a leap), between. may_move and shut are additions to the plan's list:
+   the statements need the move relation, and the plan names the shut line.
+C. Rust: cs_tactics sheet/base_graph.rs and base_statements.rs (the sheet's module directory: it already holds the other readings of `Placed`); py/src/base_graph_py.rs `cs_engine.BaseGraph` (static_part, position, dump, bearings,
+   statements, open_lengths, measure); Python mirror catspace/incubator/analyst/discovery/graph_layer1.py; measure catspace/incubator/analyst/discovery/graph_layer1_measure.py. The extension was rebuilt in this worktree.
+D. tests/test_plan78_52_graph_layer1.py (19) and three Rust unit tests (a board of four columns and three rows written as a description: not the game's board). Second variant: racingkings (same board by the rules, different
+   movement and start; no description of its own). Edge distance per direction, counts of places, directions, lines and edge places, one relation node per bearing, byte-identical static part, ids across two builds: tested.
+E. The 26 statements as counts over the graph equal `subgoal.rs` on random positions of both variants (tested). New statements, each with one line of text: units_on_edge, edge_distance_nearest, edge_distance_<direction>
+   (one per direction, named from the rules' own words), goal_edge_nearest, open_pairs (pairs of its own units bearing on each other along one line with no unit standing between), and for the board open_lines,
+   open_length_longest, open_length_total (the open length of a line: the longest run of places with no unit on them). Unmoved units need the game's record: left for layer 3.
+OBS lines (graph_layer1_measure on the 500 kept games of games_s5016_n500, two positions per game; one run, directional):
+
+OBS graph layer1 chess chess: static part 130 nodes, 1334 links; lines 42; directions 8
+OBS graph layer1 chess chess: pass 1: build of the per-position part 46.3 microseconds per position over 1000 positions (0.0463 s)
+OBS graph layer1 chess chess: pass 2: build of the per-position part 46.5 microseconds per position over 1000 positions (0.0465 s)
+OBS graph layer1 chess chess: pass 3: build of the per-position part 43.5 microseconds per position over 1000 positions (0.0435 s)
+OBS graph layer1 chess chess: static nodes place: 64
+OBS graph layer1 chess chess: static nodes direction: 8
+OBS graph layer1 chess chess: static nodes line: 42
+OBS graph layer1 chess chess: static nodes edge: 8
+OBS graph layer1 chess chess: static nodes kind: 6
+OBS graph layer1 chess chess: static nodes side: 2
+OBS graph layer1 chess chess: static links on_line: 252
+OBS graph layer1 chess chess: static links next: 420
+OBS graph layer1 chess chess: static links on_edge: 92
+OBS graph layer1 chess chess: static links edge_distance: 512
+OBS graph layer1 chess chess: static links line_along: 42
+OBS graph layer1 chess chess: static links reverse: 8
+OBS graph layer1 chess chess: static links edge_of: 8
+OBS graph layer1 chess chess: position nodes unit: 21216 over 1000 positions, 21.2 per position
+OBS graph layer1 chess chess: position nodes bear: 90664 over 1000 positions, 90.7 per position
+OBS graph layer1 chess chess: position nodes may_move: 63548 over 1000 positions, 63.5 per position
+OBS graph layer1 chess chess: position nodes shut: 16377 over 1000 positions, 16.4 per position
+OBS graph layer1 chess chess: position links unit_on: 21216 over 1000 positions, 21.2 per position
+OBS graph layer1 chess chess: position links unit_kind: 21216 over 1000 positions, 21.2 per position
+OBS graph layer1 chess chess: position links unit_side: 21216 over 1000 positions, 21.2 per position
+OBS graph layer1 chess chess: position links by: 170589 over 1000 positions, 170.6 per position
+OBS graph layer1 chess chess: position links at_place: 170589 over 1000 positions, 170.6 per position
+OBS graph layer1 chess chess: position links at_unit: 32347 over 1000 positions, 32.3 per position
+OBS graph layer1 chess chess: position links along: 144966 over 1000 positions, 145.0 per position
+OBS graph layer1 chess chess: position links between: 24946 over 1000 positions, 24.9 per position
+OBS graph layer1 chess chess: position part 191.8 nodes and 607.1 links per position on average
