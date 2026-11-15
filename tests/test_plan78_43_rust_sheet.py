@@ -133,7 +133,8 @@ def test_python_wrapper_names_no_game_object():
 TWO_ROUTES = "r3k3/8/8/3p4/8/2N5/8/R3K3 w - - 0 1"
 JOINT = "4k3/8/7p/7P/7R/8/8/4K3 b - - 0 1"            # a rook whose line to the far end has three units in it
 MIDDLE_2 = "r1bq1rk1/ppp2ppp/2n2n2/3pp3/1bPP4/2N1PN2/PP3PPP/R1BQKB1R w KQ - 0 7"
-DEEP = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT, JOINT, MIDDLE_2, TWO_ROUTES]
+BARE = "8/8/8/8/8/3n4/6K1/3kb3 w - - 2 57"            # the board without the stopper is one the game calls over (a lone knight): the route is still followed, as the Python codec asks the board
+DEEP = [BARE, START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT, JOINT, MIDDLE_2, TWO_ROUTES]
 
 
 @pytest.fixture(scope="module")

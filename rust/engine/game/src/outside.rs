@@ -144,7 +144,8 @@ impl Placed for KernelGame {
     }
     fn kind_at(&self, s: &VariantPosition, at: Place) -> Option<Kind> { s.board().role_at(square_of(at)).map(kind_of) }
     fn find_step(&self, s: &VariantPosition, from: Place, to: Place) -> Option<Move> {
-        let mut found: Vec<Move> = self.moves(s).into_iter().filter(|m| self.move_ends(s, m) == (from, to)).collect();
+        // the rules' own legal moves, a board the game calls over included (the Python codec asks the board, not the game's outcome; callers that need a live position test the outcome first)
+        let mut found: Vec<Move> = s.legal_moves().into_iter().filter(|m| self.move_ends(s, m) == (from, to)).collect();
         found.sort_by_key(|m| m.promotion() != Some(shakmaty::Role::Queen));
         found.into_iter().next()
     }
