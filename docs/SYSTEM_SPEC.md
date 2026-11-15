@@ -173,3 +173,29 @@ for example by strength or by a measured rate of missing each kind of claim), fi
 that class; with no knowledge of the opponent the table falls back to the unconditioned chance, as it already falls
 back by prefix. Immediate use case named the same day: learn to play and analyse chess more or less like a human
 chess master.
+
+## 11. The graph, in three layers (added 2026-11-15)
+
+Kaveh, on hearing that the facts on the ground are not graph nodes today:
+
+- **Layer 1, from the rules.** The engine consults the rules (GDL) and builds a graph of the basic facts and core
+  concepts it finds there, one node per concept: unit, place, line, edge and the like.
+- **Layer 2, from the first sleep.** Bottom-up analysis adds the concepts it mines: pins, discovered attacks and other
+  base patterns. The engine does not name them. It calls them derived concept 1, 2, 3 (dc1, dc2, dc3), and we rename
+  them later through a mapping file.
+- **Layer 3, inside one game.** Nodes for the claims found in this game, including CONDITIONAL claims: "if we can
+  attack their goal unit from here, we win the unit behind it". Nodes and edges together stand for the attack along
+  the line, the unit to be won, and the condition "if I can get my unit onto that line on that side". The condition is
+  a subgoal the graph policy can take up: it either finds nearer subgoals step by step, or picks one and the tactical
+  reasoner gets us there.
+
+Working suggestions, not decisions:
+
+- A derived concept's identity is its definition (a hash of it), with dcN as the display name, so the mapping file
+  survives a re-mining that finds the concepts in another order.
+- A line is a maximal chain of places under one step relation of the rules; an edge place is one where some step
+  relation has no next place. Both are derived, not supplied.
+- A conditional claim is made by the existing counterfactual read (place a unit elsewhere, read again) and is the
+  same thing section 5 calls a subgoal. The night's measurements point the same way: what foretold anything was a
+  confirmed claim ARRIVING, and a conditional claim says what would make one arrive.
+- The mapping file holds names only, never knowledge (the standing rule on supplied names).
