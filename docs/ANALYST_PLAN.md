@@ -7419,3 +7419,30 @@ OBS opportunity games_s5016_n500: horizon 16 band 3 of 5 of net: plies 7438, mea
 OBS opportunity games_s5016_n500: horizon 16 band 4 of 5 of net: plies 7438, mean net +0.3033, mean outcome -0.3430, mean worth won 7.3259, mean worth lost 7.6689
 OBS opportunity games_s5016_n500: horizon 16 band 5 of 5 of net: plies 7438, mean net +2.6267, mean outcome +2.0452, mean worth won 10.4543, mean worth lost 8.4091
 READ (directional, one run on 500 games of one player). The number rises with the later change of material at all three horizons, and the shuffled control is near zero, so the rise is not an artefact of the ranking. It stands well above the plain count of claims (count: about 0.1). It does NOT stand much above the first-level baseline: net0 is within about 0.01 to 0.02 of net at each horizon, and the intervals of the two nearly overlap at 4 plies. Beyond the first level the reading is small: net - net0 has a correlation of about 0.2 and the partial rank correlation of net with net0 held out is about 0.19 / 0.18 / 0.15 at 4 / 8 / 16 plies; among the plies where net0 is zero (about 62 percent of them) net foretells almost nothing (about 0.05). The bands are not monotone: the mean outcome is about the same over the four lower bands and the whole rise is in the top band. net_d (danger kinds only) correlates better than net at every horizon, which says the waiting and level-1 claims add noise to the number as built. Gain predicts worth won and risk predicts worth lost, each about 0.3 to 0.4 at 4 plies; the correlation falls with the horizon. Caveats: the outcome is the material of the games of one player (a plain search at 0.2 s a move), including captures the first move of the horizon makes; a high net0 is probably often a capture on the board that the mover then makes (not separated here). Nothing here says the number steers a game.
+
+
+### 78.44 READ BY THE PARENT (2026-11-15)
+
+Merged at 18acb02b. The number as the plan defined it is, on these games, mostly the first level: what can be taken at once. Beyond the first
+level the builder's lines show a small remainder (the partial rank correlation and the plies where the first-level sum is zero), and the
+waiting and level-1 claims lower the correlation (the danger-kinds number is higher at every horizon). So the policy of SYSTEM_SPEC section 5
+has no target yet beyond one move. Two readings of why, not yet told apart: (1) the sheet's claims of more than one move are poor; (2) the
+games are those of one searching player against itself, which parries what it sees, so a true prepared attack seldom comes true IN THESE GAMES
+whatever its quality (SYSTEM_SPEC section 10: the chance depends on who answers). Plan 78.45 separates them where the answer is known by
+construction; games against a weaker answerer are the other half and come after.
+
+## 78.45 THE SHEET ON PUZZLES: does the route reasoning see a prepared attack that is there? (SYSTEM_SPEC section 3)
+
+A puzzle is a position where a winning line of a few moves exists by construction. Sets: data/derived/ledger_puzzles_dev_300.json (to study
+the misses) and ledger_puzzles_fresh_300.json (held out, read once at the end). Fields used: the position, the answer (first move), the
+solution line, the themes, the rating. Measure only: nothing of the puzzles reaches the wake or any fit.
+ - SEES: the sheet holds a claim for the side to move, in danger (lost or confirmed) against a unit of the other side or against their goal
+   unit, whose way begins with the answer. PICKS: a plain chooser (the first move of the top such claim by stake) names the answer.
+ - BASELINE beside it: the engine's plain search on the same position at the time the sheet took, and at 0.2 s.
+ - THE MISSES, each put in one class by cause, by theme and by length of the solution: the target not on the sheet; the way not among the
+   routes; the way read and refuted (with the stop that refuted it); not settled or not reached under the budget (the same sheet with a
+   budget five times larger tells these apart); seen but outranked.
+ - The four-way table: sheet sees / search finds.
+The classes of misses are the work list for the reasoner; nothing is fixed in this plan.
+
+STATUS: given to a builder agent on 2026-11-15.
