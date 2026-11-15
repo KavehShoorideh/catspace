@@ -547,6 +547,164 @@ fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: H
     Ok(done.into_iter().map(|(s, _)| (s.mv, s.proved, s.nodes, s.seconds, s.error)).collect())
 }
 
+/// What `solve_equals_batch` returns per position: (the move the search plays, proved, nodes, seconds, error, the names of the root moves the search holds EQUAL to its best,
+/// their indices in the game's own list of legal moves, the depth the ledger finished, its value, the seconds the equal reading took, the number of legal moves, whether the
+/// clock cut the equal reading).
+type EqualsRow = (Option<String>, bool, u64, f64, Option<String>, Vec<String>, Vec<usize>, Option<i64>, Option<i64>, f64, usize, bool);
+
+/// PLAN 78.50: the ledger step of the decision with the equal reading kept apart and its completeness told. It is `cs_tactics::operators::LedgerOp` read again: the same `Search`
+/// (history, ordering, pruning, extension, root order), the same deepening, the same move and value; afterwards the root moves are each asked "at least the best?" by a null window at
+/// the finished depth with the table of the run warm (`Search::ties`, unchanged), within `share` of what is left of the decision's clock, and `Search::cut` says whether that
+/// clock stopped it. A part named "ties (cut)" instead of "ties" marks a cut reading. Nothing in the search is changed.
+struct EqualsLedger<'a, J: cs_tactics::ledger::Judge> { judge: &'a J, history: Vec<u64>, params: &'a cs_decision::Params }
+
+impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for EqualsLedger<'a, J> {
+    fn name(&self) -> String { "ledger".into() }
+    fn accepts(&self, goal: &cs_operator::Goal) -> bool { matches!(goal, cs_operator::Goal::Ledger { .. }) }
+    fn run(&self, g: &G, s: &G::State, goal: &cs_operator::Goal, b: cs_operator::Budget) -> cs_operator::Outcome<G::Move> {
+        use cs_operator::{Outcome, Status};
+        let cs_operator::Goal::Ledger { role, ties, prefer, avoid } = goal else { return Outcome::unsupported("ledger", goal) };
+        let t0 = std::time::Instant::now();
+        let mut ls = cs_tactics::ledger::Search::new(g, self.judge, *role, b.seconds_left());
+        ls.set_fuse(b.max_nodes);
+        ls.history = self.history.iter().copied().collect();
+        ls.ordering = self.params.ordering;
+        ls.prune = self.params.prune;
+        ls.extend = self.params.extend;
+        ls.root_first = prefer.clone();
+        ls.root_last = avoid.clone();
+        let ln = ls.run(s, b.max_depth.map_or(cs_decision::LEDGER_DEPTH, |d| d as i32));
+        let moves = g.moves(s);
+        let Some(i) = ln.first_index else {
+            let mut o = Outcome::new(Status::Gap);
+            o.evidence.push("ledger search: no line read within the clock -- the first legal move".into());
+            o.cost.nodes = ln.nodes;
+            o.cost.seconds = t0.elapsed().as_secs_f64();
+            return o;
+        };
+        let mut o = Outcome::new(Status::Read);
+        o.mv = Some(moves[i].clone());
+        o.value = Some(ln.value);
+        o.depth = Some(ln.depth as i64);
+        o.line = ln.line.clone();
+        o.events = ln.lost.clone();
+        let mut nodes = ln.nodes;
+        if let Some(share) = ties {
+            if ln.value.abs() < cs_tactics::ledger::WIN - 1000 {
+                ls.resume(b.rest_of_decision() * share);
+                let n0 = ls.nodes;
+                let t1 = std::time::Instant::now();
+                o.candidates = ls.ties(s, ln.depth, ln.value);
+                nodes += ls.nodes - n0;
+                o.part(if ls.cut() { "ties (cut)" } else { "ties" }, ls.nodes - n0, t1.elapsed().as_secs_f64());
+            }
+        }
+        o.cost.nodes = nodes;
+        o.cost.seconds = t0.elapsed().as_secs_f64();
+        o
+    }
+}
+
+/// The fixed controller with one change: where it asks the ledger for its ties, the equal reading may take all that is left of the clock after the deepening (the ledger's own
+/// clock being `ledger_share` of the decision's). The proof, the claim step and the lemma order are the fixed controller's, untouched.
+struct EqualsController<'p>(cs_decision::Fixed<'p>);
+
+impl<'p, G: Game> cs_operator::Controller<G> for EqualsController<'p> {
+    fn choose(&self, ctx: &cs_operator::Context<G>) -> cs_operator::Action<G::Move> {
+        match self.0.choose(ctx) {
+            cs_operator::Action::Run { operator, goal: cs_operator::Goal::Ledger { role, ties: Some(_), prefer, avoid }, seconds, max_nodes, max_depth } =>
+                cs_operator::Action::Run { operator, goal: cs_operator::Goal::Ledger { role, ties: Some(1.0), prefer, avoid }, seconds, max_nodes, max_depth },
+            other => other,
+        }
+    }
+}
+
+/// The decision of `batch_one` (proof, claims, lemma order, then the ledger) with the equal reading on and its candidates handed back by NAME and INDEX. The move played is the
+/// ledger's move, as the engine plays it. The moves listed are those whose probe held the best value and the ledger's own move (its value IS the best); where the line decides the
+/// game the reading is skipped and the list is that move alone.
+fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J, seconds: f64, params: &cs_decision::Params, record: bool, store: Option<&Store>)
+                                            -> (cs_decision::batch::Summary, serde_json::Value) {
+    use cs_decision::batch;
+    let label = format!("{} {} {}", it.0, it.1.as_deref().unwrap_or("startpos"), it.2.join(" "));
+    let (g, s, keys) = match record_of(&it.0, it.1.as_deref(), 518, &it.2) {
+        Ok(x) => x,
+        Err(e) => return batch::error_row(i, "", &label, &format!("{e}")),
+    };
+    let mut p = params.clone();
+    p.history = if record { keys } else { vec![] };
+    let moves = Game::moves(&g, &s);
+    if moves.is_empty() { return batch::error_row(i, "", &label, "the game is over"); }
+    let me = match Game::mover(&g, &s) { Some(m) => m, None => return batch::error_row(i, "", &label, "the game is over") };
+    let trace = vec![format!("decide: {} to move, {} legal moves, {:.2} s", Game::roles(&g)[me], moves.len(), seconds)];
+    let with_claims = p.claims && store.map_or(false, |st| !st.snapshot.claims.is_empty());
+    let view = store.and_then(|st| if st.snapshot.lemmas.is_empty() && !with_claims { None } else { view_for(st, &it.0) });
+    let forcing = cs_tactics::operators::ForcingOp;
+    let ledger = EqualsLedger { judge, history: p.history.clone(), params: &p };
+    let d = match (store, &view) {
+        (Some(st), Some(v)) => {
+            let op = cs_memory::op::LemmaOp::new(&st.snapshot, v);
+            let claims = cs_memory::claim::Claims::new(&st.snapshot, v);
+            let lemma: Option<&dyn cs_operator::Operator<kernel::KernelGame>> = if st.snapshot.lemmas.is_empty() { None } else { Some(&op) };
+            let claim_op = if with_claims && !claims.is_empty() { Some(cs_decision::claim_op::ClaimOp { claims: &claims, history: p.history.clone() }) } else { None };
+            let mut ops: Vec<&dyn cs_operator::Operator<kernel::KernelGame>> = vec![&forcing, &ledger];
+            if let Some(l) = lemma { ops.push(l); }
+            if let Some(c) = &claim_op { ops.push(c); }
+            cs_operator::drive(&g, &s, seconds, &ops, &EqualsController(cs_decision::Fixed { params: &p, lemmas: lemma.is_some(), claims: claim_op.is_some() }), trace)
+        }
+        _ => {
+            let ops: Vec<&dyn cs_operator::Operator<kernel::KernelGame>> = vec![&forcing, &ledger];
+            cs_operator::drive(&g, &s, seconds, &ops, &EqualsController(cs_decision::Fixed { params: &p, lemmas: false, claims: false }), trace)
+        }
+    };
+    if d.mv.is_none() { return batch::error_row(i, "", &label, "no move"); }
+    let (summary, mut v) = batch::row(i, "", &label, &g, &s, &d);
+    let step = d.steps.iter().rev().find(|st| st.operator == "ledger");
+    let mut idx: Vec<usize> = step.map(|st| st.outcome.candidates.clone()).unwrap_or_default();
+    if let Some(m) = &d.mv { if let Some(k) = moves.iter().position(|x| x == m) { idx.push(k); } }
+    idx.sort();
+    idx.dedup();
+    let names: Vec<String> = idx.iter().filter_map(|k| moves.get(*k)).map(|m| Game::move_name(&g, &s, m)).collect();
+    let tie_parts: Vec<&cs_operator::Part> = step.map(|st| st.outcome.parts.iter().filter(|p| p.name.starts_with("ties")).collect()).unwrap_or_default();
+    v["equals"] = serde_json::json!(names);
+    v["equal_indices"] = serde_json::json!(idx);
+    v["legal"] = serde_json::json!(moves.len());
+    v["ledger_depth"] = serde_json::json!(step.and_then(|st| st.outcome.depth));
+    v["ledger_value"] = serde_json::json!(step.and_then(|st| st.outcome.value));
+    v["ties_seconds"] = serde_json::json!(tie_parts.iter().map(|p| p.cost.seconds).sum::<f64>());
+    v["ties_cut"] = serde_json::json!(tie_parts.iter().any(|p| p.name == "ties (cut)"));
+    (summary, v)
+}
+
+/// solve_equals_batch(positions, seconds=0.2, worth={}, ours_first=False, valuation="", threads=0, store=None, specs={}, record=True, ledger_share=0.8, claims=True)
+/// -> [(move or None, proved, nodes, seconds, error or None, equal move names, equal move indices, ledger depth, ledger value, equal-reading seconds, legal moves, cut)]. Plan 78.50:
+/// the batch decision (as `solve_batch`: proof, claims, lemma order, the ledger search, the same move) with the root moves the search holds EQUAL to its best handed back. The ledger
+/// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
+/// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
+#[pyfunction]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true))]
+#[allow(clippy::too_many_arguments)]
+fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool) -> PyResult<Vec<EqualsRow>> {
+    let params = cs_decision::Params { ties: true, claims, ledger_share, ..cs_decision::Params::default() };
+    let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
+    let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
+        store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
+    } else { Some((worth.clone(), ours_first, valuation.clone())) };
+    let done = py.allow_threads(|| match &judge_worth {
+        None => cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &cs_tactics::ledger::Count, seconds, &params, record, store.as_ref())),
+        Some((w, of, name)) => {
+            let j = cs_tactics::ledger::Worth { name: name.clone(), table: w.clone(), ours_first: *of };
+            cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &j, seconds, &params, record, store.as_ref()))
+        }
+    });
+    Ok(done.into_iter().map(|(s, v)| {
+        let names: Vec<String> = v["equals"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(|t| t.to_string())).collect()).unwrap_or_default();
+        let idx: Vec<usize> = v["equal_indices"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|t| t as usize)).collect()).unwrap_or_default();
+        (s.mv, s.proved, s.nodes, s.seconds, s.error, names, idx, v["ledger_depth"].as_i64(), v["ledger_value"].as_i64(), v["ties_seconds"].as_f64().unwrap_or(0.0), v["legal"].as_u64().unwrap_or(0) as usize,
+         v["ties_cut"].as_bool().unwrap_or(false))
+    }).collect())
+}
+
 fn vocab_of(json: &str) -> PyResult<cs_game::Vocabulary> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("vocabulary: {e}")))?;
     cs_memory::snapshot::vocabulary_from_json(&v).map_err(pyo3::exceptions::PyValueError::new_err)
@@ -1091,6 +1249,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(best_move, m)?)?;
     m.add_function(wrap_pyfunction!(playout_game, m)?)?;
     m.add_function(wrap_pyfunction!(solve_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_equals_batch, m)?)?;
     m.add_function(wrap_pyfunction!(facts, m)?)?;
     m.add_function(wrap_pyfunction!(facts_audit, m)?)?;
     m.add_function(wrap_pyfunction!(build_cards, m)?)?;
