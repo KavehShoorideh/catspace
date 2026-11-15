@@ -270,7 +270,7 @@ impl<'a, 'g, G: Game + Placed> Forcing<'a, 'g, G> {
                 let sd = self.stand_as(&x, 3)?;
                 if sd.goal.is_some() { return Ok(BIG); }
                 let direct = sd.claims.iter().map(|c| c.1).fold(0.0, f64::max);
-                Ok(direct.max(self.their_sign_gain(&x)?))
+                Ok(self.their_sign_gain(&x, direct)?)
             }
             None => {
                 let mut least = f64::INFINITY;
@@ -286,9 +286,10 @@ impl<'a, 'g, G: Game + Placed> Forcing<'a, 'g, G> {
     /// THE OTHER SIDE'S MOVES THAT PUT OUR GOAL UNDER THE SIGN (we must answer them: few replies), each with every reply of ours and what the other side then takes by one exchange or by the goal forced
     /// in one: the most it is sure of (the least over our replies, our own takings counted for us). `x` has the other side to move. The same read as ours at level 0, for the moves that leave us no
     /// free move; a threat of theirs that needs a quiet preparing move is not read here (a named limit).
-    fn their_sign_gain(&mut self, x: &G::State) -> R<f64> {
+    /// `floor` is what the other side already has by a direct exchange: the answer is the greater of it and the sign moves' gain, so a sign move is only read as far as it can raise the answer above `floor`.
+    fn their_sign_gain(&mut self, x: &G::State, floor: f64) -> R<f64> {
         let g = self.g;
-        let mut best = 0.0f64;
+        let mut best = floor.max(0.0);
         for m in g.moves(x) {
             let c = g.apply(x, &m);
             if let Some(v) = g.outcome(&c) { if won(&v, self.them) { return Ok(BIG); } continue; }
