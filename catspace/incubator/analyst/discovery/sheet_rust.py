@@ -25,10 +25,10 @@ def model(env: "QS.Env", worth: dict, goal_kind: "str | None" = None):
     overs = [(k, s, f, t, o) for (k, s, f, t), places in med.over_of.items() for o in places]
     worth_of = env.worth_fn(worth)
     by_kind = {kind: worth_of(kind) for kind in env.kind_keys_all()}
-    return CE.SheetModel(hops, overs, sorted(med.takes), by_kind, goal_kind, len(env.relations["can_go"]))
+    return CE.SheetModel(env.variant, hops, overs, sorted(med.takes), by_kind, goal_kind, len(env.relations["can_go"]))
 
 
 def read(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" = None) -> dict:
     """The questions of `position` in the first order with level 0 and level 1 (ValueError when the position is over)."""
     p = params or QS.Params()
-    return sheet_model.read(env.variant, position, p.reach_k, p.max_open_exits)
+    return sheet_model.read(position, p.reach_k, p.max_open_exits)

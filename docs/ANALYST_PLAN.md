@@ -7257,3 +7257,8 @@ OBS sheet_rust seconds per position (the same work, jobs 10): python 0.11726, ru
 READ. The Rust form agrees with the oracle on unseen games. The speed is far from what the engine should give: places are carried as text and
 the routes rebuilt as lists of text. NEXT: stage B opens with the places and units as numbers (the same measure as the guard), then the
 obstacles and the frames.
+
+78.43 B0 BUILT (2026-11-14, branch worktree-agent-a7558b6e22875c559; journal entry 2026-11-14 20:40). Places, kinds and units are numbers inside the layer (see the journal); the same measure as stage A, jobs 10, one run each, directional:
+OBS sheet_rust events_games: games 16, positions compared 1258; units 55790 items, level 0 27895, level 1 route sets 27895, level 1 verdicts 27895: items that differ 0 in all four
+OBS sheet_rust held_games: games 32, positions compared 2769; units 114918 items, level 0 57459, level 1 route sets 57459, level 1 verdicts 57459: items that differ 0 in all four
+OBS sheet_rust seconds per position, jobs 1, 2 games: before python 0.07586, rust 0.01335 (engine 0.01226); after python 0.07071, rust 0.00210 (engine 0.00099)

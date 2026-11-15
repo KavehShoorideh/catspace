@@ -1,7 +1,7 @@
 //! THE UCI TEACHER (plan 78.4): an outside engine that speaks UCI -- the chess family's engine protocol, so it lives beside the chess kernel (rules ingestion's
 //! side of the stack, not a layer) -- driven over its pipes. The learning layer sees it only as a `Teacher` (cs_learn::watch): a source of moves to watch.
 use crate::kernel::KernelGame;
-use crate::placed::Placed;
+use crate::placed::{Kind, Place, Placed};
 use crate::Role;
 use shakmaty::variant::VariantPosition;
 use shakmaty::{Color, Move, Position};
@@ -61,29 +61,45 @@ impl UciTeacher {
 
 // ------------------------------------------------------------------------------------------------------------------------------ the placed reading (plan 78.43)
 // Rules ingestion for the question sheet's light reading, kept here beside the kernel (not in kernel.rs: the certificates of the kernel hash that file and this binding changes
-// none of its rules).
+// none of its rules). Places and kinds are numbers: the places by the text of their names (file by file), the kinds by the text of their words.
 
-fn kind_word(r: shakmaty::Role) -> &'static str {
-    match r { shakmaty::Role::Pawn => "pawn", shakmaty::Role::Knight => "knight", shakmaty::Role::Bishop => "bishop",
-              shakmaty::Role::Rook => "rook", shakmaty::Role::Queen => "queen", shakmaty::Role::King => "king" }
+const KIND_NAMES: [&str; 6] = ["bishop", "king", "knight", "pawn", "queen", "rook"];
+
+fn kind_of(r: shakmaty::Role) -> Kind {
+    match r { shakmaty::Role::Bishop => 0, shakmaty::Role::King => 1, shakmaty::Role::Knight => 2, shakmaty::Role::Pawn => 3, shakmaty::Role::Queen => 4, shakmaty::Role::Rook => 5 }
 }
 
-fn kind_role(word: &str) -> Option<shakmaty::Role> {
-    Some(match word { "pawn" => shakmaty::Role::Pawn, "knight" => shakmaty::Role::Knight, "bishop" => shakmaty::Role::Bishop,
-                      "rook" => shakmaty::Role::Rook, "queen" => shakmaty::Role::Queen, "king" => shakmaty::Role::King, _ => return None })
+fn role_of(k: Kind) -> shakmaty::Role {
+    match k { 0 => shakmaty::Role::Bishop, 1 => shakmaty::Role::King, 2 => shakmaty::Role::Knight, 3 => shakmaty::Role::Pawn, 4 => shakmaty::Role::Queen, _ => shakmaty::Role::Rook }
 }
+
+fn place_of(sq: shakmaty::Square) -> Place { sq.file() as u16 * 8 + sq.rank() as u16 }
+
+fn square_of(p: Place) -> shakmaty::Square { shakmaty::Square::from_coords(shakmaty::File::new(p as u32 / 8), shakmaty::Rank::new(p as u32 % 8)) }
 
 fn colour_of(owner: Role) -> Color { if owner == 0 { Color::White } else { Color::Black } }
+
+fn places_of(bb: shakmaty::Bitboard) -> Vec<Place> {
+    let mut v: Vec<Place> = bb.into_iter().map(place_of).collect();
+    v.sort_unstable();
+    v
+}
 
 /// PLAN 78.43 RULES INGESTION OF THE PLACED READING: the chess family's attack and step tables from shakmaty's bitboards, the board as it stands (a mirror of the codec's
 /// `cells`, `bearing_from` and `reach_from` that the Python question sheet reads).
 impl Placed for KernelGame {
-    fn cells(&self, s: &VariantPosition) -> Vec<(Role, String, String)> {
-        s.board().iter().map(|(sq, p)| (if p.color == Color::White { 0 } else { 1 }, kind_word(p.role).to_string(), sq.to_string())).collect()
+    fn place_names(&self) -> Vec<String> {
+        let mut v = vec![];
+        for f in 0..8u32 { for r in 0..8u32 { v.push(shakmaty::Square::from_coords(shakmaty::File::new(f), shakmaty::Rank::new(r)).to_string()); } }
+        v
     }
-    fn bearing_from(&self, s: &VariantPosition, owner: Role, kind: &str, at: &str) -> Vec<String> {
+    fn kind_names(&self) -> Vec<String> { KIND_NAMES.iter().map(|s| s.to_string()).collect() }
+    fn cells(&self, s: &VariantPosition) -> Vec<(Role, Kind, Place)> {
+        s.board().iter().map(|(sq, p)| (if p.color == Color::White { 0 } else { 1 }, kind_of(p.role), place_of(sq))).collect()
+    }
+    fn bearing_from(&self, s: &VariantPosition, owner: Role, kind: Kind, at: Place) -> Vec<Place> {
         use shakmaty::attacks;
-        let (Some(role), Ok(sq)) = (kind_role(kind), shakmaty::Square::from_ascii(at.as_bytes())) else { return vec![] };
+        let (role, sq) = (role_of(kind), square_of(at));
         let occ = s.board().occupied();
         let bb = match role {
             shakmaty::Role::Pawn => attacks::pawn_attacks(colour_of(owner), sq),
@@ -93,26 +109,37 @@ impl Placed for KernelGame {
             shakmaty::Role::Rook => attacks::rook_attacks(sq, occ),
             shakmaty::Role::Queen => attacks::queen_attacks(sq, occ),
         };
-        bb.into_iter().map(|q| q.to_string()).collect()
+        places_of(bb)
     }
-    fn reach_from(&self, s: &VariantPosition, owner: Role, kind: &str, at: &str) -> Vec<String> {
-        let (Some(role), Ok(sq)) = (kind_role(kind), shakmaty::Square::from_ascii(at.as_bytes())) else { return vec![] };
+    fn reach_from(&self, s: &VariantPosition, owner: Role, kind: Kind, at: Place) -> Vec<Place> {
+        use shakmaty::attacks;
+        let (role, sq) = (role_of(kind), square_of(at));
         let colour = colour_of(owner);
         let board = s.board();
         let foes = board.by_color(!colour) & !board.kings();
         let empty = !board.occupied();
-        let mut bits = shakmaty::Bitboard::EMPTY;
-        for q in self.bearing_from(s, owner, kind, at) { if let Ok(x) = shakmaty::Square::from_ascii(q.as_bytes()) { bits = bits.with(x); } }
+        let occ = board.occupied();
+        let bits = match role {
+            shakmaty::Role::Pawn => attacks::pawn_attacks(colour, sq),
+            shakmaty::Role::Knight => attacks::knight_attacks(sq),
+            shakmaty::Role::King => attacks::king_attacks(sq),
+            shakmaty::Role::Bishop => attacks::bishop_attacks(sq, occ),
+            shakmaty::Role::Rook => attacks::rook_attacks(sq, occ),
+            shakmaty::Role::Queen => attacks::queen_attacks(sq, occ),
+        };
         let mut reach = if role == shakmaty::Role::Pawn { bits & foes } else { bits & (empty | foes) };
         if role == shakmaty::Role::Pawn {
             if let Some(ahead) = sq.offset(if colour == Color::White { 8 } else { -8 }) {
                 if empty.contains(ahead) { reach = reach.with(ahead); }
             }
         }
-        reach.into_iter().map(|q| q.to_string()).collect()
+        places_of(reach)
     }
-    fn move_ends(&self, _s: &VariantPosition, m: &Move) -> (String, String) {
+    fn move_ends(&self, _s: &VariantPosition, m: &Move) -> (Place, Place) {
         let u = m.to_uci(self.mode).to_string();
-        (u[..2].to_string(), u[2..4].to_string())
+        match (u.get(..2).and_then(|x| x.parse().ok()), u.get(2..4).and_then(|x| x.parse().ok())) {
+            (Some(a), Some(b)) => (place_of(a), place_of(b)),
+            _ => (place_of(m.to()), place_of(m.to())),
+        }
     }
 }
