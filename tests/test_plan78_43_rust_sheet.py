@@ -376,3 +376,63 @@ def test_the_default_cost_is_still_the_measured_time(state):
     assert Q.Params().cost_model is None
     py = Q.read_position(state["env"], WORTH, Q.Params(compare_old=False), HANGING, None, light=True)
     assert all(s.cost not in SM.COST_MODEL for s in py.steps)
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ stage C, step three: a game in one call
+
+from catspace.incubator.analyst.discovery import sheet_rust_game_measure as GM
+
+GAME_MOVES = ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5", "g1f3", "c8g4", "h2h3", "g4f3", "d1f3", "e7e6"]
+
+
+def _positions(env, start, moves):
+    import cs_engine as CE
+    return [CE.state(env.variant, start, moves[:ply])[0] for ply in range(len(moves) + 1)]
+
+
+def test_a_game_in_one_call_gives_the_brief_of_every_position_as_the_python_sheet_does(state):
+    env, params = state["env"], SM.params_of({"clock": "present"})
+    got = SR.game(state["model"], None, GAME_MOVES, params)
+    assert len(got) == len(GAME_MOVES) + 1
+    for ply, pos in enumerate(_positions(env, None, GAME_MOVES)):
+        py = Q.read_position(env, WORTH, params, pos, None, light=True)
+        a = GM.brief_python(py)
+        a.pop("ply")
+        assert GM.canon_game(a) == GM.canon_game(got[ply]), ply
+        assert got[ply]["ply"] == ply
+
+
+def test_the_brief_equals_the_per_position_sheet_of_the_engine(state):
+    env, params = state["env"], SM.params_of({"clock": "plain"})
+    got = SR.game(state["model"], None, GAME_MOVES[:6], params)
+    for ply, pos in enumerate(_positions(env, None, GAME_MOVES[:6])):
+        b = GM.brief_rust(SR.sheet(state["model"], env, pos, params))
+        b.pop("ply")
+        assert GM.canon_game(b) == GM.canon_game(got[ply]), ply
+
+
+def test_a_game_from_a_start_position_and_a_position_that_is_over(state):
+    start = "7k/8/6K1/8/8/8/5Q2/8 w - - 0 1"
+    got = SR.game(state["model"], start, ["f2f7"], SM.params_of({"clock": "present"}))
+    assert got[0] is not None and got[1] is None                       # after f2f7 black has no move: the game is over, nothing to read
+    assert got[0]["mover"] == "white"
+
+
+def test_a_move_that_is_not_legal_is_refused_in_a_game(state):
+    with pytest.raises(ValueError):
+        SR.game(state["model"], None, ["e2e4", "e2e4"], SM.params_of({"clock": "present"}))
+
+
+def test_the_threaded_form_gives_the_one_game_results_in_the_order_of_the_games(state):
+    params = SM.params_of({"clock": "present"})
+    games = [(None, GAME_MOVES[:n]) for n in (3, 5, 4, 6)]
+    one = [SR.game(state["model"], s, m, params) for s, m in games]
+    many = SR.games(state["model"], games, 3, params)
+    assert [[GM.canon_game(x) for x in g] for g in many] == [[GM.canon_game(x) for x in g] for g in one]
+    assert [len(g) for g in many] == [4, 6, 5, 7]
+
+
+def test_a_brief_of_another_position_is_seen_as_a_difference(state):
+    params = SM.params_of({"clock": "present"})
+    got = SR.game(state["model"], None, GAME_MOVES[:4], params)
+    assert GM.canon_game(got[1]) != GM.canon_game(got[3])

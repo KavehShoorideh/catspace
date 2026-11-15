@@ -57,6 +57,21 @@ def sheet(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" 
     return sheet_model.sheet(position, p.reach_k, p.max_open_exits, p.clock, max_steps, budget_cost, cm, chances_wire(p.chances), p.chance_horizon, p.risk, only, finish, moves)
 
 
+def game(sheet_model, start: "str | None", moves: list, params: "QS.Params | None" = None, max_steps: "int | None" = None, budget_cost: "float | None" = None) -> list:
+    """STAGE C, step three: the whole sheet of every position of a game (`start` None: the game's start; `moves` as the kernel names them) made in one call in the engine; a brief per ply
+    (None for a position that is over), see `SheetModel.game`."""
+    p = params or QS.Params()
+    cm = list(p.cost_model) if p.cost_model else None
+    return sheet_model.game(start, list(moves), p.reach_k, p.max_open_exits, p.clock, max_steps, budget_cost, cm, chances_wire(p.chances), p.chance_horizon, p.risk)
+
+
+def games(sheet_model, games: list, threads: int, params: "QS.Params | None" = None, max_steps: "int | None" = None, budget_cost: "float | None" = None) -> list:
+    """The many-game form: [(start, moves)] across `threads` std threads (the GIL released), one list of briefs per game, in the order of the games."""
+    p = params or QS.Params()
+    cm = list(p.cost_model) if p.cost_model else None
+    return sheet_model.games([(s, list(m)) for s, m in games], threads, p.reach_k, p.max_open_exits, p.clock, max_steps, budget_cost, cm, chances_wire(p.chances), p.chance_horizon, p.risk)
+
+
 def move_sheet(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" = None, max_moves: "int | None" = None) -> dict:
     """STAGE C1: the question of each legal move of `position` in the order asked ({order, unread, results, seconds}; see `SheetModel.move_sheet`; ValueError when the position is over)."""
     p = params or QS.Params()

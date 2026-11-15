@@ -8,7 +8,7 @@ use cs_tactics::sheet::levels::{self, Level0, Level1, Obstacle, Route, WeakPlace
 use cs_tactics::sheet::medium::Medium;
 use cs_tactics::sheet::mv::{self, Event, Loss, MoveAnswer};
 use cs_tactics::sheet::reading::Reading;
-use cs_tactics::sheet::run::{Chances, Clock, Costing, Fnd, Found, Qn, Runner, Schedule, DANGER};
+use cs_tactics::sheet::run::{play_game, Chances, Clock, Costing, Fnd, Found, PlySummary, Qn, Runner, Schedule, DANGER};
 use cs_tactics::sheet::settle::{Ask, Cornering, Detail, Duty, Entry, Finding, Q, Settler};
 use cs_tactics::sheet::walk::Stop;
 use cs_tactics::sheet::{Model, Names, Params, Side, Unit};
@@ -24,6 +24,83 @@ type Over = (String, String, String, String, String);
 pub struct SheetModel {
     variant: String,
     model: Model,
+    spec: Spec,
+}
+
+/// What the model is made from, kept as plain data so that every thread of `games` can make its own (a `Model` holds shared caches that do not cross threads).
+#[derive(Clone)]
+struct Spec {
+    variant: String,
+    hops: Vec<Hop>,
+    overs: Vec<Over>,
+    takes: Vec<(String, String)>,
+    worth: HashMap<String, f64>,
+    goal_kind: Option<String>,
+    can_go: usize,
+    ledger_worth: HashMap<String, i64>,
+    letters: HashMap<String, String>,
+}
+
+fn build(sp: &Spec) -> Result<Model, String> {
+    if sp.hops.is_empty() { return Err("the game's vocabulary names no medium of movement".into()); }
+    let g = KernelGame::new(&sp.variant, 518)?;
+    let names = Names::new(g.place_names(), g.kind_names(), cs_game::Game::roles(&g));
+    let medium = Medium::new(&names, &sp.hops, &sp.overs, &sp.takes)?;
+    let w: Vec<f64> = names.kinds.iter().map(|k| sp.worth.get(k).copied().unwrap_or(0.0)).collect();
+    let goal_kind = match &sp.goal_kind { Some(k) => Some(names.kind(k)?), None => None };
+    let letters: Vec<String> = names.kinds.iter().map(|k| sp.letters.get(k).cloned().unwrap_or_else(|| k.clone())).collect();
+    Ok(Model { names, medium, worth: w, goal_kind, can_go: sp.can_go, ledger_worth: sp.ledger_worth.clone(), letters })
+}
+
+/// The schedule and its numbers as one plain value (it crosses threads).
+struct Config { p: Params, s: Schedule, table: Option<Chances> }
+
+type GameWire = (Option<String>, Vec<String>);
+type GameRes = Result<Vec<Option<PlySummary>>, String>;
+
+fn play_one(sp: &Spec, model: &Model, c: &Config, game: &GameWire) -> GameRes {
+    let g = match &game.0 { Some(f) => KernelGame::from_fen(&sp.variant, f)?, None => KernelGame::new(&sp.variant, 518)? };
+    play_game(&g, &game.1, model, &c.p, &c.s, c.table.as_ref())
+}
+
+/// Many games across `threads` std threads (each makes its own model once and takes the next game from a shared counter); the results are in the order of the games.
+fn run_games(sp: &Spec, c: &Config, games: &[GameWire], threads: usize) -> Vec<GameRes> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: std::sync::Mutex<Vec<Option<GameRes>>> = std::sync::Mutex::new((0..games.len()).map(|_| None).collect());
+    let workers = threads.max(1).min(games.len().max(1));
+    std::thread::scope(|sc| {
+        for _ in 0..workers {
+            sc.spawn(|| {
+                let model = build(sp);
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if i >= games.len() { break; }
+                    let r = match &model { Ok(m) => play_one(sp, m, c, &games[i]), Err(e) => Err(e.clone()) };
+                    slots.lock().unwrap()[i] = Some(r);
+                }
+            });
+        }
+    });
+    slots.into_inner().unwrap().into_iter().map(|x| x.unwrap_or_else(|| Err("not run".into()))).collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn config(reach_k: u32, max_open_exits: usize, clock: &str, max_steps: Option<usize>, budget_cost: Option<f64>, cost_model: Option<Vec<f64>>, chances: Option<Vec<(Vec<String>, Vec<(u32, (i64, i64))>)>>,
+          chance_horizon: u32, risk: f64) -> Result<Config, String> {
+    let costing = match cost_model { Some(v) if !v.is_empty() => Costing::Fixed(v), Some(_) => return Err("an empty cost model".into()), None => Costing::Measured };
+    Ok(Config { p: Params { reach_k, max_open_exits, ..Params::default() }, s: Schedule { clock: Clock::parse(clock)?, risk, chance_horizon, costing, max_steps, budget_cost, ..Schedule::default() },
+                table: chances.map(Chances::new) })
+}
+
+fn summary_dict(py: Python<'_>, n: &Names, x: &PlySummary) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("ply", x.ply)?;
+    d.set_item("mover", n.roles[x.mover].as_str())?;
+    d.set_item("steps", x.steps)?;
+    d.set_item("targets", x.targets.iter().map(|t| (t.owner.word().to_string(), n.kind_text(t.kind).to_string(), n.place_text(t.at).to_string(), t.worth, t.verdict.clone(), t.danger, t.stake, t.level)).collect::<Vec<_>>())?;
+    d.set_item("ways_us", x.ways[0].to_vec())?;
+    d.set_item("ways_them", x.ways[1].to_vec())?;
+    d.into_py_any(py)
 }
 
 type Unit3 = (String, String, String);
@@ -89,14 +166,9 @@ impl SheetModel {
     fn new(variant: &str, hops: Vec<Hop>, overs: Vec<Over>, takes: Vec<(String, String)>, worth: HashMap<String, f64>, goal_kind: Option<String>, can_go: usize,
            ledger_worth: HashMap<String, i64>, letters: HashMap<String, String>) -> PyResult<SheetModel> {
         let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
-        if hops.is_empty() { return Err(bad("the game's vocabulary names no medium of movement".into())); }
-        let g = KernelGame::new(variant, 518).map_err(bad)?;
-        let names = Names::new(g.place_names(), g.kind_names(), cs_game::Game::roles(&g));
-        let medium = Medium::new(&names, &hops, &overs, &takes).map_err(bad)?;
-        let w: Vec<f64> = names.kinds.iter().map(|k| worth.get(k).copied().unwrap_or(0.0)).collect();
-        let goal_kind = match goal_kind { Some(k) => Some(names.kind(&k).map_err(bad)?), None => None };
-        let letters: Vec<String> = names.kinds.iter().map(|k| letters.get(k).cloned().unwrap_or_else(|| k.clone())).collect();
-        Ok(SheetModel { variant: variant.to_string(), model: Model { names, medium, worth: w, goal_kind, can_go, ledger_worth, letters } })
+        let spec = Spec { variant: variant.to_string(), hops, overs, takes, worth, goal_kind, can_go, ledger_worth, letters };
+        let model = build(&spec).map_err(bad)?;
+        Ok(SheetModel { variant: variant.to_string(), model, spec })
     }
 
     /// read(position, reach_k=2, max_open_exits=1) -> {mover, seconds (the engine's own, before the data is handed over), units: [(side, kind, place, worth)], order: [(side, kind,
@@ -235,6 +307,39 @@ impl SheetModel {
             d.set_item("move_order", m.order.clone())?;
         }
         d.into_py_any(py)
+    }
+
+    /// game(start, moves, reach_k=2, max_open_exits=1, clock="present", max_steps=None, budget_cost=None, cost_model=None, chances=None, chance_horizon=4, risk=1.0) -> [None | summary per
+    /// ply]: the whole sheet of every position of a game (the start, then after each move), made in the engine without returning to the caller between plies; the same sheet as `sheet` makes
+    /// at that position (`run`, `finish_levels(1)`, `settle_flagged`) in brief: {ply, mover, steps, targets: [(owner, kind, place, worth, verdict kind, danger, stake, level reached)],
+    /// ways_us / ways_them: [confirmed, waiting, refuted, not settled] of the ways the deepest level settled, by the side that asks}. None for a position that is over. `start` None: the game's start.
+    #[pyo3(signature = (start, moves, reach_k=2, max_open_exits=1, clock="present", max_steps=None, budget_cost=None, cost_model=None, chances=None, chance_horizon=4, risk=1.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn game(&self, py: Python<'_>, start: Option<String>, moves: Vec<String>, reach_k: u32, max_open_exits: usize, clock: &str, max_steps: Option<usize>, budget_cost: Option<f64>,
+            cost_model: Option<Vec<f64>>, chances: Option<Vec<(Vec<String>, Vec<(u32, (i64, i64))>)>>, chance_horizon: u32, risk: f64) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let c = config(reach_k, max_open_exits, clock, max_steps, budget_cost, cost_model, chances, chance_horizon, risk).map_err(bad)?;
+        let res = play_one(&self.spec, &self.model, &c, &(start, moves)).map_err(bad)?;
+        let n = &self.model.names;
+        res.iter().map(|x| match x { Some(s) => summary_dict(py, n, s), None => Ok(py.None()) }).collect::<PyResult<Vec<_>>>()?.into_py_any(py)
+    }
+
+    /// games(games, threads, reach_k=2, ...) -> [the result of `game` per (start, moves)]: many games across `threads` std threads, the GIL released; each thread makes its own model.
+    #[pyo3(signature = (games, threads, reach_k=2, max_open_exits=1, clock="present", max_steps=None, budget_cost=None, cost_model=None, chances=None, chance_horizon=4, risk=1.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn games(&self, py: Python<'_>, games: Vec<GameWire>, threads: usize, reach_k: u32, max_open_exits: usize, clock: &str, max_steps: Option<usize>, budget_cost: Option<f64>,
+             cost_model: Option<Vec<f64>>, chances: Option<Vec<(Vec<String>, Vec<(u32, (i64, i64))>)>>, chance_horizon: u32, risk: f64) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let c = config(reach_k, max_open_exits, clock, max_steps, budget_cost, cost_model, chances, chance_horizon, risk).map_err(bad)?;
+        let spec = self.spec.clone();
+        let res = py.allow_threads(move || run_games(&spec, &c, &games, threads));
+        let n = &self.model.names;
+        let mut out = vec![];
+        for r in res {
+            let plies = r.map_err(bad)?;
+            out.push(plies.iter().map(|x| match x { Some(s) => summary_dict(py, n, s), None => Ok(py.None()) }).collect::<PyResult<Vec<_>>>()?);
+        }
+        out.into_py_any(py)
     }
 
     /// unit_loss(events, unit_id, start, horizon) -> None | {status, balance, place, ply, run, arrival, charged}: the loss of a unit followed through a game's real moves (`events`: one

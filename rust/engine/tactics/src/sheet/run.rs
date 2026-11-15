@@ -480,6 +480,67 @@ impl<'a, 'g, G: Game + Placed> Runner<'a, 'g, G> {
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------------------------- a game at a time (stage C, step three)
+
+/// What the sheet says of one target, compactly: whose unit it is, its kind, its place, its worth, the top kind of verdict the question reached, whether that kind says danger, the stake,
+/// and the deepest level asked (-1: none).
+#[derive(Debug, Clone)]
+pub struct TargetSummary { pub owner: Side, pub kind: super::Kind, pub at: super::Place, pub worth: f64, pub verdict: String, pub danger: bool, pub stake: f64, pub level: i32 }
+
+/// The whole sheet of one position of a game in brief: the steps taken, one entry per target, and the ways the deepest level settled, counted by the side that asks: for the side to move
+/// and for the other side, [confirmed, waiting, refuted, not settled].
+#[derive(Debug, Clone)]
+pub struct PlySummary { pub ply: usize, pub mover: cs_game::Role, pub steps: usize, pub targets: Vec<TargetSummary>, pub ways: [[usize; 4]; 2] }
+
+impl<'a, 'g, G: Game + Placed> Runner<'a, 'g, G> {
+    /// The brief of the sheet as it now stands (the questions, not the quiet one).
+    pub fn summary(&self, ply: usize) -> PlySummary {
+        let mut ways = [[0usize; 4]; 2];
+        let mut targets = vec![];
+        for q in self.qs.iter().filter(|q| !q.quiet) {
+            let t = q.target.unwrap();
+            let kind = q.verdict_kind();
+            targets.push(TargetSummary { owner: t.side, kind: t.kind, at: t.at, worth: self.r.worth_of(t.kind), danger: DANGER.contains(&kind.as_str()), verdict: kind,
+                                         stake: q.stake, level: q.findings.last().map_or(-1, |f| f.level as i32) });
+            if let Some(d) = q.deep_with_results(true) {
+                let row = &mut ways[q.asker.ix()];
+                match &d.detail {
+                    Detail::Frame(x) => for e in x.results.iter().filter(|e| e.way.is_some()) {
+                        row[match e.status { V::Confirmed => 0, V::Waiting => 1, V::Refuted => 2, V::Unsettled => 3 }] += 1;
+                    },
+                    Detail::Search(x) => for e in &x.results { row[match e.status { "confirmed" => 0, "refuted" => 2, _ => 3 }] += 1; },
+                    Detail::Census(_) => {}
+                }
+            }
+        }
+        PlySummary { ply, mover: self.r.mover, steps: self.steps.len(), targets, ways }
+    }
+}
+
+/// THE SHEET OF EVERY POSITION OF A GAME, without returning to the caller between plies: from the game's start the moves are played in turn and at each position (the start and the position
+/// after each move) the whole sheet is made (`run`, `finish_levels(1)`, `settle_flagged`) and kept in brief; None for a position that is over. Err when a move is not legal where it is played.
+pub fn play_game<G: Game + Placed>(g: &G, moves: &[String], m: &super::Model, p: &Params, s: &Schedule, table: Option<&Chances>) -> Result<Vec<Option<PlySummary>>, String> {
+    let mut st = g.initial();
+    let mut out = Vec::with_capacity(moves.len() + 1);
+    for ply in 0..=moves.len() {
+        match Reading::new(g, st.clone(), m) {
+            Ok(r) => {
+                let mut run = Runner::new(&r, p, s, table);
+                run.run(None);
+                run.finish_levels(1);
+                run.settle_flagged();
+                out.push(Some(run.summary(ply)));
+            }
+            Err(_) => out.push(None),
+        }
+        if ply < moves.len() {
+            let mv = g.moves(&st).into_iter().find(|x| g.move_name(&st, x) == moves[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", moves[ply]))?;
+            st = g.apply(&st, &mv);
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
