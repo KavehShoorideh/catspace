@@ -97,6 +97,7 @@ class Params:
     clock: str = "present"             # the order of steps in `run`: "present" (stake x urgency over cost), "chance" (chance x stake at risk over cost), "plain" (the first order, each question to full depth in turn)
     move_question: bool = False        # after the questions, the question of each legal move (`move_sheet`) is asked and kept on the sheet (False: as before)
     recheck_floor: float = 0.0         # the single shared agenda: a woken fact whose stake (the worth of its unit) is below this is not rechecked at all (stale, not re-read); 0 = off
+    cost_model: "tuple | None" = None  # THE COST OF A STEP as the schedule reads it: None = its measured time (the order then depends on the machine); a tuple = seconds per level (the last for every deeper level), a stated number in place of the measurement, which makes the order a function of the position (the form the Rust sheet is compared in)
     risk: float = 1.0                  # THE TOLERANCE FOR RISK: the stake at risk of my own unit is risk x its high bound + (1 - risk) x the midpoint of its bounds; 1 = the worst case, 0 = the expected value
 
 
@@ -3169,7 +3170,7 @@ def step(q: Question, r: Reading, params: Params = Params()) -> Finding:
         status, text, detail = level1(q, r, params)
     else:
         status, text, detail = level_deep(q, r, params)
-    cost = time.perf_counter() - t0
+    cost = time.perf_counter() - t0 if params.cost_model is None else params.cost_model[min(level, len(params.cost_model) - 1)]
     value = detail.get("value")
     new = status == LIVE and (value is None or q.best_value is None or value > q.best_value)
     f = Finding(q, level, status, text, cost, new, value, detail.get("line", ()), detail)

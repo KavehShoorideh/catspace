@@ -35,6 +35,28 @@ def read(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" =
     return sheet_model.read(position, p.reach_k, p.max_open_exits)
 
 
+def chances_wire(path: "str | None") -> "list | None":
+    """The chance table the Python sheet reads from `path` (`QS.load_chances`), as the Rust `sheet` takes it: [(key, [(horizon, (taken, total))])]."""
+    if not path:
+        return None
+    if path not in _WIRE:
+        _WIRE[path] = [(list(k), [(int(h), (int(v[0]), int(v[1]))) for h, v in c.items()]) for k, c in QS.load_chances(path).cells.items()]
+    return _WIRE[path]
+
+
+_WIRE: dict = {}
+
+
+def sheet(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" = None, max_steps: "int | None" = None, budget_cost: "float | None" = None, only: "list | None" = None,
+          finish: bool = True, moves: bool = False) -> dict:
+    """STAGE C: the whole sheet of `position` in Rust: the schedule under `params.clock` (present, chance, plain), `params.cost_model` (None: the measured time of each step), `params.chances`,
+    `params.risk`; with `finish` (the default) then `finish_levels(1)` and `settle_flagged`, which is what `QS.read_position` does. `only`: [(side, kind, place)] to ask about. ValueError when
+    the position is over. See `SheetModel.sheet` for the result."""
+    p = params or QS.Params()
+    cm = list(p.cost_model) if p.cost_model else None
+    return sheet_model.sheet(position, p.reach_k, p.max_open_exits, p.clock, max_steps, budget_cost, cm, chances_wire(p.chances), p.chance_horizon, p.risk, only, finish, moves)
+
+
 def move_sheet(sheet_model, env: "QS.Env", position: str, params: "QS.Params | None" = None, max_moves: "int | None" = None) -> dict:
     """STAGE C1: the question of each legal move of `position` in the order asked ({order, unread, results, seconds}; see `SheetModel.move_sheet`; ValueError when the position is over)."""
     p = params or QS.Params()

@@ -67,12 +67,14 @@ pub struct Entry {
     pub cut: Option<bool>,
     pub routes_tried: Option<usize>,
     pub answer: Option<String>,
+    /// A confirmed way that takes n moves while another side's way on a unit of at least the same stake needs fewer: (that way's moves, the unit it is on, whose way).
+    pub time: Option<(u32, Unit, Side)>,
 }
 
 impl Entry {
     fn blank(way: Option<Way>, status: V) -> Entry {
         Entry { way, status, value: 0.0, line: vec![], source: "route", open: false, nodes: None, mv: None, route: None, obstacles: vec![], first_obstacles: None, stops: vec![], alts: vec![],
-                breaks: vec![], duties: None, held_back: false, skipped: false, dead_routes: None, unread_routes: None, without_stopper: None, tried: None, cut: None, routes_tried: None, answer: None }
+                breaks: vec![], duties: None, held_back: false, skipped: false, dead_routes: None, unread_routes: None, without_stopper: None, tried: None, cut: None, routes_tried: None, answer: None, time: None }
     }
     fn from_solved(way: Option<Way>, s: &Solved, with_nodes: bool) -> Entry {
         let mut e = Entry::blank(way, if s.value > 0.0 { V::Confirmed } else { V::Refuted });
@@ -118,9 +120,16 @@ pub enum Detail { Frame(FrameDetail), Search(SearchDetail), Census(CensusDetail)
 #[derive(Debug, Clone)]
 pub struct Finding { pub status: Status, pub detail: Detail }
 
+/// What the time obstacle reads of another question of the sheet: its asker and stake, its target, and the ways its first deep step settled (their moves, and whether each is CONFIRMED
+/// or WAITING).
+#[derive(Debug, Clone)]
+pub struct Other { pub asker: Side, pub stake: f64, pub quiet: bool, pub target: Option<Unit>, pub ways: Vec<(u32, bool)> }
+
 pub struct Settler<'a, 'g, G: Game + Placed> {
     pub r: &'a Reading<'g, G>,
     pub p: &'a Params,
+    /// The sheet's other questions, in the order of the sheet (kept by the schedule; read by `time_obstacle`).
+    pub others: RefCell<Vec<Other>>,
     stands: RefCell<HashMap<(Unit, Side), Rc<Solved>>>,
     after: RefCell<HashMap<(Unit, Side, Way), Rc<Solved>>>,
     duty: RefCell<HashMap<(Side, Place, Option<String>), Rc<Leaving>>>,
@@ -135,7 +144,7 @@ pub struct Settler<'a, 'g, G: Game + Placed> {
 impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
     pub fn new(r: &'a Reading<'g, G>, p: &'a Params) -> Self {
         Settler { r, p, stands: Default::default(), after: Default::default(), duty: Default::default(), obstacle: Default::default(), settled: Default::default(), sign: Default::default(),
-                  sign_child: Default::default(), searched: Default::default(), census: Default::default() }
+                  sign_child: Default::default(), searched: Default::default(), census: Default::default(), others: Default::default() }
     }
 
     /// The position the asker reads from: the position as it stands when the asker is to move, else the game's pass of it (None when refused).
@@ -561,11 +570,27 @@ impl<'a, 'g, G: Game + Placed> Settler<'a, 'g, G> {
         entry.held_back = true;
     }
 
+    /// A confirmed way that takes n moves, while a confirmed or waiting way of the OTHER side on a unit of at least the same stake, already held (the sheet's other questions), needs
+    /// fewer: the obstacle `time`. Read only from what is held, nothing searched.
+    fn time_obstacle(&self, q: &Q, way: &Way, entry: &mut Entry) {
+        let n = way.d;
+        let mut best: Option<(u32, Unit, Side)> = None;
+        for o in self.others.borrow().iter() {
+            let Some(t) = o.target else { continue };
+            if o.quiet || o.asker == q.asker || o.stake < q.stake { continue; }
+            for (d, held) in &o.ways {
+                if *d >= 1 && *held && *d < n && best.is_none_or(|b| *d < b.0) { best = Some((*d, t, o.asker)); }
+            }
+        }
+        entry.time = best;
+    }
+
     pub fn settle_way(&self, q: &mut Q, way: &Way) -> Rc<Entry> {
         let key = (q.t, q.asker, *way);
         if let Some(e) = self.settled.borrow().get(&key) { return e.clone(); }
         let mut e = self.settle_inner(q, way);
         self.apply_duties(q, way, &mut e);
+        if e.status == V::Confirmed { self.time_obstacle(q, way, &mut e); }
         let e = Rc::new(e);
         self.settled.borrow_mut().insert(key, e.clone());
         e

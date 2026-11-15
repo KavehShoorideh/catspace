@@ -362,3 +362,52 @@ pub fn read<G: Game + Placed>(r: &Reading<G>, p: &Params) -> Sheet {
     }
     Sheet { order, level0: l0, level1: l1 }
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------- the goal unit's weak places
+
+/// A weak place of the goal unit (the Python sheet's `weak_places`): its own place or a place next to it where the guards are not fewer than the strikers, with the units of the asker that
+/// could be brought to strike it.
+#[derive(Debug, Clone)]
+pub struct WeakPlace {
+    pub place: Place,
+    pub guards: Vec<Unit>,
+    pub strikers: Vec<Unit>,
+    /// guards - strikers + 1: the units that must be brought
+    pub need: usize,
+    /// (hops, unit, the place it would strike from), nearest first
+    pub candidates: Vec<(u32, Unit, Place)>,
+}
+
+/// The goal unit `t`'s own place and each place next to it (where it could move on the empty board, not held by its own side): the units of its side that guard the place and the units of the
+/// asker that bear on it now. Where the guards are not fewer than the strikers, the question is whether `need` more units can be brought within `reach_k` hops.
+pub fn weak_places<G: Game + Placed>(r: &Reading<G>, t: &Unit, asker: Side, p: &Params) -> Vec<WeakPlace> {
+    let med = &r.m.medium;
+    let own: Vec<Place> = r.units.iter().filter(|u| u.side == t.side && *u != t).map(|u| u.at).collect();
+    let mut near: Vec<Place> = vec![t.at];
+    let mut hops: Vec<Place> = med.hops(t.kind, r.owner(t.side), t.at).iter().map(|x| x.0).collect();
+    hops.sort();
+    near.extend(hops);
+    let mut out = vec![];
+    for pl in near {
+        if own.contains(&pl) { continue; }
+        let guards: Vec<Unit> = r.units.iter().filter(|u| u.side == t.side && *u != t && r.strikes(u, pl)).copied().collect();
+        let strikers: Vec<Unit> = r.units.iter().filter(|u| u.side == asker && r.strikes(u, pl)).copied().collect();
+        if guards.len() < strikers.len() { continue; }
+        let mut cands: Vec<(u32, Unit, Place)> = vec![];
+        for u in r.units.iter().filter(|u| u.side == asker && !strikers.contains(u)) {
+            let role = r.owner(u.side);
+            let mut best: Option<(u32, Place)> = None;
+            let mut places: Vec<Place> = med.strike_places(u.kind, role, pl).to_vec();
+            places.sort();
+            for a in places {
+                if let Some(d) = med.distance(u.kind, role, u.at, a) {
+                    if d > 0 && d <= p.reach_k && best.is_none_or(|b| d < b.0) { best = Some((d, a)); }
+                }
+            }
+            if let Some((d, a)) = best { cands.push((d, *u, a)); }
+        }
+        cands.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.kind.cmp(&b.1.kind)).then_with(|| a.1.at.cmp(&b.1.at)));
+        out.push(WeakPlace { place: pl, need: guards.len() - strikers.len() + 1, guards, strikers, candidates: cands });
+    }
+    out
+}

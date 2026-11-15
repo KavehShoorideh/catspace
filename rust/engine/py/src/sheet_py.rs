@@ -4,10 +4,11 @@
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
 use cs_tactics::sheet::cf::CfObstacle;
-use cs_tactics::sheet::levels::{self, Level0, Level1, Obstacle, Route, Way, Why};
+use cs_tactics::sheet::levels::{self, Level0, Level1, Obstacle, Route, WeakPlace, Way, Why};
 use cs_tactics::sheet::medium::Medium;
 use cs_tactics::sheet::mv::{self, Event, Loss, MoveAnswer};
 use cs_tactics::sheet::reading::Reading;
+use cs_tactics::sheet::run::{Chances, Clock, Costing, Fnd, Found, Qn, Runner, Schedule, DANGER};
 use cs_tactics::sheet::settle::{Ask, Cornering, Detail, Duty, Entry, Finding, Q, Settler};
 use cs_tactics::sheet::walk::Stop;
 use cs_tactics::sheet::{Model, Names, Params, Side, Unit};
@@ -192,6 +193,50 @@ impl SheetModel {
         d.into_py_any(py)
     }
 
+    /// sheet(position, reach_k=2, max_open_exits=1, clock="present", max_steps=None, budget_cost=None, cost_model=None, chances=None, chance_horizon=4, risk=1.0, only=None, finish=True,
+    /// moves=False) -> the whole sheet of one position (stage C): the schedule `run` under the clock (`present`, `chance`, `plain`), then, with `finish`, `finish_levels(1)` and `settle_flagged`
+    /// (what the Python `read_position` does). `cost_model`: seconds per level (the last for every deeper level) in place of the measured time of each step, which makes the order a function
+    /// of the position; `chances`: the table of the Python `Chances` as [(key, [(horizon, (taken, total))])]; `only`: [(side, kind, place)] to ask about. Returns {mover, seconds, questions,
+    /// steps, moves}: each question {target, asker, stake, rank, goal, quiet, level, state, status, urgency, spent, live_by_level1, closed_at, best_value, waiting, key, danger, bounds, at_risk,
+    /// findings: [{level, status, new, value, cost, mode, detail}]}; steps [(question, level, status, mode, cost)].
+    #[pyo3(signature = (position, reach_k=2, max_open_exits=1, clock="present", max_steps=None, budget_cost=None, cost_model=None, chances=None, chance_horizon=4, risk=1.0, only=None, finish=true, moves=false))]
+    #[allow(clippy::too_many_arguments)]
+    fn sheet(&self, py: Python<'_>, position: &str, reach_k: u32, max_open_exits: usize, clock: &str, max_steps: Option<usize>, budget_cost: Option<f64>, cost_model: Option<Vec<f64>>,
+             chances: Option<Vec<(Vec<String>, Vec<(u32, (i64, i64))>)>>, chance_horizon: u32, risk: f64, only: Option<Vec<Unit3>>, finish: bool, moves: bool) -> PyResult<PyObject> {
+        let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+        let t0 = std::time::Instant::now();
+        let g = KernelGame::from_fen(&self.variant, position).map_err(bad)?;
+        let s = cs_game::Game::initial(&g);
+        let r = Reading::new(&g, s, &self.model).map_err(bad)?;
+        let n = &self.model.names;
+        let p = Params { reach_k, max_open_exits, ..Params::default() };
+        let costing = match cost_model { Some(v) if !v.is_empty() => Costing::Fixed(v), Some(_) => return Err(bad("an empty cost model".into())), None => Costing::Measured };
+        let sched = Schedule { clock: Clock::parse(clock).map_err(bad)?, risk, chance_horizon, costing, max_steps, budget_cost, ..Schedule::default() };
+        let table = chances.map(Chances::new);
+        let only_units: Option<Vec<Unit>> = match only {
+            Some(v) => Some(v.iter().map(|(side, kind, place)| Ok(Unit { side: if side == "us" { Side::Us } else { Side::Them }, kind: n.kind(kind)?, at: n.place(place)? })).collect::<Result<Vec<_>, String>>().map_err(bad)?),
+            None => None,
+        };
+        let mut run = Runner::new(&r, &p, &sched, table.as_ref());
+        run.run(only_units.as_deref());
+        if finish { run.finish_levels(1); run.settle_flagged(); }
+        let mv = if moves { Some(run.settler.move_sheet(None)) } else { None };
+        let compute = t0.elapsed().as_secs_f64();
+        let d = PyDict::new(py);
+        d.set_item("mover", n.roles[r.mover].as_str())?;
+        d.set_item("seconds", compute)?;
+        d.set_item("units", r.units.iter().map(|u| (u.side.word().to_string(), n.kind_text(u.kind).to_string(), n.place_text(u.at).to_string(), r.worth_of(u.kind))).collect::<Vec<_>>())?;
+        let mut qs = vec![];
+        for q in &run.qs { qs.push(question_dict(py, n, q, sched.risk)?); }
+        d.set_item("questions", qs)?;
+        d.set_item("steps", run.steps.iter().map(|s| (s.question, s.level, s.status.word().to_string(), s.mode.to_string(), s.cost)).collect::<Vec<_>>())?;
+        if let Some(m) = mv {
+            d.set_item("moves", m.results.iter().map(|a| answer_dict(py, n, a)).collect::<PyResult<Vec<_>>>()?)?;
+            d.set_item("move_order", m.order.clone())?;
+        }
+        d.into_py_any(py)
+    }
+
     /// unit_loss(events, unit_id, start, horizon) -> None | {status, balance, place, ply, run, arrival, charged}: the loss of a unit followed through a game's real moves (`events`: one
     /// (mover id, mover side, mover kind, destination, taken (id, side, kind) | None, taken_at | None, arrives | None) per move). `charged` is the move a lost unit is charged to.
     fn unit_loss(&self, py: Python<'_>, events: Vec<EventWire>, unit_id: i64, start: usize, horizon: usize) -> PyResult<PyObject> {
@@ -205,7 +250,63 @@ impl SheetModel {
     }
 }
 
-type EventWire = (i64, String, String, String, Option<(i64, String, String)>, Option<String>, Option<String>);
+fn weak_of(n: &Names, w: &WeakPlace) -> (String, Vec<Unit3>, Vec<Unit3>, usize, Vec<(u32, Unit3, String)>) {
+    (n.place_text(w.place).to_string(), w.guards.iter().map(|u| unit3(n, u)).collect(), w.strikers.iter().map(|u| unit3(n, u)).collect(), w.need,
+     w.candidates.iter().map(|(h, u, a)| (*h, unit3(n, u), n.place_text(*a).to_string())).collect())
+}
+
+fn fnd_dict(py: Python<'_>, n: &Names, f: &Fnd) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("level", f.level)?;
+    d.set_item("status", f.status.word())?;
+    d.set_item("new", f.new)?;
+    d.set_item("value", f.value)?;
+    d.set_item("cost", f.cost)?;
+    d.set_item("mode", f.mode())?;
+    match &f.found {
+        Found::Quiet { unit, strikes, places } => {
+            let q = PyDict::new(py);
+            q.set_item("unit", unit3(n, unit))?; q.set_item("strikes", *strikes)?; q.set_item("places", *places)?;
+            d.set_item("detail", q)?;
+        }
+        Found::L0(l) => d.set_item("detail", level0_dict(py, n, l)?)?,
+        Found::L1(l, weak) => {
+            let dd = level1_dict(py, n, l)?;
+            if let Some(w) = weak { dd.bind(py).downcast::<PyDict>()?.set_item("weak", w.iter().map(|x| weak_of(n, x)).collect::<Vec<_>>())?; }
+            d.set_item("detail", dd)?;
+        }
+        Found::Deep(x) => d.set_item("detail", finding_dict(py, n, x)?)?,
+    }
+    d.into_py_any(py)
+}
+
+fn question_dict(py: Python<'_>, n: &Names, q: &Qn, risk: f64) -> PyResult<PyObject> {
+    let d = PyDict::new(py);
+    d.set_item("target", q.target.as_ref().map(|u| unit3(n, u)))?;
+    d.set_item("asker", q.asker.word())?;
+    d.set_item("stake", q.stake)?;
+    d.set_item("rank", q.rank)?;
+    d.set_item("goal", q.goal)?;
+    d.set_item("quiet", q.quiet)?;
+    d.set_item("level", q.level)?;
+    d.set_item("state", if q.open { "open" } else { "closed" })?;
+    d.set_item("status", q.status.word())?;
+    d.set_item("urgency", q.urgency)?;
+    d.set_item("spent", q.spent)?;
+    d.set_item("live_by_level1", q.live_by_level1)?;
+    d.set_item("closed_at", q.closed_at)?;
+    d.set_item("best_value", q.best_value)?;
+    d.set_item("waiting", q.waiting)?;
+    let key = q.question_key();
+    d.set_item("danger", DANGER.contains(&key[1].as_str()))?;
+    d.set_item("key", key.to_vec())?;
+    d.set_item("bounds", q.stake_bounds())?;
+    d.set_item("at_risk", q.stake_at_risk(risk))?;
+    d.set_item("findings", q.findings.iter().map(|f| fnd_dict(py, n, f)).collect::<PyResult<Vec<_>>>()?)?;
+    d.into_py_any(py)
+}
+
+type EventWire =(i64, String, String, String, Option<(i64, String, String)>, Option<String>, Option<String>);
 
 fn event_of(e: EventWire) -> Event { Event { mover: (e.0, e.1, e.2), dest: e.3, taken: e.4, taken_at: e.5, arrives: e.6 } }
 
@@ -294,6 +395,7 @@ fn entry_dict(py: Python<'_>, n: &Names, e: &Entry) -> PyResult<PyObject> {
     d.set_item("cut", e.cut)?;
     d.set_item("routes_tried", e.routes_tried)?;
     d.set_item("answer", e.answer.clone())?;
+    d.set_item("time", e.time.as_ref().map(|(m, u, side)| (*m, unit3(n, u), side.word().to_string())))?;
     d.into_py_any(py)
 }
 

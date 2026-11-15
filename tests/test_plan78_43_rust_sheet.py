@@ -28,7 +28,7 @@ EN_PASSANT = "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"
 FIXED = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, PAWN_TAKES, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, PROMOTING, EN_PASSANT]
 ROOT = Path(__file__).resolve().parents[1]
 SHEET = ROOT / "rust" / "engine" / "tactics" / "src" / "sheet"
-NEW_SOURCES = [SHEET / n for n in ("mod.rs", "medium.rs", "reading.rs", "goal_report.rs", "levels.rs", "cf.rs", "frame.rs", "settle.rs", "walk.rs", "mv.rs")] + [ROOT / "rust" / "engine" / "game" / "src" / "placed.rs", ROOT / "rust" / "engine" / "py" / "src" / "sheet_py.rs"]
+NEW_SOURCES = [SHEET / n for n in ("mod.rs", "medium.rs", "reading.rs", "goal_report.rs", "levels.rs", "cf.rs", "frame.rs", "settle.rs", "walk.rs", "mv.rs", "run.rs")] + [ROOT / "rust" / "engine" / "game" / "src" / "placed.rs", ROOT / "rust" / "engine" / "py" / "src" / "sheet_py.rs"]
 CHESS_WORDS = r"\b(king|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check|mate|stalemate|uci|fen|san|chess\w*|shakmaty|[a-h][1-8])\b"
 
 
@@ -270,3 +270,109 @@ def test_the_loss_of_a_unit_agrees_with_the_python_form_on_a_game_with_exchanges
                 else:
                     assert rs["charged"] is None
     assert found > 0 and lost > 0
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ stage C, step two: the whole sheet
+
+from catspace.incubator.analyst.discovery import sheet_rust_sheet_measure as SM
+
+SHEETS = [START, MIDDLE, HANGING, PAWNS, KING_ROUTE, OWN_IN_WAY, THEIR_IN_WAY, CONFINED_NEAR, IN_CHECK, CASTLING, MIDDLE_2, TWO_ROUTES, BARE]
+
+
+def _sheet_both(state, fen, fields, **args):
+    env = state["env"]
+    params = SM.params_of(fields)
+    if "budget_cost" in args:
+        py = SM._budget_python(env, WORTH, params, fen, args["budget_cost"])
+    else:
+        py = Q.read_position(env, WORTH, params, fen, None, light=True, **args)
+    rs = SR.sheet(state["model"], env, fen, params, max_steps=args.get("max_steps"), budget_cost=args.get("budget_cost"))
+    return SM.diff_sheets(SM.canon_python(py, params), SM.canon_rust(rs)), py, rs
+
+
+@pytest.mark.parametrize("fen", SHEETS)
+@pytest.mark.parametrize("clock", ["present", "plain", "chance"])
+def test_the_whole_sheet_agrees_with_the_python_sheet_under_each_clock(state, fen, clock):
+    """The schedule under a stated cost model: the order of the steps, every question, every finding, the stakes and the key of each record are the Python sheet's."""
+    fields = {"clock": clock}
+    if clock == "chance":
+        if not Path(SM.CHANCES).exists():
+            pytest.skip("no chance table")
+        fields["chances"] = SM.CHANCES
+    try:
+        diffs, _py, _rs = _sheet_both(state, fen, fields)
+    except ValueError:
+        pytest.skip("the position is over")
+    assert diffs == [], diffs[:3]
+
+
+@pytest.mark.parametrize("fen", [MIDDLE, MIDDLE_2])
+def test_a_step_budget_and_a_cost_budget_stop_the_schedule_where_the_python_sheet_stops(state, fen):
+    for args in ({"max_steps": 7}, {"max_steps": 20}, {"budget_cost": 0.05}, {"budget_cost": 0.3}):
+        diffs, py, rs = _sheet_both(state, fen, {"clock": "present"}, **args)
+        assert diffs == [], (args, diffs[:3])
+    d1 = _sheet_both(state, fen, {"clock": "present"}, max_steps=7)[2]
+    d2 = _sheet_both(state, fen, {"clock": "present"}, max_steps=20)[2]
+    assert [x[:2] for x in d1["steps"]] != [x[:2] for x in d2["steps"]]                       # the budget is really read (finish_levels makes up the rest in the first order)
+
+
+def test_the_clocks_take_the_steps_in_different_orders(state):
+    """The comparison has something to tell apart: the same position under the three clocks gives three different orders of steps."""
+    orders = {}
+    for clock in ("present", "plain"):
+        orders[clock] = [(s[0], s[1]) for s in _sheet_both(state, MIDDLE, {"clock": clock})[2]["steps"]]
+    assert orders["present"] != orders["plain"]
+    if Path(SM.CHANCES).exists():
+        orders["chance"] = [(s[0], s[1]) for s in _sheet_both(state, MIDDLE, {"clock": "chance", "chances": SM.CHANCES})[2]["steps"]]
+        assert orders["chance"] != orders["plain"]
+
+
+def test_a_different_cost_model_changes_the_order_in_both_forms(state):
+    """The measured time is replaced by a stated cost: another stated cost gives another order, in Python and in Rust alike (and they still agree)."""
+    env = state["env"]
+    fast = Q.Params(compare_old=False, cost_model=(0.002, 0.01, 0.03))
+    slow = Q.Params(compare_old=False, cost_model=(0.002, 0.2, 0.001))
+    got = {}
+    for name, params in (("fast", fast), ("slow", slow)):
+        py = Q.read_position(env, WORTH, params, MIDDLE, None, light=True, max_steps=100)
+        rs = SR.sheet(state["model"], env, MIDDLE, params, max_steps=100)
+        assert SM.diff_sheets(SM.canon_python(py, params), SM.canon_rust(rs)) == []
+        got[name] = [(s[0], s[1]) for s in rs["steps"]]
+    assert got["fast"] != got["slow"]
+
+
+def test_the_sheet_names_the_danger_the_time_obstacle_and_the_weak_places(state):
+    """Parts the sheet adds to the questions: danger verdicts per target, the goal unit's weak places, and the quiet question when nothing else is open."""
+    _d, py, rs = _sheet_both(state, "7k/8/8/8/8/8/8/R3K3 w - - 0 1", {"clock": "present"})
+    keys = [q["key"] for q in rs["questions"]]
+    assert all(len(k) == 4 for k in keys) and any(q["goal"] for q in rs["questions"])
+    assert any(q["danger"] for q in rs["questions"]) or any(q["key"][1] in ("refuted", "waiting", "idle0", "idle1", "closed1", "closed2", "closed3") for q in rs["questions"])
+    goal = next(q for q in rs["questions"] if q["goal"] and q["target"][0] == "them")
+    assert "weak" in goal["findings"][1]["detail"]
+
+
+def test_only_asks_about_the_units_named_and_keeps_the_ranks(state):
+    env = state["env"]
+    only = [("them", "queen", "d5"), ("us", "rook", "d2")]
+    params = SM.params_of({"clock": "present"})
+    rs = SR.sheet(state["model"], env, HANGING, params, only=only)
+    asked = [q for q in rs["questions"] if not q["quiet"]]
+    assert sorted(tuple(q["target"]) for q in asked) == sorted(only)
+    py = Q.read_position(env, WORTH, params, HANGING, None, light=True)
+    ranks = {(q.target.side, q.target.kind, Q.place_text(q.target.at)): q.rank for q in py.questions if not q.quiet}
+    assert all(q["rank"] == ranks[tuple(q["target"])] for q in asked)
+
+
+def test_a_wrong_schedule_is_seen_as_a_difference(state):
+    """The comparison can fire: the Python sheet under one clock set against the Rust sheet under another differs."""
+    env = state["env"]
+    py = Q.read_position(env, WORTH, SM.params_of({"clock": "plain"}), MIDDLE, None, light=True)
+    rs = SR.sheet(state["model"], env, MIDDLE, SM.params_of({"clock": "present"}))
+    assert SM.diff_sheets(SM.canon_python(py, SM.params_of({"clock": "plain"})), SM.canon_rust(rs))
+
+
+def test_the_default_cost_is_still_the_measured_time(state):
+    """`Params.cost_model` is None by default: the Python sheet's costs are measurements (not the stated ones)."""
+    assert Q.Params().cost_model is None
+    py = Q.read_position(state["env"], WORTH, Q.Params(compare_old=False), HANGING, None, light=True)
+    assert all(s.cost not in SM.COST_MODEL for s in py.steps)
