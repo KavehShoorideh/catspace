@@ -18,6 +18,7 @@ pub mod goal_report;
 pub mod levels;
 pub mod medium;
 pub mod mv;
+pub mod patterns;
 pub mod reading;
 pub mod run;
 pub mod settle;

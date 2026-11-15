@@ -265,6 +265,47 @@ impl Static {
     }
 }
 
+impl Static {
+    /// PLAN 78.53, A DIAGNOSTIC AND NOT BUILT INTO THE GRAPH: the shut lines of the units that do NOT move, which `why_not` cannot say (it answers for the side to move only), tried through
+    /// `Placed::without`. It fails where the game refuses the board with the blocker off (a side that is not to move left exposed to a line), which is why the position part keeps the
+    /// shut lines of the side to move only (`first_blocker_check` measures the gap against `why_not`). Game-free, through `Placed::without`: for a unit and a line it
+    /// bears along, the unit standing on its farthest bearing place on one side is the blocker; the places the unit would bear on beyond the blocker with the blocker taken off the board (and
+    /// not held by the unit's own side) are shut by it, the blocker the one unit between. So these relation nodes are the first-blocker form: the nodes of the mover with exactly one unit between
+    /// are the same set (tested on the mover against `why_not`).
+    pub fn shut_lines_other<G: Game + Placed>(&self, g: &G, s: &G::State, mover: Role, part: &mut PositionPart, ns: u32) {
+        for ui in 0..part.units.len() {
+            let u = part.units[ui];
+            if u.owner == mover { continue; }
+            self.first_blocker_shuts(g, s, ui, part, ns);
+        }
+    }
+
+    /// The first-blocker shut relations of one unit, added to the part.
+    pub fn first_blocker_shuts<G: Game + Placed>(&self, g: &G, s: &G::State, ui: usize, part: &mut PositionPart, ns: u32) {
+        let u = part.units[ui];
+        for &(l, i) in &self.place_lines[u.at as usize] {
+            let ends: Vec<i32> = part.bears.iter().filter(|r| r.unit == ui && r.along.contains(&l)).map(|r| self.index_on(l, r.place) - i as i32).collect();
+            for sign in [1i32, -1] {
+                let Some(far) = ends.iter().filter(|d| d.signum() == sign).map(|d| d.abs()).max() else { continue };
+                let line = &self.lines[l as usize];
+                let k = i as i32 + sign * far;
+                if k < 0 || k as usize >= line.places.len() { continue; }
+                let blocker = line.places[k as usize];
+                if part.occupant[blocker as usize] == 0 { continue; }
+                let Some(s2) = g.without(s, blocker) else { continue };
+                for q in g.bearing_from(&s2, u.owner, u.kind, u.at) {
+                    let j = self.index_on(l, q);
+                    if j < 0 || (j - k) * sign <= 0 { continue; }
+                    let held = part.occupant[q as usize];
+                    if held != 0 && part.units[held as usize - 1].owner == u.owner { continue; }
+                    let r = self.relation(part, NodeType::Shut, ui, q, ns);
+                    part.shuts.push(r);
+                }
+            }
+        }
+    }
+}
+
 impl PositionPart {
     /// The longest run of places on a line with no unit standing on them.
     pub fn open_length(&self, st: &Static, line: usize) -> usize {

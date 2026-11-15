@@ -5,6 +5,8 @@ use cs_game::placed::Placed;
 use cs_game::Game;
 use cs_tactics::sheet::base_graph::{LinkRec, LinkType, NodeRec, NodeType, PositionPart, Static};
 use cs_tactics::sheet::base_statements;
+use cs_tactics::sheet::patterns::{self, Board};
+use cs_tactics::sheet::patterns::{FxHashMap, FxHashSet};
 use cs_tactics::sheet::Names;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -24,7 +26,48 @@ fn nodes_of(v: &[NodeRec]) -> Vec<NodeWire> { v.iter().map(|n| (n.kind.word().to
 fn links_of(v: &[LinkRec]) -> Vec<LinkWire> { v.iter().map(|l| (l.kind.word().to_string(), l.a, l.b, l.via, l.value)).collect() }
 fn bad(e: String) -> PyErr { pyo3::exceptions::PyValueError::new_err(e) }
 
+type GameWire = (Option<String>, Vec<String>);
+
+/// The boards of the wanted plies of one game: (row number within the call, the board, the position part's units by (owner is the side to move, kind) counts are made by the callers).
+fn walk_rows<T>(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wanted: &[usize], mut f: impl FnMut(usize, &Board, &cs_tactics::sheet::base_graph::PositionPart) -> T) -> Result<Vec<Option<T>>, String> {
+    let g = match &game.0 { Some(fen) => KernelGame::from_fen(variant, fen)?, None => KernelGame::new(variant, 518)? };
+    let mut s = g.initial();
+    let last = wanted.iter().copied().max().map_or(0, |m| m + 1);
+    let mut out: Vec<Option<T>> = (0..wanted.len()).map(|_| None).collect();
+    for ply in 0..last.min(game.1.len() + 1) {
+        for (i, _) in wanted.iter().enumerate().filter(|(_, w)| **w == ply) {
+            let p = st.position(&g, &s);
+            if p.mover.is_some() { let b = Board::new(st, &p, goal); out[i] = Some(f(i, &b, &p)); }
+        }
+        if ply < game.1.len() {
+            let mv = g.find_move(&s, &game.1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", game.1[ply]))?;
+            s = g.apply(&s, &mv);
+        }
+    }
+    Ok(out)
+}
+
+fn run_pool<T: Send>(n: usize, threads: usize, f: impl Fn(usize) -> Result<T, String> + Sync) -> Result<Vec<T>, String> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: std::sync::Mutex<Vec<Option<Result<T, String>>>> = std::sync::Mutex::new((0..n).map(|_| None).collect());
+    std::thread::scope(|sc| {
+        for _ in 0..threads.max(1).min(n.max(1)) {
+            sc.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if i >= n { break; }
+                let r = f(i);
+                slots.lock().unwrap()[i] = Some(r);
+            });
+        }
+    });
+    slots.into_inner().unwrap().into_iter().map(|x| x.unwrap_or_else(|| Err("not run".into()))).collect()
+}
+
 impl BaseGraph {
+    fn goal_of(&self, goal_kind: &Option<String>) -> PyResult<Option<u8>> {
+        match goal_kind { Some(k) => Ok(Some(self.st.names.kind(k).map_err(bad)?)), None => Ok(None) }
+    }
+
     fn game(&self, fen: &str) -> PyResult<(KernelGame, <KernelGame as Game>::State)> {
         let g = KernelGame::from_fen(&self.variant, fen).map_err(bad)?;
         let s = g.initial();
@@ -133,5 +176,131 @@ impl BaseGraph {
         d.set_item("node_types", NodeType::ALL.iter().map(|t| t.word()).collect::<Vec<_>>())?;
         d.set_item("link_types", LinkType::ALL.iter().map(|t| t.word()).collect::<Vec<_>>())?;
         d.into_py_any(py)
+    }
+
+    /// pattern_freq(games, rows, size, levels, allowed, goal_kind, threads, keep) -> (found per level, [(hash, level, support, total, bytes, parts, free_parent)] the `keep` most supported per level):
+    /// the keys of the patterns of `size` relation nodes over the wanted plies (`rows[game]`) of the games. `allowed`, for a size above 1, the kept hashes of the size below.
+    #[allow(clippy::too_many_arguments)]
+    fn pattern_freq(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, size: usize, levels: Vec<u8>, allowed: Option<Vec<u64>>, goal_kind: Option<String>, threads: usize, keep: usize) -> PyResult<PyObject> {
+        let goal = self.goal_of(&goal_kind)?;
+        let st = self.st.clone();
+        let variant = self.variant.clone();
+        let allowed: Option<FxHashSet<u64>> = allowed.map(|v| v.into_iter().collect());
+        let mut base = vec![0u32; games.len() + 1];
+        for i in 0..games.len() { base[i + 1] = base[i] + rows[i].len() as u32; }
+        let res = py.allow_threads(|| run_pool(games.len(), threads, |i| {
+            let mut m: FxHashMap<u64, patterns::Seen> = FxHashMap::default();
+            walk_rows(&variant, &st, goal, &games[i], &rows[i], |ri, b, _| patterns::freq_board(b, size, &levels, allowed.as_ref(), base[i] + ri as u32, &mut m))?;
+            Ok(m)
+        })).map_err(bad)?;
+        let mut all: FxHashMap<u64, patterns::Seen> = FxHashMap::default();
+        for m in res {
+            for (h, e) in m {
+                match all.get_mut(&h) {
+                    Some(x) => { x.total += e.total; x.support += e.support; }
+                    None => { all.insert(h, e); }
+                }
+            }
+        }
+        let mut per: Vec<Vec<(u64, u32, u64)>> = vec![vec![]; patterns::LEVELS as usize];
+        for (h, e) in &all { per[e.bytes[0] as usize].push((*h, e.support, e.total)); }
+        let mut found = vec![];
+        let mut kept = vec![];
+        for (lv, v) in per.iter_mut().enumerate() {
+            found.push(v.len());
+            v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+            for (h, sup, tot) in v.iter().take(keep) {
+                let e = &all[h];
+                kept.push((*h, lv, *sup, *tot, pyo3::types::PyBytes::new(py, &e.bytes).unbind(), e.parts.clone(), e.free_parent));
+            }
+        }
+        (found, kept).into_py_any(py)
+    }
+
+    /// pattern_count(games, rows, keys, max_size, levels, goal_kind, threads) -> bytes: for each wanted row a record (row u32, column u32, count for the side to move u16, count for the other u16)
+    /// for every wanted key found on it, the rows numbered in the order of `rows` across the games.
+    #[allow(clippy::too_many_arguments)]
+    fn pattern_count(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, max_size: usize, levels: Vec<u8>, goal_kind: Option<String>, threads: usize) -> PyResult<PyObject> {
+        let goal = self.goal_of(&goal_kind)?;
+        let st = self.st.clone();
+        let variant = self.variant.clone();
+        let want: FxHashMap<u64, usize> = keys.iter().enumerate().map(|(i, k)| (*k, i)).collect();
+        let mut base = vec![0u32; games.len() + 1];
+        for i in 0..games.len() { base[i + 1] = base[i] + rows[i].len() as u32; }
+        let res = py.allow_threads(|| run_pool(games.len(), threads, |i| {
+            let mut out: Vec<u8> = vec![];
+            walk_rows(&variant, &st, goal, &games[i], &rows[i], |ri, b, _| {
+                let mut m: FxHashMap<usize, (u32, u32)> = FxHashMap::default();
+                patterns::count_board(b, max_size, &levels, &want, &mut m);
+                let mut v: Vec<_> = m.into_iter().collect();
+                v.sort();
+                for (c, (us, them)) in v {
+                    out.extend_from_slice(&(base[i] + ri as u32).to_le_bytes());
+                    out.extend_from_slice(&(c as u32).to_le_bytes());
+                    out.extend_from_slice(&(us.min(65535) as u16).to_le_bytes());
+                    out.extend_from_slice(&(them.min(65535) as u16).to_le_bytes());
+                }
+            })?;
+            Ok(out)
+        })).map_err(bad)?;
+        let bytes: Vec<u8> = res.into_iter().flatten().collect();
+        pyo3::types::PyBytes::new(py, &bytes).into_py_any(py)
+    }
+
+    /// unit_tables(games, rows, horizon, threads) -> (kind names, bytes): per wanted row 1 + 4 * kinds i16: [valid, then the units of the side to move by kind, the other side's, at the row; the same
+    /// `horizon` plies later (the side to move of the row stays "us")]; valid 0 (and zeros) where the position is over or the horizon runs past the game.
+    fn unit_tables(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, horizon: usize, threads: usize) -> PyResult<PyObject> {
+        use cs_game::Game as _;
+        let variant = self.variant.clone();
+        let names = self.st.names.clone();
+        let nk = names.kinds.len();
+        let res = py.allow_threads(|| run_pool(games.len(), threads, |i| {
+            let g = match &games[i].0 { Some(fen) => KernelGame::from_fen(&variant, fen)?, None => KernelGame::new(&variant, 518)? };
+            let mut s = g.initial();
+            let n = games[i].1.len();
+            // per ply: the mover and the units by owner and kind
+            let mut at: Vec<(Option<usize>, Vec<Vec<i16>>)> = vec![];
+            for ply in 0..=n {
+                let mut c = vec![vec![0i16; nk]; names.roles.len()];
+                for (o, k, _) in g.cells(&s) { c[o][k as usize] += 1; }
+                at.push((g.mover(&s), c));
+                if ply < n {
+                    let mv = g.find_move(&s, &games[i].1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", games[i].1[ply]))?;
+                    s = g.apply(&s, &mv);
+                }
+            }
+            let mut out: Vec<i16> = vec![];
+            for &r in &rows[i] {
+                match at.get(r).and_then(|x| x.0) {
+                    Some(m) if r + horizon <= n => {
+                        out.push(1);
+                        for ply in [r, r + horizon] {
+                            out.extend(at[ply].1[m].iter());
+                            for k in 0..nk { out.push((0..names.roles.len()).filter(|o| *o != m).map(|o| at[ply].1[o][k]).sum()); }
+                        }
+                    }
+                    _ => { out.push(0); out.extend(std::iter::repeat(0).take(4 * nk)); }
+                }
+            }
+            Ok(out)
+        })).map_err(bad)?;
+        let bytes: Vec<u8> = res.into_iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+        (names.kinds.clone(), pyo3::types::PyBytes::new(py, &bytes).unbind()).into_py_any(py)
+    }
+
+    /// first_blocker_check(fen) -> (the shut relations of the side to move with exactly one unit between, as `why_not` gives them; the same set found by the first-blocker form through `without`; whether the two sets are equal).
+    fn first_blocker_check(&self, fen: &str) -> PyResult<(usize, usize, bool)> {
+        let (g, s) = self.game(fen)?;
+        let mut p = self.st.position(&g, &s);
+        let ns = self.st.nodes.len() as u32;
+        let Some(m) = p.mover else { return Ok((0, 0, true)) };
+        let key = |p: &cs_tactics::sheet::base_graph::PositionPart, from: usize| -> std::collections::BTreeSet<(usize, u16)> {
+            p.shuts[from..].iter().filter(|r| r.between.len() == 1 && p.units[r.unit].owner == m).map(|r| (r.unit, r.place)).collect()
+        };
+        let a = key(&p, 0);
+        let before = p.shuts.len();
+        for ui in 0..p.units.len() { if p.units[ui].owner == m { self.st.first_blocker_shuts(&g, &s, ui, &mut p, ns); } }
+        let b = key(&p, before);
+        Ok((a.len(), b.len(), a == b))
     }
 }
