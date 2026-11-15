@@ -7197,3 +7197,36 @@ match player, which carries none, plays as before. The one test of the old form 
 ### The high-level spec (2026-11-14)
 
 Kaveh restated the target system: one graph of units, frames, facts and claims; tactical reasoning; frames from the bottom up; a policy toward tactical opportunity that talks in subgoals; sleep as an agent with tools whose step goal is to explain a surprise; Rust in the hot paths. It is written in docs/SYSTEM_SPEC.md. Every plan from here names the piece of that spec it serves.
+
+
+## 78.43 THE QUESTION SHEET IN THE RUST ENGINE (Kaveh 2026-11-14: "go autonomous, while staying on path to the high level spec"; Rust first in the hot paths)
+
+Serves docs/SYSTEM_SPEC.md sections 3 (tactical reasoning), 2 (the claims the graph waits for) and 8 (Rust in the hot paths).
+
+WHY. A profile of the light sheet on 18 positions of the saved games (one run, directional): `OBS positions 18 seconds under profile 9.1`,
+35957184 function calls. No single primitive holds the time: the route geometry (`geometric_routes`), the counterfactual obstacles, the board
+edits of the codec and the interpreter's own calls share it; the one Rust call in it (`cs_engine.reason`) is about a ninth. So the speed is
+not won by moving one function down; the sheet's core has to live in the engine, with the Python sheet kept as the readable mirror and as the
+ORACLE the Rust form is checked against (the 72.7 precedent of Python twins).
+
+WHAT, in stages, one commit each. No Cargo.toml is changed and no new crate is made: new modules go inside the existing layer crates (the
+tactics crate), exposed through rust/engine/py/src/lib.rs. Never touched: rust/engine/gdl/src/lib.rs, rust/engine/game/src/gdl_game.rs,
+rust/engine/Cargo.lock, any Cargo.toml. The layer modules name no object of any game (the source test of tests/test_plan78.py applies).
+
+ A. THE READING AND THE ROUTES. The light reading in Rust (units with their places and worths, the strike and move tables, the distances
+    between places, what bears on what as the board stands) and levels 0 and 1 by geometry (`level0`, `geometric_routes`, `_level1_geometry`
+    and what they call). Whatever the Python codec supplies as the one game-specific place is supplied to the Rust form through one small
+    trait or one data table, never by naming a game in the layer. ACCEPTANCE: on every position of the saved games where the Python light sheet
+    reads, the Rust reading gives the same units, the same level 0 verdict per target and the same set of level 1 routes per target; every
+    difference is listed with its position and cause. One timing line for each side.
+ B. THE OBSTACLES AND THE FRAMES. Counterfactual removal (one unit, a goal unit moved aside, several jointly), the exchange and cornering frames
+    (a Rust frame search equal to `frame_search.FrameSearch` on the frames the sheet builds), `settle_way`, the cost of leaving, the verdict of
+    a way. ACCEPTANCE: the same verdict kind for every way of every target on the same positions.
+ C. THE WHOLE SHEET AND THE MOVE QUESTION. The schedule (`run` with its clocks and budgets), `finish_levels`, `settle_flagged`, `unit_loss`,
+    `move_question`. ACCEPTANCE: the same sheet (targets, verdict kinds, stakes) and the same move answers; the time per position printed.
+ D. THE MEMORY. Read sets, listeners, waking and the drain in Rust, checked by the audit of 78.42 (served against fresh).
+
+Then the uses that waited on speed: the opportunity number logged along every self-play game (SYSTEM_SPEC section 5), and the claims filed
+as nodes of the engine's graph (section 2).
+
+STATUS: A given to a builder agent on 2026-11-14.
