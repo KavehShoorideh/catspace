@@ -485,7 +485,9 @@ impl<'a, 'g, G: Game + Placed> Runner<'a, 'g, G> {
 /// What the sheet says of one target, compactly: whose unit it is, its kind, its place, its worth, the top kind of verdict the question reached, whether that kind says danger, the stake,
 /// and the deepest level asked (-1: none).
 #[derive(Debug, Clone)]
-pub struct TargetSummary { pub owner: Side, pub kind: super::Kind, pub at: super::Place, pub worth: f64, pub verdict: String, pub danger: bool, pub stake: f64, pub level: i32 }
+pub struct TargetSummary { pub owner: Side, pub kind: super::Kind, pub at: super::Place, pub worth: f64, pub verdict: String, pub danger: bool, pub stake: f64, pub level: i32,
+                             /// the question's record key (owner, verdict kind, moves, route) and whether level 0 read it live: what the opportunity measure of 78.44 needs
+                             pub key: [String; 4], pub live0: bool }
 
 /// The whole sheet of one position of a game in brief: the steps taken, one entry per target, and the ways the deepest level settled, counted by the side that asks: for the side to move
 /// and for the other side, [confirmed, waiting, refuted, not settled].
@@ -501,7 +503,8 @@ impl<'a, 'g, G: Game + Placed> Runner<'a, 'g, G> {
             let t = q.target.unwrap();
             let kind = q.verdict_kind();
             targets.push(TargetSummary { owner: t.side, kind: t.kind, at: t.at, worth: self.r.worth_of(t.kind), danger: DANGER.contains(&kind.as_str()), verdict: kind,
-                                         stake: q.stake, level: q.findings.last().map_or(-1, |f| f.level as i32) });
+                                         stake: q.stake, level: q.findings.last().map_or(-1, |f| f.level as i32), key: q.question_key(),
+                                         live0: q.findings.iter().find(|f| f.level == 0).is_some_and(|f| f.status == Status::Live) });
             if let Some(d) = q.deep_with_results(true) {
                 let row = &mut ways[q.asker.ix()];
                 match &d.detail {

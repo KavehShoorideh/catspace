@@ -7345,3 +7345,77 @@ The policy of section 5 is to be trained toward "abundance of high-value tactica
  - NEXT, only if the number foretells: log it for every legal move's child (which moves raise it), and fit the sparse subgoal statements.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+
+78.44 BUILT (2026-11-15, branch worktree-agent-a8426c8f72bd70dd8; journal entry 2026-11-15 00:45). catspace/incubator/analyst/discovery/opportunity_measure.py (game-free; `--make`, `--read`), tests/test_plan78_44_opportunity.py. Rust: the brief of `SheetModel.game` now also carries per target the question's record key (four words) and whether level 0 read it live (run.rs `TargetSummary`, sheet_py.rs); nothing else changed there.
+DEFINITION AS BUILT. An open claim against a unit: the top verdict of its question is live0, live1, lost, confirmed, waiting or unsettled (closed1..3, refuted, idle0, idle1, unread are not open). Its chance is the table's (fit1112.json) chance at the question's record key (owner, verdict kind, moves, route) with the table's own prefix fallback, horizon 4 (the sheet's default). gain = sum over their units of chance x worth, risk = the same over mine, net = gain - risk. Baselines: net0 = the same sum over the units level 0 read as live (chance of the table's cell (owner, live0)); count = open claims against theirs minus against mine; shuffled = net permuted among the plies of a game (seed fixed). A SECOND NUMBER, labelled and added by the builder (not tuned after the outcome was seen; chosen before the long run): net_d = net over the danger kinds only (live0, lost, confirmed). Outcome: the mover's balance of worth (its units minus the other side's, over the units the sheet read) at t+h minus at t, split in worth won and worth lost. The sheet ran under the clock present with the stated cost model (0.002, 0.01, 0.03, 0.06, 0.1) of the 78.43 measures, not the measured time, so that a number does not depend on the load of the machine.
+Games: control player, seeds 5016 to 5515 (a 16-game short run on seeds 5000 to 5015 first, read before the long run). One run, directional.
+OBS opportunity games_s5016_n500: sheet of 500 games in 384.8 s wall, threads 10; unread positions 115
+OBS opportunity games_s5016_n500: open kinds live0,live1,lost,confirmed,waiting,unsettled; danger kinds live0,lost,confirmed; chance horizon 4; cost model (0.002, 0.01, 0.03, 0.06, 0.1); clock present
+OBS opportunity games_s5016_n500: games 500, plies read 45179, plies with any open claim 42871, plies with net0 = 0 27994, plies with net = 0 2809
+OBS opportunity games_s5016_n500: horizon 4: plies with an outcome 43179, mean outcome -0.0071, mean worth won 1.8007, mean worth lost 1.8078
+OBS opportunity games_s5016_n500: horizon 8: plies with an outcome 41182, mean outcome -0.0054, mean worth won 3.7520, mean worth lost 3.7573
+OBS opportunity games_s5016_n500: horizon 16: plies with an outcome 37190, mean outcome -0.0180, mean worth won 7.9678, mean worth lost 7.9857
+OBS opportunity games_s5016_n500: spearman h4 net vs outcome: +0.3461  90% interval over games [+0.3371, +0.3548] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net0 vs outcome: +0.3328  90% interval over games [+0.3223, +0.3435] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 count vs outcome: +0.1059  90% interval over games [+0.0961, +0.1150] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 shuffled vs outcome: -0.0070  90% interval over games [-0.0153, +0.0014] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net_d vs outcome: +0.3831  90% interval over games [+0.3734, +0.3921] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 gain vs outcome: +0.2769  90% interval over games [+0.2701, +0.2839] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 risk vs outcome: -0.0196  90% interval over games [-0.0271, -0.0119] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 gain vs worth won: +0.4442  90% interval over games [+0.4358, +0.4513] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 risk vs worth lost: +0.2811  90% interval over games [+0.2708, +0.2902] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net - net0 vs outcome: +0.2070  90% interval over games [+0.1973, +0.2162] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net vs outcome, plies with net0 = 0: +0.0451  90% interval over games [+0.0337, +0.0556] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net vs outcome, net0 held out (partial rank): +0.1901  90% interval over games [+0.1789, +0.2007] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net vs outcome, phase 1 of 3: +0.2743  90% interval over games [+0.2602, +0.2859] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net vs outcome, phase 2 of 3: +0.4050  90% interval over games [+0.3922, +0.4183] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h4 net vs outcome, phase 3 of 3: +0.3695  90% interval over games [+0.3464, +0.3932] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net vs outcome: +0.3185  90% interval over games [+0.3073, +0.3291] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net0 vs outcome: +0.3003  90% interval over games [+0.2874, +0.3135] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 count vs outcome: +0.0993  90% interval over games [+0.0872, +0.1115] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 shuffled vs outcome: -0.0073  90% interval over games [-0.0153, +0.0003] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net_d vs outcome: +0.3485  90% interval over games [+0.3366, +0.3597] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 gain vs outcome: +0.2559  90% interval over games [+0.2483, +0.2638] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 risk vs outcome: -0.0112  90% interval over games [-0.0192, -0.0027] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 gain vs worth won: +0.4022  90% interval over games [+0.3912, +0.4116] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 risk vs worth lost: +0.2986  90% interval over games [+0.2864, +0.3091] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net - net0 vs outcome: +0.1999  90% interval over games [+0.1881, +0.2107] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net vs outcome, plies with net0 = 0: +0.0564  90% interval over games [+0.0419, +0.0704] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net vs outcome, net0 held out (partial rank): +0.1761  90% interval over games [+0.1643, +0.1886] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net vs outcome, phase 1 of 3: +0.2647  90% interval over games [+0.2505, +0.2776] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net vs outcome, phase 2 of 3: +0.3759  90% interval over games [+0.3596, +0.3919] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h8 net vs outcome, phase 3 of 3: +0.3112  90% interval over games [+0.2807, +0.3416] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net vs outcome: +0.2700  90% interval over games [+0.2558, +0.2835] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net0 vs outcome: +0.2533  90% interval over games [+0.2384, +0.2693] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 count vs outcome: +0.0865  90% interval over games [+0.0699, +0.1031] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 shuffled vs outcome: -0.0119  90% interval over games [-0.0206, -0.0035] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net_d vs outcome: +0.2954  90% interval over games [+0.2819, +0.3086] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 gain vs outcome: +0.2331  90% interval over games [+0.2226, +0.2434] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 risk vs outcome: +0.0112  90% interval over games [+0.0010, +0.0210] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 gain vs worth won: +0.3626  90% interval over games [+0.3478, +0.3754] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 risk vs worth lost: +0.2995  90% interval over games [+0.2833, +0.3140] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net - net0 vs outcome: +0.1788  90% interval over games [+0.1630, +0.1938] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net vs outcome, plies with net0 = 0: +0.0481  90% interval over games [+0.0275, +0.0686] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net vs outcome, net0 held out (partial rank): +0.1467  90% interval over games [+0.1298, +0.1635] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net vs outcome, phase 1 of 3: +0.2358  90% interval over games [+0.2195, +0.2529] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net vs outcome, phase 2 of 3: +0.3256  90% interval over games [+0.3053, +0.3465] (1000 draws)
+OBS opportunity games_s5016_n500: spearman h16 net vs outcome, phase 3 of 3: +0.2375  90% interval over games [+0.1941, +0.2824] (1000 draws)
+OBS opportunity games_s5016_n500: total wall 530.1 s
+Bands of net (five equal-count bands), per horizon:
+OBS opportunity games_s5016_n500: horizon 4 band 1 of 5 of net: plies 8636, mean net -1.7508, mean outcome -0.8771, mean worth won 1.9665, mean worth lost 2.8437
+OBS opportunity games_s5016_n500: horizon 4 band 2 of 5 of net: plies 8636, mean net -0.3227, mean outcome -0.3935, mean worth won 1.1095, mean worth lost 1.5030
+OBS opportunity games_s5016_n500: horizon 4 band 3 of 5 of net: plies 8644, mean net -0.0104, mean outcome -0.2923, mean worth won 0.7477, mean worth lost 1.0400
+OBS opportunity games_s5016_n500: horizon 4 band 4 of 5 of net: plies 8628, mean net +0.2929, mean outcome -0.3299, mean worth won 1.1375, mean worth lost 1.4673
+OBS opportunity games_s5016_n500: horizon 4 band 5 of 5 of net: plies 8635, mean net +2.6050, mean outcome +1.8573, mean worth won 4.0428, mean worth lost 2.1855
+OBS opportunity games_s5016_n500: horizon 8 band 1 of 5 of net: plies 8237, mean net -1.7636, mean outcome -0.8994, mean worth won 4.2348, mean worth lost 5.1342
+OBS opportunity games_s5016_n500: horizon 8 band 2 of 5 of net: plies 8236, mean net -0.3237, mean outcome -0.4511, mean worth won 3.0141, mean worth lost 3.4652
+OBS opportunity games_s5016_n500: horizon 8 band 3 of 5 of net: plies 8237, mean net -0.0088, mean outcome -0.3073, mean worth won 2.3268, mean worth lost 2.6341
+OBS opportunity games_s5016_n500: horizon 8 band 4 of 5 of net: plies 8236, mean net +0.3004, mean outcome -0.3303, mean worth won 3.0565, mean worth lost 3.3867
+OBS opportunity games_s5016_n500: horizon 8 band 5 of 5 of net: plies 8236, mean net +2.6363, mean outcome +1.9611, mean worth won 6.1277, mean worth lost 4.1666
+OBS opportunity games_s5016_n500: horizon 16 band 1 of 5 of net: plies 7438, mean net -1.7584, mean outcome -0.9536, mean worth won 8.7623, mean worth lost 9.7159
+OBS opportunity games_s5016_n500: horizon 16 band 2 of 5 of net: plies 7438, mean net -0.3181, mean outcome -0.4642, mean worth won 7.2659, mean worth lost 7.7302
+OBS opportunity games_s5016_n500: horizon 16 band 3 of 5 of net: plies 7438, mean net -0.0061, mean outcome -0.3743, mean worth won 6.0304, mean worth lost 6.4047
+OBS opportunity games_s5016_n500: horizon 16 band 4 of 5 of net: plies 7438, mean net +0.3033, mean outcome -0.3430, mean worth won 7.3259, mean worth lost 7.6689
+OBS opportunity games_s5016_n500: horizon 16 band 5 of 5 of net: plies 7438, mean net +2.6267, mean outcome +2.0452, mean worth won 10.4543, mean worth lost 8.4091
+READ (directional, one run on 500 games of one player). The number rises with the later change of material at all three horizons, and the shuffled control is near zero, so the rise is not an artefact of the ranking. It stands well above the plain count of claims (count: about 0.1). It does NOT stand much above the first-level baseline: net0 is within about 0.01 to 0.02 of net at each horizon, and the intervals of the two nearly overlap at 4 plies. Beyond the first level the reading is small: net - net0 has a correlation of about 0.2 and the partial rank correlation of net with net0 held out is about 0.19 / 0.18 / 0.15 at 4 / 8 / 16 plies; among the plies where net0 is zero (about 62 percent of them) net foretells almost nothing (about 0.05). The bands are not monotone: the mean outcome is about the same over the four lower bands and the whole rise is in the top band. net_d (danger kinds only) correlates better than net at every horizon, which says the waiting and level-1 claims add noise to the number as built. Gain predicts worth won and risk predicts worth lost, each about 0.3 to 0.4 at 4 plies; the correlation falls with the horizon. Caveats: the outcome is the material of the games of one player (a plain search at 0.2 s a move), including captures the first move of the horizon makes; a high net0 is probably often a capture on the board that the mover then makes (not separated here). Nothing here says the number steers a game.

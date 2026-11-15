@@ -97,7 +97,7 @@ fn summary_dict(py: Python<'_>, n: &Names, x: &PlySummary) -> PyResult<PyObject>
     d.set_item("ply", x.ply)?;
     d.set_item("mover", n.roles[x.mover].as_str())?;
     d.set_item("steps", x.steps)?;
-    d.set_item("targets", x.targets.iter().map(|t| (t.owner.word().to_string(), n.kind_text(t.kind).to_string(), n.place_text(t.at).to_string(), t.worth, t.verdict.clone(), t.danger, t.stake, t.level)).collect::<Vec<_>>())?;
+    d.set_item("targets", x.targets.iter().map(|t| (t.owner.word().to_string(), n.kind_text(t.kind).to_string(), n.place_text(t.at).to_string(), t.worth, t.verdict.clone(), t.danger, t.stake, t.level, t.key.to_vec(), t.live0)).collect::<Vec<_>>())?;
     d.set_item("ways_us", x.ways[0].to_vec())?;
     d.set_item("ways_them", x.ways[1].to_vec())?;
     d.into_py_any(py)
@@ -311,7 +311,7 @@ impl SheetModel {
 
     /// game(start, moves, reach_k=2, max_open_exits=1, clock="present", max_steps=None, budget_cost=None, cost_model=None, chances=None, chance_horizon=4, risk=1.0) -> [None | summary per
     /// ply]: the whole sheet of every position of a game (the start, then after each move), made in the engine without returning to the caller between plies; the same sheet as `sheet` makes
-    /// at that position (`run`, `finish_levels(1)`, `settle_flagged`) in brief: {ply, mover, steps, targets: [(owner, kind, place, worth, verdict kind, danger, stake, level reached)],
+    /// at that position (`run`, `finish_levels(1)`, `settle_flagged`) in brief: {ply, mover, steps, targets: [(owner, kind, place, worth, verdict kind, danger, stake, level reached, the record key as a list of four words, whether level 0 read it live)],
     /// ways_us / ways_them: [confirmed, waiting, refuted, not settled] of the ways the deepest level settled, by the side that asks}. None for a position that is over. `start` None: the game's start.
     #[pyo3(signature = (start, moves, reach_k=2, max_open_exits=1, clock="present", max_steps=None, budget_cost=None, cost_model=None, chances=None, chance_horizon=4, risk=1.0))]
     #[allow(clippy::too_many_arguments)]
