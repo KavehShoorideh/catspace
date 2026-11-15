@@ -155,3 +155,21 @@ older Rust crate, outside the game-free engine.
 
 Also found: the engine gate's file list had two names joined by a missing space, so tests/test_plan78_14.py and
 tests/test_plan78_17.py were not run by it. Fixed the same day; the two files pass.
+
+## 10. Opponent conditioning (added 2026-11-14)
+
+Kaveh: another piece is opponent conditioning, "telling me which tactics are likely to go the way I want depending
+on opponent".
+
+- The chance of a claim coming true is not one number. It depends on who is answering. Against one opponent a
+  prepared attack is met; against another it is missed.
+- So the chance table of section 3 takes the opponent as a condition, and the opportunity number of section 5 is
+  the opportunity AGAINST THIS OPPONENT.
+- The wake then prefers the tactics most likely to go its way against the opponent in front of it, and can say so
+  in its reasons.
+
+Working suggestions, not decisions: the opponent enters as a key of the chance table (a class of opponent first,
+for example by strength or by a measured rate of missing each kind of claim), fitted in sleep from games against
+that class; with no knowledge of the opponent the table falls back to the unconditioned chance, as it already falls
+back by prefix. Immediate use case named the same day: learn to play and analyse chess more or less like a human
+chess master.
