@@ -8397,3 +8397,41 @@ OBS subgoal_play arrival candidate_v_control: control to move: a CONFIRMED threa
 OBS subgoal_play arrival control_v_control: games read 60, forcing read at fuse 5000, horizon 8 plies
 OBS subgoal_play arrival control_v_control: control to move: a CONFIRMED threat move held at 217 of 2711 positions (8.0 pct [6.5, 9.6]); of 1922 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 410 (21.3 pct [18.3, 24.4])
 OBS subgoal_play arrival control_v_control: control to move: a CONFIRMED threat move held at 212 of 2712 positions (7.8 pct [6.3, 9.3]); of 1930 quiet positions with the horizon inside the game, its CONFIRMED threat move arrives within 8 plies in 407 (21.1 pct [18.0, 23.9])
+
+
+### 78.50 READ BY THE PARENT (2026-11-15)
+
+Merged to main (fast-forward), the extension rebuilt; tests/test_plan78.py, test_plan78_43_rust_sheet.py,
+test_plan78_48_forcing_opportunity.py and test_plan78_50_subgoal_play.py pass on main (158 tests in one call; the one
+failure the builder saw was its worktree lacking data). The match lines above are the builder's runs; not rerun by me.
+Reading, directional (one run per match):
+- Finding the equal moves by a second reading costs the candidate more than half its clock, and a player that pays that
+  cost and then plays the search's own move loses clearly to the control. So candidate against control mostly measures
+  the shallower search.
+- At equal search (candidate against the player that pays the same cost and takes the search's own move) the candidate
+  scores above half with its band clear of half, and a random pick among the equals does worse than the search's own
+  move. So the choice among equals matters, and this number chooses better than the search's root order does.
+- In the candidate's games a confirmed claim arrives for the candidate more often than for the control, and more often
+  than in control against control. That is the quantity the number was fitted to move.
+- Most positions have many equal root moves. That is where a policy has room, and the plain search fills it by root order.
+
+## 78.51 THE SAME CHOICE AT NO COST: the fitted number as the order of the root moves (SYSTEM_SPEC sections 5, 7, 8)
+
+The search keeps the FIRST root move of the best value. So if the root moves are handed to it in the order of the fitted
+number, highest first, its own pick IS the highest-numbered move among the equals, with no second reading.
+
+A. An optional root order for the search's Python entry (a list of root moves, default absent = today's behaviour,
+   byte for byte; a test proves the default path is unchanged). Say how the search reorders root moves between its
+   deepenings (if it moves the last best move to the front, the pick stays the first-found among equals of the last
+   depth; state exactly what the pick then is, and test it against the 78.50 equals entry on positions read whole).
+B. The cost: nodes and depth reached at 0.2 s with the number's order against today's order, on the kept games.
+   If the number's order costs depth, try the stable variant: today's order, with the number used only to order moves
+   inside groups today's order treats alike; state which is used before any match.
+C. Matches as in 78.50 (300 opening pairs, both colours, 0.2 s, new seeds from 9000, 8 workers): ordered candidate
+   against control; and against the control with a random root order, as the check that order alone is not the effect.
+D. The arrival rates as in 78.50 stage D.
+
+The number's weights are the 78.50 file, unchanged. No oracle, no human game, no puzzle. Nothing is switched on in the
+wake: the order is passed by the measure script only.
+
+STATUS: given to a builder agent on 2026-11-15.
