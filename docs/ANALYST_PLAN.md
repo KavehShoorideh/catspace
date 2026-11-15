@@ -7289,3 +7289,59 @@ OBS sheet_rust_game held_games: games 32, positions 2769, targets compared 11491
 OBS sheet_rust_game held2_games: games 32, positions 2819, targets compared 116990, briefs that differ 0 and 0; seconds per game (present): 7.2472, 7.3486, 29.6388
 OBS sheet_rust_game threads (wall seconds, all games of the set, Rust only, clock present): events_games 1 / 2 / 4 / 11 threads: 83.81 / 43.08 / 28.50 / 17.94; held_games 180.11 / 92.83 / 49.54 / 29.99; held2_games 152.19 / 78.24 / 41.22 / 28.48; equal to the one-thread result in every case
 Negative control (not committed): a waiting way counted as refuted, 11 of 13 plies of a game differ. READ: the game in one call saves only the hand-over between plies (a few percent); what the threads win is the cores (about 4.7x to 6x at 11 threads); the time per position is the engine's reasoning search and census for the goal units.
+
+
+### 78.43 B AND C CHECKED ON GAMES THE BUILDERS DID NOT SEE (2026-11-15, the parent)
+
+B: a third set (seeds 3000 to 3031) showed ONE way of 83621 differing (a hypothetical board the game calls over: the game's move list is empty,
+the rules still give moves; fixed in 056de499, the position a fixed test). C: merged at b44c2322, the extension rebuilt, a fourth set of 32
+games (seeds 4000 to 4031), one run, directional:
+
+OBS sheet_rust_move held3_games: games 32, positions 3027, unreadable (over) 8, python errors 0, rust errors 0, jobs 10, wall 32.6 s
+OBS sheet_rust_move held3_games: moves compared 82777, moves that differ 0, positions whose order of moves differs 0; Python verdicts LOSES 20258, NOT SETTLED 766, SAFE 61753
+OBS sheet_rust_move held3_games: differences per field: none
+OBS sheet_rust_move held3_games: seconds per move (jobs 10): python 0.003164, rust 0.000051 (engine 0.000047); per position: python 0.08654, rust 0.00139 (engine 0.00128); ratio 62.1x
+OBS sheet_rust_move held3_games: unit_loss calls 120736 (every unit at every ply, horizons (4, 8)), taken within the horizon 8095 (even 4749, gained 427, lost 2919), charged plies read 2919, calls that differ 0, per field: none
+OBS sheet_rust_move held3_games: seconds per unit_loss call (jobs 10): python 0.0000009, rust 0.0000145 (the rust call includes handing the game's events over each time)
+OBS sheet_rust_move held3_games: differences listed 0 (printed up to --max-diffs 40)
+OBS sheet_rust_sheet held3_games: games 32, positions 3027, unreadable (over) 8, python errors 0, rust errors 0, jobs 10, wall 1183.4 s; cost model (0.002, 0.01, 0.03, 0.06, 0.1), budget_cost 0.15
+OBS sheet_rust_sheet held3_games clock present: sheets compared 3027, sheets that differ 0, steps compared 153231
+OBS sheet_rust_sheet held3_games clock plain: sheets compared 3027, sheets that differ 0, steps compared 170450
+OBS sheet_rust_sheet held3_games clock chance: sheets compared 3027, sheets that differ 0, steps compared 157525
+OBS sheet_rust_sheet held3_games clock budget: sheets compared 3027, sheets that differ 0, steps compared 144477
+OBS sheet_rust_sheet held3_games: questions compared 247163, findings 625683, deeper findings 143179, ways settled 374194, quiet questions 5911, weak places 108172, time obstacle notes 1307
+OBS sheet_rust_sheet held3_games: verdict kinds of the questions (Python, all configs): closed1 4616, closed2 356, closed3 105288, confirmed 4446, idle0 5759, idle1 5813, live0 1660, live1 25224, lost 4419, refuted 62058, unread 152, unsettled 1063, waiting 26309; danger 10525 of 247163
+OBS sheet_rust_sheet held3_games: differences per (config, part, field): none
+OBS sheet_rust_sheet held3_games seconds per position, clock present (jobs 10): python 0.32975 (the whole read_position), rust 0.10101 (the whole sheet; the engine's own work 0.09853), ratio 3.3x
+OBS sheet_rust_sheet held3_games seconds per position, clock plain (jobs 10): python 0.80258 (the whole read_position), rust 0.57680 (the whole sheet; the engine's own work 0.57421), ratio 1.4x
+OBS sheet_rust_sheet held3_games seconds per position, clock chance (jobs 10): python 0.54078 (the whole read_position), rust 0.31496 (the whole sheet; the engine's own work 0.31239), ratio 1.7x
+OBS sheet_rust_sheet held3_games seconds per position, clock budget (jobs 10): python 0.23969 (the whole read_position), rust 0.02082 (the whole sheet; the engine's own work 0.01840), ratio 11.5x
+OBS sheet_rust_sheet held3_games: differences listed 0 (printed up to --max-diffs 40; the cause of each is read by hand)
+OBS sheet_rust_game held3_games: games 32, positions 3027, unreadable (over) 8, python errors 0, rust errors 0, jobs 10, wall 736.8 s; cost model (0.002, 0.01, 0.03, 0.06, 0.1)
+OBS sheet_rust_game held3_games: targets compared 120626, ways counted 158109, positions whose brief differs from the Python sheet's 0, from the per-position Rust sheet's 0
+OBS sheet_rust_game held3_games clock present seconds per game (jobs 10, one process each): the game in one call 9.8438, the same plies one sheet call at a time 9.8609 (engine 9.6195), Python read_position 31.6424; per position: 0.10406, 0.10425, 0.33451
+OBS sheet_rust_game held3_games clock chance seconds per game (jobs 10, one process each): the game in one call 29.9820, the same plies one sheet call at a time 28.8583 (engine 28.6182), Python read_position 50.2659; per position: 0.31695, 0.30508, 0.53139
+OBS sheet_rust_game held3_games: differences listed 0 (printed up to --max-diffs 40)
+OBS sheet_rust_game held3_games threads 1: 32 games, 3035 positions in 219.40 s wall (6.856 s per game, 72.29 ms per position); equal to the one-thread result: True
+OBS sheet_rust_game held3_games threads 2: 32 games, 3035 positions in 123.68 s wall (3.865 s per game, 40.75 ms per position); equal to the one-thread result: True
+OBS sheet_rust_game held3_games threads 4: 32 games, 3035 positions in 73.06 s wall (2.283 s per game, 24.07 ms per position); equal to the one-thread result: True
+OBS sheet_rust_game held3_games threads 11: 32 games, 3035 positions in 47.05 s wall (1.470 s per game, 15.50 ms per position); equal to the one-thread result: True
+
+READ. The Rust sheet equals the Python oracle on unseen games for the move question, the whole sheet under four clocks, and the game in one
+call. The move question is the large gain. The whole sheet's time is now the engine's older reasoning search and census on the goal unit, not
+the sheet. Stage D (the memory) waits: it saved no time in Python (78.42) and nothing in the next steps needs it.
+
+## 78.44 THE OPPORTUNITY NUMBER ALONG A GAME: is it a target worth steering by? (SYSTEM_SPEC section 5)
+
+The policy of section 5 is to be trained toward "abundance of high-value tactical opportunity". Before any policy, the number itself is tested.
+ - THE NUMBER. At a position, for the side to move: the sum over the other side's units of chance x worth for the open claims against them,
+   minus the same sum for the claims against its own units. The chance is the fitted table's (data/derived/question_chances/fit1112.json, fitted
+   on earlier games, so every game here is unseen by it); the claims are the Rust sheet's (`SheetModel.game`, clock present).
+ - THE QUESTION. Does the number at a ply foretell the change of material over the next plies, beyond what the simplest count foretells?
+   Outcome: the mover's balance of worth at 4, 8 and 16 plies ahead minus now. Baselines printed beside it: the same sum from the first level
+   only (what can be taken at once), a count of claims with no chances, and the number with the positions shuffled within a game.
+ - THE READING. A table by bands of the number (mean later change, count), and the rank correlation, for each horizon; by phase of the game;
+   for the parts mine / theirs separately. On about 500 new self-play games of the control player. Nothing is fitted in this plan.
+ - NEXT, only if the number foretells: log it for every legal move's child (which moves raise it), and fit the sparse subgoal statements.
+
+STATUS: given to a builder agent on 2026-11-15.
