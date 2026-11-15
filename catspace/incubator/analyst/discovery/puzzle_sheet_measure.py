@@ -20,7 +20,13 @@ A puzzle set is read through `puzzle_apply.load_set`: the position, the answer (
 THE MISSES (the sheet does not SEE at the default budget), each in one class:
   T not a question on the sheet at all; R the target is on the sheet but no way begins with the answer (no route of any of its ways starts with it; sub-kinds named); X such a way exists and is
   refuted; W waiting; N not settled or not reached; other. O is seen but outranked (SEES, not PICKS); it is not a miss.
-Run: python -m catspace.incubator.analyst.discovery.puzzle_sheet_measure --variant <game> --sets dev_300 [--limit 20]
+PLAN 78.46 adds a second column, the FORCING READ (`SheetModel.forcing`, rust/engine/tactics/src/sheet/forcing.rs), read once more per puzzle (seconds recorded):
+  SEES2   the sheet SEES (as above) OR the forcing read holds a CONFIRMED threat move equal to the answer.
+  PICKS2  a plain chooser fixed before results: the CONFIRMED threat move of highest value (ties: the engine's own order, by the move's name), else the sheet's own pick; it names the answer or not.
+  BASELINE at 0.2 s and at the seconds the sheet and the forcing read together took (rounded up to 0.01 s).
+  THE MISSES LEFT (not SEES2): the classes above for the sheet, and F = the forcing read read the answer as a threat move and did not confirm it (NO CLAIM: the reply that closed it; NOT SETTLED:
+  the weakest reply so far; UNREAD: the fuse stopped before it), with whether the plain-search line plays that reply.
+Run: python -m catspace.incubator.analyst.discovery.puzzle_sheet_measure --variant <game> --sets dev_300 [--limit 20] [--fuse N]
 """
 from __future__ import annotations
 
@@ -169,6 +175,53 @@ def seeing(questions: list, answer: str, legal: list, ends, kinds: "tuple | None
     pool.sort()
     pick = pool[0][2] if pool else None
     return {"sees": bool(seen), "via": via, "claims": seen, "pick": pick, "picks": bool(seen) and pick == answer, "picks_any": bool(pool)}
+
+
+def forcing_view(fr: "dict | None", answer: str) -> "dict | None":
+    """What the forcing read says about a puzzle: the confirmed threat moves (in the engine's order: by value, then by name), the answer's own account (its verdict, value, the reply that held it)."""
+    if fr is None:
+        return None
+    conf = [(t["move"], t["value"]) for t in fr["threats"] if t["verdict"] == "CONFIRMED"]
+    view = {"confirmed_moves": conf, "pick": conf[0][0] if conf else None, "answer_confirmed": any(m == answer for m, _v in conf), "answer": None,
+            **{k: fr[k] for k in ("found", "confirmed", "unsettled", "no_claim", "unread", "nodes", "cut", "level")}}
+    t = next((t for t in fr["threats"] if t["move"] == answer), None)
+    if t is not None:
+        held = None
+        if t["verdict"] == "NO CLAIM" and t["replies"]:
+            held = t["replies"][-1]                                     # the reply that closed it (the read stops at it)
+        elif t["verdict"] == "NOT SETTLED" and t["replies"]:
+            held = min(t["replies"], key=lambda r: (r["value"], not r["open"]))
+        view["answer"] = {"verdict": t["verdict"], "value": t["value"], "level": t["level"], "replies": len(t["replies"]), "claims": [(c["target"], c["kind"], c["value"]) for c in t["claims"]],
+                          "held_by": held["reply"] if held else None, "held_value": held["value"] if held else None, "held_open": held["open"] if held else None,
+                          "held_line": held["line"] if held else None, "held_took": held["took"] if held else None}
+    return view
+
+
+def seeing2(seen: dict, view: "dict | None", answer: str) -> dict:
+    """SEES2 and PICKS2 from the sheet's own `seeing` result and the forcing view."""
+    by_forcing = bool(view and view["answer_confirmed"])
+    pick = view["pick"] if view and view["pick"] is not None else seen["pick"]
+    return {"sees2": bool(seen["sees"]) or by_forcing, "by_forcing": by_forcing, "pick2": pick, "picks2": pick == answer}
+
+
+def forcing_class(view: "dict | None", sheet_class: str, sees2: bool) -> str:
+    """The class of a miss left after the forcing read: SEEN2 | F (the answer was read as a threat move and not confirmed) | the sheet's class (T R X W N other)."""
+    if sees2:
+        return "SEEN2"
+    if view and view["answer"] is not None:
+        return "F"
+    return sheet_class
+
+
+def forcing_lines(view: "dict | None") -> list:
+    if view is None:
+        return ["forcing read: not read"]
+    out = [f"forcing read: threat moves found {view['found']}, confirmed {view['confirmed']} {view['confirmed_moves'][:6]}, not settled {view['unsettled']}, no claim {view['no_claim']}, unread {view['unread']}; "
+           f"positions read {view['nodes']}, fuse stopped it {view['cut']}, deepest level {view['level']}"]
+    a = view["answer"]
+    out.append("the answer is not a threat move of the forcing read" if a is None else
+               f"the answer: {a['verdict']} value {a['value']} level {a['level']} claims {a['claims']}; held by {a['held_by']} (value {a['held_value']}, open {a['held_open']}, line {a['held_line']}, took {a['held_took']})")
+    return out
 
 
 def _stop_dict(s) -> dict:
@@ -327,6 +380,15 @@ def measure(rec: dict, opts: dict) -> dict:
             return row
         row[f"seconds_{name}"] = time.perf_counter() - t0
     row["seen"] = {name: seeing(s["questions"], answer, legal, ends) for name, s in sheets.items()}
+    # the forcing read (78.46)
+    t0 = time.perf_counter()
+    try:
+        fr = model.forcing(pos, opts.get("fuse"))
+    except ValueError:
+        fr = None
+    row["seconds_forcing"] = time.perf_counter() - t0
+    row["forcing"] = forcing_view(fr, answer)
+    row["seen2"] = seeing2(row["seen"]["default"], row["forcing"], answer)
     # the move question
     try:
         mq = model.move_question(pos, answer, params.reach_k, params.max_open_exits)
@@ -342,6 +404,9 @@ def measure(rec: dict, opts: dict) -> dict:
     row["search_seconds_b"] = sec_b
     row["search_a"] = search.decide(pos, [], 0.2)["move"] == answer
     row["search_b"] = search.decide(pos, [], sec_b)["move"] == answer
+    sec_c = max(0.02, math.ceil((row["seconds_default"] + row["seconds_forcing"]) * 100) / 100)
+    row["search_seconds_c"] = sec_c
+    row["search_c"] = search.decide(pos, [], sec_c)["move"] == answer
     # the line and the target
     line = list(rec.get("solution") or [])
     row["line_source"] = "set" if line else "plain search"
@@ -358,6 +423,12 @@ def measure(rec: dict, opts: dict) -> dict:
         row[f"class_{name}"] = None if row["seen"][name]["sees"] else classify(qs, answer, target, legal, ends, took, line)
     row["class"] = ("O" if not row["seen"]["default"]["picks"] else "SEEN-PICKED") if row["seen"]["default"]["sees"] else row["class_default"]["cls"]
     row["account"] = account(sheets["default"]["questions"], target)
+    a = (row["forcing"] or {}).get("answer")
+    if a is not None and a["held_by"]:
+        a["held_is_first_reply_of_line"] = len(line) > 1 and a["held_by"] == line[1]
+        a["held_played_in_line"] = a["held_by"] in line[1::2]
+    row["class2"] = forcing_class(row["forcing"], row["class"], row["seen2"]["sees2"])
+    row["forcing_account"] = forcing_lines(row["forcing"])
     return row
 
 
@@ -426,6 +497,29 @@ def tabulate(rows: list) -> dict:
     out["seconds_default"] = sum(r["seconds_default"] for r in rows) / max(1, len(rows))
     out["seconds_big"] = sum(r["seconds_big"] for r in rows) / max(1, len(rows))
     out["classes_all"] = classes
+    rows2 = [r for r in rows if "seen2" in r]
+    if rows2:
+        two = {"n": len(rows2), "sees2": sum(r["seen2"]["sees2"] for r in rows2), "by_forcing": sum(r["seen2"]["by_forcing"] and not r["seen"]["default"]["sees"] for r in rows2),
+               "picks2": sum(r["seen2"]["picks2"] for r in rows2), "n_search_c": sum(r["search_c"] for r in rows2),
+               "classes2": Counter(r["class2"] for r in rows2 if r["class2"] != "SEEN2"),
+               "with_confirmed": sum(1 for r in rows2 if r["forcing"] and r["forcing"]["confirmed"]),
+               "confirmed_other": sum(1 for r in rows2 if r["forcing"] and any(m != r["answer"] for m, _v in r["forcing"]["confirmed_moves"])),
+               "pick_wrong_confirmed": sum(1 for r in rows2 if r["forcing"] and r["forcing"]["pick"] is not None and r["forcing"]["pick"] != r["answer"]),
+               "cut": sum(1 for r in rows2 if r["forcing"] and r["forcing"]["cut"]),
+               "seconds_forcing": sum(r["seconds_forcing"] for r in rows2) / len(rows2), "seconds_default": sum(r["seconds_default"] for r in rows2) / len(rows2),
+               "four_c": Counter((bool(r["seen2"]["sees2"]), bool(r["search_c"])) for r in rows2), "four_a": Counter((bool(r["seen2"]["sees2"]), bool(r["search_a"])) for r in rows2),
+               "F_sub": Counter(), "F_held": Counter(), "sheet_class_of_F": Counter()}
+        for r in rows2:
+            if r["class2"] != "F":
+                continue
+            a = r["forcing"]["answer"]
+            two["F_sub"][a["verdict"]] += 1
+            two["sheet_class_of_F"][r["class"]] += 1
+            if a["held_by"]:
+                two["F_held"]["the plain-search line's first reply is that reply" if a.get("held_is_first_reply_of_line") else ("the plain-search line plays that reply later" if a.get("held_played_in_line") else "the plain-search line does not play that reply")] += 1
+            else:
+                two["F_held"]["no reply held it (unread)"] += 1
+        out["two"] = two
     out["detail"] = defaultdict(Counter)
     for r in rows:
         c = r.get("class_default")
@@ -457,6 +551,24 @@ def obs_lines(label: str, tab: dict) -> list:
     for b, name in (("a", "0.2 s"), ("b", "sheet seconds")):
         f = tab["four"][b]
         L.append(f"OBS puzzle sheet {label}: four-way (sheet sees / search {name} finds): yes/yes {f[(True, True)]}, yes/no {f[(True, False)]}, no/yes {f[(False, True)]}, no/no {f[(False, False)]}")
+    t2 = tab.get("two")
+    if t2:
+        p2 = lambda x: f"{x} ({100 * x / max(1, t2['n']):.1f} pct)"
+        L.append(f"OBS puzzle sheet {label}: SEES {pct(tab['seen'])} SEES2 {p2(t2['sees2'])} (the forcing read adds {t2['by_forcing']}); PICKS {pct(tab['picked'])} PICKS2 {p2(t2['picks2'])}; plain search {pct(tab['n_search_a'])} at 0.2 s, "
+                 f"{p2(t2['n_search_c'])} at the seconds the sheet and the forcing read took")
+        L.append(f"OBS puzzle sheet {label}: forcing read: puzzles with a confirmed threat move {t2['with_confirmed']}, with one that is not the answer {t2['confirmed_other']}, whose chosen move (highest value) is not the answer {t2['pick_wrong_confirmed']}; "
+                 f"the fuse stopped the read in {t2['cut']}")
+        L.append(f"OBS puzzle sheet {label}: seconds per puzzle: sheet {t2['seconds_default']:.3f}, forcing read {t2['seconds_forcing']:.3f}, both {t2['seconds_default'] + t2['seconds_forcing']:.3f}")
+        for b, name in (("a", "0.2 s"), ("c", "the sheet and forcing seconds")):
+            f = t2["four_" + b]
+            L.append(f"OBS puzzle sheet {label}: four-way SEES2 (sheet or forcing sees / search {name} finds): yes/yes {f[(True, True)]}, yes/no {f[(True, False)]}, no/yes {f[(False, True)]}, no/no {f[(False, False)]}")
+        L.append(f"OBS puzzle sheet {label}: misses left after the forcing read (T R X W N other, F = the forcing read read the answer and did not confirm it): " + " ".join(f"{c} {t2['classes2'].get(c, 0)}" for c in ("T", "R", "X", "W", "N", "other", "F")))
+        for k, v in sorted(t2["F_sub"].items(), key=lambda kv: -kv[1]):
+            L.append(f"OBS puzzle sheet {label}: class F: the answer is {k}: {v}")
+        for k, v in sorted(t2["F_held"].items(), key=lambda kv: -kv[1]):
+            L.append(f"OBS puzzle sheet {label}: class F: {k}: {v}")
+        for k, v in sorted(t2["sheet_class_of_F"].items(), key=lambda kv: -kv[1]):
+            L.append(f"OBS puzzle sheet {label}: class F: the sheet's class of these (before the forcing read): {k}: {v}")
     L.append(f"OBS puzzle sheet {label}: sheet sees and the 0.2 s search does not: {tab['sheet_yes_search_a_no']}")
     for t, c in sorted(tab["by_theme"].items(), key=lambda kv: -sum(kv[1].values())):
         L.append(f"OBS puzzle sheet {label}: theme {t}: n {sum(c.values())} " + " ".join(f"{k} {v}" for k, v in sorted(c.items())))
@@ -468,7 +580,7 @@ def obs_lines(label: str, tab: dict) -> list:
 def pick_misses(rows: list, n: int, seed: int) -> list:
     """About n misses spread over the classes: round-robin over the classes present (in a fixed order), a seeded draw inside each."""
     rng = random.Random(seed)
-    pools = {c: [r for r in rows if r.get("class") == c] for c in ("T", "R", "X", "W", "N", "other", "O")}
+    pools = {c: [r for r in rows if r.get("class2", r.get("class")) == c] for c in ("F", "T", "R", "X", "W", "N", "other", "O")}
     for p in pools.values():
         rng.shuffle(p)
     out = []
@@ -482,12 +594,13 @@ def pick_misses(rows: list, n: int, seed: int) -> list:
 def write_misses(rows: list, path: str, n: int, seed: int) -> None:
     with open(path, "w") as f:
         for r in pick_misses(rows, n, seed):
-            f.write(f"=== {r['set']} {r['id']}  class {r['class']}  themes {r['themes']}  solution length {r['length']}\n")
+            f.write(f"=== {r['set']} {r['id']}  class {r.get('class2', r['class'])} (the sheet's {r['class']})  themes {r['themes']}  solution length {r['length']}\n")
             f.write(f"position {r.get('pos', '')}\nanswer {r['answer']}   line (plain search after the answer, {r['line_source']}) {r['line']}   target {r['target']}\n")
             f.write(f"sheet SEES {r['seen']['default']['sees']} (five times {r['seen']['big']['sees']}); PICKS {r['seen']['default']['pick']}; the move question on the answer {r.get('answer_verdict')}; safe moves {r.get('safe_moves')} of {r.get('moves_read')}\n")
             c = r.get("class_default")
             if c:
                 f.write("reading of the miss: " + json.dumps(c, default=str) + "\n")
+            f.write("the forcing read: " + "\n    ".join(r.get("forcing_account", [])) + "\n")
             f.write("the sheet's account of the target:\n" + "\n".join("  " + x for x in r["account"]) + "\n\n")
 
 
@@ -506,8 +619,9 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--line-ply", type=int, default=6)
     ap.add_argument("--line-seconds", type=float, default=0.5)
     ap.add_argument("--tag", default=None)
+    ap.add_argument("--fuse", type=int, default=None, help="positions the forcing read may read (default: the engine's FUSE_POSITIONS)")
     a = ap.parse_args(argv)
-    opts = {"line_ply": a.line_ply, "line_seconds": a.line_seconds}
+    opts = {"line_ply": a.line_ply, "line_seconds": a.line_seconds, "fuse": a.fuse}
     t0 = time.perf_counter()
     for name in a.sets.split(","):
         recs = [dict(p, set=name, pos=p["fen"]) for p in PA.load_set(name)]
