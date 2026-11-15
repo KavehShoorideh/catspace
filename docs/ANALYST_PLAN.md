@@ -7648,3 +7648,151 @@ Not in this plan: the read as a level of the sheet's schedule, the Python mirror
 read settles more of what it starts.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+
+78.47 BUILT (2026-11-15, branch worktree-agent-a4111f49b05ea8f2c; journal entry 2026-11-15 03:58). Rust: rust/engine/tactics/src/sheet/forcing.rs (the cost account `Cost`, `untouched` / `involved` / `hot_places`, the memory `gains`, `holders`, `their_sign_gain(x, floor)`, the verdict NOT BORNE OUT with `SearchOut`), `cs_engine.SheetModel.forcing(position, fuse, goal_nodes, shortcut)` (the key `cost` in the answer, `search` per confirmed threat, `not_borne_out`); measures forcing_cost_measure.py (A), forcing_shortcut_measure.py (B), forcing_soundness_measure.py (E: `--extra-plies`, default 2), the F counts of puzzle_sheet_measure.py; tests/test_plan78_47_forcing_spent.py (in scripts/gate.py). `sheet`, `move_question`, `game` and the 78.43 measures are unchanged. All five stages were built in one pass and are in two commits (not one commit per stage). One run per set, directional; no verdict is written here.
+
+A. WHERE THE POSITIONS GO (dev_300, the read as built, fuse 20000, counted by what a position was asked for; `deeper` = inside one of our threat moves read below a reply). The cost does NOT sit where the plan assumed. The standing claims of a child (kinds 'child of our move' and 'after a reply', both levels) were about a sixth of the positions; what the other side keeps (kinds 'the other side's gain' and 'the other side's sign moves', both levels) was four fifths, and the sign moves alone (their moves that put our goal under the sign, each with every reply of ours, each followed by a read of what they then take) were more than half. Replies: about nine in ten are quiet. So the plan was followed at the cost: besides B, the work went to the other side's gain (C, D below).
+OBS forcing cost dev_300_before: positions read 300, fuse default, the fuse stopped the read in 257, positions asked per position 17556, seconds per position 1.1102
+OBS forcing cost dev_300_before: work 'root': positions 300 (0.0 pct), exchange-frame nodes 3932, goal-read nodes 7661, answered from memory 0, seconds 0.02 (0.0 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'child of our move (its claims)': positions 93353 (1.8 pct), exchange-frame nodes 1479677, goal-read nodes 3104068, answered from memory 11481, seconds 6.02 (2.0 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'after a reply (what stands)': positions 106505 (2.0 pct), exchange-frame nodes 1916603, goal-read nodes 2952307, answered from memory 16704, seconds 8.03 (2.6 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'the other side's gain': positions 162834 (3.1 pct), exchange-frame nodes 2426461, goal-read nodes 5567765, answered from memory 50071, seconds 11.29 (3.7 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'the other side's sign moves': positions 561279 (10.7 pct), exchange-frame nodes 8280080, goal-read nodes 19492417, answered from memory 210531, seconds 39.60 (12.9 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'is there a threat move left': positions 8272 (0.2 pct), exchange-frame nodes 30359, goal-read nodes 213933, answered from memory 275, seconds 0.27 (0.1 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'child of our move (its claims) (deeper)': positions 25506 (0.5 pct), exchange-frame nodes 186559, goal-read nodes 507796, answered from memory 6120, seconds 0.78 (0.3 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'after a reply (what stands) (deeper)': positions 640429 (12.2 pct), exchange-frame nodes 9799434, goal-read nodes 18892522, answered from memory 90168, seconds 41.03 (13.4 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'the other side's gain (deeper)': positions 1105319 (21.0 pct), exchange-frame nodes 12493757, goal-read nodes 32707337, answered from memory 342898, seconds 59.65 (19.5 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'the other side's sign moves (deeper)': positions 2477271 (47.0 pct), exchange-frame nodes 27925199, goal-read nodes 75647774, answered from memory 1227597, seconds 137.70 (44.9 pct of the time in positions)
+OBS forcing cost dev_300_before: work 'is there a threat move left (deeper)': positions 85425 (1.6 pct), exchange-frame nodes 198089, goal-read nodes 1828894, answered from memory 3066, seconds 2.05 (0.7 pct of the time in positions)
+OBS forcing cost dev_300_before: replies read 855853: took something 95140 (11.1 pct), quiet 760713; answered from the stored result: took 0, quiet 0
+OBS forcing cost dev_300_before: wall 42.6 s, jobs 8
+
+B. REPLIES BY WHAT THEY TOUCH. Built as the plan states it, from the game's own data: a reply is answered from the stored result of an earlier reply of the same move when it takes nothing, ends no game, is one plain move of one unit that no exchange or goal read involves, changes no other unit's lines (no line opened or blocked, no guard lost or gained), neither leaves nor lands on a place of ours, bears (and could, after one more move of its own, bear) on no hot place (the places of our units and of the units the read is about, the places any move of ours ends on where we move again, the places the goal units may step to). Only where the stored reply was read no deeper than the claims that stand (the reading of our next threat moves belongs to that position alone). `forcing(..., shortcut=False)` keeps the old path (every reply read in full); forcing_shortcut_measure.py reads every position both ways at one large fuse and compares verdict, value and every reply, where neither read is cut.
+HOLES FOUND by the first comparison (held_games every third position, fuse 100000, 220 compared positions; 4 threat moves in 3 positions differed) and how each was closed: (1) a unit that guarded a place one of our moves lands on (the goal read, mate in one: the guard of the landing place was gone) -- the places our moves end on are now hot, and the place a unit leaves counts as well as the place it lands on; (2) a unit whose NEXT move would be a threat of its own (a check, or a taking after one more step) -- the places a unit could bear on after one more move are now tested; The set of units the read is about (`involved`) was tried first as the full contact closure (every unit that bears on a place of one of them, again and again: the first run answered about 1 pct of the replies from a stored result), then as the exchange's own sources (the units that bear on a target's place, the units of the same side behind them, the units that could pin one: about 5 pct on the first sample, 0.0 pct on the last). After the closure: the same comparison on the final build gives the lines below (the build before the two exact steps of D also gave zero differences on 310 positions, held_games every second position, fuse 40000: 437 threat moves compared).
+OBS forcing shortcut held_games_every3_final: positions 937 (read 934), fuse 40000, jobs 10, wall 344.0 s
+OBS forcing shortcut held_games_every3_final: compared (neither read cut) 210, cut by the fuse in either read 724; threat moves compared 235; threat moves that differ in verdict, value or replies 0; positions with a difference 0
+OBS forcing shortcut held_games_every3_final: on the compared positions, replies read 93760, answered from the stored result 20 (0.0 pct); positions asked: as built 431778, with the shortcut 431678; seconds: as built 17.3, with the shortcut 17.4
+OBS forcing shortcut held_games_every3_final: on the compared positions, replies that touch nothing 161; replies that touch something by reason (1 takes or ends the game, 2 not a plain move of a unit no exchange involves, 3 another unit changes, 4 a line is opened or blocked, 5 lands on or leaves a place of ours, 6 bears on a hot place, 7 would after one more move of its own): [7829, 52483, 3, 12904, 3685, 9908, 939]
+OBS forcing shortcut events_games_every4_final: positions 324 (read 323), fuse 40000, jobs 10, wall 132.6 s
+OBS forcing shortcut events_games_every4_final: compared (neither read cut) 71, cut by the fuse in either read 252; threat moves compared 91; threat moves that differ in verdict, value or replies 0; positions with a difference 0
+OBS forcing shortcut events_games_every4_final: on the compared positions, replies read 41789, answered from the stored result 15 (0.0 pct); positions asked: as built 222741, with the shortcut 222690; seconds: as built 12.8, with the shortcut 12.9
+OBS forcing shortcut events_games_every4_final: on the compared positions, replies that touch nothing 75; replies that touch something by reason (1 takes or ends the game, 2 not a plain move of a unit no exchange involves, 3 another unit changes, 4 a line is opened or blocked, 5 lands on or leaves a place of ours, 6 bears on a hot place, 7 would after one more move of its own): [3744, 21328, 0, 7361, 1801, 5463, 674]
+READING of B: the rule is exact on what was compared and it saves almost nothing: on the compared positions about a tenth of a percent of the replies or fewer were answered from a stored result, because most replies are made by a unit that takes part in some exchange, claim or goal read of the position (reason 2 above) or open or block a line (reason 4). On these positions B as the plan states it saved almost nothing (directional); where it could pay is a game or a position whose units stand far apart.
+
+C. A MEMORY over the positions of one read: `their_gain` (what the other side keeps at a position) is read once per position however many orders reach it; the position memory of the stands, the threat moves and the move reads was there already. Hits are in the cost lines ('the other side's gain, answered from the memory of positions').
+D. ORDER. Per level of deepening the threat moves go by their number of holding replies, fewest first (equal numbers keep the order of the priorities); inside a move the reply that held at the level before is read first, then the one that closed it, then by what the reply takes. Two exact steps on the other side's sign moves: our replies to one are tried in the order of what they take (the one that leaves them least ends the loop soonest), and a sign move is read only as far as it can raise what a direct exchange already gives them (`floor`). The second step was compared with the build before it on 859 positions at fuse 30000: threat answers that differ 0 on the 194 positions uncut in both; positions asked on those 194: 429901 before, 378286 after (a script-printed line of the session, scratchpad s7847/dumpboth).
+E. THE SEARCH AS THE LAST WORD. A confirmed move is given as CONFIRMED only if the ledger search from the position after it, to the depth that covers the read's longest line (the reply first, two plies per level, one more; cap 14, fuse 5000000 nodes, both named), does not contradict what the read claims from there; otherwise the verdict is NOT BORNE OUT, the answer keeps both lines. A cut search or a depth over the cap is no check (the claim stays CONFIRMED, marked unchecked in `search`).
+
+ACCEPTANCE 2, puzzles at the same fuse (20000 positions), before and after in one session (before: the 78.46 build with the cost counters only, put first on the path; after: this build), dev_300 while building:
+OBS puzzle sheet dev_300_before_78_47: puzzles read 300; sheet SEES 114 (38.0 pct) at the default budget, 136 (45.3 pct) at five times; PICKS 102 (34.0 pct) (names anything for 170 (56.7 pct)); at five times PICKS 122 (40.7 pct)
+OBS puzzle sheet dev_300_before_78_47: SEES 114 (38.0 pct) SEES2 197 (65.7 pct) (the forcing read adds 83); PICKS 102 (34.0 pct) PICKS2 187 (62.3 pct); plain search 248 (82.7 pct) at 0.2 s, 262 (87.3 pct) at the seconds the sheet and the forcing read took
+OBS puzzle sheet dev_300_before_78_47: forcing read: puzzles with a confirmed threat move 174, with one that is not the answer 34, whose chosen move (highest value) is not the answer 12; the fuse stopped the read in 257
+OBS puzzle sheet dev_300_before_78_47: seconds per puzzle: sheet 0.132, forcing read 1.163, both 1.295
+OBS puzzle sheet dev_300_before_78_47: four-way SEES2 (sheet or forcing sees / search 0.2 s finds): yes/yes 188, yes/no 9, no/yes 60, no/no 43
+OBS puzzle sheet dev_300_before_78_47: four-way SEES2 (sheet or forcing sees / search the sheet and forcing seconds finds): yes/yes 192, yes/no 5, no/yes 70, no/no 33
+OBS puzzle sheet dev_300_before_78_47: misses left after the forcing read (T R X W N other, F = the forcing read read the answer and did not confirm it): T 0 R 5 X 0 W 0 N 0 other 8 F 90
+OBS puzzle sheet dev_300_before_78_47: class F: the answer is NOT SETTLED: 80
+OBS puzzle sheet dev_300_before_78_47: class F: the answer is NO CLAIM: 10
+OBS puzzle sheet dev_300_before_78_47: class F: the plain-search line's first reply is that reply: 50
+OBS puzzle sheet dev_300_before_78_47: class F: the plain-search line does not play that reply: 35
+OBS puzzle sheet dev_300_before_78_47: class F: the plain-search line plays that reply later: 5
+OBS puzzle sheet dev_300_before_78_47: class F: the sheet's class of these (before the forcing read): R: 38
+OBS puzzle sheet dev_300_before_78_47: class F: the sheet's class of these (before the forcing read): N: 18
+OBS puzzle sheet dev_300_before_78_47: class F: the sheet's class of these (before the forcing read): X: 18
+OBS puzzle sheet dev_300_before_78_47: class F: the sheet's class of these (before the forcing read): other: 15
+OBS puzzle sheet dev_300_before_78_47: class F: the sheet's class of these (before the forcing read): W: 1
+OBS puzzle sheet dev_300_final_78_47: puzzles read 300; sheet SEES 114 (38.0 pct) at the default budget, 136 (45.3 pct) at five times; PICKS 102 (34.0 pct) (names anything for 170 (56.7 pct)); at five times PICKS 122 (40.7 pct)
+OBS puzzle sheet dev_300_final_78_47: SEES 114 (38.0 pct) SEES2 213 (71.0 pct) (the forcing read adds 99); PICKS 102 (34.0 pct) PICKS2 204 (68.0 pct); plain search 248 (82.7 pct) at 0.2 s, 261 (87.0 pct) at the seconds the sheet and the forcing read took
+OBS puzzle sheet dev_300_final_78_47: forcing read: puzzles with a confirmed threat move 188, with one that is not the answer 39, whose chosen move (highest value) is not the answer 8; the fuse stopped the read in 256
+OBS puzzle sheet dev_300_final_78_47: seconds per puzzle: sheet 0.130, forcing read 1.142, both 1.272
+OBS puzzle sheet dev_300_final_78_47: four-way SEES2 (sheet or forcing sees / search 0.2 s finds): yes/yes 201, yes/no 12, no/yes 47, no/no 40
+OBS puzzle sheet dev_300_final_78_47: four-way SEES2 (sheet or forcing sees / search the sheet and forcing seconds finds): yes/yes 206, yes/no 7, no/yes 55, no/no 32
+OBS puzzle sheet dev_300_final_78_47: misses left after the forcing read (T R X W N other, F = the forcing read read the answer and did not confirm it): T 0 R 5 X 0 W 0 N 0 other 8 F 74
+OBS puzzle sheet dev_300_final_78_47: class F: the answer is NOT SETTLED: 63
+OBS puzzle sheet dev_300_final_78_47: class F: the answer is NO CLAIM: 10
+OBS puzzle sheet dev_300_final_78_47: class F: the answer is NOT BORNE OUT: 1
+OBS puzzle sheet dev_300_final_78_47: class F: the plain-search line's first reply is that reply: 37
+OBS puzzle sheet dev_300_final_78_47: class F: the plain-search line does not play that reply: 31
+OBS puzzle sheet dev_300_final_78_47: class F: the plain-search line plays that reply later: 5
+OBS puzzle sheet dev_300_final_78_47: class F: no reply held it (unread, or not borne out by the search): 1
+OBS puzzle sheet dev_300_final_78_47: class F: the sheet's class of these (before the forcing read): R: 31
+OBS puzzle sheet dev_300_final_78_47: class F: the sheet's class of these (before the forcing read): X: 18
+OBS puzzle sheet dev_300_final_78_47: class F: the sheet's class of these (before the forcing read): other: 14
+OBS puzzle sheet dev_300_final_78_47: class F: the sheet's class of these (before the forcing read): N: 10
+OBS puzzle sheet dev_300_final_78_47: class F: the sheet's class of these (before the forcing read): W: 1
+fresh_300, run once at the end, nothing changed after:
+OBS puzzle sheet fresh_300_78_47: puzzles read 300; sheet SEES 118 (39.3 pct) at the default budget, 146 (48.7 pct) at five times; PICKS 102 (34.0 pct) (names anything for 160 (53.3 pct)); at five times PICKS 131 (43.7 pct)
+OBS puzzle sheet fresh_300_78_47: SEES 118 (39.3 pct) SEES2 225 (75.0 pct) (the forcing read adds 107); PICKS 102 (34.0 pct) PICKS2 216 (72.0 pct); plain search 274 (91.3 pct) at 0.2 s, 281 (93.7 pct) at the seconds the sheet and the forcing read took
+OBS puzzle sheet fresh_300_78_47: forcing read: puzzles with a confirmed threat move 214, with one that is not the answer 49, whose chosen move (highest value) is not the answer 12; the fuse stopped the read in 259
+OBS puzzle sheet fresh_300_78_47: seconds per puzzle: sheet 0.123, forcing read 1.147, both 1.270
+OBS puzzle sheet fresh_300_78_47: four-way SEES2 (sheet or forcing sees / search 0.2 s finds): yes/yes 220, yes/no 5, no/yes 54, no/no 21
+OBS puzzle sheet fresh_300_78_47: four-way SEES2 (sheet or forcing sees / search the sheet and forcing seconds finds): yes/yes 222, yes/no 3, no/yes 59, no/no 16
+OBS puzzle sheet fresh_300_78_47: misses left after the forcing read (T R X W N other, F = the forcing read read the answer and did not confirm it): T 0 R 7 X 0 W 0 N 0 other 10 F 58
+OBS puzzle sheet fresh_300_78_47: class F: the answer is NOT SETTLED: 50
+OBS puzzle sheet fresh_300_78_47: class F: the answer is NO CLAIM: 7
+OBS puzzle sheet fresh_300_78_47: class F: the answer is NOT BORNE OUT: 1
+OBS puzzle sheet fresh_300_78_47: class F: the plain-search line's first reply is that reply: 36
+OBS puzzle sheet fresh_300_78_47: class F: the plain-search line does not play that reply: 21
+OBS puzzle sheet fresh_300_78_47: class F: no reply held it (unread, or not borne out by the search): 1
+OBS puzzle sheet fresh_300_78_47: class F: the sheet's class of these (before the forcing read): R: 30
+OBS puzzle sheet fresh_300_78_47: class F: the sheet's class of these (before the forcing read): X: 15
+OBS puzzle sheet fresh_300_78_47: class F: the sheet's class of these (before the forcing read): N: 7
+OBS puzzle sheet fresh_300_78_47: class F: the sheet's class of these (before the forcing read): other: 5
+OBS puzzle sheet fresh_300_78_47: class F: the sheet's class of these (before the forcing read): W: 1
+(78.46 on fresh_300, for the comparison, as recorded above: SEES2 208, PICKS2 198, class F 75; the 78.47 build was not run before on fresh_300.)
+
+ACCEPTANCE 3, soundness on held_games with the deeper check (two plies beyond the verdict's own), every contradiction printed (NOT BORNE OUT: confirmed by the read and turned away by its own search; CONTRADICTION: still confirmed and contradicted by the measure's deeper search):
+OBS forcing soundness held_games: positions 2777 (read 2769), fuse 20000 positions, jobs 10, wall 373.4 s
+OBS forcing soundness held_games: confirmed claims 660 (the move ends the game itself 10); checked 649, holds 644, CONTRADICTED 5; unchecked {'search cut (node fuse) before the depth': 1}; checked 2 plies deeper than the verdict's own check
+OBS forcing soundness held_games: the read's own check (the search as the last word): NOT BORNE OUT 6; confirmed moves it could not check (search cut or depth over the cap) 0
+OBS forcing soundness held_games: positions with a confirmed claim 290 (10.47 pct of the read); confirmed claims per position 0.2384; by the level of the verdict {0: 369, 1: 274, 2: 17}
+OBS forcing soundness held_games: threat moves found per position 7.00, not settled per position 5.81, positions where the fuse stopped the read 2196 (79.3 pct), positions read per position 16129
+OBS forcing soundness held_games: seconds per position: the read 0.9066, the checks by search 0.1406 (summed over workers)
+OBS forcing soundness held_games: NOT BORNE OUT game 1 ply 50 position 2b1kb1r/8/p4n1p/p4p1R/PqPR1P2/NP6/8/2BQ1K2 w k - 3 26 move d4d8 (value 1, claimed from there 1, search value 0, depth 3): the read's line ['d4d8', 'e8e7', 'd8c8']; the search's line ['d4d8', 'e8e7', 'h5h1', 'c8e6', 'c1b2']
+OBS forcing soundness held_games: NOT BORNE OUT game 1 ply 58 position 3R1b1r/4k3/pq2bn2/p4p1p/P1P2P2/1P6/1B5R/1N1Q1K2 w - - 2 30 move b2f6 (value 1, claimed from there -3, search value -5, depth 3): the read's line ['b2f6', 'e7f6', 'h2h5']; the search's line ['b2f6', 'e7f6', 'b1a3', 'h5h4', 'a3b1']
+OBS forcing soundness held_games: NOT BORNE OUT game 7 ply 46 position rn4nr/3k4/5pp1/2bN4/P4P2/1p4NP/8/R1B1K2R w KQ - 0 24 move c1b2 (value 1, claimed from there 1, search value 0, depth 6): the read's line ['c1b2', 'a8a6', 'g3e4']; the search's line ['c1b2', 'a8a6', 'h3h4', 'c5a7', 'd5c3', 'f6f5', 'e1d1']
+OBS forcing soundness held_games: NOT BORNE OUT game 26 ply 25 position r1bqkbnr/3n2pp/8/pNp5/3B4/PP1PPPP1/2P4P/R2QKB1R b KQkq - 0 13 move c8a6 (value 2, claimed from there 2, search value 0, depth 5): the read's line ['c8a6', 'd4c5', 'a6b5']; the search's line ['c8a6', 'b5d6', 'e8e7', 'd6f5', 'e7f7', 'd4b2']
+OBS forcing soundness held_games: NOT BORNE OUT game 28 ply 71 position 2b1k2r/8/4p2p/1n5P/5P2/1PbK4/4R3/2q5 b k - 1 36 move b5d4 (value 2, claimed from there 2, search value 1, depth 4): the read's line ['b5d4', 'e2a2', 'd4b3']; the search's line ['b5d4', 'e2a2', 'c1b1', 'd3c3', 'b1a2']
+OBS forcing soundness held_games: NOT BORNE OUT game 31 ply 24 position 1nbqkb1r/3pnppp/2p5/8/r7/2PBPPPP/8/1NBQK1NR w Kk - 0 13 move d1c2 (value 1, claimed from there 1, search value 0, depth 7): the read's line ['d1c2', 'f7f5', 'd3f5', 'e7f5', 'c2f5']; the search's line ['d1c2', 'a4a8', 'f3f4', 'g7g6', 'c2b2', 'c6c5', 'h1h2', 'f7f6']
+OBS forcing soundness held_games: CONTRADICTION game 8 ply 66 position r4b1r/2Q5/k3p1p1/6P1/b2q1B2/P1N5/2K5/R2R4 w - - 8 34 move c3a4 (value 1, the move took 5, level 0, search depth 6): read claims -4 from there; search value -6; claims [('b@a4', 'takes', 5.0), ('q@d4', 'exchange', 14.0)]; the read's line ['c3a4', 'd4a4'] (weakest reply d4a4 = 1.0); the search's line ['c3a4', 'd4a4', 'c2b2', 'h8h3', 'f4g3', 'a4b5', 'b2c1'] (depth read 6)
+OBS forcing soundness held_games: CONTRADICTION game 20 ply 13 position rnbqkbnr/pppp4/4pP2/8/1P5p/P1PP4/4PPP1/RNBQKBNR b KQkq - 0 7 move d8f6 (value 2, the move took 2, level 0, search depth 5): read claims 0 from there; search value -1; claims [('p@f6', 'takes', 2.0)]; the read's line ['d8f6', 'e2e3'] (weakest reply e2e3 = 2.0); the search's line ['d8f6', 'g1f3', 'f6d8', 'g2g3', 'f8e7', 'g3h4'] (depth read 5)
+OBS forcing soundness held_games: CONTRADICTION game 21 ply 72 position r5r1/3k4/2n4p/1B6/N3q3/P4p2/8/R1N2K2 w - - 0 37 move a4b6 (value 4, the move took 0, level 0, search depth 6): read claims 4 from there; search value 0; claims [('goal', 'sign', 0.0)]; the read's line ['a4b6', 'd7d6', 'b6a8', 'g8a8'] (weakest reply d7d6 = 4.0); the search's line ['a4b6', 'd7d8', 'c1b3', 'a8a7', 'a1d1', 'd8c7', 'b6c4'] (depth read 6)
+OBS forcing soundness held_games: CONTRADICTION game 24 ply 75 position 5r2/3k4/6p1/4B3/p4P1n/P7/8/R3K3 b - - 2 38 move h4g2 (value 2, the move took 0, level 0, search depth 5): read claims 2 from there; search value 1; claims [('goal', 'sign', 0.0)]; the read's line ['h4g2', 'e1d1', 'g2f4'] (weakest reply e1d1 = 2.0); the search's line ['h4g2', 'e1d2', 'g2f4', 'a1g1', 'f8f5', 'e5f4'] (depth read 5)
+OBS forcing soundness held_games: CONTRADICTION game 24 ply 96 position 8/3k4/8/K7/pr6/P7/8/8 w - - 0 49 move a3b4 (value 8, the move took 8, level 0, search depth 5): read claims 0 from there; search value -12; claims [('r@b4', 'takes', 8.0), ('p@a4', 'exchange', 2.0)]; the read's line ['a3b4', 'a4a3'] (weakest reply a4a3 = 8.0); the search's line ['a3b4', 'a4a3', 'b4b5', 'a3a2', 'b5b6', 'a2a1q'] (depth read 5)
+READ OF THE CONTRADICTIONS. The six NOT BORNE OUT are the five contradictions of 78.46 on this set and one more (game 7 ply 46): the read's own search now turns them away. The five CONTRADICTIONS left, found only by the two extra plies, are of the named limit (a second step of the other side after a taking: the replying queen's capture followed by a strike, a promotion run in game 24 ply 96, a quiet follow-up of a unit not read); none was taken apart move by move. One search was cut by its node fuse and is counted as unchecked. The deeper check keeps finding what the verdict's own depth misses, so CONFIRMED is not a proof at any depth the check reaches; the claim is only what the search bears out to that depth.
+
+ACCEPTANCE 4, the 78.43 measures on events_games (all 16 games of the directory, one run each; the 78.46 note used the first 4), unchanged:
+OBS sheet_rust: games 16, positions compared 1258, unreadable (over) 5, python errors 0, jobs 10, wall 20.6 s
+OBS sheet_rust units (units and first order entries): items compared 55790, items that differ 0
+OBS sheet_rust level 0 verdicts (per target): items compared 27895, items that differ 0
+OBS sheet_rust level 1 route sets (per target): items compared 27895, items that differ 0
+OBS sheet_rust level 1 verdicts (per target): items compared 27895, items that differ 0
+OBS sheet_rust differences listed: 0 (every one printed below up to --max-diffs 60)
+OBS sheet_rust_deep: games 16, positions compared 1258, unreadable (over) 5, python errors 0, jobs 10, wall 75.8 s
+OBS sheet_rust_deep stage A fields (levels 0 and 1 and the stakes, per question): items compared 27895, items that differ 0
+OBS sheet_rust_deep deeper steps driven (level 2 and on, the Python sheet's own order): 13123 (census 908, frame 11470, search 745); by level 2: 10588, 3: 1392, 4: 1143
+OBS sheet_rust_deep steps census: compared 908, steps that differ 0
+OBS sheet_rust_deep steps frame: compared 11470, steps that differ 0
+OBS sheet_rust_deep steps search: compared 745, steps that differ 0
+OBS sheet_rust_deep ways compared (settled ways, the exchange as it stands not counted): 38454, ways that differ in any field 0
+OBS sheet_rust_deep obstacles compared (on the ways' routes, with their follow-up answers): 57196, entries whose obstacles differ 0
+OBS sheet_rust_deep differences per field: none
+OBS sheet_rust_deep differences listed: 0 (printed below up to --max-diffs 60; the cause of each is read by hand, see the plan note)
+OBS sheet_rust_move events_games: games 16, positions 1258, unreadable (over) 5, python errors 0, rust errors 0, jobs 10, wall 15.6 s
+OBS sheet_rust_move events_games: moves compared 35026, moves that differ 0, positions whose order of moves differs 0; Python verdicts LOSES 8141, NOT SETTLED 355, SAFE 26530
+OBS sheet_rust_move events_games: differences per field: none
+OBS sheet_rust_move events_games: unit_loss calls 55906 (every unit at every ply, horizons (4, 8)), taken within the horizon 3375 (even 1888, gained 262, lost 1225), charged plies read 1225, calls that differ 0, per field: none
+OBS sheet_rust_move events_games: differences listed 0 (printed up to --max-diffs 40)
+OBS sheet_rust_sheet events_games: games 16, positions 1258, unreadable (over) 5, python errors 0, rust errors 0, jobs 10, wall 613.3 s; cost model (0.002, 0.01, 0.03, 0.06, 0.1), budget_cost 0.15
+OBS sheet_rust_sheet events_games clock present: sheets compared 1258, sheets that differ 0, steps compared 69389
+OBS sheet_rust_sheet events_games clock plain: sheets compared 1258, sheets that differ 0, steps compared 77412
+OBS sheet_rust_sheet events_games clock chance: sheets compared 1258, sheets that differ 0, steps compared 71348
+OBS sheet_rust_sheet events_games clock budget: sheets compared 1258, sheets that differ 0, steps compared 66508
+OBS sheet_rust_sheet events_games: questions compared 113627, findings 284657, deeper findings 61497, ways settled 160775, quiet questions 2047, weak places 41200, time obstacle notes 490
+OBS sheet_rust_sheet events_games: verdict kinds of the questions (Python, all configs): closed1 1332, closed2 168, closed3 50160, confirmed 1998, idle0 1980, idle1 2679, live0 735, live1 12002, lost 1945, refuted 29270, unread 67, unsettled 642, waiting 10649; danger 4678 of 113627
+OBS sheet_rust_sheet events_games: differences per (config, part, field): none
+OBS sheet_rust_sheet events_games: differences listed 0 (printed up to --max-diffs 40; the cause of each is read by hand)
+Tests: tests/test_plan78_43_rust_sheet.py 117 passed, test_plan78_45_puzzle_sheet.py 18 passed, test_plan78_46_forcing_read.py 12 passed, test_plan78_47_forcing_spent.py 12 passed (scripts/gate.py engine --only, one file per call).
+
+NOT BUILT: B as a large saving (it is exact and nearly empty on these positions); the Python mirror of the read (still owed); the other side's threats read as deep as ours (what the deeper check still finds); the read as a level of the sheet's schedule; use in play.
