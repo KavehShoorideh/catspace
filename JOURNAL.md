@@ -36663,3 +36663,5 @@ match player, which carries none, plays as before. The one test of the old form 
 ## 2026-11-14 -- the high-level spec written down
 
 Kaveh restated what the system must end up with. Written as docs/SYSTEM_SPEC.md; an inventory of what already exists per piece is under way. No runs.
+
+Inventory done and appended to docs/SYSTEM_SPEC.md section 9.1. scripts/gate.py: a missing space had joined test_plan78_14 and test_plan78_17 into one name, so the engine gate skipped both; fixed, the two files pass.
