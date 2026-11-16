@@ -149,6 +149,19 @@ is worth. Every decision can be read as a chain of claims.
   stands to be lost) stays the first check; a difference can be lasting compensation that no reasoning resolves,
   so a difference that persists across settled positions is accepted as the estimate; and whether the difference
   does foretell events soon is measured before it is relied on.
+- **Open tactics are carried forward, and checked before the estimate is trusted** (DECIDED 2026-11-16). "This is
+  why we should carry the tactics forward ... a memory of the tactics we have previously found." The rule: "if there
+  are open tactics with a high stake, basically larger than the variation between the two readings ... one is
+  saying +1, the other is saying +2, and then we have like a rook under attack ... before I trust the +1 or the +2,
+  I should check my rook ... if I can find that for every threat to my rook, I have a good defense, then ... I can
+  trust it." Why carrying helps: "I would have to miss it on every move, not on one single move ... if I miss it on
+  one move, I might see it on the next move, and carry it forward."
+  So: the estimate at a leaf is trusted only when no open claim carried in the memory has a stake larger than the
+  spread between the readings; each such claim is first resolved concretely. Notes by the main agent: stake and
+  spread must be in one unit (the change in the chance of the result); carrying guards against a miss of attention
+  or budget, not against what the reasoner cannot see on any move, which is the sleep's ladder to repair; the
+  carried frames must be updated by the dependency memory, only where something they read changed, or the cost is
+  paid again each move.
 - **What is read at the leaf is chances, for each side.** What a forcing line leaves standing ("your queen is going
   to be at the corner", doubled pawns) is input to "the potential future tactical probabilities of you and your
   opponent". A loss now can be right: "I let the queen take my rook because ... I have immense tactical chances."
