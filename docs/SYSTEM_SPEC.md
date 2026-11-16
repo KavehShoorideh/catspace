@@ -431,3 +431,58 @@ what our own tools made and checked (a proved lemma, or statistics from games an
 the oracle's evaluation or to "the oracle's move" as a label. To confirm if leaned on.
 What exists to reuse: the diagnosis and tool choice of plan 78.17 (sleep.py), the surprise meter of 78.37, the
 construction and scenario work of 78.38 and 78.39, the prover (discovery/prover.py).
+
+
+## 17. A frame is read with a few questions (Kaveh, 2026-11-15; entered here 2026-11-16, it had been only in the plan and in memory)
+
+- **Few questions, as in real life.** A frame is read by asking only a few questions, not by listing every line.
+- **Bad branches are cut at once.** A branch that loses material is pruned immediately, with the reason kept.
+- **The sacrifice is the exception, and it goes through another frame.** A pruned losing move is reopened only when
+  it joins another frame by an intermezzo with the right tempo. His words: "inside of the frame, we're losing, but
+  outside of the frame, we're winning."
+- **A frame is bound to the units, not to the places.** "The frame should not be bound to the square. The frame
+  should be bound to the piece."
+- **The October work on the chase, the trap and cornering is brought over**, "otherwise we will be rehashing those
+  exact same problems, specifically around the chase."
+- **Damage to the structure is a subgoal in itself.**
+State: built as the question read (plans 78.57, 78.58, 78.60): candidates, the prune with its reason, the reopening
+through another frame, the trap question, a line that ends for a reason. Not yet a few questions per frame.
+
+## 18. Events come from the rules, and no horizon is put in (Kaveh, 2026-11-16)
+
+- "why do we have 8 plies hard-coded? If you have a better alternative, go with that." The alternative, to which he
+  said yes: predict an EVENT and the time to it, cut where the game ends; "within a count of plies" and "who first"
+  are read off afterwards; how far ahead the inputs tell anything is printed by the run, not assumed.
+- "Event list would be based on gdl." The list of events is read from the rules and the unit tracker at run time
+  (a unit taken, a change of kind, the end and its result, a fact the rules never restore). No event name is written
+  in the code. "A side wins a unit and keeps it" is one reading built on that list.
+State: built in plans 78.64 and 78.65.
+
+## 19. Endings in human games are a known risk (Kaveh, 2026-11-15 night)
+
+- "human games often resign before the end of the game." Completing them with a tablebase or Stockfish's line:
+  "That's a bad idea, actually."
+- "we're not going to have enough end games ... Make sure, like, basically check for it. Remember that this is a
+  risk. And if we turn out to not have enough endgames, then let's balance it by creating some."
+The standing rule: every plan that samples human games prints its endgame coverage (by units left, per small set of
+units, how the games ended) and fills thin sets with generated games, never with an engine's continuation or
+evaluation. State: the check and a first fill exist (plans 78.62, 78.64); the fill games are our own player's.
+
+## 20. Where each decision of 2026-11-14 to 2026-11-16 is written (an index, so nothing is lost)
+
+| Decision or direction | Section |
+|---|---|
+| The pieces of the system; sleep and wake; the graph; the opportunity policy; subgoals | 1 to 7 |
+| Rust first in the hot paths, then the Python mirror; game-free layers | 8 |
+| What already exists, to reuse and not rebuild | 9.1, 12.1, 12.2 |
+| The chance of a claim depends on the opponent | 10 |
+| The graph in three layers; concepts named dc1, dc2 and renamed by us later | 11 |
+| Frames, outcomes, the intermezzo; units as variables; no worth in a concept | 12 |
+| The value estimator; any source; human games yes; no oracle number in a fit; several heads | 13 |
+| No assumed worth; odds games; the unknown as a condition | 14 |
+| Concepts emerge from human games; smallest frame; the outcome ends at the settled end; chances at the leaf; the tactical state as a sequence | 15 |
+| A sleep is a loop of chosen actions; its limits; how it chooses; the menu of different kinds of action; the oracle in the sleep and the ladder on a position | 16 |
+| A frame is read with a few questions; bound to units; the sacrifice through another frame; the chase work reused | 17 |
+| Events from the rules; no fixed horizon | 18 |
+| Endings in human games; the coverage rule and the fill | 19 |
+Measured numbers are never here; they are in docs/ANALYST_PLAN.md beside the runs that printed them.
