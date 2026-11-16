@@ -541,9 +541,7 @@ def stage_compare(cfg: dict, say=print) -> None:
             say(f"OBS odds compare: {label}: the file {rel} is absent, nothing printed")
             continue
         r = json.loads(p.read_text())
-        o = r.get("order_of_kinds")
-        if o is None:
-            o = r.get("heads", {}).get("kind_baseline", {}).get("order_of_kinds")
+        o = r.get("heads", {}).get("kind_baseline_human", {}).get("order_of_kinds") if "human" in rel else r.get("order_of_kinds")
         if o is None:
             say(f"OBS odds compare: {label}: no order of kinds in {rel}")
             continue
