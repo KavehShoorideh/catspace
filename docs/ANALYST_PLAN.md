@@ -9936,3 +9936,5 @@ Endgame coverage of every human sample printed, as the standing rule requires. S
 STATUS: written; to be given to a builder after the gate at 72baf49e and plan 78.62.
 
 GATE at 72baf49e (2026-11-15, after the merges of 78.59, 78.60, 78.61): `OBS gate engine: files 105, passed 1659, failed 0, xfailed 1, errors 0, wall 2161.1 s`.
+
+78.63 AMENDMENT (Kaveh 2026-11-15 night: "wake after ... 5 actions ... Each action ... no more than an hour. So can't spend more than 5 hours sleeping"). Stage D's stop becomes: at most 5 actions a sleep, at most 1 hour an action, at most 5 hours a sleep; the threshold on gain per second may wake it sooner. Stage A's slices stay small inside an action so that the hour is a ceiling an action can be cut at, with what it wrote kept. The short run scales the three limits down together (minutes an action). Stage F's fixed schedule gets the same total time.

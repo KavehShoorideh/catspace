@@ -378,3 +378,8 @@ Design, the main agent's proposal, not yet confirmed by him:
   the stop: on waking, a match against the previous generation decides whether the new store is kept. A sleep that
   made nothing better keeps the old store.
 - **What is carried.** The record of what paid goes to the next sleep, so the choice improves across sleeps.
+
+**The limits of one sleep (Kaveh, 2026-11-15 night, later the same talk):** "have each generation wake after
+probably, let's say, 5 actions ... Each action ... no more than an hour. So can't spend more than 5 hours sleeping."
+So: at most five actions a sleep, at most one hour an action, at most five hours a sleep. These are ceilings. The
+gain-per-second rule above may still wake it sooner, and an action may end before its hour.
