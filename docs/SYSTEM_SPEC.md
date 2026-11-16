@@ -128,6 +128,11 @@ is worth. Every decision can be read as a chain of claims.
 - **Several heads.** A baseline for the kinds and a correction to it, and the one he prefers: "the prediction of
   future tactical opportunities. So these could be multiple heads." The reasoner compares routes by them: "this is
   the better route because this has a higher probability of success."
+- **Concrete first; the estimate only when the budget is spent** (DECIDED 2026-11-16, his answer on AGENTS rule 7).
+  "At the leaf, the estimate can be used when we don't have any more budget to search reasoning, follow reasonings
+  concretely. But while we do have budget ... there's no reason to fall back to an estimate." So the estimate is
+  part of how a leaf is scored, and it never replaces a concrete conclusion that the budget could still reach.
+  Before that point it may only order what is looked at first. Subgoal bonuses stay out of the value, as before.
 - **What is read at the leaf is chances, for each side.** What a forcing line leaves standing ("your queen is going
   to be at the corner", doubled pawns) is input to "the potential future tactical probabilities of you and your
   opponent". A loss now can be right: "I let the queen take my rook because ... I have immense tactical chances."
@@ -282,8 +287,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.67 in docs/ANALYST_PLAN.md
 
 ## 13. Open questions for Kaveh
 
-1. AGENTS rule 7, asked again in plainer words on 2026-11-16: may the estimate of each side's chances be part of
-   how a position is scored, or may it only order which moves are looked at first?
+1. ANSWERED 2026-11-16: the estimate scores a leaf only when the budget for concrete reasoning is spent (section 6).
 2. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
 3. The exact content of a frame's interface (section 3): which ports, and what each carries.
 
