@@ -20,9 +20,9 @@ documents of record (docs/THESIS.md, docs/ARCHITECTURE.md) describe earlier syst
 A machine that learns a game from its rules, for chess first and any perfect-information game after. The immediate
 use: "learn to play and analyze chess more or less like a human chess master". It holds one graph of what it knows
 about a position: the units, the frames they form, the facts, and the claims reasoned from them. It lives in two
-cycles. Awake, it plays: it reasons about tactics where there are any, reads an estimate of each side's chances
-where the forcing ends, and steers toward positions richer in tactical opportunity, saying which subgoal it is
-pursuing. Asleep, an agent with tools studies what surprised the wake, explains it concretely, and hands the
+cycles. Awake, it plays: it reasons concretely while it has budget, carries the open tactics from move to move,
+reads an estimate of each side's chances where the reasoning ends, and steers toward positions richer in tactical
+opportunity, saying which subgoal it is pursuing. Asleep, an agent with tools studies what surprised the wake, explains it concretely, and hands the
 explanation back as lemmas, statistics and a better policy. Nothing about the game is assumed, not even what a unit
 is worth. Every decision can be read as a chain of claims.
 
@@ -38,7 +38,8 @@ is worth. Every decision can be read as a chain of claims.
      calls them dc1, dc2, dc3, and we rename them later through a mapping file that holds names only, never
      knowledge. A concept's identity is its definition, so the mapping survives a re-mining.
   3. *Inside one game.* Claims found in this game, including CONDITIONAL claims: "if my unit gets onto that line, I
-     win the unit behind their goal unit". The condition is a subgoal the policy can take up.
+     win the unit behind their goal unit". The condition is a subgoal the policy can take up. Open claims are carried
+     from move to move (section 4).
 - **Which relations are nodes** ("let's do it your way"): a relation that a claim, a condition or a concept must
   point at is a node of its own; the basic layer 1 facts (this unit stands on this place) are plain links.
 - **Frames are nodes too**, and questions can be about frames.
@@ -56,10 +57,13 @@ is worth. Every decision can be read as a chain of claims.
 - **Sequences and outcomes.** Inside a frame there are sequences, and each has an outcome: a record of which units
   each side is left with and where, not a number.
 - **Read with a few questions,** as a person does, not by listing every line. A branch that loses material is cut
-  at once, with the reason kept.
-- **The sacrifice goes through another frame.** A cut losing move is reopened only when it joins another frame by
-  an INTERMEZZO (a move here, a move elsewhere, back here) with the right tempo: "inside of the frame, we're losing,
-  but outside of the frame, we're winning."
+  at once, with the reason kept. "Loses material" is judged by the measured reading on kinds (section 5), never by
+  a table.
+- **The sacrifice goes through another frame.** A cut losing move is reopened when it joins another frame by an
+  INTERMEZZO (a move here, a move elsewhere, back here) with the right tempo: "inside of the frame, we're losing,
+  but outside of the frame, we're winning." The other way a loss can be right, lasting chances with no second frame
+  to point at, is not a reopening inside the frame read; it is seen where the line ends, by the estimate (section 6:
+  "a loss now can be right"). PROPOSED reading of how the two statements fit.
 - **Where concepts and frames come from:** from games, human games first. "We can skip the bottoms up one": the
   pass that enumerated small material bottom-up is dropped (see section 14).
 - **The smallest frame that explains wins.** "If a smaller frame can explain it, the smaller frame is great. Like
@@ -80,24 +84,42 @@ is worth. Every decision can be read as a chain of claims.
     maintaining two frames in my memory." Instances of frames are graph nodes, "added, deleted as the stake
     progresses", with the graph network over them.
   - Caution added by the main agent: the bigger frame must still be read far enough to know its threat is real and
-    that it can be met; if it cannot be met, it is the one that executes (a double threat).
+    that it can be met; if it cannot be met, it is the one that executes (a double threat). This is the same check
+    as in section 6: for an open tactic of high stake, what must be known is that every threat has a defence, not
+    the exact line.
   - Known from October and kept: frames in contact are resolved jointly; a tempo is worth what the other side
     proves with the move passed to it. Already built toward this: the named causes of plan 78.60 (the only guard
     left, a line uncovered) and the reopening through another frame.
 
-## 4. Tactical reasoning (DECIDED 2026-11-14, 2026-11-15)
+## 4. Tactical reasoning (DECIDED 2026-11-14 to 2026-11-16)
 
 - **No game written in.** The reasoner reads the rules as data and a goal. We supply names bound to the rules,
   never knowledge.
-- **Questions are the unit of work, not moves.** Each asks about a vulnerability of ours or theirs, is ordered by
-  stake, and ends in a verdict with its reasons. Obstacles are found by removing them and looking again.
-- **Chances are the currency.** Each kind of verdict has a chance of coming true; chance times stake is what time
-  is spent by.
-- **A line ends for a reason.** The immediate tactical outcome is drawn "at the end of the forcing sequence": the
-  settled end, where nothing stands to be lost for either side. A line cut by a limit is marked as cut, and no
-  forced claim is made from it.
-- **Chess is concrete** (2026-11-16). Where a concrete answer can be reached it is reached; statistics are for what
-  is not sharp. When concreteness costs too much calculation, the finding is compressed (section 9).
+- **Questions are the unit of work, not moves.** Each asks about a vulnerability of ours or theirs and ends in a
+  verdict with its reasons. Obstacles are found by removing them and looking again.
+- **Stake, and what time is spent by.** The stake of a question is what is at risk in it, in one unit everywhere:
+  the change in the chance of the result (from the measured readings of sections 5 and 6, never a table). Each
+  kind of verdict has a chance of coming true. Chance times stake is what time is spent by.
+- **The loop while there is budget** (2026-11-16). "Any sort of estimate or hint is basically telling me what order
+  to check the questions in. And those orders will kind of create new facts, and the new facts will get me to change
+  the order of my questions." Hints and estimates ORDER; they do not conclude.
+- **Chess is concrete** (2026-11-16). Where a concrete answer can be reached it is reached. When concreteness
+  costs too much calculation, the finding is compressed in sleep (section 9).
+- **Open tactics are carried forward** (2026-11-16): "a memory of the tactics we have previously found", updated
+  from move to move only where something they read has changed. "I would have to miss it on every move, not on one
+  single move." Carrying guards against a miss of attention or budget, not against what the reasoner cannot see at
+  all; that is for the sleep to repair.
+- **How a line ends.** Every line ends for a stated reason, one of these, in this order of trust:
+  1. CONCRETE: the end of the game, or a proved lemma, decides it.
+  2. QUIET: nothing stands to be lost for either side ("the end of the forcing sequence", the settled end); no open
+     tactic carried in the memory has a stake above the spread between the two readings of section 6; and the two
+     readings agree. The estimate is then read. This is not a fallback while budget remains: the line has nothing
+     sharp left, and the budget goes to the lines that have.
+  3. LOST BEYOND DOUBT: "a big material disadvantage" by the readings. The line "need not be followed to its end".
+  4. OUT OF BUDGET: the estimate is read because nothing more can be asked, and the line is marked as cut. No forced
+     claim is made from a cut line.
+  Whether reason 2 may end a line while budget remains is the main agent's reading of his statements of 2026-11-16,
+  to be confirmed (section 13).
 - **Damage to the structure is a subgoal in itself.**
 
 ## 5. Value: nothing assumed (DECIDED 2026-11-15)
@@ -116,55 +138,28 @@ is worth. Every decision can be read as a chain of claims.
   comparison that needs worth is returned as a CONDITION on the unknowns ("good if this kind is worth more than
   that kind"), kept with the claim. The condition in the frame read is not built yet.
 
-## 6. The estimator read where the forcing ends (DECIDED 2026-11-15, 2026-11-16)
+## 6. The estimator: a belief read where the reasoning ends (DECIDED 2026-11-15, 2026-11-16)
+
+What it is and what it is made of:
 
 - **What it is.** "At the end of a reasoning step" the wake reads a probabilistic estimate, as Stockfish reads its
-  evaluation, "but using some sort of a stats thing that we have learned."
+  evaluation, "but using some sort of a stats thing that we have learned." When the budget is gone, "I have to stop
+  and ask a different question ... from here, what are my chances to win? And that chance is essentially an
+  estimate and can take into account all of the facts on the board and all of the claims we've gotten, and whether
+  or not the rooks are connected is part of those facts. So yes, it can be used as a belief."
 - **Its inputs are parts, not the whole position.** "Sometimes we will never have seen this exact position. But
   this position is made up of smaller frames, and those frames we have seen ... like connected rooks."
-- **Its sources are results, never an engine's number.** "The estimator can be based on anything. Human games,
-  logic, self-play, Monte Carlo playout." "Yes, human games can be read." "Stockfish cannot be read in. It has to be
-  statistical." Queries can condition on rating ("we can even condition on ELO").
-- **Several heads.** A baseline for the kinds and a correction to it, and the one he prefers: "the prediction of
-  future tactical opportunities. So these could be multiple heads." The reasoner compares routes by them: "this is
-  the better route because this has a higher probability of success."
-- **Concrete first; the estimate only when the budget is spent** (DECIDED 2026-11-16, his answer on AGENTS rule 7).
-  "At the leaf, the estimate can be used when we don't have any more budget to search reasoning, follow reasonings
-  concretely. But while we do have budget ... there's no reason to fall back to an estimate." So the estimate is
-  part of how a leaf is scored, and it never replaces a concrete conclusion that the budget could still reach.
-  Before that point it may only order what is looked at first. Subgoal bonuses stay out of the value, as before.
-- **The loop while there is budget** (2026-11-16). "Any sort of estimate or hint is basically telling me what order
-  to check the questions in. And those orders will kind of create new facts, and the new facts will get me to change
-  the order of my questions." When the budget is gone, "I have to stop and ask a different question ... from here,
-  what are my chances to win? And that chance is essentially an estimate and can take into account all of the facts
-  on the board and all of the claims we've gotten, and whether or not the rooks are connected is part of those
-  facts. So yes, it can be used as a belief."
-- **Quiet or sharp, told by two readings agreeing** (2026-11-16). "When the statistical end aligns with the material
-  reading, that means the position is quiet and we can read the estimate. When the statistical reading is not the
-  same as the material reading, that means there's something sharp going on ... and then we have to follow the
-  reasoning." And a line that is statistically lost, "a big material disadvantage", need not be followed to its end.
-  PROPOSED form: with no worth assumed, the material reading is the head on kinds alone and the statistical reading
-  is the head on all the parts; their difference is the correction of this section, and its size is the signal of
-  sharpness. Three cautions: both readings can be blind to the same tactic, so the frame read's own test (nothing
-  stands to be lost) stays the first check; a difference can be lasting compensation that no reasoning resolves,
-  so a difference that persists across settled positions is accepted as the estimate; and whether the difference
-  does foretell events soon is measured before it is relied on.
-- **Open tactics are carried forward, and checked before the estimate is trusted** (DECIDED 2026-11-16). "This is
-  why we should carry the tactics forward ... a memory of the tactics we have previously found." The rule: "if there
-  are open tactics with a high stake, basically larger than the variation between the two readings ... one is
-  saying +1, the other is saying +2, and then we have like a rook under attack ... before I trust the +1 or the +2,
-  I should check my rook ... if I can find that for every threat to my rook, I have a good defense, then ... I can
-  trust it." Why carrying helps: "I would have to miss it on every move, not on one single move ... if I miss it on
-  one move, I might see it on the next move, and carry it forward."
-  So: the estimate at a leaf is trusted only when no open claim carried in the memory has a stake larger than the
-  spread between the readings; each such claim is first resolved concretely. Notes by the main agent: stake and
-  spread must be in one unit (the change in the chance of the result); carrying guards against a miss of attention
-  or budget, not against what the reasoner cannot see on any move, which is the sleep's ladder to repair; the
-  carried frames must be updated by the dependency memory, only where something they read changed, or the cost is
-  paid again each move.
-- **What is read at the leaf is chances, for each side.** What a forcing line leaves standing ("your queen is going
-  to be at the corner", doubled pawns) is input to "the potential future tactical probabilities of you and your
-  opponent". A loss now can be right: "I let the queen take my rook because ... I have immense tactical chances."
+- **Its sources, in order of preference.** (1) Results of play: "Human games, logic, self-play, Monte Carlo
+  playout"; "Yes, human games can be read"; queries can condition on rating. (2) Our own deeper reasoning: what a
+  much deeper reading concludes from the leaf where the wake stopped (section 9). (3) The oracle, only as a last
+  resort and on his word (section 9); until then "stockfish cannot be read in. It has to be statistical."
+- **Several heads.** A reading on the kinds alone (the baseline) and a reading on all the parts (the baseline with
+  its correction), and the one he prefers: "the prediction of future tactical opportunities. So these could be
+  multiple heads." The reasoner compares routes by them: "this is the better route because this has a higher
+  probability of success."
+- **What is read is chances, for each side.** What a forcing line leaves standing ("your queen is going to be at
+  the corner", doubled pawns) is input to "the potential future tactical probabilities of you and your opponent".
+  A loss now can be right: "I let the queen take my rook because ... I have immense tactical chances."
 - **Events come from the rules, and no horizon is put in.** "Event list would be based on gdl": a unit taken, a
   change of kind, the end and its result, a fact the rules never restore; no event name in the code. "Why do we have
   8 plies hard-coded?": the target is an event and the time to it, and how far ahead the inputs tell anything is
@@ -173,38 +168,71 @@ is worth. Every decision can be read as a chain of claims.
   able to model that sequence and predict where it will be."
 - **The chance depends on the opponent** (2026-11-14): "telling me which tactics are likely to go the way I want
   depending on opponent." The opponent is a condition of the chance; with none known, the unconditioned chance.
-- Cautions carried into every plan: what players did is not what was forced; a concept present may mark the
-  stronger side and not cause the result; corrections of frames in contact do not add.
 
-## 7. The opportunity policy and subgoals (DECIDED 2026-11-14)
+When it may be read (section 4 gives the list of how a line ends; these are the rules behind it):
+
+- **Concrete first** (his answer on AGENTS rule 7). "At the leaf, the estimate can be used when we don't have any
+  more budget to search reasoning, follow reasonings concretely. But while we do have budget ... there's no reason
+  to fall back to an estimate." So the estimate scores a leaf, and never replaces a concrete conclusion the budget
+  could still reach. Before that it only orders what is looked at. Subgoal bonuses stay out of the value.
+- **Quiet or sharp, told by two readings agreeing.** "When the statistical end aligns with the material reading,
+  that means the position is quiet and we can read the estimate. When the statistical reading is not the same as
+  the material reading, that means there's something sharp going on ... and then we have to follow the reasoning."
+  PROPOSED form: the material reading is the head on kinds alone, the statistical reading the head on all the
+  parts; the size of their difference is the signal. Cautions: both can be blind to the same tactic, so the test
+  that nothing stands to be lost comes first; a difference can be lasting compensation that no reasoning resolves,
+  so one that persists across settled positions is accepted as the estimate; and whether the difference foretells
+  events is measured before it is relied on (plan 78.69).
+- **Open tactics are checked before the estimate is trusted.** "If there are open tactics with a high stake,
+  basically larger than the variation between the two readings ... one is saying +1, the other is saying +2, and
+  then we have like a rook under attack ... before I trust the +1 or the +2, I should check my rook ... if I can
+  find that for every threat to my rook, I have a good defense, then ... I can trust it."
+
+Cautions carried into every plan: what players did is not what was forced; a concept present may mark the stronger
+side and not cause the result; corrections of frames in contact do not add; a head that predicts our own thinking
+can inherit its errors, so it is anchored by ends of games and proved lemmas and measured against the oracle.
+
+## 7. The opportunity policy and subgoals (DECIDED 2026-11-14, 2026-11-16)
 
 - **Target.** Where no tactic is available now, the policy steers toward the abundance of high-value tactical
   opportunity. Its target is the chances of section 6.
+- **How it acts, two ways that must not be mixed.** As a BELIEF: the chances are what a leaf is scored by when the
+  reasoning has ended (section 6). As a HINT: a subgoal orders which questions and moves are looked at first. A
+  subgoal never adds to the value (AGENTS.md rule 7); the chances are not a subgoal bonus, they are the estimate of
+  what the position is worth.
 - **Maxims come out, not in.** Connecting the rooks or taking the centre should come OUT of understanding the
-  tactics. They are not supplied.
+  tactics. They are not supplied. Connected rooks may then be a fact the belief reads, and "connect the rooks" a
+  subgoal the hint proposes.
 - **It talks in subgoals:** "connect the rooks", "open a file". Goal-conditioned reasoning works toward the
   subgoal; a conditional claim of the graph (section 2) is such a subgoal.
 - **Two halves at the wake.** Go toward the tactics, then recognise when they are there and use them.
-- **Standing rule:** subgoals enter through the prior, never the value (AGENTS.md rule 7).
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
   kind of a Markov process ... we have a transition to the next state. So what's good for a Markov process? I'm
   actually not sure."
 - PROPOSED answer: if the tactical state is Markov, the model is a TRANSITION model (the chance of each event of
-  the rules at the next step given the present state, which the event heads already are) and a VALUE learned over
-  it from our own games by bootstrapping from the next state. The experts are the heads, one per event and side,
-  gated by which frames are present. Whether the state is Markov is measured, not assumed: does adding earlier
-  states improve the prediction of the next one. If it does, a short memory of earlier states is added as input.
+  the rules at the next step given the present state, which the event heads already are) and a VALUE over it,
+  learned from our own play and our own deeper reasoning (the same sources as section 6). The experts are the
+  heads, one per event and side, gated by which frames are present. Whether the state is Markov is measured, not
+  assumed: does adding earlier states improve the prediction of the next one. If it does, a short memory of earlier
+  states is added as input.
 
 ## 8. Wake
 
-- Split the position into frames and drop those with no bearing on the action.
-- Ask the questions inside the frames that matter, with the lemmas and statistics sleep provided.
-- Where a tactic is confirmed, use it. Where the forcing ends, read the chances for each side. Where nothing is
-  forced, follow the policy toward opportunity and name the subgoal.
-- Give the reasons for the move as a chain of claims.
-- **The wall.** No number of the oracle is read by the wake or by anything the wake reads.
+1. Bring forward the open tactics carried from the last move, and update only those whose facts changed.
+2. Split the position into frames and drop those with no bearing on the action.
+3. Ask the questions inside the frames that matter, ordered by hints, by stake and by chance, with the lemmas and
+   statistics sleep provided. New facts reorder the questions.
+4. Where a tactic is confirmed, use it.
+5. Where a line ends (section 4), read the chances for each side, after checking every open tactic whose stake is
+   above the spread of the readings.
+6. Where nothing is forced, the subgoals order what is tried and the chances decide among what was reached; name
+   the subgoal.
+7. Give the reasons for the move as a chain of claims, each line with the reason it ended.
+
+**The wall.** No number of the oracle is read by the wake or by anything the wake reads. The one exception is the
+last resort of section 9, which needs his word and has not been taken.
 
 ## 9. Sleep (DECIDED 2026-11-14 to 2026-11-16)
 
@@ -222,6 +250,7 @@ Kaveh: "the most complex piece".
 | Odds games, also from playout positions | The effect of a kind on the result |
 | The oracle: Stockfish, which reads the tablebase itself | The best move of a position, to be explained |
 | The tactical reasoner and the frame read | Why a line works or fails, in claims |
+| A deep reading from a leaf of the wake | What longer thought concludes there: a target for the heads |
 | Mining a concept; a Lean statement to prove | New vocabulary; a proved lemma |
 | A fit of the heads | The estimator of section 6 |
 
@@ -255,14 +284,17 @@ Kaveh: "the most complex piece".
   does not. The head then predicts "what I would conclude if I thought longer". It stays tied to the truth by the
   ends of games and by proved lemmas, never by an engine's number. The oracle remains the finder of questions and a
   MEASURE of the heads on held-out positions. If the heads stall, the last resort is taken up with his word.
-- **When it wakes.** "No more than 5 hours", and "it could be more than 5 actions". One hour at most an action; the ceiling stays "unless we see some evidence that that's harming". He
-  left the length to be scaled down ("maybe you need like a 5-minute sleep"); PROPOSED: a test at ten minutes, then
+- **When it wakes.** "No more than 5 hours", and "it could be more than 5 actions". One hour at most an action; the
+  ceiling stays "unless we see some evidence that that's harming". He left the length to be scaled down ("maybe you need like a 5-minute sleep"); PROPOSED: a test at ten minutes, then
   an hour, the length then read from the printed curve of gain against time.
-- **How it chooses with few, late rewards** (agreed 2026-11-15: "Let's go with your plan"): the expected gain of an
-  action is computed where it can be, not learned from reward; each slice is scored by a near signal (a held-out
-  yardstick, surprises explained); actions are small so a sleep holds many choices and the record carries across
-  sleeps; the wake's match answers one question only, whether gains on the yardstick turn into better play, and
-  decides whether the new store is kept. Later, untested: a learned chooser trained on small games.
+- **How it chooses with few, late rewards** (agreed 2026-11-15: "Let's go with your plan", sharpened 2026-11-16):
+  each action is scored by a near signal, which is the count of the rule above: surprises resolved less surprises
+  created, per second, on surprises the action's product was not made from. Actions are small, so a sleep holds
+  many choices, and the record of what resolved which group of surprises carries across sleeps. Where an action's
+  gain can be computed beforehand it is, and the computed number is checked against what was observed (in the two
+  runs so far it did not predict it). The wake's match answers one question only, whether surprises resolved turn
+  into better play; it decides whether the sleep's additions are kept, and the rolling measure below watches the
+  longer run. Later, untested: a learned chooser trained on small games.
 - **Both halves improve each cycle.** Sleep looks at which of tactics and policy is weaker and strengthens that.
   Tactics first, since steering toward opportunity is worth nothing without tactics to use it. The counts per rung
   of the ladder are that diagnosis.
@@ -273,9 +305,10 @@ Kaveh: "the most complex piece".
   we can go to a past learning state ... if we see some sort of regression, we can go back and say, okay, why did we
   regress here?" So each sleep's additions are one set that can be taken back, the store keeps its past states, and
   a rolling measure of play is kept across sleeps. The oracle may serve as that measure; a measure is not a fit.
-- **Do not break the rest, and do not retest everything.** Beyond the above, this candidate: proved lemmas cannot be
-  broken by later ones; fitted things are rechecked only where the dependency memory says the new item reaches;
-  each explained surprise is kept as a standing test case.
+- **Do not break the rest, and do not retest everything.** The count of surprises CREATED by a candidate is the
+  first guard, and going back is the last. Between them, this candidate: proved lemmas cannot be broken by later
+  ones; fitted things are rechecked only where the dependency memory says the new item reaches; each explained
+  surprise stays on the list as a standing test case.
 - **No outside language model inside the learning loop.** Statements come from the miner, proofs from the prover.
 
 ## 10. Data rules (DECIDED 2026-11-15)
@@ -307,7 +340,7 @@ The three inventories (the repo against these pieces; the earlier frame and inte
 library against the game-free graph) are in docs/SYSTEM_SPEC_HISTORY.md, sections 9.1, 12.1 and 12.2, as made on
 2026-11-14 and 2026-11-15. One correction to the third: Reach.lean is chess-bound, not generic.
 
-State on 2026-11-16, in words only (plans 78.52 to 78.67 in docs/ANALYST_PLAN.md hold the runs):
+State on 2026-11-16, in words only (plans 78.52 to 78.69 in docs/ANALYST_PLAN.md hold the runs and the plans):
 
 | Piece | State |
 |---|---|
@@ -318,19 +351,29 @@ State on 2026-11-16, in words only (plans 78.52 to 78.67 in docs/ANALYST_PLAN.md
 | The heads: result, kinds, arrival, events with no horizon, frames as inputs | Built as measurements; weak; not yet a leaf reading to lean on |
 | The player reading the heads | Being built (plan 78.67) |
 | The sleep loop with a chooser | Built; lost twice to a fixed schedule on a menu of one kind; parked until the menu of section 9 exists |
-| The menu and the ladder | Written (plan 78.68), not built |
+| The menu, the ladder, the list of surprises and the score of a rule, heads fitted on our own deeper reading | Written (plan 78.68), not built |
+| Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Written as a measurement (plan 78.69), not run |
+| The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
+| The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
 | The opportunity policy and subgoal vocabulary | Not built |
 | The unknown as a condition in the frame read; the sequence model; the endgame fill from human play | Not built |
 
 ## 13. Open questions for Kaveh
 
-1. ANSWERED 2026-11-16: the estimate scores a leaf only when the budget for concrete reasoning is spent (section 6).
-2. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
+1. May a line end as QUIET, with the estimate read, while budget remains (section 4, reason 2)? Written as yes:
+   his "no reason to fall back to an estimate" while there is budget is read as applying to lines that still have
+   something sharp in them.
+2. A loss that is right for lasting chances, with no second frame to point at: written as seen by the estimate
+   where the line ends, not as a reopening inside the frame read (section 3). Is that the intent?
 3. The exact content of a frame's interface (section 3): which ports, and what each carries.
+4. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
+5. What counts as the heads having stalled, so that the last resort of fitting on the oracle is raised with him
+   (section 9)? Proposed: the measure against the oracle's move not rising over three sleeps.
 
-Answered on 2026-11-16 and written into their sections: the oracle as a last resort (9); the ceiling of an hour an
-action stays (9); worth must come from experience (5); when frames are separate (3); regress watched by a rolling
-measure, with the ability to go back (9); the policy is modular and models a sequence, not a distance (7).
+Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
+ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
+(9); worth must come from experience (5); when frames are separate (3); regress watched by a rolling measure, with
+the ability to go back (9); the policy is modular and models a sequence, not a distance (7).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -341,11 +384,13 @@ measure, with the ability to go back (9); the policy is modular and models a seq
 | He floated conditioning concepts on relative value | Taken back the same day: raw kinds, "learn what happens when each piece is left behind" | 2026-11-15 |
 | Chances fitted from the engine's own games only | Any source of results: human games, self-play, playouts | 2026-11-15 |
 | Human game files not read until he asks | "Yes, human games can be read" | 2026-11-15 |
-| The oracle gives "the evaluation of any position" to the sleep, with what crosses to the wake left open | No oracle number in any fit or in the wake; in sleep it gives the best move, to be explained by the ladder | 2026-11-15, 2026-11-16 |
+| The oracle gives "the evaluation of any position" to the sleep, with what crosses to the wake left open | In sleep it gives the best move, to be explained by the ladder. No oracle number in any fit or in the wake, except the last resort on his word (section 9) | 2026-11-15, 2026-11-16 |
 | Opportunity as chance times stake, credited where it later became material | The chances at the leaf, per side, over events read from the rules | 2026-11-15 night, 2026-11-16 |
 | A target within a fixed count of plies | An event and the time to it; no horizon | 2026-11-16 |
 | A sleep wakes after five actions | No cap on actions; five hours at most | 2026-11-15 night |
 | "Until it improves by a certain percent" as the stop | PROPOSED: the stop is gain per second or the time limit; the improvement is tested by the wake's match | 2026-11-15 night |
+| The sleep's near signal as a held-out yardstick of loss | Surprises resolved less surprises created, per second | 2026-11-16 |
+| A line ends only at the settled end or at a limit | Four stated reasons: concrete, quiet, lost beyond doubt, out of budget (section 4) | 2026-11-16 |
 | "The edges will also be graph nodes" read as every relation being a node | He meant the board's edge. Decided separately: only relations something must point at are nodes | 2026-11-15 |
 | A menu of odds games and fits only | The menu of section 9 | 2026-11-16 |
 | The opportunity policy as a quasi-metric (floated) | "Quasi-metric is not the right way. Like it's a distance. What I want is ... something to model a sequence" | 2026-11-16 |
@@ -353,9 +398,11 @@ measure, with the ability to go back (9); the policy is modular and models a seq
 
 ## 15. Standing limits that apply to every plan
 
-No number of the oracle in a fit or in the wake. No outside language model in the learning loop. No assumed worth.
+No number of the oracle in a fit or in the wake, unless the last resort of section 9 is taken on his word. No
+outside language model in the learning loop. No assumed worth.
 No game object named in a layer. No player id written. Lean before a lemma is relied on. The real store only on his
-word. Endgame coverage printed for every human sample. Numbers only where a program printed them.
+word. Endgame coverage printed for every human sample. Numbers only where a program printed them. Every line of
+reasoning carries the reason it ended. A candidate rule is scored on surprises it was not made from.
 
 ## 16. Index: where each decision is written
 
@@ -364,12 +411,12 @@ word. Endgame coverage printed for every human sample. Numbers only where a prog
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
 | Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
-| Reasoning by questions; the outcome ends at the settled end; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
+| Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
-| The estimator: parts as inputs, sources, rating, several heads, chances at the leaf, events from the rules, no horizon, the sequence, the opponent | 2026-11-14, 15, 16 | 6 |
-| The opportunity policy; maxims come out; subgoals; rule 7; modular, a sequence model over a Markov state | 2026-11-14, 16 | 7 |
-| The wake and the wall | 2026-11-14 | 8 |
-| Sleep: the agent, the menu, the oracle and the ladder, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
+| The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
+| The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state | 2026-11-14, 16 | 7 |
+| The wake, step by step, and the wall | 2026-11-14, 16 | 8 |
+| Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
 | What exists and the state of the build | 2026-11-16 | 12 |
