@@ -176,10 +176,19 @@ Kaveh: "the most complex piece".
   4. "If it takes too much, then that means too much calculation. Then ... reduce it to some sort of a lemma or
      ... turn it into some sort of a statistical thing, add it into your learning algorithm."
 - **The goal of a step** is a surprise explained away. A surprise generates the question.
-- **What the oracle may and may not do.** It supplies the best move, and so the question. PROPOSED boundary, which
-  keeps "stockfish cannot be read in": what enters the store is what our own tools made and checked (a proved
-  lemma, statistics from games and playouts); no head is fitted to the oracle's evaluation or to its move as a
-  label. He has not confirmed this reading.
+- **What the oracle may and may not do** (DECIDED 2026-11-16). It supplies the best move, and so the question.
+  Fitting a head to the oracle is allowed only as a LAST RESORT: "For now, I think it can be fitted to the Oracle,
+  but I would rather avoid that if possible. Like, if forced, I will do it." What he would rather: "fit it on the
+  traces of our own reasoning ... predict the reasoning trace, and then from a leaf where we actually end the
+  reasoning, we should be able to predict the rest of the reasoning trace and see where it goes"; or "do like a
+  Monte Carlo and then predict the Monte Carlo output." His ground for it: "Nobody actually knows. So Monte Carlo
+  is the best bet, I guess."
+- **So the heads learn from our own deeper thinking** (PROPOSED form of the above). In sleep there is time to read
+  far deeper than the wake can. From a leaf where the wake's reading stops, the target is what the deep reading
+  concludes where it reaches a settled, concrete end, and the statistics of playouts by our own player where it
+  does not. The head then predicts "what I would conclude if I thought longer". It stays tied to the truth by the
+  ends of games and by proved lemmas, never by an engine's number. The oracle remains the finder of questions and a
+  MEASURE of the heads on held-out positions. If the heads stall, the last resort is taken up with his word.
 - **When it wakes.** "No more than 5 hours", and "it could be more than 5 actions". One hour at most an action. He
   left the length to be scaled down ("maybe you need like a 5-minute sleep"); PROPOSED: a test at ten minutes, then
   an hour, the length then read from the printed curve of gain against time.
@@ -242,8 +251,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.67 in docs/ANALYST_PLAN.md
 
 1. AGENTS rule 7. The chances read at the leaf are treated as an estimate of the position's worth, and subgoal
    bonuses still stay out of the value. Is that reading right?
-2. The oracle's boundary in section 9: may a head ever be fitted to the oracle's move or evaluation, or only to
-   what our tools derived? Written as "only ours".
+2. ANSWERED 2026-11-16: a head may be fitted to the oracle only as a last resort; first our own reasoning traces
+   and playouts (section 9).
 3. Does the ceiling of one hour an action stand now that the cap on the count of actions is gone?
 4. The design of section 5 (generation zero, odds games as the judge of the next generation) was told and run, not
    confirmed in words.
@@ -267,6 +276,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.67 in docs/ANALYST_PLAN.md
 | "Until it improves by a certain percent" as the stop | PROPOSED: the stop is gain per second or the time limit; the improvement is tested by the wake's match | 2026-11-15 night |
 | "The edges will also be graph nodes" read as every relation being a node | He meant the board's edge. Decided separately: only relations something must point at are nodes | 2026-11-15 |
 | A menu of odds games and fits only | The menu of section 9 | 2026-11-16 |
+| No head is ever fitted to the oracle (the main agent's proposed boundary) | Allowed as a last resort; preferred: predict our own deeper reasoning and our playouts | 2026-11-16 |
 
 ## 15. Standing limits that apply to every plan
 
@@ -286,7 +296,7 @@ word. Endgame coverage printed for every human sample. Numbers only where a prog
 | The estimator: parts as inputs, sources, rating, several heads, chances at the leaf, events from the rules, no horizon, the sequence, the opponent | 2026-11-14, 15, 16 | 6 |
 | The opportunity policy; maxims come out; subgoals; rule 7 | 2026-11-14 | 7 |
 | The wake and the wall | 2026-11-14 | 8 |
-| Sleep: the agent, the menu, the oracle and the ladder, the limits, how it chooses, the diagnosis, do not break the rest | 2026-11-14, 15, 16 | 9 |
+| Sleep: the agent, the menu, the oracle and the ladder, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
 | What exists and the state of the build | 2026-11-16 | 12 |
