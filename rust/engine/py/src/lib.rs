@@ -24,6 +24,7 @@ fn record_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) 
 
 mod base_graph_py;
 mod frames_py;
+mod questions_py;
 mod sheet_py;
 mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>::State; }
 

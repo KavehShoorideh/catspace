@@ -16,6 +16,7 @@ pub mod fates;
 pub mod forcing;
 pub mod frame;
 pub mod frames;
+pub mod questions;
 pub mod goal_report;
 pub mod levels;
 pub mod medium;
