@@ -693,6 +693,15 @@ impl BaseGraph {
         crate::questions_py::questions_state(py, &self.variant, &self.st, goal, games, rows, keys, params, horizon, threads)
     }
 
+    /// questions_threats(games, rows, keys, goal_kind, fuse, row_fuse, max_size, conditional, answer_fuse, threads) -> {kinds, roles, places, rows}: PLAN 78.70 A. Per wanted row, every frame read with its members and
+    /// places (the read set of its claims) and, per claim, the units that bear on the unit, its class and basis (as questions_state) and the answers of its owner with their reason (codes in questions_py.rs).
+    #[allow(clippy::too_many_arguments)]
+    fn questions_threats(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, fuse: u64, row_fuse: u64, max_size: usize, conditional: bool, answer_fuse: u64, threads: usize) -> PyResult<PyObject> {
+        let goal = self.goal_of(&goal_kind)?;
+        let params = crate::questions_py::MeasureParams { horizons: vec![0], fuse, row_fuse, compose_every: 1, max_size, conditional, trap_fuse: 0, kv: self.kv.clone(), rules: self.rules, bands: self.bands.clone() };
+        crate::questions_py::questions_threats(py, &self.variant, &self.st, goal, games, rows, keys, params, answer_fuse, threads)
+    }
+
     /// frames_measure(games, rows, keys, goal_kind, horizons, fuse, row_fuse, compose_every, max_size, conditional, threads) -> {obs, count, secs, dump}: stage G over the wanted rows of the games.
     #[allow(clippy::too_many_arguments)]
     fn frames_measure(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, horizons: Vec<usize>, fuse: u64, row_fuse: u64, compose_every: usize, max_size: usize, conditional: bool, threads: usize) -> PyResult<PyObject> {
