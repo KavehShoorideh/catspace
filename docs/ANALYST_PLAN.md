@@ -9086,3 +9086,5 @@ F. NOT in this plan: any other source for the estimator; the estimator at the le
 Tests: the exchange against a brute read of every order of takings on small hand cases and against the Lean lists; the estimator record round trip; the question read never calls forced a claim that carries a mark; the source scan of tests/test_plan78.py.
 
 STATUS: given to a builder agent on 2026-11-15.
+
+78.58 AMENDMENT (2026-11-15, sent to the builder while it worked; SYSTEM_SPEC 13): the estimator record holds several named heads over the same inputs: result, kind_baseline (the order of kinds, stored apart so later fits read as corrections to it), and arrival (the 78.49 target at 8 plies, fitted only if cheap, else the slot with its definition).
