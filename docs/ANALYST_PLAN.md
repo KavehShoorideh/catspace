@@ -9827,3 +9827,54 @@ OBS odds movement: kind rook: gen 0 -0.025; gen 1 +1.110
 OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
 OBS odds movement: gen 1 order ['queen', 'bishop', 'rook', 'knight', 'pawn']
 OBS odds movement: order of gen 0 the same as gen 1: False
+
+STAGE D, GENERATION 2 (after the fix; plays with the Worth judge fed from the record of the corrected generation 1; per-start lines in obs.txt; the load average at its start, 13.95, includes the end of the previous run and work of others on the machine: the clocks of this block were measured under that). Directions only. Reading: from generation 0 to 1 and 1 to 2 the order changed; no generation reproduced the order of the one before; the effects per unit grew from generation to generation for the kinds below the queen (the control got drawish at generation 2: 145 of 180 draws), a trend with the players' own play (a draw-heavy control raises every effect), not read as the worth of a unit coming nearer a true value.
+OBS odds gen 2: load 13.95 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 2: players: {"kind": "worth", "worth": {"q": 4625, "b": 1370, "r": 1110, "n": 638, "p": 480}, "record_kinds": {"queen": 4625, "bishop": 1370, "rook": 1110, "knight": 638, "pawn": 480}}; 1860 games
+OBS odds gen 2: 1860 games in 963 s wall; unfinished 135 (7.3 pct, counted as draws); mean plies 83.6
+OBS odds gen 2: even start (white's view): W 18 D 145 L 17 of 180, unfinished 24
+OBS odds gen 2: start bishop:0:1:c1: white W 4 D 42 L 14 of 60, unfinished 7
+OBS odds gen 2: start bishop:0:1:f1: white W 1 D 32 L 27 of 60, unfinished 4
+OBS odds gen 2: start bishop:0:2:c1+f1: white W 0 D 24 L 36 of 60, unfinished 0
+OBS odds gen 2: start bishop:1:1:c8: white W 11 D 46 L 3 of 60, unfinished 6
+OBS odds gen 2: start bishop:1:1:f8: white W 14 D 45 L 1 of 60, unfinished 7
+OBS odds gen 2: start bishop:1:2:c8+f8: white W 28 D 32 L 0 of 60, unfinished 2
+OBS odds gen 2: start knight:0:1:b1: white W 1 D 46 L 13 of 60, unfinished 2
+OBS odds gen 2: start knight:0:1:g1: white W 3 D 40 L 17 of 60, unfinished 5
+OBS odds gen 2: start knight:0:2:b1+g1: white W 3 D 40 L 17 of 60, unfinished 3
+OBS odds gen 2: start knight:1:1:b8: white W 9 D 50 L 1 of 60, unfinished 6
+OBS odds gen 2: start knight:1:1:g8: white W 13 D 43 L 4 of 60, unfinished 4
+OBS odds gen 2: start knight:1:2:b8+g8: white W 12 D 44 L 4 of 60, unfinished 0
+OBS odds gen 2: start pawn:0:1:f2: white W 5 D 46 L 9 of 60, unfinished 7
+OBS odds gen 2: start pawn:0:1:h2: white W 6 D 43 L 11 of 60, unfinished 3
+OBS odds gen 2: start pawn:0:2:a2+e2: white W 7 D 44 L 9 of 60, unfinished 9
+OBS odds gen 2: start pawn:0:2:d2+f2: white W 5 D 46 L 9 of 60, unfinished 5
+OBS odds gen 2: start pawn:1:1:d7: white W 17 D 40 L 3 of 60, unfinished 3
+OBS odds gen 2: start pawn:1:1:e7: white W 12 D 45 L 3 of 60, unfinished 6
+OBS odds gen 2: start pawn:1:2:a7+b7: white W 21 D 34 L 5 of 60, unfinished 5
+OBS odds gen 2: start pawn:1:2:a7+f7: white W 14 D 42 L 4 of 60, unfinished 2
+OBS odds gen 2: start queen:0:1:d1: white W 0 D 15 L 45 of 60, unfinished 1
+OBS odds gen 2: start queen:1:1:d8: white W 32 D 28 L 0 of 60, unfinished 2
+OBS odds gen 2: start rook:0:1:a1: white W 2 D 42 L 16 of 60, unfinished 6
+OBS odds gen 2: start rook:0:1:h1: white W 4 D 37 L 19 of 60, unfinished 6
+OBS odds gen 2: start rook:0:2:a1+h1: white W 0 D 26 L 34 of 60, unfinished 2
+OBS odds gen 2: start rook:1:1:a8: white W 11 D 46 L 3 of 60, unfinished 2
+OBS odds gen 2: start rook:1:1:h8: white W 18 D 39 L 3 of 60, unfinished 6
+OBS odds gen 2: start rook:1:2:a8+h8: white W 37 D 22 L 1 of 60, unfinished 0
+OBS odds gen 2: kind queen: one short +4.343 [+4.210, +4.451]
+OBS odds gen 2: kind bishop: one short +1.878 [+1.403, +2.614]; two short (per unit) +2.083 [+2.001, +2.150]; two less one +0.206 [-0.518, +0.674]
+OBS odds gen 2: kind knight: one short +1.661 [+1.193, +2.449]; two short (per unit) +0.658 [+0.368, +1.115]; two less one -1.003 [-1.833, -0.377]
+OBS odds gen 2: kind rook: one short +1.605 [+1.181, +2.251]; two short (per unit) +1.863 [+1.662, +2.184]; two less one +0.258 [-0.361, +0.860]
+OBS odds gen 2: kind pawn: one short +1.045 [+0.589, +1.606]; two short (per unit) +0.428 [+0.227, +0.643]; two less one -0.618 [-1.242, -0.105]
+OBS odds gen 2: order (highest effect first) ['queen', 'bishop', 'knight', 'rook', 'pawn']; pairs not ordered at 95 pct: [['bishop', 'knight'], ['bishop', 'rook'], ['knight', 'rook'], ['knight', 'pawn'], ['rook', 'pawn']]
+OBS odds gen 2: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen2/record.json; kind values {'queen': 4343, 'bishop': 1878, 'knight': 1661, 'rook': 1605, 'pawn': 1045}
+OBS odds movement: kind bishop: gen 0 +0.496; gen 1 +1.370; gen 2 +1.878
+OBS odds movement: kind knight: gen 0 +0.312; gen 1 +0.638; gen 2 +1.661
+OBS odds movement: kind pawn: gen 0 +0.437; gen 1 +0.480; gen 2 +1.045
+OBS odds movement: kind queen: gen 0 +1.588; gen 1 +4.625; gen 2 +4.343
+OBS odds movement: kind rook: gen 0 -0.025; gen 1 +1.110; gen 2 +1.605
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+OBS odds movement: gen 1 order ['queen', 'bishop', 'rook', 'knight', 'pawn']
+OBS odds movement: gen 2 order ['queen', 'bishop', 'knight', 'rook', 'pawn']
+OBS odds movement: order of gen 0 the same as gen 1: False
+OBS odds movement: order of gen 1 the same as gen 2: False
