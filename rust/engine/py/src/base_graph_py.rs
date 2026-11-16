@@ -550,6 +550,38 @@ impl BaseGraph {
         crate::frames_py::frame_compose(py, &self.variant, &self.st, text, &sa, &sb, fuse)
     }
 
+    /// question_read(text, units, places, conditional, fuse) -> the frame of the seed (bound to its units), its claims with their status and marks, what the questions cost, the pruned root moves, the layer 3 nodes (78.57).
+    fn question_read(&self, py: Python<'_>, text: &str, units: Vec<String>, places: Vec<String>, conditional: bool, fuse: u64) -> PyResult<PyObject> {
+        let seed = crate::frames_py::parse_seed(&self.st, &units, &places).map_err(bad)?;
+        crate::questions_py::question_read(py, &self.variant, &self.st, text, &seed, conditional, fuse)
+    }
+
+    /// question_trap(text, unit, fuse) -> the trap question of one unit on quiet routes (78.57).
+    fn question_trap(&self, py: Python<'_>, text: &str, unit: &str, fuse: u64) -> PyResult<PyObject> {
+        crate::questions_py::question_trap(py, &self.variant, &self.st, text, unit, fuse)
+    }
+
+    /// question_compose(text, seed_a, seed_b, fuse) -> the tempo-charged composition of two frames and the joint read, for the side to move (78.57 D: checked, not proved).
+    fn question_compose(&self, py: Python<'_>, text: &str, a: (Vec<String>, Vec<String>), b: (Vec<String>, Vec<String>), fuse: u64) -> PyResult<PyObject> {
+        let sa = crate::frames_py::parse_seed(&self.st, &a.0, &a.1).map_err(bad)?;
+        let sb = crate::frames_py::parse_seed(&self.st, &b.0, &b.1).map_err(bad)?;
+        crate::questions_py::question_compose(py, &self.variant, &self.st, text, &sa, &sb, fuse)
+    }
+
+    /// question_reopen(text, seeds, fuse) -> the frames of the seeds, their reports, and the pruned root moves reopened by claims of other frames (78.57 E').
+    fn question_reopen(&self, py: Python<'_>, text: &str, seeds: Vec<(Vec<String>, Vec<String>)>, fuse: u64) -> PyResult<PyObject> {
+        let sds = crate::questions_py::seeds_from(&self.st, &seeds).map_err(bad)?;
+        crate::questions_py::question_reopen(py, &self.variant, &self.st, text, &sds, fuse)
+    }
+
+    /// questions_measure(games, rows, keys, goal_kind, horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse, threads) -> {obs, count, secs, dump}: stage F of 78.57.
+    #[allow(clippy::too_many_arguments)]
+    fn questions_measure(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, horizons: Vec<usize>, fuse: u64, row_fuse: u64, compose_every: usize, max_size: usize, conditional: bool, trap_fuse: u64, threads: usize) -> PyResult<PyObject> {
+        let goal = self.goal_of(&goal_kind)?;
+        let params = crate::questions_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse };
+        crate::questions_py::questions_measure(py, &self.variant, &self.st, goal, games, rows, keys, params, threads)
+    }
+
     /// frames_measure(games, rows, keys, goal_kind, horizons, fuse, row_fuse, compose_every, max_size, conditional, threads) -> {obs, count, secs, dump}: stage G over the wanted rows of the games.
     #[allow(clippy::too_many_arguments)]
     fn frames_measure(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, horizons: Vec<usize>, fuse: u64, row_fuse: u64, compose_every: usize, max_size: usize, conditional: bool, threads: usize) -> PyResult<PyObject> {
