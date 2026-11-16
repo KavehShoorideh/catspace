@@ -11,21 +11,25 @@ INTERFACE (what this module takes, what it returns, who calls it).
   verdict_of(read, record)      the verdict of one line read FOR THE SIDE THAT TAKES: CONFIRMED (it ends ahead), EXCHANGE (units are traded and neither ends ahead), REFUTED (it ends behind), UNREAD (the fuse cut the line:
                                 printed as suspected, no forced claim is made from a cut line), with the units each side is left with and the reason the line ended in the words of spec 4. "Ahead" is the record's:
                                 the sum of the worths of what the taker took less what it lost is above the resolution of the units in that ledger (the half widths added in quadrature), or the game itself ends in its favour.
+  response_of(after, passed, record, how, source)
+                                one candidate response read two ways (the taking of the unit after it, the whole-board line of the move) and judged: KEPT, STILL WON, WORSE THAN PASSING or UNREAD.
   concrete_lists(items, lines)  takes, per position, the list of plan 78.70 (threat_list.threat_rows, with its stake) and the position (start text or None, the moves played), and returns per position
                                 {"mover": rows, "other": rows, "exchange": rows, "goal": rows, "dropped": counts, "cost": seconds}: the rows against each side that are CONFIRMED or UNREAD (a threat), the EXCHANGE rows apart,
                                 and the rows of the goal (a forced end of the game within the forcing read's reach, for either side, with its line). Each row keeps the fields of threat_list and gains
                                 line, outcome, verdict, net, ended, lead (the move that makes a threat in two moves) and `response`: the kept responses, each a line read the same way (kept only if after it the taker is no
                                 longer ahead), ordered by what each side is left with, the count of those read and dropped in `resp_read`. `band_of` of threat_list gives the band as before (a row is high or low by its stake; with
                                 a response or not by the KEPT responses); a row of the goal has the highest stake.
-  carry(prev_row, new_row)      THE LIST CARRIED FROM MOVE TO MOVE (E): a claim whose read set is unchanged at the position two plies on is kept without being asked again (`same_read_set`); one whose read set changed is asked again.
+  same_read_set(a, b)           THE LIST CARRIED FROM MOVE TO MOVE (E): the read set of a claim (threat_list.read_set_of) is the same at two positions. A claim whose read set is unchanged at the position two plies on is
+                                kept without being asked again; one whose read set changed is asked again. What carrying saves and how often the carried verdict is the one a fresh read gives are measured in
+                                threat_concrete_measure.py (`carry`); the wake does not call it yet.
   Called by: threat_concrete_measure.py (the checks and the carry) and threat_print.py (the print) now; the wake's choice of move and the sleep's ladder later. No player calls it.
 
 THE LINE OF A CLAIM. The taker is the side that does not own the unit. For a unit of the side to move the taker moves after the side to move passes once (what is threatened if nothing is done: the pass of the game; where the
 game gives none the row is UNREAD with that reason); for a unit of the other side the taker is the side to move. The taking moves are the legal moves of the taker that take a unit on the unit's place. Each is read to a settled end
 (the ledger search with the record as judge, best replies for both sides, the captures resolved at the horizon, a node fuse per line) and the best of them for the taker is the line of the row. A claim with no taking move: if no
 unit bears on it, it is a row only if one quiet move of the taker makes a taking stand (a THREAT IN TWO MOVES, printed with that move); otherwise it is dropped and counted.
-THE RESPONSES. The candidates are the answers the frame read named (threat_list's `response_ix`); each is read as a line the same way, from the side that owns the unit, and kept only if the taker is no longer ahead after it. If none
-of the candidates is kept every legal move of the owner is read the same way (the sweep) and the row says so. Responses are ordered by what the taker is left with, the least first. The count read and dropped is printed.
+THE RESPONSES. The candidates are the answers the frame read named (threat_list's `response_ix`); each is read as a line the same way, from the side that owns the unit, and kept only if the taker is no longer ahead after it. Every
+legal move of the owner is also read the same way (the sweep, at a shorter horizon: the frame read stops at its first sound answers, so its list is not complete) and the row says where each response came from. Responses are ordered by what the taker is left with, the least first. The count read and dropped is printed.
 THE GOAL (D). The forced end of the game within the forcing read's reach (a named depth in moves of the side and a node fuse), for either side, the goal as the rules give it (the game's own outcome): a row of the highest stake with its
 line, and its responses (the moves after which the forcing read finds none), for the side that is forced against.
 HOW A LINE ENDED (spec 4), as this build maps it (a choice of this build, not stated by the spec): CONCRETE: the game itself ends in the line; QUIET: the settled end, the captures resolved at the horizon of the line search (its depth
@@ -74,9 +78,6 @@ class Record:
     def resolution(self, kinds: list) -> float:
         """The least gap the record can tell apart in a ledger of these units: the half widths of their kinds added in quadrature (in the worths' own integers)."""
         return math.sqrt(sum(self.half.get(k, 0.0) ** 2 for k in kinds))
-
-    def word(self, kind: str) -> str:
-        return kind
 
 
 class Lines:
@@ -286,10 +287,10 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
         for how, res in row.pop("_pending", []):
             for af in (res["afters"] if res["ok"] else []):
                 row["_resp"].append(response_of(af, passed_value.get((row["_i"], row["_ro"]["taker_p"])), rec, WHY[how], "the frame read's answer"))
-    # ---- round 3: the sweep of every legal move for a CONFIRMED row none of whose candidates was kept
+    # ---- round 3: the sweep of every legal move for every CONFIRMED row that owes a response (the frame read stops at its first sound answers, so its list of answers is not complete)
     q3, plan3, sweep_at, base3 = [], [], {}, {}
     for row in flat:
-        if row["verdict"] != "CONFIRMED" or row.get("two_moves") or any(_kept(v) for v in row["_resp"]):
+        if row["verdict"] != "CONFIRMED" or row.get("two_moves"):
             continue
         key = (row["_i"], row["_ro"]["owner_p"], row["place_ix"])
         if key not in sweep_at:
@@ -331,10 +332,12 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
             row["response"], row["resp_read"], row["resp_unread"], row["deferred"] = [], 0, 0, True
         elif v == "CONFIRMED":
             seen, ks = set(), []
-            for x in sorted((x for x in read if _kept(x)), key=lambda x: (x["net"], x["names"])):       # what the taker is left with, the least first; a move once
+            for x in read:                                       # a move once: the frame read's answer (read to the full depth) comes before the sweep's reading of the same move
                 if x["first"] not in seen:
                     seen.add(x["first"])
-                    ks.append(x)
+                    if _kept(x):
+                        ks.append(x)
+            ks.sort(key=lambda x: (x["net"], x["names"]))        # what the taker is left with, the least first
             row["response"], row["resp_read"] = ks, len(firsts)
             row["resp_unread"] = len({x["first"] for x in read if x["state"] == "UNREAD"})
             out[i]["resp_read"] += len(firsts)
