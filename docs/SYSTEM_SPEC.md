@@ -239,6 +239,23 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
    the subgoal.
 7. Give the reasons for the move as a chain of claims, each line with the reason it ended.
 
+**The threat list: what any position must be able to answer** (DECIDED 2026-11-16). "In any given position, I want
+us to be able to answer what are the threats and what is the stake there." A threat that wins in one frame and is
+answered when the frame is widened is "a threat with a response". "The analysis should list out threats with their
+stake and the response", ordered so:
+
+| Stake | Response | Where it goes |
+|---|---|---|
+| High | None found | Top. "Those are the ones that are going to kill us immediately": time is spent here first |
+| High | Found | Shown: "if the opponent does this, this is what we're going to do" |
+| Low | None found | Worked on after the first row; "likely to be found throughout the game, and we will likely find answers" |
+| Low | Found | Bottom: "we probably don't want to see them" |
+
+Each row names the frame it was read in, the stake in the one unit of section 4, the response with its reason, and
+how the line ended. The list is made for both sides (their threats against us, ours against them). It is the same
+object the reasoning works from: the first and third rows are where the budget goes, the second row is what is
+carried forward as open tactics, and the list is the readable form of the chain of claims.
+
 **The wall.** No number of the oracle is read by the wake or by anything the wake reads. The one exception is the
 last resort of section 9, which needs his word and has not been taken.
 
@@ -365,6 +382,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.69 in docs/ANALYST_PLAN.md
 | The sleep loop with a chooser | Built; lost twice to a fixed schedule on a menu of one kind; parked until the menu of section 9 exists |
 | The menu, the ladder, the list of surprises and the score of a rule, heads fitted on our own deeper reading | Written (plan 78.68), not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Written as a measurement (plan 78.69), not run |
+| The threat list (threats with stake and response, in four bands) | Written (plan 78.70), not built; the frame read's classes are its raw form |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
 | The opportunity policy and subgoal vocabulary | Not built |
@@ -424,7 +442,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
 | The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state | 2026-11-14, 16 | 7 |
-| The wake, step by step, and the wall | 2026-11-14, 16 | 8 |
+| The wake, step by step; the threat list with stake and response; the wall | 2026-11-14, 16 | 8 |
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
