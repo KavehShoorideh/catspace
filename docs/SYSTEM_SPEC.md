@@ -351,3 +351,30 @@ Decisions read from this:
 - At that end, what is read is not material alone. The parts left standing (where units stand against the edges, which concepts hold, for each side) are inputs to the FUTURE TACTICAL CHANCES of each side, ours and theirs as two numbers, not one difference. A loss now can be right if it buys chances.
 - The tactical state of a position (the claims each side holds, by how far they can be trusted) is followed along games as a sequence, and a model predicts where it goes. This is the opportunity policy of section 5 given its target and its place: the leaf.
 - On AGENTS rule 7 (subgoals enter through the prior, never the value): the chances read at the leaf are an estimate of what the position is worth to each side, made by its author to be read there. Subgoal bonuses still do not enter the value. To be confirmed with him if a plan leans on it.
+
+
+## 16. A sleep is a loop of chosen actions with a stop rule (Kaveh, 2026-11-15 night)
+
+His words: "Each generation needs to have some sort of an agent picking multiple different actions to improve
+itself until it's satisfied and wakes up or something. I guess there's no ending to it, so maybe until it improves
+by a certain percent or until some reasonable time. I don't know."
+
+What this changes. In plan 78.61 a generation was one fixed action, the odds games. A sleep is instead a loop:
+look at what is weak, pick one action from a menu, run it for a small slice, measure what it gained, pick again.
+This is section 9's sleep agent and its "start simple" chooser; `discovery/sleep.py` (`plan_tools`, plan 78.17) is
+the existing start and is extended, not rebuilt.
+
+Design, the main agent's proposal, not yet confirmed by him:
+- **The menu.** Each action is small and resumable: odds games for one kind or one unordered pair; odds from later
+  positions; a fit of a head on more human games; mining concepts from games; a frame read on surprises; a Lean
+  statement to prove. An action states what it expects to improve.
+- **One yardstick inside the sleep.** The agent cannot play a match after each action. The near signal is the
+  estimator's loss on held-out games and the count of surprises still unexplained on a held-out set (section 9).
+  Each action is scored by its gain on that yardstick per second spent.
+- **The chooser.** A running record of gain per second per action and kind of weakness; pick the best, with some
+  share of trials for the rest. No learned agent until this record shows it would pay.
+- **When it wakes.** Whichever comes first: the best action's recent gain per second falls under a stated
+  threshold; a time budget; the store or disk limit. "Improves by a percent" is used as the test of the wake, not as
+  the stop: on waking, a match against the previous generation decides whether the new store is kept. A sleep that
+  made nothing better keeps the old store.
+- **What is carried.** The record of what paid goes to the next sleep, so the choice improves across sleeps.

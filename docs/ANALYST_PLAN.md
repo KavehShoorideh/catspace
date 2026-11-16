@@ -9922,3 +9922,15 @@ What does not hold:
 6. The first run of generations 1 and 2 was void (a table keyed by the wrong names read as all zero); found by the builder, fixed, tested. The void lines remain in obs.txt above the valid ones; read the LAST block of each generation.
 7. The matches ran on a machine that was not quiet (load printed). The lopsided ones do not depend on it; the two near the middle may.
 Next, owed by this read: more games per start for the smaller kinds with a sequential stop; odds from sampled later positions, not only the start, so that a kind is measured where it is in play; the unknown-as-condition in the frame read (spec 14) is still not built.
+
+
+PLAN 78.63: A SLEEP THAT CHOOSES ITS ACTIONS AND DECIDES WHEN TO WAKE (SYSTEM_SPEC 16; Kaveh 2026-11-15 night: "an agent picking multiple different actions to improve itself until it's satisfied and wakes up ... until it improves by a certain percent or until some reasonable time"). Written 2026-11-15 by the main agent. Python over the installed extension, extending catspace/incubator/analyst/discovery/sleep.py (plan_tools, 78.17); a sandbox store under artifacts, nothing in the real store.
+A. THE ACTIONS as one interface (name, what it expects to improve, run for a slice of seconds, resumable, what it wrote): odds games for one kind; odds games for one pair left unordered; odds from sampled later positions; fit the result head on a further slice of human games; fit the arrival head likewise. The 78.61 and 78.59 code is called, not copied.
+B. THE YARDSTICK, fixed before the loop and never fitted on: held-out human games and held-out games of the previous generation; the result head's log loss on them, and the count of pairs of kinds left unordered. Printed after every action.
+C. THE CHOOSER: gain on the yardstick per second, per action, as a running record with a stated share of trials for actions not recently tried. The record is written to the sandbox store and read by the next sleep.
+D. THE STOP: the best recent gain per second under a threshold stated before the run, or the time budget, or the disk limit. The reason for waking is printed.
+E. THE WAKE TEST: a match against the previous generation on a quiet machine; the new store is kept only if not worse at the stated level. Three sleeps in a row; the sequence of actions chosen, the yardstick after each, the reason each sleep ended, the match after each.
+F. BESIDE IT: the same total time spent on the fixed schedule of 78.61, as the comparison.
+Endgame coverage of every human sample printed, as the standing rule requires. Short run (minutes per sleep) before the long one.
+
+STATUS: written; to be given to a builder after the gate at 72baf49e and plan 78.62.
