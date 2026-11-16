@@ -9934,3 +9934,5 @@ F. BESIDE IT: the same total time spent on the fixed schedule of 78.61, as the c
 Endgame coverage of every human sample printed, as the standing rule requires. Short run (minutes per sleep) before the long one.
 
 STATUS: written; to be given to a builder after the gate at 72baf49e and plan 78.62.
+
+GATE at 72baf49e (2026-11-15, after the merges of 78.59, 78.60, 78.61): `OBS gate engine: files 105, passed 1659, failed 0, xfailed 1, errors 0, wall 2161.1 s`.
