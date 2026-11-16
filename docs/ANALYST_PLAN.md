@@ -9572,3 +9572,14 @@ G. NOT in this plan: the unknown as a condition inside the frame read (SYSTEM_SP
 Timed matches: nothing else heavy may run on the machine while they run; check the load before starting and say what it was. All cores for the odds games. Tests: the no-count judge prefers nothing but a forced end; odds starts are legal positions of the game and differ from the even start by exactly the units named; the record round trip.
 
 STATUS: written; to be given to a builder when the 78.59 run has ended (timed games must not share the machine).
+
+
+PLAN 78.62: THE TACTICAL STATE AS A SEQUENCE, AND THE CHANCES READ AT THE SETTLED END (SYSTEM_SPEC 15, 13, 5). Written 2026-11-15 by the main agent; waits for the 78.59 report, whose rows and arrival head it builds on. Human games; no engine evaluation; a sandbox.
+A. THE TACTICAL STATE of a position, per side: how many units of the other side the frame read calls lost by estimate, how many it calls forced safe or not, the threats, the trapped units, each count by kind; and the same from the forcing read where it exists. Computed along sampled human games at every ply of a window, in Rust, all cores; the sample sized to the cost and stated first.
+B. THE SEQUENCE. Along a game the state is a sequence. Described first, with no model: how long a quiet stretch lasts, how often a state with a loss standing turns into the loss happening, into its being parried, into a counter-chance of the other side; by band of rating.
+C. THE CHANCES, ours and theirs apart. Two heads over the parts of a SETTLED position (kinds, the 26 statements, concepts, edge distances of the units, the ratings): the chance that within 8 plies a unit of theirs stands lost by estimate with us to move, and the same for them against us. Fitted on fit games, read on test games (calibration and rank correlation, bands over games), beside the arrival head of 78.59.
+D. THE SMALLEST FRAME. For each input that carries weight in C: does a part of it of one relation less carry the same weight; kept only for what it adds. The inputs that survive are printed in words.
+E. THE SACRIFICE, as a reading: positions in test games where the side to move gave up a unit for nothing by the frame read and did not lose the game; were its chances by head C above those of the positions where the unit was simply lost. A count and a comparison, no verdict.
+F. A SEQUENCE MODEL only after B to E are read: the simplest first (the next state from the present state and the parts), and what it adds over C.
+
+STATUS: written; not started.
