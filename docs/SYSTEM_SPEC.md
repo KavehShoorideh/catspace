@@ -361,6 +361,8 @@ before the estimate is trusted. "Big" and "small" in the rule for choosing a mov
 MEASURED (plan 78.69): comparing the stake with the spread added little beyond the claim being present, with the
 present heads. So plan 78.70 prints the bands two ways, by this line and by the stake ranked within the position,
 and the one that separates what is then lost is kept.
+MEASURED (plans 78.70, 78.72): by neither line is the top band the most dangerous. The line between high and low
+stays not shown.
 
 Each row names the frame it was read in, the stake in the one unit of section 4, the response with its reason, and
 how the line ended. The list is made for both sides (their threats against us, ours against them). It is the same
@@ -488,7 +490,7 @@ The three inventories (the repo against these pieces; the earlier frame and inte
 library against the game-free graph) are in docs/SYSTEM_SPEC_HISTORY.md, sections 9.1, 12.1 and 12.2, as made on
 2026-11-14 and 2026-11-15. One correction to the third: Reach.lean is chess-bound, not generic.
 
-State on 2026-11-16, in words only (plans 78.52 to 78.72 in docs/ANALYST_PLAN.md hold the runs and the plans):
+State on 2026-11-16, in words only (plans 78.52 to 78.73 in docs/ANALYST_PLAN.md hold the runs and the plans):
 
 | Piece | State |
 |---|---|
@@ -500,8 +502,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.72 in docs/ANALYST_PLAN.md
 | The player reading a head as tie-break among moves the search holds equal | Built as a measurement (plan 78.67); the cheap arrival number is level with the frame heads and far cheaper; not switched on |
 | The sleep loop with a chooser | Built; lost twice to a fixed schedule on a menu of one kind; parked until the menu of section 9 exists |
 | The menu, the ladder, the list of surprises and the score of a rule, heads fitted on our own deeper reading | Written (plan 78.68), not built |
-| Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying measured by a proxy only, the true test is owed |
-| The threat list (threats with stake and response, in four bands) | Built in a first form (plan 78.70) that does not yet meet section 8: its rows are classes of the frame read, not lines read to an end, so exchanges show as losses and named responses can lose more than they save. Carrying measured: the read flickers. Plan 78.72 makes each row and response concrete |
+| Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying first measured by a proxy, then truly (plans 78.70, 78.72): a claim whose read set did not change is held again only about half the time |
+| The threat list (threats with stake and response, in four bands) | Built concretely (plan 78.72, after a first form in 78.70): each row and each response is a line read to a settled end and judged by the measured worths; exchanges print apart; claims nothing bears on are dropped; the end of the game is a row for either side. Still short of section 8: the verdict cannot tell a small gain from an exchange, kept responses are not ordered and some give up a unit, many positions print no row, and the top band is not the most dangerous. Carrying by read set measured weak; not wired into play. Plan 78.73 mends the verdict and the responses |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
 | The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | Not built; plan 78.71 written (goals as facts, means-ends, the grading of subgoals) |
@@ -518,12 +520,12 @@ State on 2026-11-16, in words only (plans 78.52 to 78.72 in docs/ANALYST_PLAN.md
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
    pursuit is dropped).
-7. May a language model do the pointing at a weakness (section 7)? He is unsure. It would need the limit of
-   section 15 lifted for that use.
-8. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
 5. Is a counter-threat an allowed answer to a threat (section 8)? Proposed: yes, when shown concretely.
 6. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
    from what the builder has read, the knowledge of the game may not?
+7. May a language model do the pointing at a weakness (section 7)? He is unsure. It would need the limit of
+   section 15 lifted for that use.
+8. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays

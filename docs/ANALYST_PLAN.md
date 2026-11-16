@@ -12601,3 +12601,59 @@ OBS threats72: PUZZLES: the solution's first move is the first move of a CONFIRM
 OBS threats72: PUZZLES: a forced end of the game of ours is found in 80 of 300 (26.67 pct) and its first move is the solution's in 80 of 300 (26.67 pct)
 OBS threats72: puzzles wall 30 s
 OBS print72: time per position over the 20 printed (one thread each): the frame read median 0.19 s, the concrete read median 0.30 s, slowest 1.63 s, mean 0.52 s
+
+
+### 78.72 READ (2026-11-16, main agent, after merge 7257f83c)
+
+Serves SYSTEM_SPEC 8 (the threat list) under 4 (how a line ends) and 3 (exchange). The numbers are the builder's OBS lines in
+artifacts/experiments/threats_78_72 (one run, directions only). I read all twenty printed positions against the board.
+
+WHAT IS NOW RIGHT. The four faults of 78.70 are gone in the ten old positions: the even exchanges of positions 2, 5, 9 print
+apart as exchanges; the claims with no bearer in 1, 7, 8, 10 are dropped; the responses that gave up the strongest unit in 6
+and 8 are gone. The rows that stay are ones a player would name: the unit attacked by a lesser unit in 4, 13, 14, the
+strongest unit attacked in 15, the unit bearing more attackers than guards in 3 and 20. The named response was the move played
+far more often than in 78.70, and far above its control.
+
+A CORRECTION OF MY OWN 78.70 READ. I wrote that position 10 holds a forced end of the game in a few moves. The builder's exact
+read finds none, and on rereading the board I find none either. That line of my read was wrong and was not checked by a program.
+
+WHAT IS STILL WRONG, from the print:
+1. THE RESOLUTION IS TOO COARSE AND GROWS WITH THE LENGTH OF THE LINE. In position 6 the taker wins a unit of the second kind
+   and a least unit for one of the third kind and the row prints as an exchange. In positions 5 and 13 two units of the same
+   kind are traded and the resolution still grows, though like for like cancels exactly whatever the record says.
+2. RESPONSES ARE NOT ORDERED BY HOW THEY END, AND SOME KEPT ONES GIVE UP A UNIT. Position 4 prints a response that gives a unit
+   for two least units ahead of the plain retreats. Position 15 keeps three responses that each give up a unit and does not
+   show the plain retreat of the attacked unit; why the retreat was dropped is not known and must be found.
+3. THE BEST REPLIES IN THE SWEEP LOOK WRONG IN PLACES (position 20, the first response's line gives two units away). The
+   sweep reads to 4 plies on a whole-board ledger.
+4. FEW ROWS. Eleven of twenty positions print no row at all. Threats that need one quiet move first are rare in the print;
+   position 6 holds a uncovering move against a unit in the corner that no row names.
+5. THE TOP BAND IS STILL NOT THE HIGHEST by either line. The section 8 line between high and low stake stays not shown.
+6. CARRYING BY READ SET IS WEAK HERE: an unchanged read set gave the same fresh verdict under half the time, and few nodes are
+   saved. Either the read set is too narrow for a concrete line (the line touches more than the frame), or the depth cut makes
+   the verdict unstable. Not wired into play.
+7. PUZZLES: no gain over 78.70 on the first move.
+8. A LINKER WORKAROUND sits in rust/engine/py/src/lines_py.rs (one imported datum to flip the alignment of the string pool).
+   Kept for now; it may fail again when the count of imported symbols changes. To replace with a build setting.
+
+NEXT: PLAN 78.73 (small), then 78.71.
+
+### PLAN 78.73: THE VERDICT AND THE RESPONSES OF THE CONCRETE LIST (2026-11-16)
+
+Serves SYSTEM_SPEC 8, piece: the threat list, same interface as 78.72 (threat_concrete.concrete_lists, Lines.ask, verdict_of,
+response_of). No new interface; the row gains fields only.
+
+A. VERDICT. Units of the same kind taken and lost cancel exactly before the net and the resolution are computed; the resolution
+   is built only from the kinds left after cancelling. Print how many EXCHANGE rows change verdict.
+B. RESPONSES. Every kept response carries its own end (what the responder loses and takes in its line). Order: responses that
+   lose nothing first, then by the net. A response that loses more than the threat would take is dropped. Find and report why
+   the plain retreat in position 15 of the 78.72 print was dropped, and fix the cause.
+C. THE SWEEP'S REPLIES. For the 20 printed positions, check each printed response line with a deeper read (depth 6 as the
+   rows); print how many first replies change. If many, the sweep reads to the rows' depth.
+D. STABILITY. On the carry sample, for rows with an unchanged read set whose fresh verdict differs: print the share where the
+   two lines differ only beyond the depth cut, and the share where a move outside the read set changed the line. This tells
+   which of the two causes in read point 6 holds.
+E. Reprint the same twenty positions, old 78.72 beside new, and rerun the checks by verdict and by band, the response played,
+   and the puzzles.
+Not in this plan: more rows from quiet first moves (read point 4), the line between high and low stake (point 5). They wait for
+78.71, which asks for threats as subgoals and will say what rows it needs.
