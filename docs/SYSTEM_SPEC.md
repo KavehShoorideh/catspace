@@ -234,6 +234,14 @@ Kaveh: "the most complex piece".
   4. "If it takes too much, then that means too much calculation. Then ... reduce it to some sort of a lemma or
      ... turn it into some sort of a statistical thing, add it into your learning algorithm."
 - **The goal of a step** is a surprise explained away. A surprise generates the question.
+- **A rule is scored by how many surprises it resolves** (DECIDED 2026-11-16). A blind spot is missed on every move
+  for the same reason, so it leaves a LIST of surprises with one cause. "One rule during the sleep phase, which
+  covers the blind spot, will then fix all of the surprises at once and will give me a huge positive signal." And:
+  "We have to basically look at each rule and how many surprises does it solve, and we kind of learn."
+  So the sleep keeps the list of open surprises; a candidate rule, lemma or statistical input is scored by the
+  count of surprises it resolves, less the count it creates, on surprises it was not made from; surprises are
+  grouped by what they share so that a rule is proposed for a group, not for one position. This count is also the
+  near signal the chooser lacked: surprises resolved per second, many times a sleep.
 - **What the oracle may and may not do** (DECIDED 2026-11-16). It supplies the best move, and so the question.
   Fitting a head to the oracle is allowed only as a LAST RESORT: "For now, I think it can be fitted to the Oracle,
   but I would rather avoid that if possible. Like, if forced, I will do it." What he would rather: "fit it on the
