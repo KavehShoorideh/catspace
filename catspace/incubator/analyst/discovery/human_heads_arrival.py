@@ -155,7 +155,7 @@ def fit_pred(tab: dict, feats: np.ndarray, h: int, sel_fit: np.ndarray, jobs: in
 def corr_lines(label: str, a: dict, draws: int, readings: list, say) -> dict:
     lines, vals = SF.band_lines(label, a, draws, readings)
     for ln in lines:
-        say(ln.replace("OBS subgoal ", ""))
+        say(ln.replace("OBS subgoal : ", ""))
     return vals
 
 
@@ -168,6 +168,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--draws", type=int, default=300)
     ap.add_argument("--concept-every", type=int, default=3)
     ap.add_argument("--only-games", type=int, default=0, help="the first N arrival games only")
+    ap.add_argument("--per-shard", type=int, default=0, help="the first K arrival games of each shard's hash order only")
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
     out = Path(a.out_dir)
@@ -180,6 +181,15 @@ def main(argv: "list | None" = None) -> int:
 
     allg = [json.loads(x) for x in (Path(a.data) / "games.jsonl").read_text().splitlines() if x.strip()]
     games = [g for g in allg if g["arrival"]]
+    if a.per_shard:
+        seen: dict = {}
+        keep = []
+        for g in games:
+            sh = g["id"].split(":")[0]
+            seen[sh] = seen.get(sh, 0) + 1
+            if seen[sh] <= a.per_shard:
+                keep.append(g)
+        games = keep
     if a.only_games:
         games = games[:a.only_games]
     say(f"arrival sample: {len(games)} games, {sum(len(g['moves']) for g in games)} plies; fit {sum(g['fit'] for g in games)}, test {sum(not g['fit'] for g in games)}")
@@ -257,7 +267,7 @@ def main(argv: "list | None" = None) -> int:
                 for b, bn in enumerate(HD.BAND_NAMES):
                     sel_b = av["band"] == b
                     sub = {k: (v[sel_b] if isinstance(v, np.ndarray) else v) for k, v in av.items()}
-                    rd = [(f"{rows_label} h={h} band {bn}, {r[0].split('fit ')[-1]}", r[1], r[2]) for r in readings if r[1].startswith("pred_") or r[1] == "count"]
+                    rd = [(f"{rows_label} h={h} band {bn}, " + ("count difference of 78.49" if r[1] == "count" else r[1][len("pred_"):]), r[1], r[2]) for r in readings if r[1].startswith("pred_") or r[1] == "count"]
                     corr_lines("", sub, max(100, a.draws // 2), rd, say)
 
     run_family(tab, {k: v[0] for k, v in sets.items()}, "all", "[all quiet rows]")
@@ -280,11 +290,12 @@ def main(argv: "list | None" = None) -> int:
                 readings = [(f"{nm}: {what}, h={h}", "pred", f"arr{h}")]
                 corr_lines("", av, a.draws, readings, say)
     rec_path = Path(paths.experiment("estimator_78_59", "full", "estimator_heads_human.json"))
-    if rec_path.exists():
+    if rec_path.exists() and not a.only_games:
         rec = json.loads(rec_path.read_text())
-        for (tag, nm, rated, h), r in result.items():
-            if tag == "vals" or nm == "vals" or h != H:
+        for key, r in result.items():
+            if len(key) != 4 or key[3] != H:
                 continue
+            tag, nm, rated, h = key
             m = r["model"]
             key = f"arrival_human_{'thin_' if tag == 'thin' else ''}{nm.replace('+', '')}{'_R' if rated else ''}"
             inputs = {"K": "kinds", "S": "statements", "K+S": "kinds and statements", "S+C": "statements and concepts", "K+S+C": "kinds, statements and concepts"}[nm] + (" and ratings (mean, difference, ply) last" if rated else "")
