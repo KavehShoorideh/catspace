@@ -111,3 +111,21 @@ def test_the_sacrifice_comparison_is_s_less_l_with_a_band_over_games():
     d, lo, hi = SA.band_diff(games, s, v, 50, 1)
     assert abs(d - 1.0) < 1e-9 and lo > 0.99 and hi < 1.01
     print(f"OBS 78.62 sacrifice comparison: planted difference 1 read as {d:+.3f} [{lo:+.3f}, {hi:+.3f}]")
+
+
+def test_a_part_of_one_relation_less_is_found_under_a_renaming():
+    from catspace.incubator.analyst.discovery import tactical_smallest as SM
+    full = "u0 (mine) bears on u1 (theirs) along line l0; u1 may move to empty place p0 along line l1"
+    small = "u5 (mine) bears on u3 (theirs) along line l2"
+    by_shape = {}
+    for dc, w in (("dcA", small), ("dcB", "u0 (theirs) bears on u1 (mine) along line l0")):
+        cl, at = SM.parse(w)
+        by_shape.setdefault(SM.shape(cl, at), []).append((dc, SM.canon(cl, at)))
+    assert SM.find_parts(full, by_shape) == ["dcA"]
+    assert len(SM.parts_of(full)) == 2 and SM.parts_of("u0 bears on u1") == []
+    print("OBS 78.62 smallest frame: the words with one clause removed are matched to a concept under any renaming of its variables")
+
+
+def test_the_next_state_columns_are_per_side_counts():
+    from catspace.incubator.analyst.discovery import tactical_next as TN
+    assert len(TN.FIELDS) == 8
