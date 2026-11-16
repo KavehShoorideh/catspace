@@ -356,12 +356,25 @@ def record_of_generation(gen: int, summary: dict, cfg: dict, table: list, judge_
                                        "data": {"config": cfg, "table": table}}}}
 
 
+def kernel_names() -> dict:
+    """{kind as the graph names it: kind as the engine's captures and a worth table name it}, read from the ordinary start by the game's position codec (the graph says 'unit:<side>:<kind>:<place>', the
+    engine's ledger says the kind by its own symbol: a table keyed by the graph's word is silently worth nothing)."""
+    from catspace.incubator.analyst.discovery import curriculum as CU
+    codec, pos = CU.codec_of(VARIANT), ordinary_text()
+    return {d[1]: o[1] for o, d in zip(codec.owned(pos), codec.describe(pos))}
+
+
 def players_of(gen: int, root: Path) -> dict:
     """The player of generation `gen`: zero counts nothing; g plays the Worth judge fed from the record of generation g-1 (the file is the only source of its numbers)."""
     if gen == 0:
         return {"kind": "nothing"}
     rec = json.loads((root / f"gen{gen - 1}" / "record.json").read_text())
-    return {"kind": "worth", "worth": rec["heads"]["odds_effect"]["kind_values"]}
+    keys = kernel_names()
+    values = rec["heads"]["odds_effect"]["kind_values"]
+    missing = [k for k in values if k not in keys]
+    if missing:
+        raise ValueError(f"kinds of the record the engine does not know: {missing}")
+    return {"kind": "worth", "worth": {keys[k]: v for k, v in values.items()}, "record_kinds": values}
 
 
 def gen_specs(gen: int, starts: dict, cfg: dict, root: Path) -> list:

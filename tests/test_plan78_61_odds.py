@@ -89,17 +89,36 @@ def test_effect_of_a_unit_has_the_sign_of_taking_it_away():
 
 
 def test_the_record_round_trip_feeds_the_next_judge_and_nothing_else(tmp_path):
-    cells = {"even": np.array([1.0, 0.5, 0.0, 0.5]), "a:0:1": np.array([0.0, 0.0, 0.5, 1.0]), "a:1:1": np.array([1.0, 1.0, 0.5, 0.0])}
-    starts = {"even": {"kind": None, "side": None, "n": 0}, "a:0:1": {"kind": "a", "side": 0, "n": 1}, "a:1:1": {"kind": "a", "side": 1, "n": 1}}
+    kinds = ["queen", "pawn"]
+    starts = {"even": {"kind": None, "side": None, "n": 0}}
+    cells = {"even": np.array([1.0, 0.5, 0.0, 0.5])}
+    for k, strength in zip(kinds, (1, 0)):
+        for side in (0, 1):
+            sid = f"{k}:{side}:1"
+            starts[sid] = {"kind": k, "side": side, "n": 1}
+            win_white = (side == 1) == bool(strength)
+            cells[sid] = np.array([1.0, 1.0, 0.5, 0.0]) if win_white else np.array([0.0, 0.0, 0.5, 1.0])
     s = O.summarise(cells, starts, draws=50)
     rec = O.record_of_generation(0, s, {"seconds": 0.05}, [], None)
     (tmp_path / "gen0").mkdir()
     (tmp_path / "gen0" / "record.json").write_text(json.dumps(rec))
     assert O.players_of(0, tmp_path) == {"kind": "nothing"}
     p = O.players_of(1, tmp_path)
-    assert p["kind"] == "worth" and p["worth"] == rec["heads"]["odds_effect"]["kind_values"]
+    assert p["kind"] == "worth" and p["record_kinds"] == rec["heads"]["odds_effect"]["kind_values"]
+    keys = O.kernel_names()
+    assert p["worth"] == {keys[k]: v for k, v in p["record_kinds"].items()} and set(p["worth"]) <= set(keys.values())
     assert rec["heads"]["odds_effect"]["source"] == "odds games, generation 0"
-    assert p["worth"]["a"] == int(round(O.SCALE * s["per_kind"]["a"]["one"]["term"]))
+    assert p["record_kinds"]["queen"] == int(round(O.SCALE * s["per_kind"]["queen"]["one"]["term"]))
+
+
+def test_a_worth_judge_fed_from_a_record_changes_the_choice_and_a_table_keyed_by_the_graphs_word_would_not(tmp_path):
+    """The scar of the first run: the engine names a captured unit by its own symbol, so a table keyed by the graph's kind word is worth nothing to it."""
+    keys = O.kernel_names()
+    legal = CE.state("chess", FREE, [])[2]
+    zero = CE.solve_batch([("chess", FREE, [])], 0.2, threads=1, worth={"x": 0})[0][0]
+    wrong = CE.solve_batch([("chess", FREE, [])], 0.2, threads=1, worth={k: 1000 for k in keys})[0][0]
+    right = CE.solve_batch([("chess", FREE, [])], 0.2, threads=1, worth={v: 1000 for v in keys.values()})[0][0]
+    assert wrong == zero and right == "d1d5" and zero != "d1d5" and zero in legal
 
 
 def test_a_match_score_counts_each_colour_of_an_opening_once():
