@@ -30,7 +30,7 @@ fn stats_dict<'py>(py: Python<'py>, s: &QStats) -> PyResult<Bound<'py, PyDict>> 
     d.set_item("questions", s.questions)?; d.set_item("positions", s.positions)?; d.set_item("candidates", s.candidates)?; d.set_item("not_asked", s.not_asked)?;
     d.set_item("pruned_moved", s.pruned_moved)?; d.set_item("pruned_other", s.pruned_other)?; d.set_item("stops", s.stops)?;
     d.set_item("bounded", s.bounded)?; d.set_item("unread", s.unread)?; d.set_item("stuck", s.stuck)?; d.set_item("forced_pass", s.forced_pass)?; d.set_item("pass_unrealisable", s.pass_unrealisable)?;
-    d.set_item("pass_refused", s.pass_refused)?; d.set_item("est_pruned", s.est_pruned)?; d.set_item("est_read", s.est_read)?; d.set_item("est_cont", s.est_cont)?; d.set_item("est_unplayed", s.est_unplayed)?; d.set_item("by_class", s.by_class.to_vec())?; d.set_item("ask_class", s.ask_class.to_vec())?; d.set_item("gen_class", s.gen_class.to_vec())?; d.set_item("by_depth", s.by_depth.to_vec())?; d.set_item("too_big", s.too_big)?; d.set_item("gone", s.gone)?; d.set_item("follows", s.follows)?; d.set_item("others", s.others)?;
+    d.set_item("pass_refused", s.pass_refused)?; d.set_item("est_pruned", s.est_pruned)?; d.set_item("est_read", s.est_read)?; d.set_item("est_cont", s.est_cont)?; d.set_item("est_unplayed", s.est_unplayed)?; d.set_item("by_class", s.by_class.to_vec())?; d.set_item("ask_class", s.ask_class.to_vec())?; d.set_item("gen_class", s.gen_class.to_vec())?; d.set_item("by_depth", s.by_depth.to_vec())?; d.set_item("too_big", s.too_big)?; d.set_item("gone", s.gone)?; for (k, v) in [("end_settled", s.end_settled), ("end_settled_est", s.end_settled_est), ("end_circle", s.end_circle), ("band_held", s.band_held), ("cause_guard", s.cause_guard), ("cause_line", s.cause_line), ("est_stop", s.est_stop), ("quiet_skipped", s.quiet_skipped), ("settle_trap_q", s.settle_trap_q), ("settle_trap_pos", s.settle_trap_pos), ("settle_trapped", s.settle_trapped)] { d.set_item(k, v)?; } d.set_item("follows", s.follows)?; d.set_item("others", s.others)?;
     Ok(d)
 }
 
@@ -59,6 +59,7 @@ fn report_dict<'py>(py: Python<'py>, st: &Static, g: &KernelGame, s: &St, rep: &
         cd.set_item("status", c.status.word())?;
         cd.set_item("status_read", c.status_word())?;
         cd.set_item("marks", q::marks_word(c.flags))?;
+        cd.set_item("basis", if c.status == Status::Not { "none" } else { q::basis_word(q::basis_rank(c.flags)) })?;
         if let Some(k) = &c.condition {
             let kd = PyDict::new(py);
             kd.set_item("kind", st.names.kinds[k.kind as usize].clone())?;
@@ -86,6 +87,9 @@ fn report_dict<'py>(py: Python<'py>, st: &Static, g: &KernelGame, s: &St, rep: &
         Ok::<_, PyErr>(pd)
     }).collect::<Result<Vec<_>, _>>()?;
     d.set_item("prunes", prunes)?;
+    // 78.60 C: the named causes for an exchange to go on below: (what, the unit named, the member concerned, the taking's ends)
+    let causes = rep.causes.iter().map(|c| (if c.kind == 0 { "only_guard" } else { "uncovered_line" }, unit_id(st, &c.named), unit_id(st, &c.target), (place_name(st, c.ends.0), place_name(st, c.ends.1)))).collect::<Vec<_>>();
+    d.set_item("causes", causes)?;
     let l3 = q::layer3_q(st, rep);
     d.set_item("l3_nodes", l3.nodes.iter().map(|(t, i)| (t.to_string(), i.clone())).collect::<Vec<_>>())?;
     d.set_item("l3_links", l3.links.iter().map(|(t, a, b)| (t.to_string(), a.clone(), b.clone())).collect::<Vec<_>>())?;
@@ -94,10 +98,11 @@ fn report_dict<'py>(py: Python<'py>, st: &Static, g: &KernelGame, s: &St, rep: &
     Ok(d)
 }
 
-pub fn question_read(py: Python<'_>, variant: &str, st: &Static, text: &str, seed: &Seed, conditional: bool, fuse: u64, kv: Option<Vec<i64>>) -> PyResult<PyObject> {
+#[allow(clippy::too_many_arguments)]
+pub fn question_read(py: Python<'_>, variant: &str, st: &Static, text: &str, seed: &Seed, conditional: bool, fuse: u64, kv: Option<Vec<i64>>, rules: q::Rules, bands: Option<Vec<(i64, i64)>>) -> PyResult<PyObject> {
     let (g, s) = game_at(variant, text).map_err(bad)?;
-    let frame = QFrame::new(st, &g, &s, seed).map_err(|e| bad(e.word()))?;
-    let rep = q::claims_q_with(&g, st, &frame, &s, conditional, fuse, kv.map(std::rc::Rc::new));
+    let frame = QFrame::new_cap(st, &g, &s, seed, rules.root_cap).map_err(|e| bad(e.word()))?;
+    let rep = q::claims_q_rules(&g, st, &frame, &s, conditional, fuse, kv.map(std::rc::Rc::new), rules, bands.map(std::rc::Rc::new));
     report_dict(py, st, &g, &s, &rep)?.into_py_any(py)
 }
 
@@ -197,7 +202,7 @@ impl Agg {
     }
 }
 
-pub struct MeasureParams { pub horizons: Vec<usize>, pub fuse: u64, pub row_fuse: u64, pub compose_every: usize, pub max_size: usize, pub conditional: bool, pub trap_fuse: u64, pub kv: Option<Vec<i64>> }
+pub struct MeasureParams { pub horizons: Vec<usize>, pub fuse: u64, pub row_fuse: u64, pub compose_every: usize, pub max_size: usize, pub conditional: bool, pub trap_fuse: u64, pub kv: Option<Vec<i64>>, pub rules: q::Rules, pub bands: Option<Vec<(i64, i64)>> }
 
 fn rank(a: Status, b: Status) -> Status {
     let r = |s: Status| match s { Status::Forced => 4, Status::Threat => 3, Status::Waiting => 2, Status::Conditional => 1, Status::Not => 0 };
@@ -247,7 +252,7 @@ fn read_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, want
         if seeds.is_empty() { continue; }
         agg.n("rows_with_seeds", 1);
         let t1 = Instant::now();
-        let built = q::build_frames(st, &g, s, &seeds);
+        let built = q::build_frames_cap(st, &g, s, &seeds, p.rules.root_cap);
         for r in &built.refused { agg.n(&format!("refused|{}", r.split(':').next().unwrap_or("")), 1); }
         agg.n("frames", built.frames.len() as u64);
         agg.n("split_joins", built.split_joins as u64);
@@ -261,7 +266,7 @@ fn read_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, want
             if f.split { agg.n("frames_split_at_root", 1); }
             if row_q >= p.row_fuse { agg.n("frames_skipped_by_row_fuse", 1); continue; }
             let t2 = Instant::now();
-            let rep = q::claims_q_with(&g, st, f, s, p.conditional, p.fuse, p.kv.clone().map(std::rc::Rc::new));
+            let rep = q::claims_q_rules(&g, st, f, s, p.conditional, p.fuse, p.kv.clone().map(std::rc::Rc::new), p.rules, p.bands.clone().map(std::rc::Rc::new));
             let dt = t2.elapsed().as_secs_f64();
             row_q += rep.stats.questions;
             agg.t("seconds_read", dt);
@@ -269,7 +274,9 @@ fn read_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, want
             agg.n("members", f.members.len() as u64);
             let sx = &rep.stats;
             for (k, v) in [("questions", sx.questions), ("positions", sx.positions), ("candidates", sx.candidates), ("not_asked", sx.not_asked), ("pruned_moved", sx.pruned_moved), ("pruned_other", sx.pruned_other), ("stops", sx.stops), ("bounded", sx.bounded), ("stuck", sx.stuck), ("forced_pass", sx.forced_pass), ("pass_unrealisable", sx.pass_unrealisable), ("pass_refused", sx.pass_refused), ("too_big", sx.too_big),
-                           ("gone", sx.gone), ("follows", sx.follows), ("others", sx.others), ("unread_lines", sx.unread), ("est_pruned", sx.est_pruned), ("est_read", sx.est_read), ("est_cont", sx.est_cont), ("est_unplayed", sx.est_unplayed)] { agg.n(k, v); }
+                           ("gone", sx.gone), ("follows", sx.follows), ("others", sx.others), ("unread_lines", sx.unread), ("est_pruned", sx.est_pruned), ("est_read", sx.est_read), ("est_cont", sx.est_cont), ("est_unplayed", sx.est_unplayed),
+                           ("end_settled", sx.end_settled), ("end_settled_est", sx.end_settled_est), ("end_circle", sx.end_circle), ("band_held", sx.band_held), ("cause_guard", sx.cause_guard), ("cause_line", sx.cause_line), ("est_stop", sx.est_stop), ("quiet_skipped", sx.quiet_skipped),
+                           ("settle_trap_q", sx.settle_trap_q), ("settle_trap_pos", sx.settle_trap_pos), ("settle_trapped", sx.settle_trapped)] { agg.n(k, v); }
             if sx.unread > 0 { agg.n("frames_with_unread_lines", 1); }
             agg.n(&format!("hist|{}", hist_bucket(sx.questions)), 1);
             let bucket = if sx.questions <= 30 { "small" } else if sx.questions > 1000 { "big" } else { "mid" };
@@ -303,7 +310,16 @@ fn read_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, want
                     agg.n(&format!("marks|{class}|n"), 1);
                     for (bit, nm) in [(q::F_FOLLOW, "followed"), (q::F_BOUND, "bound"), (q::F_PRUNE_USED, "prune_used"), (q::F_EST_PRUNE, "est_prune"), (q::F_EST_READ, "est_read")] { if ffl & bit != 0 { agg.n(&format!("marks|{class}|{nm}"), 1); } }
                 }
+                // 78.60 E: the class by what the claim rests on: forced within the frame, by a prune (inclusion only), by estimate, or bound (a line was cut); a unit both lost and safe takes the lesser basis
+                let basis = |status: Status, fl: q::Fl| if status == Status::Forced { Some(q::basis_rank(fl)) } else { None };
+                let by_basis = match class {
+                    "LOST" | "READ_LOST" => basis(free, ffl).map(|r| format!("{}_LOST", q::basis_word(r).to_uppercase())),
+                    "SAFE" | "READ_SAFE" => basis(safe, sfl).map(|r| format!("{}_SAFE", q::basis_word(r).to_uppercase())),
+                    "BOTH" | "READ_BOTH" => basis(free, ffl).zip(basis(safe, sfl)).map(|(a, b)| format!("{}_BOTH", q::basis_word(a.max(b)).to_uppercase())),
+                    _ => None,
+                };
                 let Ok(i) = plies[t].binary_search(c) else { continue };
+                if let Some(bc) = by_basis { for &h in &p.horizons { let hist = fates::fate_history(&tr, &plies, t, i, h); agg.bump(format!("{}|{}|{}|{}", bc, c.1, (c.0 == mover) as u8, h), &hist); } }
                 for &h in &p.horizons {
                     let hist = fates::fate_history(&tr, &plies, t, i, h);
                     agg.bump(format!("{}|{}|{}|{}", class, c.1, (c.0 == mover) as u8, h), &hist);

@@ -20,6 +20,9 @@ pub struct BaseGraph {
     st: Static,
     /// 78.58: the worth of each kind (by kind index) the exchange reads, set from the estimator's record; None: no exchange.
     kv: Option<Vec<i64>>,
+    /// 78.60: the band (low, high) of the worth of each kind, from the estimator record; and the rules of a line's end (all off until set).
+    bands: Option<Vec<(i64, i64)>>,
+    rules: cs_tactics::sheet::questions::Rules,
 }
 
 type NodeWire = (String, String);
@@ -133,7 +136,7 @@ impl BaseGraph {
         let names = Names::new(g.place_names(), g.kind_names(), g.roles());
         let steps = g.steps(description, &static_relations, &objects).map_err(bad)?;
         let st = Static::new(&steps, &names).map_err(bad)?;
-        Ok(BaseGraph { variant: variant.to_string(), st, kv: None })
+        Ok(BaseGraph { variant: variant.to_string(), st, kv: None, bands: None, rules: Default::default() })
     }
 
     /// static_part() -> {nodes: [(type, id)], links: [(type, a, b, via, value)], directions, lines: [[places]]}: the part that is the game's and not the position's.
@@ -604,6 +607,23 @@ impl BaseGraph {
         Ok(())
     }
 
+    /// set_kind_bands([(kind, low, high)]): PLAN 78.60 D the band of the worth of each kind (whole numbers; from the estimator record's order of kinds); a kind not named has no width (low = high = its worth). With the
+    /// rule `band` on, a taking is pruned by the estimate only if it loses at every corner of the bands. An empty list clears it.
+    fn set_kind_bands(&mut self, vals: Vec<(String, i64, i64)>) -> PyResult<()> {
+        if vals.is_empty() { self.bands = None; return Ok(()); }
+        let kv = self.kv.clone().ok_or_else(|| bad("set_kind_values first".to_string()))?;
+        let mut b: Vec<(i64, i64)> = kv.iter().map(|&v| (v, v)).collect();
+        for (k, lo, hi) in vals { let ix = self.st.names.kind(&k).map_err(bad)? as usize; if lo > hi { return Err(bad(format!("band of {k}: low above high"))); } b[ix] = (lo, hi); }
+        self.bands = Some(b);
+        Ok(())
+    }
+
+    /// set_rules(settle, progress, cause, band, root_cap): PLAN 78.60 the rules of a line's end for `question_read` and `questions_measure` (A settled, B progress, C named cause, D band) and the cap of members at the
+    /// root of a frame (0 or 10: as before; below 10: the seed units and what bears on them). All false and 0: the 78.58 read (and with no kind values, the 78.57 read).
+    fn set_rules(&mut self, settle: bool, progress: bool, cause: bool, band: bool, root_cap: usize) {
+        self.rules = cs_tactics::sheet::questions::Rules { settle, progress, cause, band, root_cap };
+    }
+
     /// exchange_taking(text, taker, place) -> None or (estimate, the units that take in order, (bearers of the taker's side, bearers of the other)): the estimated exchange on `place` when the unit `taker`
     /// takes what stands there (78.58 C), with the worth set by `set_kind_values`.
     fn exchange_taking(&self, text: &str, taker: &str, place: &str) -> PyResult<Option<(i64, Vec<String>, (usize, usize))>> {
@@ -635,7 +655,7 @@ impl BaseGraph {
     /// question_read(text, units, places, conditional, fuse) -> the frame of the seed (bound to its units), its claims with their status and marks, what the questions cost, the pruned root moves, the layer 3 nodes (78.57).
     fn question_read(&self, py: Python<'_>, text: &str, units: Vec<String>, places: Vec<String>, conditional: bool, fuse: u64) -> PyResult<PyObject> {
         let seed = crate::frames_py::parse_seed(&self.st, &units, &places).map_err(bad)?;
-        crate::questions_py::question_read(py, &self.variant, &self.st, text, &seed, conditional, fuse, self.kv.clone())
+        crate::questions_py::question_read(py, &self.variant, &self.st, text, &seed, conditional, fuse, self.kv.clone(), self.rules, self.bands.clone())
     }
 
     /// question_trap(text, unit, fuse) -> the trap question of one unit on quiet routes (78.57).
@@ -660,7 +680,7 @@ impl BaseGraph {
     #[allow(clippy::too_many_arguments)]
     fn questions_measure(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, horizons: Vec<usize>, fuse: u64, row_fuse: u64, compose_every: usize, max_size: usize, conditional: bool, trap_fuse: u64, threads: usize) -> PyResult<PyObject> {
         let goal = self.goal_of(&goal_kind)?;
-        let params = crate::questions_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse, kv: self.kv.clone() };
+        let params = crate::questions_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse, kv: self.kv.clone(), rules: self.rules, bands: self.bands.clone() };
         crate::questions_py::questions_measure(py, &self.variant, &self.st, goal, games, rows, keys, params, threads)
     }
 
