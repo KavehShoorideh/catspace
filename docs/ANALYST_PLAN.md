@@ -10505,3 +10505,204 @@ OBS hazard: WHO FIRST taken | rook: 5283 test rows where the class occurred befo
 OBS hazard: WHO FIRST taken | rook: calibration (predicted>observed, ten equal-count bins) 0.301>0.318 0.406>0.416 0.446>0.497 0.471>0.489 0.492>0.489 0.508>0.564 0.528>0.519 0.551>0.487 0.589>0.545 0.695>0.691
 OBS hazard: WHO FIRST went false | castling_right: 2823 test rows where the class occurred before the record ended (the mover first in 0.5455); accuracy head 0.8023 [0.7731, 0.8225], base hazard 0.5455 [0.5382, 0.5544]; log loss gain of the head over the base hazard's chance +0.27837 [+0.24033, +0.30394]
 OBS hazard: WHO FIRST went false | castling_right: calibration (predicted>observed, ten equal-count bins) 0.067>0.021 0.157>0.078 0.269>0.208 0.393>0.440 0.508>0.521 0.618>0.571 0.728>0.748 0.832>0.915 0.908>0.961 0.962>0.996
+
+
+78.64 BUILT, stage D (builder agent, 2026-11-16; one run each, directions only; numbers only from the printed OBS lines; files in artifacts/experiments/events_78_64/full12000/ (events_obs.txt) and hazard12000/ (hazard_obs.txt)). NO RUST CHANGE.
+SIZE AND TIME, STATED BEFORE THE RUN: the sample raised from 800 to ALL 12000 human games of the 78.59 file (about 266000 settled fit rows against 17000), because the heads need only the units of each position and the 78.59 rows, which exist for all 12000; the frame read of 78.62 (about 0.02 s a row, so about 2 hours for 390000 rows) was NOT extended: the present tactical state set is run on the 800 games only, the concepts on the thinned rows of all 12000. Expected time of the head run: about 40 minutes (a 2000-game short run of 14 heads took 115 s first). The event list on the 12000 games (events_rules, no `--state-games`, 87 s) came first. Run: `python -m catspace.incubator.analyst.discovery.events_rules --out-dir artifacts/experiments/events_78_64/full12000` then `python -m catspace.incubator.analyst.discovery.events_hazard --sample-dir artifacts/experiments/events_78_64/full12000 --state-dir "" --out-dir artifacts/experiments/events_78_64/hazard12000`. Change: the pool of events_rules is a spawn pool (a fork after the engine's threads were started hung).
+THE EVENT LIST ON THE 12000 GAMES (counts: fit games / test games / games holding it):
+OBS events: CLASSES COARSE (type, side): class: events in the fit games / in the test games / games holding it
+OBS events:   taken | white: 66859 / 29083 / 11988; fitted
+OBS events:   taken | black: 66683 / 28872 / 11986; fitted
+OBS events:   keeps | black: 37973 / 16571 / 11629; fitted
+OBS events:   keeps | white: 37903 / 16551 / 11639; fitted
+OBS events:   end | white: 4153 / 1808 / 5961; fitted
+OBS events:   end | black: 3776 / 1686 / 5462; fitted
+OBS events:   changed kind | white: 796 / 362 / 980; fitted
+OBS events:   changed kind | black: 734 / 359 / 919; fitted
+OBS events:   end | : 416 / 161 / 577; fitted
+OBS events:   vanished | white: 154 / 75 / 228; fitted
+OBS events:   vanished | black: 101 / 44 / 144; fitted
+OBS events:   taken | white | pawn: 30443 / 13199 / 11793; fitted
+OBS events:   taken | black | pawn: 30289 / 13151 / 11756; fitted
+OBS events:   keeps | white | pawn: 17113 / 7495 / 10176; fitted
+OBS events:   keeps | black | pawn: 16991 / 7391 / 10123; fitted
+OBS events:   went false | white | castling_right: 15964 / 7009 / 11584; fitted
+OBS events:   went false | black | castling_right: 15885 / 6940 / 11540; fitted
+OBS events:   taken | white | knight: 12776 / 5616 / 10993; fitted
+OBS events:   taken | black | knight: 12608 / 5437 / 10977; fitted
+OBS events:   taken | black | bishop: 11777 / 5060 / 10589; fitted
+OBS events:   taken | white | bishop: 11494 / 4980 / 10459; fitted
+OBS events:   keeps | black | bishop: 8271 / 3586 / 8752; fitted
+OBS events:   keeps | white | bishop: 7834 / 3341 / 8381; fitted
+OBS events:   taken | white | rook: 7418 / 3207 / 7351; fitted
+OBS events:   taken | black | rook: 7401 / 3176 / 7341; fitted
+OBS events:   keeps | white | knight: 6269 / 2768 / 7156; fitted
+OBS events:   keeps | black | knight: 6152 / 2666 / 7014; fitted
+OBS events:   taken | white | queen: 4728 / 2081 / 6516; fitted
+OBS events:   taken | black | queen: 4608 / 2048 / 6368; fitted
+OBS events:   keeps | white | rook: 4092 / 1788 / 4818; fitted
+OBS events:   keeps | black | rook: 4061 / 1799 / 4783; fitted
+OBS events:   keeps | white | queen: 2595 / 1159 / 3623; fitted
+OBS events:   keeps | black | queen: 2498 / 1129 / 3503; fitted
+OBS events:   vanished | white | pawn: 154 / 75 / 228; fitted
+OBS events:   vanished | black | pawn: 101 / 44 / 144; fitted
+HEADS (the largest fit; per head: base log loss per step on the test games, then the gain over the base hazard with its band, by set):
+head | base loss/step | gains at all fit games: R K K+S K+S+E K+S+E+R K+S+E+R+state
+taken [us] | 0.5102 | +0.0140[+0.0128,+0.0154] +0.0003[+0.0002,+0.0003] +0.0010[+0.0009,+0.0012] +0.0011[+0.0009,+0.0012] +0.0152[+0.0138,+0.0166]
+taken [them] | 0.5416 | +0.0159[+0.0146,+0.0174] +0.0007[+0.0006,+0.0009] +0.0013[+0.0012,+0.0015] +0.0014[+0.0012,+0.0015] +0.0170[+0.0157,+0.0185]
+keeps [us] | 0.3911 | +0.0074[+0.0067,+0.0083] +0.0002[+0.0001,+0.0002] +0.0011[+0.0009,+0.0013] +0.0011[+0.0009,+0.0013] +0.0085[+0.0078,+0.0094]
+keeps [them] | 0.4164 | +0.0085[+0.0077,+0.0095] +0.0005[+0.0004,+0.0006] +0.0011[+0.0009,+0.0012] +0.0011[+0.0009,+0.0012] +0.0094[+0.0086,+0.0104]
+taken | pawn [us] | 0.3407 | +0.0020[+0.0016,+0.0025] +0.0008[+0.0006,+0.0010] +0.0019[+0.0016,+0.0021] +0.0019[+0.0017,+0.0021] +0.0040[+0.0035,+0.0045]
+taken | pawn [them] | 0.3484 | +0.0023[+0.0018,+0.0027] +0.0010[+0.0008,+0.0011] +0.0016[+0.0014,+0.0019] +0.0017[+0.0014,+0.0019] +0.0038[+0.0033,+0.0043]
+keeps | pawn [us] | 0.2352 | +0.0009[+0.0006,+0.0011] +0.0006[+0.0004,+0.0007] +0.0013[+0.0011,+0.0014] +0.0013[+0.0011,+0.0014] +0.0022[+0.0019,+0.0025]
+keeps | pawn [them] | 0.2405 | +0.0010[+0.0007,+0.0012] +0.0006[+0.0005,+0.0008] +0.0010[+0.0008,+0.0012] +0.0010[+0.0008,+0.0012] +0.0019[+0.0016,+0.0022]
+went false | castling_right [us] | 0.0394 | +0.0070[+0.0068,+0.0072] +0.0000[+0.0000,+0.0000] +0.0021[+0.0020,+0.0022] +0.0021[+0.0020,+0.0022] +0.0090[+0.0088,+0.0092]
+went false | castling_right [them] | 0.0355 | +0.0061[+0.0060,+0.0063] +0.0000[+0.0000,+0.0000] +0.0014[+0.0014,+0.0015] +0.0016[+0.0015,+0.0017] +0.0081[+0.0079,+0.0083]
+taken | knight [us] | 0.1918 | +0.0125[+0.0119,+0.0131] +0.0031[+0.0029,+0.0034] +0.0034[+0.0031,+0.0036] +0.0036[+0.0033,+0.0038] +0.0164[+0.0158,+0.0170]
+taken | knight [them] | 0.1969 | +0.0129[+0.0122,+0.0136] +0.0032[+0.0029,+0.0034] +0.0033[+0.0031,+0.0036] +0.0035[+0.0032,+0.0037] +0.0166[+0.0159,+0.0173]
+taken | bishop [us] | 0.1829 | +0.0096[+0.0091,+0.0102] +0.0026[+0.0024,+0.0028] +0.0028[+0.0026,+0.0030] +0.0030[+0.0028,+0.0032] +0.0128[+0.0122,+0.0134]
+taken | bishop [them] | 0.1876 | +0.0101[+0.0096,+0.0107] +0.0027[+0.0024,+0.0029] +0.0028[+0.0026,+0.0030] +0.0029[+0.0027,+0.0031] +0.0133[+0.0127,+0.0139]
+keeps | bishop [us] | 0.1292 | +0.0054[+0.0050,+0.0058] +0.0023[+0.0020,+0.0025] +0.0025[+0.0023,+0.0027] +0.0027[+0.0025,+0.0029] +0.0081[+0.0077,+0.0085]
+keeps | bishop [them] | 0.1330 | +0.0057[+0.0053,+0.0061] +0.0023[+0.0021,+0.0025] +0.0024[+0.0022,+0.0026] +0.0025[+0.0023,+0.0027] +0.0084[+0.0079,+0.0088]
+taken | rook [us] | 0.1672 | +0.0003[+0.0002,+0.0004] +0.0005[+0.0003,+0.0006] +0.0005[+0.0004,+0.0006] +0.0006[+0.0004,+0.0007] +0.0009[+0.0007,+0.0010]
+taken | rook [them] | 0.1733 | +0.0003[+0.0002,+0.0004] +0.0006[+0.0005,+0.0007] +0.0007[+0.0006,+0.0008] +0.0007[+0.0005,+0.0008] +0.0009[+0.0008,+0.0011]
+keeps | knight [us] | 0.1063 | +0.0038[+0.0035,+0.0041] +0.0013[+0.0011,+0.0014] +0.0014[+0.0012,+0.0015] +0.0015[+0.0013,+0.0016] +0.0054[+0.0051,+0.0057]
+keeps | knight [them] | 0.1104 | +0.0040[+0.0037,+0.0043] +0.0013[+0.0011,+0.0014] +0.0014[+0.0012,+0.0016] +0.0014[+0.0013,+0.0016] +0.0055[+0.0052,+0.0058]
+taken | queen [us] | 0.1104 | +0.0011[+0.0009,+0.0014] +0.0001[+0.0001,+0.0002] +0.0002[+0.0001,+0.0002] +0.0002[+0.0001,+0.0002] +0.0014[+0.0011,+0.0016]
+taken | queen [them] | 0.1136 | +0.0012[+0.0009,+0.0014] +0.0001[+0.0001,+0.0001] +0.0002[+0.0001,+0.0002] +0.0002[+0.0002,+0.0003] +0.0014[+0.0012,+0.0017]
+keeps | rook [us] | 0.1060 | +0.0001[+0.0001,+0.0002] +0.0003[+0.0002,+0.0004] +0.0003[+0.0002,+0.0004] +0.0004[+0.0003,+0.0005] +0.0005[+0.0004,+0.0007]
+keeps | rook [them] | 0.1099 | +0.0001[+0.0001,+0.0002] +0.0004[+0.0003,+0.0005] +0.0004[+0.0003,+0.0005] +0.0004[+0.0003,+0.0005] +0.0006[+0.0004,+0.0007]
+end [us] | 0.0581 | +0.0008[+0.0007,+0.0010] +0.0018[+0.0017,+0.0020] +0.0020[+0.0019,+0.0022] +0.0020[+0.0019,+0.0022] +0.0024[+0.0022,+0.0025]
+end [them] | 0.0568 | +0.0007[+0.0006,+0.0008] +0.0016[+0.0015,+0.0018] +0.0018[+0.0017,+0.0019] +0.0018[+0.0017,+0.0019] +0.0022[+0.0020,+0.0023]
+keeps | queen [us] | 0.0631 | +0.0003[+0.0002,+0.0004] +0.0002[+0.0001,+0.0002] +0.0002[+0.0001,+0.0003] +0.0002[+0.0002,+0.0003] +0.0006[+0.0005,+0.0007]
+keeps | queen [them] | 0.0648 | +0.0004[+0.0003,+0.0005] +0.0001[+0.0001,+0.0002] +0.0002[+0.0001,+0.0002] +0.0002[+0.0001,+0.0002] +0.0006[+0.0004,+0.0007]
+changed kind [us] | 0.0390 | +0.0028[+0.0024,+0.0031] +0.0019[+0.0016,+0.0021] +0.0020[+0.0018,+0.0023] +0.0021[+0.0018,+0.0024] +0.0041[+0.0037,+0.0045]
+changed kind [them] | 0.0395 | +0.0027[+0.0023,+0.0030] +0.0018[+0.0016,+0.0021] +0.0019[+0.0017,+0.0022] +0.0020[+0.0018,+0.0023] +0.0041[+0.0037,+0.0045]
+vanished | pawn [us] | 0.0043 | +0.0000[+0.0000,+0.0000] -0.0000[-0.0000,+0.0000] +0.0000[+0.0000,+0.0000] +0.0001[+0.0000,+0.0001] +0.0001[+0.0000,+0.0001]
+vanished | pawn [them] | 0.0043 | +0.0000[+0.0000,+0.0000] -0.0000[-0.0000,+0.0000] +0.0000[+0.0000,+0.0000] +0.0001[+0.0000,+0.0001] +0.0001[+0.0000,+0.0001]
+vanished [us] | 0.0043 | +0.0000[+0.0000,+0.0000] -0.0000[-0.0000,+0.0000] +0.0000[+0.0000,+0.0000] +0.0001[+0.0000,+0.0001] +0.0001[+0.0000,+0.0001]
+vanished [them] | 0.0043 | +0.0000[+0.0000,+0.0000] -0.0000[-0.0000,+0.0000] +0.0000[+0.0000,+0.0000] +0.0001[+0.0000,+0.0001] +0.0001[+0.0000,+0.0001]
+
+Lines (selected from the file):
+OBS hazard: rows: 396085 settled rows of 12000 games; fit rows 276611 (8337 games), test rows 119474 (3651 games); thinned rows with concepts 54751; rows with the present tactical state 0
+OBS hazard: heads: taken (133542 fit events pooled over the sides), keeps (75876 fit events pooled over the sides), taken | pawn (60732 fit events pooled over the sides), keeps | pawn (34104 fit events pooled over the sides), went false | castling_right (31849 fit events pooled over the sides), taken | knight (25384 fit events pooled over the sides), taken | bishop (23271 fit events pooled over the sides), keeps | bishop (16105 fit events pooled over the sides), taken | rook (14819 fit events pooled over the sides), keeps | knight (12421 fit events pooled over the sides), taken | queen (9336 fit events pooled over the sides), keeps | rook (8153 fit events pooled over the sides), end (7929 fit events pooled over the sides), keeps | queen (5093 fit events pooled over the sides), changed kind (1530 fit events pooled over the sides), vanished | pawn (255 fit events pooled over the sides), vanished (255 fit events pooled over the sides)
+OBS hazard: HEAD taken [us]: first events in rows: fit 242466, test 104892; cut rows 0; risk steps in the fit rows 1128632; flags in the risk set [('own', True), ('other', False)]; base hazard of the head over the fit rows 0.21483 per step
+OBS hazard: HEAD taken [us]: base hazard, test log loss per step 0.51020 [0.50500, 0.51489]
+OBS hazard: HEAD taken [us] set R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.01401 [+0.01270, +0.01548]; penalty 0.01
+OBS hazard: HEAD taken [us] set R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.01402 [+0.01271, +0.01544]; penalty 0.01
+OBS hazard: HEAD taken [us] set R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.01405 [+0.01276, +0.01544]; penalty 0.01
+OBS hazard: HEAD taken [us] set R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.01403 [+0.01276, +0.01543]; penalty 0.01
+OBS hazard: HEAD taken [us] set K+S+E+R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.01508 [+0.01362, +0.01654]; penalty 0.001
+OBS hazard: HEAD taken [us] set K+S+E+R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.01513 [+0.01368, +0.01660]; penalty 0.001
+OBS hazard: HEAD taken [us] set K+S+E+R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.01514 [+0.01374, +0.01656]; penalty 0.001
+OBS hazard: HEAD taken [us] set K+S+E+R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.01518 [+0.01378, +0.01657]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R: fit games 1042 (fit rows 4797): test log loss gain over the base hazard (same fit games) per step +0.01189 [+0.01049, +0.01326]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R: fit games 2084 (fit rows 9495): test log loss gain over the base hazard (same fit games) per step +0.01217 [+0.01085, +0.01360]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R: fit games 4168 (fit rows 19050): test log loss gain over the base hazard (same fit games) per step +0.01245 [+0.01111, +0.01387]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R: fit games 8337 (fit rows 38202): test log loss gain over the base hazard (same fit games) per step +0.01251 [+0.01112, +0.01390]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R+C: fit games 1042 (fit rows 4797): test log loss gain over the base hazard (same fit games) per step +0.01752 [+0.01571, +0.01934]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R+C: fit games 2084 (fit rows 9495): test log loss gain over the base hazard (same fit games) per step +0.01805 [+0.01630, +0.01965]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R+C: fit games 4168 (fit rows 19050): test log loss gain over the base hazard (same fit games) per step +0.01836 [+0.01663, +0.01990]; penalty 0.001
+OBS hazard: HEAD taken [us] [thinned rows] set K+S+E+R+C: fit games 8337 (fit rows 38202): test log loss gain over the base hazard (same fit games) per step +0.01871 [+0.01707, +0.02022]; penalty 0.001
+OBS hazard: HEAD taken [us] set K+S+E+R: gain by distance bin (pairs of plies 1, 2, 3, 4, 5-6, 7-8, 9-12, 13-20, 21-40, 41+), per step in the bin: +0.01352 [+0.01270, +0.01424] (118560 steps); +0.00333 [+0.00216, +0.00456] (100755 steps); +0.00800 [+0.00662, +0.00954] (74485 steps); +0.01376 [+0.01198, +0.01559] (54023 steps); +0.02157 [+0.01937, +0.02363] (66422 steps); +0.03476 [+0.03144, +0.03835] (33745 steps); +0.04223 [+0.03756, +0.04600] (26886 steps); +0.03209 [+0.02761, +0.03695] (12033 steps); +0.01026 [+0.00364, +0.02004] (2682 steps); -0.02680 [-0.50922, +0.00000] (38 steps)
+OBS hazard: HEAD taken [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 107582 test rows, observed rate 0.6324, fit rate 0.6364): log loss gain over the plain rate +0.02315 [+0.01972, +0.02672]; over the base hazard's own chance +0.02317 [+0.01974, +0.02673]
+OBS hazard: HEAD taken [them]: first events in rows: fit 241298, test 104364; cut rows 0; risk steps in the fit rows 1025305; flags in the risk set [('own', True), ('other', False)]; base hazard of the head over the fit rows 0.23534 per step
+OBS hazard: HEAD taken [them]: base hazard, test log loss per step 0.54156 [0.53600, 0.54701]
+OBS hazard: HEAD taken [them] set R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.01589 [+0.01453, +0.01738]; penalty 0.01
+OBS hazard: HEAD taken [them] set R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.01589 [+0.01453, +0.01738]; penalty 0.01
+OBS hazard: HEAD taken [them] set R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.01594 [+0.01457, +0.01740]; penalty 0.01
+OBS hazard: HEAD taken [them] set R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.01592 [+0.01455, +0.01737]; penalty 0.01
+OBS hazard: HEAD taken [them] set K+S+E+R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.01690 [+0.01554, +0.01835]; penalty 0.01
+OBS hazard: HEAD taken [them] set K+S+E+R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.01698 [+0.01561, +0.01842]; penalty 0.01
+OBS hazard: HEAD taken [them] set K+S+E+R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.01706 [+0.01571, +0.01852]; penalty 0.01
+OBS hazard: HEAD taken [them] set K+S+E+R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.01703 [+0.01571, +0.01848]; penalty 0.01
+OBS hazard: HEAD taken [them] set K+S+E+R: gain by distance bin (pairs of plies 1, 2, 3, 4, 5-6, 7-8, 9-12, 13-20, 21-40, 41+), per step in the bin: +0.01091 [+0.00984, +0.01200] (117250 steps); +0.00784 [+0.00653, +0.00930] (89463 steps); +0.01256 [+0.01104, +0.01421] (65650 steps); +0.01679 [+0.01501, +0.01873] (47387 steps); +0.02603 [+0.02357, +0.02837] (58231 steps); +0.03683 [+0.03336, +0.04045] (29759 steps); +0.04214 [+0.03733, +0.04586] (24094 steps); +0.03077 [+0.02587, +0.03596] (11211 steps); +0.00584 [-0.00295, +0.01670] (2500 steps); +0.00000 [+0.00000, +0.00000] (31 steps)
+OBS hazard: HEAD taken [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 107582 test rows, observed rate 0.6724, fit rate 0.6769): log loss gain over the plain rate +0.02887 [+0.02526, +0.03279]; over the base hazard's own chance +0.02888 [+0.02526, +0.03280]
+OBS hazard: HEAD keeps [us]: first events in rows: fit 214664, test 92360; cut rows 24787; risk steps in the fit rows 1572126; flags in the risk set [('own', True), ('other', False)]; base hazard of the head over the fit rows 0.13654 per step
+OBS hazard: HEAD keeps [us]: base hazard, test log loss per step 0.39107 [0.38683, 0.39539]
+OBS hazard: HEAD keeps [us] set R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00734 [+0.00665, +0.00825]; penalty 0.01
+OBS hazard: HEAD keeps [us] set R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00736 [+0.00666, +0.00830]; penalty 0.01
+OBS hazard: HEAD keeps [us] set R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00739 [+0.00669, +0.00834]; penalty 0.01
+OBS hazard: HEAD keeps [us] set R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00738 [+0.00667, +0.00832]; penalty 0.01
+OBS hazard: HEAD keeps [us] set K+S+E+R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00822 [+0.00750, +0.00910]; penalty 0.0001
+OBS hazard: HEAD keeps [us] set K+S+E+R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00838 [+0.00768, +0.00928]; penalty 0.0001
+OBS hazard: HEAD keeps [us] set K+S+E+R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00848 [+0.00778, +0.00938]; penalty 0.0001
+OBS hazard: HEAD keeps [us] set K+S+E+R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00851 [+0.00780, +0.00941]; penalty 0.0001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R: fit games 1042 (fit rows 4797): test log loss gain over the base hazard (same fit games) per step +0.00628 [+0.00548, +0.00723]; penalty 0.0001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R: fit games 2084 (fit rows 9495): test log loss gain over the base hazard (same fit games) per step +0.00674 [+0.00592, +0.00761]; penalty 0.0001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R: fit games 4168 (fit rows 19050): test log loss gain over the base hazard (same fit games) per step +0.00718 [+0.00632, +0.00803]; penalty 0.0001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R: fit games 8337 (fit rows 38202): test log loss gain over the base hazard (same fit games) per step +0.00719 [+0.00632, +0.00809]; penalty 0.0001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R+C: fit games 1042 (fit rows 4797): test log loss gain over the base hazard (same fit games) per step +0.00767 [+0.00657, +0.00872]; penalty 0.001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R+C: fit games 2084 (fit rows 9495): test log loss gain over the base hazard (same fit games) per step +0.00866 [+0.00768, +0.00967]; penalty 0.001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R+C: fit games 4168 (fit rows 19050): test log loss gain over the base hazard (same fit games) per step +0.00929 [+0.00831, +0.01028]; penalty 0.001
+OBS hazard: HEAD keeps [us] [thinned rows] set K+S+E+R+C: fit games 8337 (fit rows 38202): test log loss gain over the base hazard (same fit games) per step +0.00939 [+0.00839, +0.01038]; penalty 0.001
+OBS hazard: HEAD keeps [us] set K+S+E+R: gain by distance bin (pairs of plies 1, 2, 3, 4, 5-6, 7-8, 9-12, 13-20, 21-40, 41+), per step in the bin: +0.01224 [+0.01168, +0.01277] (117964 steps); +0.00253 [+0.00181, +0.00327] (107265 steps); +0.00359 [+0.00283, +0.00450] (88061 steps); +0.00598 [+0.00508, +0.00685] (71401 steps); +0.00818 [+0.00718, +0.00911] (103616 steps); +0.01191 [+0.01082, +0.01323] (66258 steps); +0.01351 [+0.01187, +0.01537] (69280 steps); +0.01327 [+0.01075, +0.01609] (42318 steps); +0.01539 [+0.01190, +0.01939] (11762 steps); +0.00335 [-0.00073, +0.00825] (344 steps)
+OBS hazard: HEAD keeps [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 101903 test rows, observed rate 0.4574, fit rate 0.4559): log loss gain over the plain rate +0.01532 [+0.01323, +0.01715]; over the base hazard's own chance +0.01624 [+0.01422, +0.01801]
+OBS hazard: HEAD keeps [them]: first events in rows: fit 213946, test 92035; cut rows 24466; risk steps in the fit rows 1445880; flags in the risk set [('own', True), ('other', False)]; base hazard of the head over the fit rows 0.14797 per step
+OBS hazard: HEAD keeps [them]: base hazard, test log loss per step 0.41644 [0.41185, 0.42132]
+OBS hazard: HEAD keeps [them] set R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00844 [+0.00767, +0.00945]; penalty 0.01
+OBS hazard: HEAD keeps [them] set R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00845 [+0.00769, +0.00946]; penalty 0.01
+OBS hazard: HEAD keeps [them] set R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00850 [+0.00771, +0.00951]; penalty 0.01
+OBS hazard: HEAD keeps [them] set R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00848 [+0.00771, +0.00950]; penalty 0.01
+OBS hazard: HEAD keeps [them] set K+S+E+R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00916 [+0.00837, +0.01015]; penalty 0.01
+OBS hazard: HEAD keeps [them] set K+S+E+R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00926 [+0.00848, +0.01029]; penalty 0.01
+OBS hazard: HEAD keeps [them] set K+S+E+R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00939 [+0.00859, +0.01043]; penalty 0.01
+OBS hazard: HEAD keeps [them] set K+S+E+R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00939 [+0.00859, +0.01042]; penalty 0.01
+OBS hazard: HEAD keeps [them] set K+S+E+R: gain by distance bin (pairs of plies 1, 2, 3, 4, 5-6, 7-8, 9-12, 13-20, 21-40, 41+), per step in the bin: +0.00889 [+0.00819, +0.00959] (116220 steps); +0.00479 [+0.00399, +0.00550] (97581 steps); +0.00622 [+0.00529, +0.00704] (79802 steps); +0.00738 [+0.00630, +0.00834] (64567 steps); +0.01052 [+0.00954, +0.01154] (93671 steps); +0.01298 [+0.01181, +0.01442] (59959 steps); +0.01424 [+0.01250, +0.01617] (62934 steps); +0.01467 [+0.01214, +0.01737] (39044 steps); +0.01504 [+0.01151, +0.01872] (11236 steps); +0.00305 [+0.00152, +0.00775] (337 steps)
+OBS hazard: HEAD keeps [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 101758 test rows, observed rate 0.5024, fit rate 0.5026): log loss gain over the plain rate +0.01788 [+0.01595, +0.02042]; over the base hazard's own chance +0.01884 [+0.01693, +0.02105]
+OBS hazard: HEAD went false | castling_right [us]: first events in rows: fit 66325, test 29009; cut rows 0; risk steps in the fit rows 7997079; flags in the risk set [('own', True), ('other', True)]; base hazard of the head over the fit rows 0.00829 per step
+OBS hazard: HEAD went false | castling_right [us]: base hazard, test log loss per step 0.03935 [0.03800, 0.04077]
+OBS hazard: HEAD went false | castling_right [them]: first events in rows: fit 60374, test 26598; cut rows 0; risk steps in the fit rows 8292100; flags in the risk set [('own', True), ('other', True)]; base hazard of the head over the fit rows 0.00728 per step
+OBS hazard: HEAD went false | castling_right [them]: base hazard, test log loss per step 0.03553 [0.03432, 0.03672]
+OBS hazard: HEAD end [us]: first events in rows: fit 126421, test 55324; cut rows 0; risk steps in the fit rows 10891805; flags in the risk set [('own', True), ('other', True)]; base hazard of the head over the fit rows 0.01161 per step
+OBS hazard: HEAD end [us]: base hazard, test log loss per step 0.05813 [0.05720, 0.05917]
+OBS hazard: HEAD end [us] set R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00083 [+0.00065, +0.00098]; penalty 0.0001
+OBS hazard: HEAD end [us] set R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00085 [+0.00068, +0.00099]; penalty 0.0001
+OBS hazard: HEAD end [us] set R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00085 [+0.00069, +0.00098]; penalty 0.0001
+OBS hazard: HEAD end [us] set R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00085 [+0.00069, +0.00098]; penalty 0.0001
+OBS hazard: HEAD end [us] set K+S+E+R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00230 [+0.00212, +0.00246]; penalty 0.001
+OBS hazard: HEAD end [us] set K+S+E+R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00234 [+0.00216, +0.00250]; penalty 0.001
+OBS hazard: HEAD end [us] set K+S+E+R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00236 [+0.00218, +0.00252]; penalty 0.001
+OBS hazard: HEAD end [us] set K+S+E+R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00237 [+0.00219, +0.00252]; penalty 0.001
+OBS hazard: HEAD end [us] set K+S+E+R: gain by distance bin (pairs of plies 1, 2, 3, 4, 5-6, 7-8, 9-12, 13-20, 21-40, 41+), per step in the bin: +0.00406 [+0.00380, +0.00436] (235810 steps); +0.00413 [+0.00390, +0.00441] (230275 steps); +0.00388 [+0.00360, +0.00422] (223841 steps); +0.00383 [+0.00358, +0.00410] (216945 steps); +0.00339 [+0.00314, +0.00367] (412396 steps); +0.00291 [+0.00263, +0.00316] (382603 steps); +0.00256 [+0.00235, +0.00277] (673763 steps); +0.00185 [+0.00165, +0.00204] (998824 steps); +0.00119 [+0.00097, +0.00142] (1084307 steps); +0.00067 [+0.00023, +0.00103] (254783 steps)
+OBS hazard: HEAD end [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 107582 test rows, observed rate 0.0014, fit rate 0.0011): log loss gain over the plain rate -0.04369 [-0.04522, -0.04205]; over the base hazard's own chance +0.00251 [+0.00125, +0.00377]
+OBS hazard: HEAD end [them]: first events in rows: fit 124304, test 53957; cut rows 0; risk steps in the fit rows 10891805; flags in the risk set [('own', True), ('other', True)]; base hazard of the head over the fit rows 0.01141 per step
+OBS hazard: HEAD end [them]: base hazard, test log loss per step 0.05678 [0.05585, 0.05789]
+OBS hazard: HEAD end [them] set R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00070 [+0.00054, +0.00083]; penalty 0.0001
+OBS hazard: HEAD end [them] set R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00071 [+0.00056, +0.00084]; penalty 0.0001
+OBS hazard: HEAD end [them] set R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00071 [+0.00057, +0.00084]; penalty 0.0001
+OBS hazard: HEAD end [them] set R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00071 [+0.00058, +0.00084]; penalty 0.0001
+OBS hazard: HEAD end [them] set K+S+E+R: fit games 1042 (fit rows 34785): test log loss gain over the base hazard (same fit games) per step +0.00208 [+0.00192, +0.00223]; penalty 0.0001
+OBS hazard: HEAD end [them] set K+S+E+R: fit games 2084 (fit rows 68827): test log loss gain over the base hazard (same fit games) per step +0.00212 [+0.00196, +0.00227]; penalty 0.0001
+OBS hazard: HEAD end [them] set K+S+E+R: fit games 4168 (fit rows 138152): test log loss gain over the base hazard (same fit games) per step +0.00214 [+0.00198, +0.00228]; penalty 0.0001
+OBS hazard: HEAD end [them] set K+S+E+R: fit games 8337 (fit rows 276611): test log loss gain over the base hazard (same fit games) per step +0.00215 [+0.00198, +0.00229]; penalty 0.0001
+OBS hazard: HEAD end [them] set K+S+E+R: gain by distance bin (pairs of plies 1, 2, 3, 4, 5-6, 7-8, 9-12, 13-20, 21-40, 41+), per step in the bin: +0.00337 [+0.00309, +0.00365] (235810 steps); +0.00324 [+0.00297, +0.00353] (230275 steps); +0.00337 [+0.00309, +0.00365] (223841 steps); +0.00326 [+0.00298, +0.00356] (216945 steps); +0.00314 [+0.00293, +0.00337] (412396 steps); +0.00291 [+0.00266, +0.00313] (382603 steps); +0.00245 [+0.00226, +0.00263] (673763 steps); +0.00176 [+0.00155, +0.00194] (998824 steps); +0.00108 [+0.00088, +0.00130] (1084307 steps); +0.00048 [+0.00006, +0.00085] (254783 steps)
+OBS hazard: HEAD end [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 107582 test rows, observed rate 0.0138, fit rate 0.0141): log loss gain over the plain rate -0.01277 [-0.01418, -0.01147]; over the base hazard's own chance +0.00685 [+0.00569, +0.00784]
+OBS hazard: WHO FIRST end: 109281 test rows where the class occurred before the record ended (the mover first in 0.5063); accuracy head 0.7060 [0.6976, 0.7148], base hazard 0.5063 [0.5048, 0.5076]; log loss gain of the head over the base hazard's chance +0.12109 [+0.11342, +0.12797]
+OBS hazard: WHO FIRST end: calibration (predicted>observed, ten equal-count bins) 0.117>0.065 0.291>0.214 0.384>0.341 0.444>0.411 0.490>0.466 0.534>0.526 0.582>0.590 0.643>0.678 0.743>0.819 0.923>0.951
+OBS hazard: WHO FIRST keeps: 102586 test rows where the class occurred before the record ended (the mover first in 0.5139); accuracy head 0.5641 [0.5589, 0.5701], base hazard 0.5257 [0.5233, 0.5280]; log loss gain of the head over the base hazard's chance +0.01208 [+0.01069, +0.01351]
+OBS hazard: WHO FIRST keeps: calibration (predicted>observed, ten equal-count bins) 0.369>0.386 0.445>0.433 0.472>0.468 0.487>0.470 0.499>0.495 0.510>0.511 0.522>0.535 0.536>0.547 0.560>0.596 0.634>0.699
+OBS hazard: WHO FIRST keeps | bishop: 66333 test rows where the class occurred before the record ended (the mover first in 0.5021); accuracy head 0.6605 [0.6515, 0.6676], base hazard 0.5282 [0.5190, 0.5364]; log loss gain of the head over the base hazard's chance +0.09061 [+0.08301, +0.09750]
+OBS hazard: WHO FIRST keeps | bishop: calibration (predicted>observed, ten equal-count bins) 0.171>0.141 0.294>0.270 0.414>0.387 0.455>0.430 0.484>0.481 0.511>0.516 0.541>0.568 0.585>0.621 0.716>0.744 0.829>0.865
+OBS hazard: WHO FIRST keeps | knight: 59028 test rows where the class occurred before the record ended (the mover first in 0.4978); accuracy head 0.6256 [0.6163, 0.6355], base hazard 0.5231 [0.5155, 0.5309]; log loss gain of the head over the base hazard's chance +0.06772 [+0.06082, +0.07545]
+OBS hazard: WHO FIRST keeps | knight: calibration (predicted>observed, ten equal-count bins) 0.195>0.168 0.310>0.310 0.422>0.427 0.458>0.472 0.483>0.485 0.506>0.503 0.531>0.526 0.570>0.565 0.686>0.693 0.801>0.830
+OBS hazard: WHO FIRST keeps | pawn: 90782 test rows where the class occurred before the record ended (the mover first in 0.5118); accuracy head 0.5814 [0.5730, 0.5884], base hazard 0.5177 [0.5159, 0.5197]; log loss gain of the head over the base hazard's chance +0.02230 [+0.01904, +0.02530]
+OBS hazard: WHO FIRST keeps | pawn: calibration (predicted>observed, ten equal-count bins) 0.324>0.321 0.414>0.409 0.454>0.459 0.480>0.472 0.501>0.500 0.521>0.518 0.542>0.529 0.567>0.563 0.605>0.621 0.694>0.727
+OBS hazard: WHO FIRST keeps | queen: 42879 test rows where the class occurred before the record ended (the mover first in 0.5005); accuracy head 0.5679 [0.5542, 0.5791], base hazard 0.5876 [0.5667, 0.6077]; log loss gain of the head over the base hazard's chance +0.01899 [+0.01391, +0.02372]
+OBS hazard: WHO FIRST keeps | queen: calibration (predicted>observed, ten equal-count bins) 0.345>0.314 0.430>0.426 0.457>0.458 0.475>0.474 0.491>0.490 0.507>0.519 0.523>0.526 0.542>0.544 0.569>0.563 0.654>0.689
+OBS hazard: WHO FIRST keeps | rook: 62958 test rows where the class occurred before the record ended (the mover first in 0.4994); accuracy head 0.5618 [0.5501, 0.5733], base hazard 0.5531 [0.5443, 0.5634]; log loss gain of the head over the base hazard's chance +0.01546 [+0.01099, +0.01991]
+OBS hazard: WHO FIRST keeps | rook: calibration (predicted>observed, ten equal-count bins) 0.308>0.313 0.421>0.446 0.456>0.465 0.476>0.476 0.492>0.488 0.507>0.508 0.522>0.527 0.541>0.534 0.573>0.552 0.684>0.684
+OBS hazard: WHO FIRST taken: 109091 test rows where the class occurred before the record ended (the mover first in 0.5475); accuracy head 0.5797 [0.5758, 0.5836], base hazard 0.5511 [0.5498, 0.5525]; log loss gain of the head over the base hazard's chance +0.01317 [+0.01220, +0.01410]
+OBS hazard: WHO FIRST taken: calibration (predicted>observed, ten equal-count bins) 0.417>0.390 0.473>0.462 0.496>0.490 0.509>0.510 0.518>0.534 0.527>0.543 0.536>0.569 0.547>0.587 0.564>0.635 0.623>0.755
+OBS hazard: WHO FIRST taken | bishop: 75280 test rows where the class occurred before the record ended (the mover first in 0.5089); accuracy head 0.6490 [0.6398, 0.6561], base hazard 0.5207 [0.5163, 0.5250]; log loss gain of the head over the base hazard's chance +0.08286 [+0.07593, +0.08809]
+OBS hazard: WHO FIRST taken | bishop: calibration (predicted>observed, ten equal-count bins) 0.191>0.152 0.301>0.289 0.429>0.415 0.466>0.454 0.490>0.488 0.513>0.527 0.539>0.556 0.579>0.609 0.719>0.734 0.816>0.865
+OBS hazard: WHO FIRST taken | knight: 75774 test rows where the class occurred before the record ended (the mover first in 0.5094); accuracy head 0.6492 [0.6416, 0.6582], base hazard 0.5168 [0.5132, 0.5201]; log loss gain of the head over the base hazard's chance +0.08615 [+0.08062, +0.09283]
+OBS hazard: WHO FIRST taken | knight: calibration (predicted>observed, ten equal-count bins) 0.181>0.138 0.284>0.291 0.431>0.424 0.470>0.459 0.495>0.493 0.518>0.534 0.544>0.555 0.586>0.593 0.736>0.743 0.828>0.865
+OBS hazard: WHO FIRST taken | pawn: 100755 test rows where the class occurred before the record ended (the mover first in 0.5273); accuracy head 0.5911 [0.5848, 0.5974], base hazard 0.5304 [0.5291, 0.5319]; log loss gain of the head over the base hazard's chance +0.02577 [+0.02318, +0.02846]
+OBS hazard: WHO FIRST taken | pawn: calibration (predicted>observed, ten equal-count bins) 0.344>0.325 0.430>0.416 0.466>0.455 0.490>0.485 0.510>0.505 0.529>0.533 0.549>0.555 0.572>0.600 0.606>0.642 0.691>0.757
+OBS hazard: WHO FIRST taken | queen: 51757 test rows where the class occurred before the record ended (the mover first in 0.5028); accuracy head 0.5740 [0.5622, 0.5866], base hazard 0.6216 [0.6076, 0.6371]; log loss gain of the head over the base hazard's chance +0.01361 [+0.01059, +0.01731]
+OBS hazard: WHO FIRST taken | queen: calibration (predicted>observed, ten equal-count bins) 0.389>0.321 0.455>0.404 0.473>0.448 0.486>0.479 0.496>0.495 0.506>0.503 0.517>0.529 0.529>0.560 0.547>0.594 0.612>0.695
+OBS hazard: WHO FIRST taken | rook: 74313 test rows where the class occurred before the record ended (the mover first in 0.5021); accuracy head 0.5890 [0.5776, 0.5990], base hazard 0.5757 [0.5633, 0.5876]; log loss gain of the head over the base hazard's chance +0.02480 [+0.02140, +0.02875]
+OBS hazard: WHO FIRST taken | rook: calibration (predicted>observed, ten equal-count bins) 0.331>0.268 0.437>0.411 0.468>0.442 0.484>0.456 0.496>0.487 0.507>0.514 0.519>0.544 0.534>0.570 0.562>0.596 0.668>0.733
+OBS hazard: WHO FIRST went false | castling_right: 38695 test rows where the class occurred before the record ended (the mover first in 0.5482); accuracy head 0.7850 [0.7763, 0.7922], base hazard 0.5482 [0.5458, 0.5506]; log loss gain of the head over the base hazard's chance +0.25217 [+0.24208, +0.26129]
+OBS hazard: WHO FIRST went false | castling_right: calibration (predicted>observed, ten equal-count bins) 0.071>0.023 0.162>0.112 0.277>0.273 0.397>0.415 0.510>0.519 0.619>0.616 0.728>0.726 0.827>0.852 0.903>0.955 0.959>0.990

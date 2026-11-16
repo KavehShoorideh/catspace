@@ -11,7 +11,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 from catspace.io import paths
 
 CHESS_WORDS = r"\b(king|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check|mate|stalemate|uci|fen|san|chess\w*|shakmaty|[a-h][1-8])\b"
-CODE = ["events_rules.py", "events_hazard.py", "events_run.py"]
+CODE = ["events_rules.py", "events_hazard.py", "events_fill.py"]
 DISC = Path(__file__).resolve().parents[1] / "catspace" / "incubator" / "analyst" / "discovery"
 
 TOY = """

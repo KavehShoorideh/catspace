@@ -123,7 +123,7 @@ def statements_chunked(games: list, threads: int, chunk: int = 400) -> "tuple[li
     n = len(names)
     out = []
     for i in range(0, len(games), chunk):
-        res = model.subgoal_games([(None, g["moves"]) for g in games[i:i + chunk]], threads)
+        res = model.subgoal_games([(g.get("start"), g["moves"]) for g in games[i:i + chunk]], threads)
         for g in res:
             out.append(np.array([x if x is not None else [np.nan] * (2 * n) for x in g], dtype=np.float32).reshape(len(g), 2 * n))
     return names, out
@@ -139,7 +139,7 @@ def build_rows(games: list, threads: int, say, concepts: bool = True) -> dict:
     model = GL.model(GAME, VARIANT)
     goal = G2M.goal_kind_of(VARIANT)
     t0 = time.perf_counter()
-    names, raw = model.position_table([(None, g["moves"]) for g in games], threads)
+    names, raw = model.position_table([(g.get("start"), g["moves"]) for g in games], threads)
     nk = len(names)
     flat = np.frombuffer(raw, dtype=np.int16)
     w = 2 + 2 * nk

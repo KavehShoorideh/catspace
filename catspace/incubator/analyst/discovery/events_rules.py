@@ -26,7 +26,7 @@ import argparse
 import json
 import os
 import time
-from multiprocessing import Pool
+from multiprocessing import get_context
 from pathlib import Path
 
 import numpy as np
@@ -267,7 +267,7 @@ def read_games(games: list, allidx: dict, quiet: dict, threads: int) -> list:
     from catspace.incubator.analyst.discovery import tactical_tables as TT
     meta = json.loads(Path(paths.experiment("tactical_78_62", "state", "state.json")).read_text())
     edge = dict(zip(meta["places"], TT.edge_distances(meta["places"]).tolist()))
-    with Pool(threads, initializer=_init_worker, initargs=(spec, vocab, fluents, worth, roles, edge)) as pool:
+    with get_context("spawn").Pool(threads, initializer=_init_worker, initargs=(spec, vocab, fluents, worth, roles, edge)) as pool:
         return pool.map(read_game, jobs, chunksize=8)
 
 

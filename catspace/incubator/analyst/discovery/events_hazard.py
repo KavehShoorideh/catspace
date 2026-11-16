@@ -89,11 +89,15 @@ def end_events(res: list, ids: list, gmeta: dict, roles: list) -> None:
         r["events"].setdefault(("end", win), []).append(r["n"] - 1)
 
 
-def build_rows(sample: dict, heads_dir: Path, state_dir: "Path | None") -> dict:
-    """The quiet rows of the sample's games with the inputs; `g` the index in the sample, `T` the steps of the game (the last step is T - 1)."""
-    allg = [json.loads(x) for x in (heads_dir / "games.jsonl").read_text().splitlines() if x.strip()]
-    index = {g["id"]: i for i, g in enumerate(allg)}
-    rows = HD.load_rows(heads_dir / "rows.npz")
+def build_rows(sample: dict, heads_dir: "Path | None", state_dir: "Path | None", rows_src: "dict | None" = None, index: "dict | None" = None) -> dict:
+    """The quiet rows of the sample's games with the inputs; `g` the index in the sample, `T` the steps of the game (the last step is T - 1). The rows are those of the 78.59 file unless `rows_src`
+    (the same layout) and `index` (game id to the game number in it) are given."""
+    if rows_src is None:
+        allg = [json.loads(x) for x in (heads_dir / "games.jsonl").read_text().splitlines() if x.strip()]
+        index = {g["id"]: i for i, g in enumerate(allg)}
+        rows = HD.load_rows(heads_dir / "rows.npz")
+    else:
+        rows = rows_src
     mine = {index[i]: k for k, i in enumerate(sample["ids"])}
     sel = np.flatnonzero(np.isin(rows["game"], list(mine)))
     gl = np.array([mine[int(x)] for x in rows["game"][sel]], np.int32)
@@ -462,6 +466,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--out-dir", default=None)
     ap.add_argument("--only", default="", help="comma list of class words (a head is run if its core contains any); empty: all")
     ap.add_argument("--no-curves", action="store_true")
+    ap.add_argument("--games", type=int, default=0, help="the first N games of the sample (0: all)")
     ap.add_argument("--draws", type=int, default=DRAWS)
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
@@ -474,6 +479,8 @@ def main(argv: "list | None" = None) -> int:
         print(lines[-1], flush=True)
 
     sample = load_sample(Path(a.sample_dir))
+    if a.games:
+        sample = {"ids": sample["ids"][:a.games], "res": sample["res"][:a.games]}
     heads_dir = Path(a.heads_dir)
     allg = {json.loads(x)["id"]: json.loads(x) for x in (heads_dir / "games.jsonl").read_text().splitlines() if x.strip()}
     spec, _v = ER.spec_and_vocab()
@@ -481,7 +488,9 @@ def main(argv: "list | None" = None) -> int:
     roles = ER.role_words(clauses)
     res, ids = sample["res"], sample["ids"]
     end_events(res, ids, allg, roles)
-    rows = build_rows(sample, heads_dir, Path(a.state_dir))
+    rows = build_rows(sample, heads_dir, Path(a.state_dir) if a.state_dir else None)
+    if rows["state"] is not None and np.isnan(rows["state"]).any():
+        rows["state"] = None                                         # the state read exists for the 800 games of 78.62 only: the set is run only where every row has it
     fit_g = np.array([allg[i]["fit"] for i in ids])
     fit_rows = rows["fit"]
     say(f"rows: {len(rows['g'])} settled rows of {len(res)} games; fit rows {int(fit_rows.sum())} ({len(np.unique(rows['g'][fit_rows]))} games), test rows {int((~fit_rows).sum())} ({len(np.unique(rows['g'][~fit_rows]))} games); thinned rows with concepts {int(rows['cmask'].sum())}; rows with the present tactical state {0 if rows['state'] is None else int((~np.isnan(rows['state'][:, 0])).sum())}")
