@@ -131,7 +131,10 @@ def records(h: EH.Head, X: np.ndarray, sel: np.ndarray) -> "tuple[np.ndarray, np
     ff = np.concatenate([f, h.evflag[sel][ev]])
     y = np.concatenate([np.zeros(len(r)), np.ones(len(ev))])
     w = np.concatenate([w0, np.ones(len(ev))])
-    feats = np.hstack([X[sel][rr], jj[:, None].astype(np.float32), ff[:, None].astype(np.float32)]).astype(np.float32)
+    Xs = X[sel]
+    feats = np.empty((len(rr), Xs.shape[1] + 2), np.float32)               # filled in place: the records are millions of rows at the full sample
+    feats[:, :-2] = Xs[rr]
+    feats[:, -2], feats[:, -1] = jj, ff
     return feats, y.astype(np.float32), w.astype(np.float32)
 
 
@@ -140,9 +143,15 @@ def weighted_loss(p: np.ndarray, y: np.ndarray, w: np.ndarray) -> float:
     return float(-(w * (y * np.log(p) + (1 - y) * np.log1p(-p))).sum())
 
 
-def fit_tree(h: EH.Head, X: np.ndarray, rows: dict, fit_sel: np.ndarray, n_iter: "int | None") -> dict:
-    """Boosted trees on the records of fit_sel. The number of rounds is chosen on a fifth of the fit games held out inside the fit games (unless given), then the trees are fitted on all of fit_sel."""
+def fit_tree(h: EH.Head, X: np.ndarray, rows: dict, fit_sel: np.ndarray, n_iter: "int | None", max_iter: int = MAX_ITER, additive_distance: bool = False) -> dict:
+    """Boosted trees on the records of fit_sel. The number of rounds is chosen on a fifth of the fit games held out inside the fit games (unless given), then the trees are fitted on all of fit_sel.
+    `additive_distance` keeps the distance bin and the flag out of every split's company with the inputs (interaction constraints: two groups), so the trees can still make pairs OF INPUTS but the
+    distance acts on the log odds additively, as it does in the linear head."""
     from sklearn.ensemble import HistGradientBoostingClassifier as HGB
+    kw = dict(TREE)
+    if additive_distance:
+        nf = X.shape[1]
+        kw["interaction_cst"] = [list(range(nf)), [nf, nf + 1]]
     if n_iter is None:
         gs = np.unique(rows["g"][fit_sel])
         rng = np.random.default_rng(SEED)
@@ -151,14 +160,14 @@ def fit_tree(h: EH.Head, X: np.ndarray, rows: dict, fit_sel: np.ndarray, n_iter:
         tr, ho = fit_sel[~is_hold], fit_sel[is_hold]
         Ft, yt, wt = records(h, X, tr)
         Fh, yh, wh = records(h, X, ho)
-        clf = HGB(max_iter=MAX_ITER, early_stopping=False, random_state=0, **TREE)
+        clf = HGB(max_iter=max_iter, early_stopping=False, random_state=0, **kw)
         clf.fit(Ft, yt, sample_weight=wt)
         losses = [weighted_loss(p[:, 1], yh, wh) for p in clf.staged_predict_proba(Fh)]
         n_iter = int(np.argmin(losses)) + 1
     Fa, ya, wa = records(h, X, fit_sel)
-    clf = HGB(max_iter=n_iter, early_stopping=False, random_state=0, **TREE)
+    clf = HGB(max_iter=n_iter, early_stopping=False, random_state=0, **kw)
     clf.fit(Fa, ya, sample_weight=wa)
-    return {"clf": clf, "n_iter": n_iter}
+    return {"clf": clf, "n_iter": n_iter, "capped": n_iter >= max_iter}
 
 
 def table_tree(m: dict, X: np.ndarray, sel: np.ndarray, chunk: int = 20000) -> np.ndarray:
@@ -647,9 +656,58 @@ def cmd_summary(a) -> int:
     return 0
 
 
+def cmd_ablate(a) -> int:
+    """What the trees add beyond the linear head, split in two: (1) more boosting rounds than the cap of the run (the cap was reached by some heads), (2) the distance acting on the log odds additively
+    (as in the linear head) against the distance interacting with the inputs. Same test rows, the same likelihood, one fit each at all the fit games."""
+    t0 = time.perf_counter()
+    out = Path(a.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    lines: list = []
+
+    def say(m: str) -> None:
+        lines.append(f"OBS frames ablate: {m}")
+        print(lines[-1], flush=True)
+        (out / "ablate_obs.txt").write_text("\n".join(lines) + "\n")
+    d = build(Path(a.state_dir), say)
+    rows, sample, roles, allg = d["rows"], d["sample"], d["roles"], d["allg"]
+    res = sample["res"]
+    fit_g = np.array([allg[i]["fit"] for i in sample["ids"]])
+    cores = EH.cores_of(res, roles, fit_g)
+    steps = steps_of(d)
+    X = steps[-1][1]
+    fit_all, test = np.flatnonzero(rows["fit"]), np.flatnonzero(~rows["fit"])
+    for core in sorted(cores, key=lambda c: -cores[c]):
+        if " | ".join(core) not in [s.strip() for s in a.heads.split(",")]:
+            continue
+        for rel in a.rels.split(","):
+            h = EH.Head(core, rel, *EH.targets(core, rel, roles, rows, res))
+            h.activate(rows["fit"])
+            name = f"{' | '.join(core)} [{rel}]"
+            den = h.steps()[test].astype(np.float64)
+            lin = EH.fit_best(h, X, rows, fit_all, None)
+            tl, _ = nll_table(h, table_linear(lin, X, test), test)
+            fits = {}
+            for tag, kw in (("trees, run settings (at most %d rounds)" % MAX_ITER, {}), ("trees, at most 500 rounds", {"max_iter": 500}), ("trees, at most 500 rounds, distance additive", {"max_iter": 500, "additive_distance": True})):
+                m = fit_tree(h, X, rows, fit_all, None, **kw)
+                tt, _ = nll_table(h, table_tree(m, X, test), test)
+                fits[tag] = (m, tt)
+                say(f"HEAD {name} [{tag}]: rounds {m['n_iter']}{' (the cap)' if m['capped'] else ''}; test log loss per step {tt.sum() / den.sum():.5f}; linear head {tl.sum() / den.sum():.5f}")
+            tags = list(fits)
+            for (la, ta), (lb, tb) in ((("linear", tl), (tags[0], fits[tags[0]][1])), ((tags[0], fits[tags[0]][1]), (tags[1], fits[tags[1]][1])), ((tags[1], fits[tags[1]][1]), (tags[2], fits[tags[2]][1])), (("linear", tl), (tags[2], fits[tags[2]][1]))):
+                g, lo, hi = EH.boot(rows["g"][test], ta - tb, den, EH.DRAWS, SEED)
+                say(f"HEAD {name}: [{la}] less [{lb}] on the same {len(test)} test rows {g:+.5f} [{lo:+.5f}, {hi:+.5f}] (positive: the second is better)")
+    say(f"wall {time.perf_counter() - t0:.1f} s")
+    return 0
+
+
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    ab = sub.add_parser("ablate")
+    ab.add_argument("--heads", default="taken,keeps")
+    ab.add_argument("--rels", default="us")
+    ab.add_argument("--state-dir", default=paths.experiment(*STATE))
+    ab.add_argument("--out-dir", required=True)
     sm = sub.add_parser("summary")
     sm.add_argument("--obs", required=True)
     r = sub.add_parser("run")
@@ -666,7 +724,7 @@ def main(argv: "list | None" = None) -> int:
         p.add_argument("--out-dir", required=True)
         p.add_argument("--draws", type=int, default=EH.DRAWS)
     a = ap.parse_args(argv)
-    return {"run": main_run, "fill": main_fill, "summary": cmd_summary}[a.cmd](a)
+    return {"run": main_run, "fill": main_fill, "summary": cmd_summary, "ablate": cmd_ablate}[a.cmd](a)
 
 
 if __name__ == "__main__":
