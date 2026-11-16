@@ -38,6 +38,7 @@
 //! TRAP (`trap`): one question for any unit, on quiet routes only: has it a place to go that is not a pure loss. Read with the owner to move and no forcing threat on it (the game refuses a pass otherwise:
 //! then the answer is NOT QUIET, never "trapped").
 use super::base_graph::{PositionPart, Static};
+use super::exchange::{estimate_taking, Val};
 use super::fates::{step_between, Cell, Step};
 use super::frames::{claim_kind_word, unit_id, ClaimKind, FrameErr, Seed, Status};
 use super::patterns::{FxHashMap, FxHashSet};
@@ -64,18 +65,26 @@ pub const FRAME_FUSE: u64 = 8_000;
 /// The most guarantees a set may hold.
 pub const MAX_QP: usize = 128;
 
-pub const F_FOLLOW: u8 = 1;
-pub const F_BOUND: u8 = 2;
-pub const F_PRUNE_USED: u8 = 4;
-pub const F_STUCK: u8 = 8;
-pub const F_PRUNED: u8 = 16;
-pub const F_UNREAD: u8 = 32;
+/// The marks of a guarantee are a bit set.
+pub type Fl = u16;
+pub const F_FOLLOW: Fl = 1;
+pub const F_BOUND: Fl = 2;
+pub const F_PRUNE_USED: Fl = 4;
+pub const F_STUCK: Fl = 8;
+pub const F_PRUNED: Fl = 16;
+pub const F_UNREAD: Fl = 32;
 /// The line was cut: the other side found a reply after which the goal asked cannot hold (the replies not read could only make it worse).
-pub const F_CUT: u8 = 64;
+pub const F_CUT: Fl = 64;
 /// A member was taken by a unit that is not a member of the frame (the frame did not hold the taker).
-pub const F_OUTSIDE: u8 = 128;
+pub const F_OUTSIDE: Fl = 128;
+/// PLAN 78.58 D: a taking was dropped because the estimated exchange on its place loses (the estimate stood in for the questions below it).
+pub const F_EST_PRUNE: Fl = 256;
+/// An exchange on one place was read by the estimate in place of the takings below it.
+pub const F_EST_READ: Fl = 512;
+/// The marks that make a claim a READ and not forced: it rests on a bound, a prune or an estimate.
+pub const READ_MARKS: Fl = F_BOUND | F_PRUNE_USED | F_EST_PRUNE | F_EST_READ;
 /// Marks that make a guarantee no ground for a claim.
-const BAD: u8 = F_STUCK | F_PRUNED | F_UNREAD | F_CUT;
+const BAD: Fl = F_STUCK | F_PRUNED | F_UNREAD | F_CUT;
 
 /// WHAT IS BEING ASKED. `All` reads the whole set of guarantees (for the composition and the comparison with the exhaustive read); the others ask ONE question and cut the reading when it is answered:
 /// `Hold` the side read loses no member; `Gain` it loses none and takes one; `Safe(u)` unit u is not taken; `TakeFree(u)` unit u is taken and none of the side read's is; `TakeAny(u)` unit u is taken.
@@ -110,7 +119,7 @@ impl QPair {
 
 /// A guarantee: the outcome, the marks of how it was reached, and the number of moves the reading side spent in the frame to reach it (the tempo charge of `compose_q`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QP { pub p: QPair, pub fl: u8, pub c: u8 }
+pub struct QP { pub p: QPair, pub fl: Fl, pub c: u8 }
 
 fn dominates(b: &QP, a: &QP) -> bool { b.p.at_least(a.p) && b.c <= a.c && (b.fl & BAD == 0 || a.fl & BAD != 0) }
 
@@ -143,9 +152,9 @@ fn meet_all(sets: &[Rc<Vec<QP>>]) -> Option<Vec<QP>> {
 pub fn holds_q(pairs: &[QP], kind: ClaimKind, id: u8) -> bool { support(pairs, kind, id).is_some() }
 
 /// The marks every supporting guarantee carries (a mark is on the claim only if all its supports have it), None when the claim does not hold.
-pub fn support(pairs: &[QP], kind: ClaimKind, id: u8) -> Option<u8> {
+pub fn support(pairs: &[QP], kind: ClaimKind, id: u8) -> Option<Fl> {
     let bit = 1u64 << id;
-    let mut fl: Option<u8> = None;
+    let mut fl: Option<Fl> = None;
     for q in pairs.iter().filter(|q| q.fl & BAD == 0) {
         let ok = match kind { ClaimKind::TakeFree => q.p.lo & bit != 0 && q.p.lx == 0, ClaimKind::TakeAny => q.p.lo & bit != 0, ClaimKind::Safe => q.p.lx & bit == 0 };
         if ok { fl = Some(fl.map_or(q.fl, |f| f & q.fl)); }
@@ -153,18 +162,44 @@ pub fn support(pairs: &[QP], kind: ClaimKind, id: u8) -> Option<u8> {
     fl
 }
 
-pub fn marks_word(fl: u8) -> Vec<&'static str> {
+pub fn marks_word(fl: Fl) -> Vec<&'static str> {
     let mut v = vec![];
     if fl & F_FOLLOW != 0 { v.push("followed_off_frame"); }
     if fl & F_BOUND != 0 { v.push("ended_by_bound"); }
     if fl & F_PRUNE_USED != 0 { v.push("prune_used"); }
     if fl & F_OUTSIDE != 0 { v.push("taken_by_a_unit_off_frame"); }
+    if fl & F_EST_PRUNE != 0 { v.push("pruned_by_estimate"); }
+    if fl & F_EST_READ != 0 { v.push("exchange_by_estimate"); }
     v
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------ the frame derived at a position
 
 type Ident = Rc<Vec<(Cell, u8)>>;
+
+/// How many units of each owner bear on a place.
+fn bearer_counts(part: &PositionPart, place: Place) -> [u32; 2] {
+    let mut c = [0u32; 2];
+    for r in part.bears.iter().filter(|r| r.place == place) { c[part.units[r.unit].owner.min(1)] += 1; }
+    c
+}
+
+/// The units that bear on a place and took no part in the exchange (their cell is not one of the line's, and none stands on the exchange's place).
+fn outside_bearers(part: &PositionPart, place: Place, to: Place, line: &[Cell]) -> Vec<Cell> {
+    let mut v: Vec<Cell> = part.bears.iter().filter(|r| r.place == place).map(|r| cell_of(part, r.unit)).filter(|c| c.2 != to && !line.contains(c)).collect();
+    v.sort();
+    v
+}
+
+/// 78.58 D: whether the exchange changed a bearing off its place, on the frame's places: a unit that stands there still and is borne on by another number of units than before (a unit drawn away from
+/// what it guarded, or one that now bears on it from the place of the exchange), or a place the exchange vacated or left empty that a unit outside the exchange now bears on (something uncovered).
+fn bearings_changed(before: &PositionPart, after: &PositionPart, places: &[Place], to: Place, line: &[Cell]) -> bool {
+    places.iter().filter(|&&q| q != to).any(|&q| {
+        let (ob, oa) = (before.occupant[q as usize], after.occupant[q as usize]);
+        if ob != 0 && oa != 0 && cell_of(before, ob as usize - 1) == cell_of(after, oa as usize - 1) { bearer_counts(before, q) != bearer_counts(after, q) }
+        else { outside_bearers(before, q, to, line) != outside_bearers(after, q, to, line) }
+    })
+}
 
 fn cell_of(part: &PositionPart, i: usize) -> Cell { let u = &part.units[i]; (u.owner, u.kind, u.at) }
 
@@ -324,6 +359,11 @@ pub struct QStats {
     /// Candidate moves of a member to a place outside the root frame's places (the frame follows it).
     pub follows: u64,
     pub others: u64,
+    /// PLAN 78.58 D: takings dropped because the exchange on their place loses by the estimate; takings whose exchange was read by the estimate as one question; of those, the ones whose line went on below because a bearing off the place changed; and lines of takings the game could not play.
+    pub est_pruned: u64,
+    pub est_read: u64,
+    pub est_cont: u64,
+    pub est_unplayed: u64,
     /// Questions by the class of the move that led to the node (taking, answer, defence, threat, block; the last is the root or a pass), candidates made and asked by class, questions by ply below the root.
     pub by_class: [u64; 6],
     pub gen_class: [u64; 5],
@@ -331,7 +371,7 @@ pub struct QStats {
     pub by_depth: [u64; 16],
 }
 
-macro_rules! stat_fields { ($m:ident) => { $m!(questions positions candidates not_asked pruned_moved pruned_other stops bounded unread stuck forced_pass pass_unrealisable pass_refused too_big gone follows others) }; }
+macro_rules! stat_fields { ($m:ident) => { $m!(questions positions candidates not_asked pruned_moved pruned_other stops bounded unread stuck forced_pass pass_unrealisable pass_refused too_big gone follows others est_pruned est_read est_cont est_unplayed) }; }
 
 impl QStats {
     pub fn add(&mut self, o: &QStats) { macro_rules! a { ($($f:ident)*) => { $( self.$f += o.$f; )* } } stat_fields!(a); for i in 0..6 { self.by_class[i] += o.by_class[i]; } for i in 0..5 { self.gen_class[i] += o.gen_class[i]; self.ask_class[i] += o.ask_class[i]; } for i in 0..16 { self.by_depth[i] += o.by_depth[i]; } }
@@ -341,11 +381,14 @@ impl QStats {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Class { Capture, Answer, Defend, Threat, Block }
 
-struct Cand<G: Game> { state: G::State, ident: Ident, jm: u64, lost: u64, capture: bool, follow: bool, outside: bool, ends: (Place, Place), moved: u8, class: Class }
+/// The estimate of the exchange on the place a taking is made on (78.58): its worth to the taker's side, and the units (cells at the node) that take in the line it reads, the taker first.
+struct Est { value: Val, line: Vec<Cell> }
+
+struct Cand<G: Game> { state: G::State, ident: Ident, jm: u64, lost: u64, capture: bool, follow: bool, outside: bool, ends: (Place, Place), moved: u8, class: Class, est: Option<Est> }
 
 fn class_ix(c: Class) -> usize { match c { Class::Capture => 0, Class::Answer => 1, Class::Defend => 2, Class::Threat => 3, Class::Block => 4 } }
 
-struct Exp<G: Game> { att: u64, mask: u64, mover: Option<Role>, gone: bool, big: bool, cands: Vec<Rc<Cand<G>>>, pass: Option<G::State> }
+struct Exp<G: Game> { frame_places: Vec<Place>, att: u64, mask: u64, mover: Option<Role>, gone: bool, big: bool, cands: Vec<Rc<Cand<G>>>, pass: Option<G::State> }
 
 type MKey = (u64, u64, u8, i8, u8, u8, u64, u16, u64);
 
@@ -379,6 +422,8 @@ pub struct QReader<'a, G: Game + Placed> {
     pub prunes: Vec<PruneRec>,
     via_next: usize,
     np: usize,
+    /// The worth of each kind (indexed by kind) read from the estimator's record: the input of the exchange (78.58). None: no exchange is read (the 78.57 read).
+    pub kv: Option<Rc<Vec<Val>>>,
 }
 
 /// What one reading found.
@@ -394,7 +439,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         for (c, id) in &ident { omask[c.0.min(1)] |= 1u64 << id; }
         let seed_ids: Vec<u8> = frame.seed.units.iter().filter_map(|c| id_at(&ident, c)).collect();
         let root_p = PlaceSet::from_places(np, frame.places.iter().copied());
-        QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np }
+        QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np, kv: None }
     }
 
     /// The identity of a root member (index into `frame.members`).
@@ -432,9 +477,9 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
     }
 
     fn expand_new(&mut self, g: &'a G, s: &G::State, ident: &Ident, jm: u64) -> Exp<G> {
-        let Some(mover) = g.mover(s) else { return Exp { att: 0, mask: 0, mover: None, gone: false, big: false, cands: vec![], pass: None } };
+        let Some(mover) = g.mover(s) else { return Exp { frame_places: vec![], att: 0, mask: 0, mover: None, gone: false, big: false, cands: vec![], pass: None } };
         let part = self.part(s);
-        let Some(v) = view(&part, self.np, ident, &self.seed_ids, &self.seed_places, true) else { self.stats.gone += 1; return Exp { att: 0, mask: 0, mover: Some(mover), gone: true, big: false, cands: vec![], pass: None } };
+        let Some(v) = view(&part, self.np, ident, &self.seed_ids, &self.seed_places, true) else { self.stats.gone += 1; return Exp { frame_places: vec![], att: 0, mask: 0, mover: Some(mover), gone: true, big: false, cands: vec![], pass: None } };
         // the units that were members earlier in the line and still stand stay members (the frame is bound to its units: a taker does not leave it when what it took is gone)
         let (mut members, mut mask) = (v.members.clone(), v.mask);
         for (c, id) in ident.iter() {
@@ -443,7 +488,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
                 if o != 0 && cell_of(&part, o as usize - 1) == *c { members.push(o as usize - 1); mask |= 1u64 << id; }
             }
         }
-        if members.len() > MAXQ { return Exp { att: 0, mask: 0, mover: Some(mover), gone: false, big: true, cands: vec![], pass: None }; }
+        if members.len() > MAXQ { return Exp { frame_places: vec![], att: 0, mask: 0, mover: Some(mover), gone: false, big: true, cands: vec![], pass: None }; }
         let other = 1 - mover.min(1);
         let prev: Vec<Cell> = ident.iter().map(|x| x.0).collect();
         // Q0: the members of the side to move that the other side bears on now
@@ -490,7 +535,14 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
                     if follow { self.stats.follows += 1; }
                     let outside = capture && !is_member;
                     self.stats.gen_class[class_ix(c)] += 1;
-                    cands.push(Rc::new(Cand { state: s2, ident: nid, jm: mask & !lost, lost, capture, follow, outside, ends: (from, to), moved: mid, class: c }));
+                    let est = if capture && c == Class::Capture {
+                        self.kv.clone().and_then(|kv| {
+                            let ti = part.occupant[from as usize] as usize;
+                            if ti == 0 { return None; }
+                            estimate_taking(&part, to, ti - 1, &kv).map(|e| Est { value: e.value, line: e.line.iter().map(|&i| cell_of(&part, i)).collect() })
+                        })
+                    } else { None };
+                    cands.push(Rc::new(Cand { state: s2, ident: nid, jm: mask & !lost, lost, capture, follow, outside, ends: (from, to), moved: mid, class: c, est }));
                 }
                 _ => { self.stats.not_asked += 1; if !is_member { outsiders.push(m); } }
             }
@@ -518,7 +570,32 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         // the pass is the game's pass; where the game refuses it (the side to move is under a forcing threat) the neutral move itself stands for it: it leaves the frame as it was
         let pass = match &neutral { Some(sn) => match g.pass(s) { Some(sp) => Some(sp), None => { self.stats.pass_refused += 1; Some(sn.clone()) } }, None => None };
         if neutral.is_none() { self.stats.pass_unrealisable += 1; }
-        Exp { att, mask, mover: Some(mover), gone: false, big: false, cands, pass }
+        let mut frame_places: Vec<Place> = v.pset.iter().collect();
+        for &i in &members { frame_places.push(part.units[i].at); }
+        frame_places.sort_unstable();
+        frame_places.dedup();
+        Exp { frame_places, att, mask, mover: Some(mover), gone: false, big: false, cands, pass }
+    }
+
+    /// PLAY THE LINE of an estimate: the takings after the first, each side with the unit the estimate names, on the place of the first taking. None when the game cannot play one of them (the estimate then
+    /// stays unused for this candidate, counted).
+    fn play_line(&mut self, c: &Cand<G>, est: &Est) -> Option<(G::State, Ident, u64, u64)> {
+        let g = self.g;
+        let (mut state, mut ident, mut jm, mut lost) = (c.state.clone(), c.ident.clone(), c.jm, c.lost);
+        let to = c.ends.1;
+        for cell in est.line.iter().skip(1) {
+            let mv = g.moves(&state).into_iter().find(|m| { let (f, t) = g.move_ends(&state, m); f == cell.2 && t == to && g.kind_at(&state, f) == Some(cell.1) })?;
+            let prev: Vec<Cell> = ident.iter().map(|x| x.0).collect();
+            let s2 = g.apply(&state, &mv);
+            self.stats.positions += 1;
+            let next = sorted_cells(g, &s2);
+            let (nid, l) = self.child_ident(&prev, &next, &ident, jm);
+            lost |= l;
+            jm &= !l;
+            state = s2;
+            ident = nid;
+        }
+        Some((state, ident, jm, lost))
     }
 
     fn solve(&mut self, s: &G::State, ident: &Ident, jm: u64, xr: Role, left: i8, quiet: u8, owed: u8, cr: QPair, goal: Goal) -> Rc<Vec<QP>> {
@@ -541,6 +618,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         let (own_mask, opp_mask) = (self.omask[xr.min(1)], self.omask[1 - xr.min(1)]);
         let mut options: Vec<Rc<Vec<QP>>> = vec![];
         let mut used_prune = false;
+        let mut used_est = false;
         let mut early: Option<(Place, Place)> = None;
         let mut cut: Option<((Place, Place), bool)> = None;
         let mut asked = 0usize;
@@ -550,14 +628,34 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
                 if leaf && !c.capture { continue; }
                 // a quiet threat is read only on the first ply of each side (an in-between move or a double threat); deeper, quiet moves are answers (a step away, a defence, a block)
                 if c.class == Class::Threat && left < self.depth - 1 { continue; }
+                // 78.58 D: a taking whose exchange on its place loses by the estimate is pruned (pruned by estimate); one that wins or is level is read as ONE question with its result
+                if let Some(est) = &c.est {
+                    if est.value < 0 { self.stats.est_pruned += 1; used_est = true; continue; }
+                }
                 asked += 1;
                 self.stats.candidates += 1;
                 self.stats.ask_class[class_ix(c.class)] += 1;
                 self.via_next = class_ix(c.class);
                 let nq = if c.capture { self.quiet } else { quiet.saturating_sub(1) };
-                let child_cr = if is_x { QPair { lx: c.lost & own_mask, lo: c.lost & opp_mask } } else { QPair::ZERO };
-                let sub = self.solve(&c.state, &c.ident, c.jm, xr, left - 1, nq, owed, child_cr, goal);
-                let (lx, lo) = (c.lost & own_mask, c.lost & opp_mask);
+                let mut played: Option<(G::State, Ident, u64, u64)> = None;
+                let est_line: Vec<Cell> = c.est.as_ref().map(|x| x.line.clone()).unwrap_or_default();
+                if let Some(est) = &c.est { played = self.play_line(c, est); if played.is_none() { self.stats.est_unplayed += 1; } }
+                let (c_state, c_ident, c_jm, c_lost) = match &played { Some((st_a, id_a, jm_a, lost_a)) => (st_a.clone(), id_a.clone(), *jm_a, *lost_a), None => (c.state.clone(), c.ident.clone(), c.jm, c.lost) };
+                let child_cr = if is_x { QPair { lx: c_lost & own_mask, lo: c_lost & opp_mask } } else { QPair::ZERO };
+                let sub: Rc<Vec<QP>> = if played.is_some() {
+                    self.stats.est_read += 1;
+                    let (before, after) = (self.part(s), self.part(&c_state));
+                    let to = c.ends.1;
+                    let changed = bearings_changed(&before, &after, &e.frame_places, to, &est_line);
+                    if changed {
+                        self.stats.est_cont += 1;
+                        let r = self.solve(&c_state, &c_ident, c_jm, xr, left - 1, nq, owed, child_cr, goal);
+                        Rc::new(r.iter().map(|q| QP { fl: q.fl | F_EST_READ, ..*q }).collect())
+                    } else {
+                        Rc::new(vec![QP { p: QPair::ZERO, fl: F_EST_READ, c: 0 }])
+                    }
+                } else { self.solve(&c_state, &c_ident, c_jm, xr, left - 1, nq, owed, child_cr, goal) };
+                let (lx, lo) = (c_lost & own_mask, c_lost & opp_mask);
                 let shifted: Vec<QP> = sub.iter().map(|q| QP { p: if q.p == QPair::BOTTOM { q.p } else { QPair { lx: q.p.lx | lx, lo: q.p.lo | lo } }, fl: q.fl | if c.follow { F_FOLLOW } else { 0 } | if c.outside { F_OUTSIDE } else { 0 }, c: q.c.saturating_add(is_x as u8) }).collect();
                                 if is_x {
                     let pure_loss = shifted.iter().all(|q| q.fl & F_PRUNED != 0 || (q.fl & F_UNREAD == 0 && q.p != QPair::BOTTOM && q.p.lx != 0 && q.p.lo == 0));
@@ -565,7 +663,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
                     let satisfied = if goal == Goal::All { hold } else { shifted.iter().any(|q| q.fl & BAD == 0 && goal.sat(q.p)) };
                     if pure_loss && !hold {
                         // a pure loss: a member lost against a reply and none gained
-                        let wk: MKey = (self.g.key(&c.state), hash_ident(&c.ident), xr as u8, left - 1, nq, owed, credit_key(child_cr), goal.code(), c.jm);
+                        let wk: MKey = (self.g.key(&c_state), hash_ident(&c_ident), xr as u8, left - 1, nq, owed, credit_key(child_cr), goal.code(), c_jm);
                         let w = self.wit.get(&wk).copied();
                         let moved_lost = shifted.iter().any(|q| q.p.lx & (1u64 << c.moved) != 0 && q.p != QPair::BOTTOM) || shifted.iter().any(|q| q.p == QPair::BOTTOM);
                         if moved_lost { self.stats.pruned_moved += 1 } else { self.stats.pruned_other += 1 }
@@ -638,6 +736,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
             self.wit.insert(mk, (ends, 0));
         }
         if used_prune { for q in result.iter_mut() { q.fl |= F_PRUNE_USED; } }
+        if used_est { for q in result.iter_mut() { q.fl |= F_EST_PRUNE; } }
         let r = Rc::new(result);
         if !r.iter().any(|q| q.fl & F_UNREAD != 0) { self.memo.insert(mk, r.clone()); }
         r
@@ -699,7 +798,13 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
 pub struct QCond { pub owner: Role, pub kind: Kind, pub from: Place, pub to: Place, pub arrivals: u32, pub moves: Vec<(Place, Place)> }
 
 #[derive(Debug, Clone)]
-pub struct QClaim { pub reading: Role, pub kind: ClaimKind, pub unit: u8, pub status: Status, pub flags: u8, pub condition: Option<QCond> }
+pub struct QClaim { pub reading: Role, pub kind: ClaimKind, pub unit: u8, pub status: Status, pub flags: Fl, pub condition: Option<QCond> }
+
+impl QClaim {
+    /// A claim that holds but rests on a bound, a prune or an estimate is READ, never forced (78.58 D).
+    pub fn is_read(&self) -> bool { self.status != Status::Not && self.flags & READ_MARKS != 0 }
+    pub fn status_word(&self) -> &'static str { if self.is_read() { "read" } else { self.status.word() } }
+}
 
 #[derive(Debug, Clone)]
 pub struct QReport {
@@ -715,15 +820,19 @@ pub struct QReport {
 }
 
 /// The marks every clean guarantee satisfying the goal carries (an AND), None when none does.
-fn goal_flags(f: &Option<QForce>, goal: Goal) -> Option<u8> { f.as_ref().and_then(|f| f.pairs.iter().filter(|q| q.fl & BAD == 0 && goal.sat(q.p)).map(|q| q.fl).reduce(|a, b| a & b)) }
+fn goal_flags(f: &Option<QForce>, goal: Goal) -> Option<Fl> { f.as_ref().and_then(|f| f.pairs.iter().filter(|q| q.fl & BAD == 0 && goal.sat(q.p)).map(|q| q.fl).reduce(|a, b| a & b)) }
 
-fn goal_holds(f: &Option<QForce>, kind: ClaimKind, id: u8) -> Option<u8> { f.as_ref().and_then(|f| support(&f.pairs, kind, id)) }
+fn goal_holds(f: &Option<QForce>, kind: ClaimKind, id: u8) -> Option<Fl> { f.as_ref().and_then(|f| support(&f.pairs, kind, id)) }
 
 /// THE CLAIMS of a frame on a position. Each claim is one question (a goal) read with the cut: forced (holds with the side read spending no pass), threat (holds if the side to move passes once),
 /// conditional (after one arrival of the side read, for either side). The frame's own question (hold, gain) is asked first for the side to move: its pruned candidates are the prunes of the report.
-pub fn claims_q<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64) -> QReport {
+pub fn claims_q<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64) -> QReport { claims_q_with(g, st, frame, s, conditional, fuse, None) }
+
+/// `claims_q` with the worth of the kinds (78.58): with it the read prunes a taking whose exchange loses by the estimate and reads one that wins or is level as one question.
+pub fn claims_q_with<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64, kv: Option<Rc<Vec<Val>>>) -> QReport {
     let mut rd = QReader::new(g, st, frame, s);
     rd.fuse = fuse;
+    rd.kv = kv;
     let mover = g.mover(s).unwrap_or(0);
     let ids: Vec<u8> = (0..frame.members.len()).map(|i| rd.member_id(i)).collect();
     let hold_read = rd.forceable(s, mover, false, 0, Goal::Hold);
@@ -743,18 +852,18 @@ pub fn claims_q<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::Sta
             let own = c.0.min(1) == reading;
             let bit = 1u64 << ids[i];
             let kinds: &[ClaimKind] = if own { &[ClaimKind::Safe] } else { &[ClaimKind::TakeFree, ClaimKind::TakeAny] };
-            let mut free: (Option<u8>, Option<u8>) = (None, None);
+            let mut free: (Option<Fl>, Option<Fl>) = (None, None);
             for &kind in kinds {
                 let goal = match kind { ClaimKind::Safe => Goal::Safe(ids[i]), ClaimKind::TakeFree => Goal::TakeFree(ids[i]), ClaimKind::TakeAny => Goal::TakeAny(ids[i]) };
                 // forced: named by the frame's own question, or asked on its own when the unit stands attacked
-                let named = |hold: &Option<QForce>, gain: &Option<QForce>| -> Option<u8> {
+                let named = |hold: &Option<QForce>, gain: &Option<QForce>| -> Option<Fl> {
                     match kind {
                         ClaimKind::Safe => goal_flags(hold, Goal::Hold),
                         ClaimKind::TakeFree => gain.as_ref().and_then(|f| f.pairs.iter().filter(|q| q.fl & BAD == 0 && Goal::Gain.sat(q.p) && q.p.lo & bit != 0).map(|q| q.fl).reduce(|a, b| a & b)),
                         ClaimKind::TakeAny => None,
                     }
                 };
-                let ask = |rd: &mut QReader<G>, flipped: bool| -> Option<u8> { let f = rd.forceable(s, reading, flipped, 0, goal); goal_holds(&f, kind, ids[i]) };
+                let ask = |rd: &mut QReader<G>, flipped: bool| -> Option<Fl> { let f = rd.forceable(s, reading, flipped, 0, goal); goal_holds(&f, kind, ids[i]) };
                 let mut got = if kind == ClaimKind::TakeAny && free.0.is_some() { free.0 } else { named(&hold_now, &gain_now).or_else(|| if attacked[i] { ask(&mut rd, false) } else { None }) };
                 if kind == ClaimKind::TakeFree { free.0 = got; }
                 let mut status = if got.is_some() { Status::Forced } else { Status::Not };
@@ -821,7 +930,7 @@ pub fn layer3_q(st: &Static, r: &QReport) -> L3Q {
         let m = &f.members[c.unit as usize];
         let cid = claim_id(st, f, c);
         out.nodes.push(("claim", cid.clone()));
-        out.claim_status.push((cid.clone(), c.status.word()));
+        out.claim_status.push((cid.clone(), c.status_word()));
         out.claim_marks.push((cid.clone(), marks_word(c.flags)));
         out.links.push(("in_frame", cid.clone(), f.id.clone()));
         out.links.push(("about_unit", cid.clone(), unit_id(st, m)));

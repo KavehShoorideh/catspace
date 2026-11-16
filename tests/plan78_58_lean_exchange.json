@@ -1,0 +1,1917 @@
+{
+"about": "PLAN 78.58 C: values of Ideas.Exchange (lean/ideas/Ideas/Exchange.lean) on fixed cases, evaluated by `lake env lean` with `#eval` on 2026-11-15: plain cases give `cheapest` and `value`, ray cases give `cheapestXF 8 white onS mine theirs`; a ray is [value, [[owner, value], ...]] (owner true: the side `white` stands for); regenerate with the script in the test file",
+"cases": [
+{
+"kind": "plain",
+"on": 6,
+"mine": [
+3,
+7
+],
+"theirs": [
+3,
+4,
+8,
+9
+],
+"cheapest": 3,
+"value": 3
+},
+{
+"kind": "plain",
+"on": 5,
+"mine": [],
+"theirs": [
+3,
+4,
+7,
+7
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 3,
+"mine": [
+4
+],
+"theirs": [
+1,
+3
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 8,
+"mine": [
+1,
+1,
+7
+],
+"theirs": [
+7
+],
+"cheapest": 8,
+"value": 8
+},
+{
+"kind": "plain",
+"on": 3,
+"mine": [
+6,
+7
+],
+"theirs": [],
+"cheapest": 3,
+"value": 3
+},
+{
+"kind": "plain",
+"on": 6,
+"mine": [
+6,
+8
+],
+"theirs": [
+1
+],
+"cheapest": 1,
+"value": 1
+},
+{
+"kind": "plain",
+"on": 3,
+"mine": [
+4,
+4,
+5,
+6
+],
+"theirs": [
+2,
+4
+],
+"cheapest": 1,
+"value": 1
+},
+{
+"kind": "plain",
+"on": 3,
+"mine": [
+2,
+4,
+6
+],
+"theirs": [
+1
+],
+"cheapest": 2,
+"value": 2
+},
+{
+"kind": "plain",
+"on": 7,
+"mine": [],
+"theirs": [],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 5,
+"mine": [
+1,
+3,
+8
+],
+"theirs": [],
+"cheapest": 5,
+"value": 5
+},
+{
+"kind": "plain",
+"on": 7,
+"mine": [
+1,
+2,
+4,
+5
+],
+"theirs": [
+4,
+6
+],
+"cheapest": 7,
+"value": 7
+},
+{
+"kind": "plain",
+"on": 5,
+"mine": [
+2,
+3,
+7,
+9
+],
+"theirs": [
+6
+],
+"cheapest": 5,
+"value": 5
+},
+{
+"kind": "plain",
+"on": 9,
+"mine": [
+4
+],
+"theirs": [],
+"cheapest": 9,
+"value": 9
+},
+{
+"kind": "plain",
+"on": 2,
+"mine": [
+2,
+2,
+9
+],
+"theirs": [
+6,
+6,
+9
+],
+"cheapest": 2,
+"value": 2
+},
+{
+"kind": "plain",
+"on": 5,
+"mine": [
+6,
+7
+],
+"theirs": [
+1
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 6,
+"mine": [
+1,
+6,
+7,
+9
+],
+"theirs": [
+8,
+9
+],
+"cheapest": 6,
+"value": 6
+},
+{
+"kind": "plain",
+"on": 5,
+"mine": [
+4,
+9
+],
+"theirs": [
+1,
+4,
+5,
+6
+],
+"cheapest": 1,
+"value": 1
+},
+{
+"kind": "plain",
+"on": 6,
+"mine": [],
+"theirs": [
+1,
+2
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 9,
+"mine": [
+6,
+6,
+8,
+9
+],
+"theirs": [
+2,
+4,
+5,
+9
+],
+"cheapest": 3,
+"value": 3
+},
+{
+"kind": "plain",
+"on": 8,
+"mine": [],
+"theirs": [
+1,
+5,
+6
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 6,
+"mine": [
+1,
+2,
+5,
+7
+],
+"theirs": [],
+"cheapest": 6,
+"value": 6
+},
+{
+"kind": "plain",
+"on": 9,
+"mine": [
+5,
+6,
+7,
+8
+],
+"theirs": [
+1,
+2,
+3,
+5
+],
+"cheapest": 4,
+"value": 4
+},
+{
+"kind": "plain",
+"on": 6,
+"mine": [
+5,
+7
+],
+"theirs": [
+2,
+5
+],
+"cheapest": 1,
+"value": 1
+},
+{
+"kind": "plain",
+"on": 1,
+"mine": [
+5,
+9
+],
+"theirs": [
+5,
+5,
+7
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 4,
+"mine": [
+5
+],
+"theirs": [],
+"cheapest": 4,
+"value": 4
+},
+{
+"kind": "plain",
+"on": 6,
+"mine": [
+3,
+8,
+8
+],
+"theirs": [],
+"cheapest": 6,
+"value": 6
+},
+{
+"kind": "plain",
+"on": 4,
+"mine": [
+2
+],
+"theirs": [
+3,
+5,
+9
+],
+"cheapest": 2,
+"value": 2
+},
+{
+"kind": "plain",
+"on": 7,
+"mine": [
+6,
+7,
+8,
+9
+],
+"theirs": [],
+"cheapest": 7,
+"value": 7
+},
+{
+"kind": "plain",
+"on": 9,
+"mine": [
+1,
+7,
+9
+],
+"theirs": [
+3,
+3,
+5,
+6
+],
+"cheapest": 8,
+"value": 8
+},
+{
+"kind": "plain",
+"on": 8,
+"mine": [
+4
+],
+"theirs": [
+4,
+5,
+9
+],
+"cheapest": 4,
+"value": 4
+},
+{
+"kind": "plain",
+"on": 9,
+"mine": [
+1,
+3,
+6,
+8
+],
+"theirs": [
+2
+],
+"cheapest": 9,
+"value": 9
+},
+{
+"kind": "plain",
+"on": 5,
+"mine": [
+8
+],
+"theirs": [
+3,
+5,
+9
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 3,
+"mine": [
+1
+],
+"theirs": [
+1,
+3,
+5,
+8
+],
+"cheapest": 2,
+"value": 2
+},
+{
+"kind": "plain",
+"on": 1,
+"mine": [],
+"theirs": [
+1,
+7,
+7
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 7,
+"mine": [
+1,
+5,
+6
+],
+"theirs": [
+3,
+5
+],
+"cheapest": 7,
+"value": 7
+},
+{
+"kind": "plain",
+"on": 3,
+"mine": [
+3,
+3,
+4
+],
+"theirs": [
+4,
+5,
+6
+],
+"cheapest": 2,
+"value": 2
+},
+{
+"kind": "plain",
+"on": 7,
+"mine": [
+2,
+3,
+6,
+8
+],
+"theirs": [],
+"cheapest": 7,
+"value": 7
+},
+{
+"kind": "plain",
+"on": 9,
+"mine": [],
+"theirs": [],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "plain",
+"on": 6,
+"mine": [
+2
+],
+"theirs": [
+1,
+3,
+9
+],
+"cheapest": 4,
+"value": 4
+},
+{
+"kind": "plain",
+"on": 3,
+"mine": [
+4,
+8
+],
+"theirs": [
+2,
+6,
+7
+],
+"cheapest": 0,
+"value": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 2,
+"mine": [
+[
+3,
+[
+[
+true,
+9
+],
+[
+false,
+7
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 2
+},
+{
+"kind": "rays",
+"white": false,
+"on": 7,
+"mine": [],
+"theirs": [
+[
+5,
+[]
+],
+[
+8,
+[
+[
+true,
+8
+],
+[
+true,
+6
+]
+]
+],
+[
+8,
+[
+[
+true,
+5
+],
+[
+true,
+6
+]
+]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 7,
+"mine": [
+[
+1,
+[]
+],
+[
+4,
+[]
+],
+[
+8,
+[
+[
+false,
+1
+],
+[
+true,
+2
+]
+]
+]
+],
+"theirs": [
+[
+9,
+[
+[
+true,
+1
+],
+[
+false,
+2
+]
+]
+]
+],
+"cheapest_xf": 7
+},
+{
+"kind": "rays",
+"white": false,
+"on": 6,
+"mine": [
+[
+1,
+[]
+]
+],
+"theirs": [],
+"cheapest_xf": 6
+},
+{
+"kind": "rays",
+"white": false,
+"on": 7,
+"mine": [
+[
+5,
+[
+[
+true,
+8
+]
+]
+]
+],
+"theirs": [
+[
+4,
+[]
+]
+],
+"cheapest_xf": 2
+},
+{
+"kind": "rays",
+"white": true,
+"on": 8,
+"mine": [
+[
+2,
+[
+[
+false,
+5
+],
+[
+true,
+6
+]
+]
+],
+[
+5,
+[
+[
+true,
+8
+],
+[
+false,
+4
+]
+]
+]
+],
+"theirs": [
+[
+1,
+[
+[
+false,
+4
+],
+[
+true,
+1
+]
+]
+],
+[
+4,
+[
+[
+false,
+8
+],
+[
+false,
+8
+]
+]
+],
+[
+8,
+[
+[
+true,
+9
+],
+[
+false,
+3
+]
+]
+]
+],
+"cheapest_xf": 6
+},
+{
+"kind": "rays",
+"white": true,
+"on": 9,
+"mine": [
+[
+9,
+[
+[
+true,
+5
+],
+[
+true,
+7
+]
+]
+]
+],
+"theirs": [
+[
+4,
+[
+[
+true,
+9
+],
+[
+false,
+1
+]
+]
+]
+],
+"cheapest_xf": 4
+},
+{
+"kind": "rays",
+"white": true,
+"on": 4,
+"mine": [],
+"theirs": [
+[
+1,
+[]
+],
+[
+3,
+[
+[
+true,
+9
+]
+]
+],
+[
+7,
+[]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 8,
+"mine": [
+[
+8,
+[
+[
+true,
+2
+],
+[
+false,
+1
+]
+]
+]
+],
+"theirs": [
+[
+3,
+[]
+],
+[
+8,
+[
+[
+true,
+1
+],
+[
+true,
+5
+]
+]
+]
+],
+"cheapest_xf": 1
+},
+{
+"kind": "rays",
+"white": true,
+"on": 4,
+"mine": [
+[
+5,
+[]
+],
+[
+8,
+[]
+],
+[
+9,
+[
+[
+true,
+6
+]
+]
+]
+],
+"theirs": [
+[
+2,
+[
+[
+false,
+4
+],
+[
+true,
+8
+]
+]
+],
+[
+8,
+[
+[
+false,
+6
+]
+]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 3,
+"mine": [
+[
+7,
+[]
+],
+[
+7,
+[
+[
+false,
+5
+],
+[
+false,
+6
+]
+]
+],
+[
+8,
+[]
+]
+],
+"theirs": [
+[
+5,
+[
+[
+false,
+2
+]
+]
+],
+[
+5,
+[]
+],
+[
+9,
+[]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 1,
+"mine": [
+[
+5,
+[]
+]
+],
+"theirs": [
+[
+6,
+[]
+],
+[
+7,
+[
+[
+false,
+9
+]
+]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 5,
+"mine": [
+[
+1,
+[
+[
+true,
+5
+],
+[
+true,
+8
+]
+]
+],
+[
+8,
+[
+[
+true,
+9
+],
+[
+true,
+7
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 5
+},
+{
+"kind": "rays",
+"white": true,
+"on": 8,
+"mine": [
+[
+6,
+[
+[
+true,
+4
+],
+[
+true,
+8
+]
+]
+]
+],
+"theirs": [
+[
+3,
+[
+[
+false,
+6
+],
+[
+true,
+6
+]
+]
+],
+[
+8,
+[
+[
+false,
+9
+]
+]
+],
+[
+9,
+[
+[
+true,
+4
+]
+]
+]
+],
+"cheapest_xf": 2
+},
+{
+"kind": "rays",
+"white": true,
+"on": 9,
+"mine": [
+[
+3,
+[
+[
+true,
+3
+]
+]
+],
+[
+4,
+[
+[
+false,
+2
+],
+[
+true,
+5
+]
+]
+],
+[
+8,
+[
+[
+false,
+4
+],
+[
+false,
+6
+]
+]
+]
+],
+"theirs": [
+[
+2,
+[
+[
+true,
+7
+]
+]
+],
+[
+5,
+[]
+]
+],
+"cheapest_xf": 8
+},
+{
+"kind": "rays",
+"white": true,
+"on": 7,
+"mine": [
+[
+3,
+[
+[
+true,
+4
+],
+[
+true,
+7
+]
+]
+],
+[
+6,
+[
+[
+true,
+2
+]
+]
+],
+[
+9,
+[]
+]
+],
+"theirs": [
+[
+3,
+[
+[
+true,
+2
+],
+[
+false,
+7
+]
+]
+]
+],
+"cheapest_xf": 7
+},
+{
+"kind": "rays",
+"white": true,
+"on": 6,
+"mine": [],
+"theirs": [],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 2,
+"mine": [
+[
+4,
+[
+[
+false,
+9
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 7,
+"mine": [
+[
+2,
+[
+[
+true,
+3
+],
+[
+false,
+3
+]
+]
+],
+[
+4,
+[
+[
+false,
+9
+],
+[
+true,
+6
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 7
+},
+{
+"kind": "rays",
+"white": false,
+"on": 6,
+"mine": [
+[
+2,
+[]
+],
+[
+4,
+[
+[
+true,
+5
+],
+[
+false,
+8
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 6
+},
+{
+"kind": "rays",
+"white": true,
+"on": 8,
+"mine": [
+[
+8,
+[]
+]
+],
+"theirs": [
+[
+3,
+[]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 1,
+"mine": [
+[
+2,
+[]
+]
+],
+"theirs": [
+[
+6,
+[
+[
+true,
+5
+],
+[
+false,
+4
+]
+]
+],
+[
+7,
+[
+[
+false,
+9
+],
+[
+false,
+5
+]
+]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 6,
+"mine": [
+[
+2,
+[
+[
+true,
+4
+]
+]
+],
+[
+4,
+[
+[
+true,
+2
+]
+]
+],
+[
+9,
+[]
+]
+],
+"theirs": [
+[
+1,
+[
+[
+false,
+4
+],
+[
+false,
+6
+]
+]
+],
+[
+8,
+[
+[
+true,
+6
+],
+[
+false,
+5
+]
+]
+],
+[
+9,
+[
+[
+false,
+9
+]
+]
+]
+],
+"cheapest_xf": 5
+},
+{
+"kind": "rays",
+"white": true,
+"on": 7,
+"mine": [
+[
+5,
+[
+[
+true,
+3
+]
+]
+]
+],
+"theirs": [
+[
+1,
+[
+[
+true,
+5
+],
+[
+false,
+9
+]
+]
+],
+[
+7,
+[
+[
+false,
+8
+],
+[
+false,
+2
+]
+]
+]
+],
+"cheapest_xf": 2
+},
+{
+"kind": "rays",
+"white": true,
+"on": 4,
+"mine": [
+[
+3,
+[
+[
+true,
+4
+],
+[
+true,
+6
+]
+]
+],
+[
+6,
+[]
+]
+],
+"theirs": [
+[
+6,
+[
+[
+true,
+5
+]
+]
+],
+[
+9,
+[
+[
+true,
+9
+],
+[
+false,
+6
+]
+]
+]
+],
+"cheapest_xf": 4
+},
+{
+"kind": "rays",
+"white": true,
+"on": 1,
+"mine": [
+[
+4,
+[
+[
+true,
+5
+],
+[
+false,
+2
+]
+]
+],
+[
+8,
+[
+[
+true,
+6
+],
+[
+false,
+4
+]
+]
+]
+],
+"theirs": [
+[
+9,
+[
+[
+true,
+4
+]
+]
+]
+],
+"cheapest_xf": 1
+},
+{
+"kind": "rays",
+"white": false,
+"on": 6,
+"mine": [
+[
+1,
+[
+[
+true,
+5
+]
+]
+],
+[
+2,
+[
+[
+true,
+8
+],
+[
+true,
+6
+]
+]
+],
+[
+5,
+[
+[
+true,
+1
+]
+]
+]
+],
+"theirs": [
+[
+1,
+[
+[
+false,
+7
+]
+]
+],
+[
+6,
+[]
+]
+],
+"cheapest_xf": 5
+},
+{
+"kind": "rays",
+"white": false,
+"on": 4,
+"mine": [
+[
+6,
+[
+[
+true,
+2
+]
+]
+]
+],
+"theirs": [
+[
+7,
+[
+[
+true,
+7
+]
+]
+],
+[
+7,
+[]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 9,
+"mine": [],
+"theirs": [],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 5,
+"mine": [],
+"theirs": [
+[
+2,
+[]
+],
+[
+3,
+[
+[
+false,
+4
+],
+[
+true,
+3
+]
+]
+],
+[
+9,
+[
+[
+false,
+9
+]
+]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": true,
+"on": 4,
+"mine": [],
+"theirs": [],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 9,
+"mine": [
+[
+1,
+[]
+]
+],
+"theirs": [
+[
+9,
+[]
+]
+],
+"cheapest_xf": 8
+},
+{
+"kind": "rays",
+"white": false,
+"on": 1,
+"mine": [],
+"theirs": [
+[
+2,
+[
+[
+true,
+3
+],
+[
+false,
+4
+]
+]
+],
+[
+4,
+[]
+],
+[
+7,
+[]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 2,
+"mine": [
+[
+6,
+[]
+],
+[
+9,
+[
+[
+true,
+1
+],
+[
+false,
+9
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 2
+},
+{
+"kind": "rays",
+"white": true,
+"on": 5,
+"mine": [
+[
+1,
+[]
+],
+[
+6,
+[]
+],
+[
+8,
+[]
+]
+],
+"theirs": [],
+"cheapest_xf": 5
+},
+{
+"kind": "rays",
+"white": true,
+"on": 9,
+"mine": [],
+"theirs": [
+[
+4,
+[
+[
+true,
+3
+],
+[
+false,
+7
+]
+]
+],
+[
+5,
+[
+[
+true,
+8
+]
+]
+],
+[
+5,
+[]
+]
+],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 4,
+"mine": [
+[
+4,
+[
+[
+true,
+1
+],
+[
+true,
+1
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 0
+},
+{
+"kind": "rays",
+"white": false,
+"on": 4,
+"mine": [
+[
+6,
+[
+[
+true,
+8
+]
+]
+],
+[
+7,
+[
+[
+true,
+8
+]
+]
+],
+[
+9,
+[
+[
+false,
+3
+],
+[
+true,
+5
+]
+]
+]
+],
+"theirs": [],
+"cheapest_xf": 4
+},
+{
+"kind": "rays",
+"white": true,
+"on": 5,
+"mine": [
+[
+1,
+[
+[
+false,
+7
+],
+[
+true,
+1
+]
+]
+]
+],
+"theirs": [
+[
+7,
+[]
+]
+],
+"cheapest_xf": 5
+},
+{
+"kind": "rays",
+"white": false,
+"on": 2,
+"mine": [
+[
+1,
+[]
+],
+[
+7,
+[]
+]
+],
+"theirs": [],
+"cheapest_xf": 2
+}
+]
+}

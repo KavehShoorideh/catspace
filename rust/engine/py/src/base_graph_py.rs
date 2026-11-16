@@ -18,6 +18,8 @@ use std::collections::HashMap;
 pub struct BaseGraph {
     variant: String,
     st: Static,
+    /// 78.58: the worth of each kind (by kind index) the exchange reads, set from the estimator's record; None: no exchange.
+    kv: Option<Vec<i64>>,
 }
 
 type NodeWire = (String, String);
@@ -131,7 +133,7 @@ impl BaseGraph {
         let names = Names::new(g.place_names(), g.kind_names(), g.roles());
         let steps = g.steps(description, &static_relations, &objects).map_err(bad)?;
         let st = Static::new(&steps, &names).map_err(bad)?;
-        Ok(BaseGraph { variant: variant.to_string(), st })
+        Ok(BaseGraph { variant: variant.to_string(), st, kv: None })
     }
 
     /// static_part() -> {nodes: [(type, id)], links: [(type, a, b, via, value)], directions, lines: [[places]]}: the part that is the game's and not the position's.
@@ -326,6 +328,47 @@ impl BaseGraph {
                         }
                     }
                     _ => { out.push(0); out.extend(std::iter::repeat(0).take(4 * nk)); }
+                }
+            }
+            Ok(out)
+        })).map_err(bad)?;
+        let bytes: Vec<u8> = res.into_iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+        (names.kinds.clone(), pyo3::types::PyBytes::new(py, &bytes).unbind()).into_py_any(py)
+    }
+
+    /// position_table(games, threads) -> (kind names, bytes): PLAN 78.58 A. For every ply 0..=n of every game, in order, 2 + 2 * kinds i16: [valid, quiet, the units of the side to move by kind, the other side's].
+    /// valid 0 (and zeros) where there is no side to move. QUIET 1 where nothing stands to be lost by inclusion for either side: no unit is borne on by the other side and not by its own side
+    /// (the question of 78.57 Q0 asked of both sides at once). A cheap quiet for positions that have no forcing read.
+    fn position_table(&self, py: Python<'_>, games: Vec<GameWire>, threads: usize) -> PyResult<PyObject> {
+        let variant = self.variant.clone();
+        let names = self.st.names.clone();
+        let nk = names.kinds.len();
+        let res = py.allow_threads(|| run_pool(games.len(), threads, |i| {
+            let g = match &games[i].0 { Some(text) => KernelGame::from_fen(&variant, text)?, None => KernelGame::new(&variant, 518)? };
+            let mut s = g.initial();
+            let n = games[i].1.len();
+            let mut out: Vec<i16> = Vec::with_capacity((n + 1) * (2 + 2 * nk));
+            for ply in 0..=n {
+                match g.mover(&s) {
+                    Some(m) => {
+                        let cells = g.cells(&s);
+                        let mut c = vec![vec![0i16; nk]; names.roles.len()];
+                        let mut quiet = true;
+                        for &(o, k, at) in &cells {
+                            c[o][k as usize] += 1;
+                            let other = if o == 0 { 1 } else { 0 };
+                            if g.strikes_place(&s, other, at) && !g.strikes_place(&s, o, at) { quiet = false; }
+                        }
+                        out.push(1);
+                        out.push(quiet as i16);
+                        out.extend(c[m].iter());
+                        for k in 0..nk { out.push((0..names.roles.len()).filter(|o| *o != m).map(|o| c[o][k]).sum()); }
+                    }
+                    None => { out.push(0); out.extend(std::iter::repeat(0).take(1 + 2 * nk)); }
+                }
+                if ply < n {
+                    let mv = g.find_move(&s, &games[i].1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", games[i].1[ply]))?;
+                    s = g.apply(&s, &mv);
                 }
             }
             Ok(out)
@@ -550,10 +593,49 @@ impl BaseGraph {
         crate::frames_py::frame_compose(py, &self.variant, &self.st, text, &sa, &sb, fuse)
     }
 
+    /// set_kind_values([(kind, worth)]): PLAN 78.58 the worth of each kind in whole numbers, read from the estimator's record (`kind_values`); every kind of the game must be named. With it `question_read` and
+    /// `questions_measure` prune a taking whose exchange on its place loses by the estimate and read one that wins or is level as one question. An empty list clears it.
+    fn set_kind_values(&mut self, vals: Vec<(String, i64)>) -> PyResult<()> {
+        if vals.is_empty() { self.kv = None; return Ok(()); }
+        let mut kv = vec![i64::MIN; self.st.names.kinds.len()];
+        for (k, v) in vals { let ix = self.st.names.kind(&k).map_err(bad)? as usize; kv[ix] = v; }
+        if let Some(i) = kv.iter().position(|&v| v == i64::MIN) { return Err(bad(format!("no worth for kind {}", self.st.names.kinds[i]))); }
+        self.kv = Some(kv);
+        Ok(())
+    }
+
+    /// exchange_taking(text, taker, place) -> None or (estimate, the units that take in order, (bearers of the taker's side, bearers of the other)): the estimated exchange on `place` when the unit `taker`
+    /// takes what stands there (78.58 C), with the worth set by `set_kind_values`.
+    fn exchange_taking(&self, text: &str, taker: &str, place: &str) -> PyResult<Option<(i64, Vec<String>, (usize, usize))>> {
+        let kv = self.kv.clone().ok_or_else(|| bad("set_kind_values first".to_string()))?;
+        let (g, s) = self.game(text)?;
+        let part = self.st.position(&g, &s);
+        let cell = crate::frames_py::parse_unit(&self.st, taker).map_err(bad)?;
+        let ti = part.units.iter().position(|u| (u.owner, u.kind, u.at) == cell).ok_or_else(|| bad(format!("no unit {taker} in the position")))?;
+        let to = self.st.names.place(place.strip_prefix("place:").unwrap_or(place)).map_err(bad)?;
+        Ok(cs_tactics::sheet::exchange::estimate_taking(&part, to, ti, &kv).map(|e| (e.value, e.line.iter().map(|&i| cs_tactics::sheet::frames::unit_id(&self.st, &(part.units[i].owner, part.units[i].kind, part.units[i].at))).collect(), e.bearers)))
+    }
+
+    /// exchange_plain(on_s, mine, theirs) -> (cheapest, value): the two reads of lean/ideas/Ideas/Exchange.lean on plain lists (78.58 C): the static exchange and the minimax of the capture game.
+    #[staticmethod]
+    fn exchange_plain(on_s: i64, mine: Vec<i64>, theirs: Vec<i64>) -> (i64, i64) {
+        (cs_tactics::sheet::exchange::cheapest(on_s, &mine, &theirs), cs_tactics::sheet::exchange::value(on_s, &mine, &theirs))
+    }
+
+    /// exchange_rays(white, on_s, mine, theirs) -> (cheapestXF, the brute read of every order): the Lean `cheapestXF` on rays (value, [(owner, value)]) and, beside it, the brute read.
+    #[staticmethod]
+    fn exchange_rays(white: bool, on_s: i64, mine: Vec<(i64, Vec<(bool, i64)>)>, theirs: Vec<(i64, Vec<(bool, i64)>)>) -> (i64, i64) {
+        use cs_tactics::sheet::exchange as ex;
+        let mk = |v: Vec<(i64, Vec<(bool, i64)>)>| -> Vec<ex::Ray> { v.into_iter().map(|(value, b)| ex::Ray { value, id: 0, behind: b.into_iter().map(|(o, x)| (o, x, 0u16)).collect() }).collect() };
+        let (m, t) = (mk(mine), mk(theirs));
+        let fuel = 8;
+        (ex::cheapest_xf(fuel, white, on_s, &m, &t), ex::brute_xf(fuel, white, on_s, &m, &t))
+    }
+
     /// question_read(text, units, places, conditional, fuse) -> the frame of the seed (bound to its units), its claims with their status and marks, what the questions cost, the pruned root moves, the layer 3 nodes (78.57).
     fn question_read(&self, py: Python<'_>, text: &str, units: Vec<String>, places: Vec<String>, conditional: bool, fuse: u64) -> PyResult<PyObject> {
         let seed = crate::frames_py::parse_seed(&self.st, &units, &places).map_err(bad)?;
-        crate::questions_py::question_read(py, &self.variant, &self.st, text, &seed, conditional, fuse)
+        crate::questions_py::question_read(py, &self.variant, &self.st, text, &seed, conditional, fuse, self.kv.clone())
     }
 
     /// question_trap(text, unit, fuse) -> the trap question of one unit on quiet routes (78.57).
@@ -578,7 +660,7 @@ impl BaseGraph {
     #[allow(clippy::too_many_arguments)]
     fn questions_measure(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, horizons: Vec<usize>, fuse: u64, row_fuse: u64, compose_every: usize, max_size: usize, conditional: bool, trap_fuse: u64, threads: usize) -> PyResult<PyObject> {
         let goal = self.goal_of(&goal_kind)?;
-        let params = crate::questions_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse };
+        let params = crate::questions_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse, kv: self.kv.clone() };
         crate::questions_py::questions_measure(py, &self.variant, &self.st, goal, games, rows, keys, params, threads)
     }
 
