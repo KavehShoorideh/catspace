@@ -227,9 +227,9 @@ def main(argv: "list | None" = None) -> int:
     ci_test = test_i[cm[test_i]]
     pc = {"base rate": EF.base_probs(y[ci_fit], len(ci_test))}
     fitted_c = {}
-    for label, letters in (("R+K", "RK"), ("R+K+S", "RKS"), ("R+K+S+C", "RKSC")):
+    for label, letters in (("R+K", "RK"), ("R+K+S", "RKS"), ("R+K+C", "RKC"), ("R+K+S+C", "RKSC")):
         if letters.endswith("C"):
-            xs, nm = stack(cols, "RKS")
+            xs, nm = stack(cols, letters[:-1])
             x = np.hstack([xs[cm], cx])
             nm = nm + [f"C:{n}" for n in cnames]
             fitm = cpos[ci_fit]
@@ -253,7 +253,7 @@ def main(argv: "list | None" = None) -> int:
         perc[nm_] = ll
         v, lo, hi = loss_band(ll, gtc, a.draws, SEED + 3)
         say(f"[concept rows] test log loss, {nm_}: {v:.5f} [{lo:.5f}, {hi:.5f}] over {len(ytc)} rows of {len(np.unique(gtc))} games")
-    for lo_name, hi_name in (("base rate", "R+K"), ("R+K", "R+K+S"), ("R+K+S", "R+K+S+C"), ("R+K", "R+K+S+C")):
+    for lo_name, hi_name in (("base rate", "R+K"), ("R+K", "R+K+S"), ("R+K", "R+K+C"), ("R+K+S", "R+K+S+C"), ("R+K+C", "R+K+S+C"), ("R+K", "R+K+S+C")):
         d = perc[lo_name] - perc[hi_name]
         v, lo, hi = loss_band(d, gtc, a.draws, SEED + 4)
         say(f"[concept rows] test log loss gain of {hi_name} over {lo_name}: {v:+.5f} [{lo:+.5f}, {hi:+.5f}] (positive: {hi_name} is better)")
@@ -321,85 +321,90 @@ def main(argv: "list | None" = None) -> int:
     heads["kind_baseline_human"]["by_band"] = {bn: [float(v) for v in t[0]] for bn, t in band_terms.items()}
 
     # ---------------------------------------------------------------- D: the concepts and the correction
-    m4, cfull, centre4, scale4, nm4, z4, fitm, tstm = fitted_c["R+K+S+C"]
-    coef = m4.coef_
-    cl = list(m4.classes_)
-    full = np.zeros((3, coef.shape[1]))
-    full[cl] = coef
-    termall = full[0] - full[2]
-    c0 = 3 + nk + len(meta["statements"])
-    cterm = termall[c0:]
-    top = np.argsort(-np.abs(cterm))[:TOP_CONCEPTS]
-    cdiff = cx[:, :]                                           # over the concept rows
-    p_all = EF.predict_record(EF.model_record(m4, cfull), z4[tstm])
-    base_score = p_all[:, 0] + 0.5 * p_all[:, 1]
-    tg, tb = game[ci_test], rows["band"][ci_test]
-    ty = y[ci_test]
-    obs_score = (ty == 0) + 0.5 * (ty == 1)
-    kd_test = rows["kd"][ci_test]
-    kd_keys = np.array([hash(tuple(r)) for r in kd_test.tolist()])
-    dstats = []
-    for j in top:
-        zz = z4[tstm].copy()
-        col = c0 + j
-        zero = (0.0 - centre4[col]) / scale4[col]
-        zz[:, col] = zero
-        p0 = EF.predict_record(EF.model_record(m4, cfull), zz)
-        eff = base_score - (p0[:, 0] + 0.5 * p0[:, 1])               # change in the mover's score from the concept being as held
-        held = cdiff[tstm, j] > 0
-        against = cdiff[tstm, j] < 0
-        res = [cnames[j], float(cterm[j])]
-        for nm_, msk in (("more for the mover", held), ("more for the other side", against)):
-            tab = EF.per_game_table(tg, [eff * msk, msk.astype(float)])
-            v, lo_, hi_ = EF.game_bootstrap(tab, lambda t: t[:, 1].sum() / max(t[:, 2].sum(), 1.0), a.draws, SEED + 20)
-            res += [nm_, int(msk.sum()), v, lo_, hi_]
-        # matched: observed score of rows holding it (>0) less the rows not, within equal kinds, mover's side
-        hold = cdiff[tstm, j] > 0
-        notholdd = cdiff[tstm, j] == 0
-        keys = kd_keys
-        num = np.zeros(len(keys))
-        # per kinds-vector stratum: (mean of holders - mean of non-holders) weighted by the number of holders
-        order_k = np.argsort(keys, kind="stable")
-        ks = keys[order_k]
-        bounds = np.flatnonzero(np.diff(ks)) + 1
-        starts = np.concatenate([[0], bounds])
-        ends = np.concatenate([bounds, [len(ks)]])
-        m_eff = np.zeros(len(keys))
-        m_w = np.zeros(len(keys))
-        for s, e in zip(starts, ends):
-            idx = order_k[s:e]
-            h_, n_ = hold[idx], notholdd[idx]
-            if h_.any() and n_.any():
-                d = obs_score[idx][n_].mean()
-                for r in idx[h_]:
-                    m_eff[r] = obs_score[r] - d
-                    m_w[r] = 1.0
-        tab = EF.per_game_table(tg, [m_eff, m_w])
-        mv, mlo, mhi = EF.game_bootstrap(tab, lambda t: t[:, 1].sum() / max(t[:, 2].sum(), 1.0), a.draws, SEED + 21)
-        res += ["matched", int(m_w.sum()), mv, mlo, mhi]
-        bandres = []
-        for b, bn in enumerate(HD.BAND_NAMES):
-            sb = (tb == b) & held
-            tabb = EF.per_game_table(tg[tb == b], [(eff * held)[tb == b], held[tb == b].astype(float)])
-            vb, lb, hb = EF.game_bootstrap(tabb, lambda t: t[:, 1].sum() / max(t[:, 2].sum(), 1.0), max(50, a.draws // 2), SEED + 22 + b)
-            bandres.append((bn, int(sb.sum()), vb, lb, hb))
-        res.append(bandres)
-        dstats.append(res)
-    for res in dstats:
-        name, term = res[0], res[1]
-        s = f"D concept {name}: term in R+K+S+C {term:+.4f} per standard deviation; "
-        for k in range(2, 12, 5):
-            nm_, n_, v, l, h = res[k:k + 5]
-            s += f"{nm_} (rows {n_}): change in the mover's expected score when the concept is as held {v:+.4f} [{l:+.4f}, {h:+.4f}]; "
-        s += "by band (concept held more by the mover): " + ", ".join(f"{bn} rows {n_}: {v:+.4f} [{l:+.4f}, {h:+.4f}]" for bn, n_, v, l, h in res[-1])
-        say(s)
+    for dlabel in ("R+K+C", "R+K+S+C"):
+        m4, cfull, centre4, scale4, nm4, z4, fitm, tstm = fitted_c[dlabel]
+        coef = m4.coef_
+        cl = list(m4.classes_)
+        full = np.zeros((3, coef.shape[1]))
+        full[cl] = coef
+        termall = full[0] - full[2]
+        c0 = 3 + nk + (len(meta["statements"]) if "S" in dlabel else 0)
+        cterm = termall[c0:]
+        top = np.argsort(-np.abs(cterm))[:TOP_CONCEPTS]
+        cdiff = cx[:, :]                                           # over the concept rows
+        p_all = EF.predict_record(EF.model_record(m4, cfull), z4[tstm])
+        base_score = p_all[:, 0] + 0.5 * p_all[:, 1]
+        tg, tb = game[ci_test], rows["band"][ci_test]
+        ty = y[ci_test]
+        obs_score = (ty == 0) + 0.5 * (ty == 1)
+        kd_test = rows["kd"][ci_test]
+        kd_keys = np.array([hash(tuple(r)) for r in kd_test.tolist()])
+        dstats = []
+        for j in top:
+            zz = z4[tstm].copy()
+            col = c0 + j
+            zero = (0.0 - centre4[col]) / scale4[col]
+            zz[:, col] = zero
+            p0 = EF.predict_record(EF.model_record(m4, cfull), zz)
+            eff = base_score - (p0[:, 0] + 0.5 * p0[:, 1])               # change in the mover's score from the concept being as held
+            held = cdiff[tstm, j] > 0
+            against = cdiff[tstm, j] < 0
+            res = [cnames[j], float(cterm[j])]
+            for nm_, msk in (("more for the mover", held), ("more for the other side", against)):
+                tab = EF.per_game_table(tg, [eff * msk, msk.astype(float)])
+                v, lo_, hi_ = EF.game_bootstrap(tab, lambda t: t[:, 1].sum() / max(t[:, 2].sum(), 1.0), a.draws, SEED + 20)
+                res += [nm_, int(msk.sum()), v, lo_, hi_]
+            # matched: observed score of rows holding it (>0) less the rows not, within equal kinds, mover's side
+            hold = cdiff[tstm, j] > 0
+            notholdd = cdiff[tstm, j] == 0
+            keys = kd_keys
+            num = np.zeros(len(keys))
+            # per kinds-vector stratum: (mean of holders - mean of non-holders) weighted by the number of holders
+            order_k = np.argsort(keys, kind="stable")
+            ks = keys[order_k]
+            bounds = np.flatnonzero(np.diff(ks)) + 1
+            starts = np.concatenate([[0], bounds])
+            ends = np.concatenate([bounds, [len(ks)]])
+            m_eff = np.zeros(len(keys))
+            m_w = np.zeros(len(keys))
+            for s, e in zip(starts, ends):
+                idx = order_k[s:e]
+                h_, n_ = hold[idx], notholdd[idx]
+                if h_.any() and n_.any():
+                    d = obs_score[idx][n_].mean()
+                    for r in idx[h_]:
+                        m_eff[r] = obs_score[r] - d
+                        m_w[r] = 1.0
+            tab = EF.per_game_table(tg, [m_eff, m_w])
+            mv, mlo, mhi = EF.game_bootstrap(tab, lambda t: t[:, 1].sum() / max(t[:, 2].sum(), 1.0), a.draws, SEED + 21)
+            res += ["matched", int(m_w.sum()), mv, mlo, mhi]
+            bandres = []
+            for b, bn in enumerate(HD.BAND_NAMES):
+                sb = (tb == b) & held
+                tabb = EF.per_game_table(tg[tb == b], [(eff * held)[tb == b], held[tb == b].astype(float)])
+                vb, lb, hb = EF.game_bootstrap(tabb, lambda t: t[:, 1].sum() / max(t[:, 2].sum(), 1.0), max(50, a.draws // 2), SEED + 22 + b)
+                bandres.append((bn, int(sb.sum()), vb, lb, hb))
+            res.append(bandres)
+            dstats.append(res)
+        for res in dstats:
+            name, term = res[0], res[1]
+            s = f"D [{dlabel}] concept {name}: term in {dlabel} {term:+.4f} per standard deviation; "
+            for k in range(2, 17, 5):
+                nm_, n_, v, l, h = res[k:k + 5]
+                if nm_ == "matched":
+                    s += f"MATCHED (no model: observed score of rows that hold it more than the other side less rows with equal count, within rows of equal kinds; rows {n_}): {v:+.4f} [{l:+.4f}, {h:+.4f}]; "
+                    continue
+                s += f"{nm_} (rows {n_}): change in the mover's expected score when the concept is as held {v:+.4f} [{l:+.4f}, {h:+.4f}]; "
+            s += "by band (concept held more by the mover): " + ", ".join(f"{bn} rows {n_}: {v:+.4f} [{l:+.4f}, {h:+.4f}]" for bn, n_, v, l, h in res[-1])
+            say(s)
+        heads[f"result_human_{dlabel.replace('+', '')}_thinned"]["corrections"] = [{"concept": r[0], "term": r[1]} for r in dstats]
     # how the kind terms move when statements, then concepts, are added (concept rows)
     base3 = {}
-    for label in ("R+K", "R+K+S", "R+K+S+C"):
+    for label in ("R+K", "R+K+S", "R+K+C", "R+K+S+C"):
         m, c, centre, scale, nm, z, fitm_, tstm_ = fitted_c[label]
         base3[label] = EF.kind_terms(list(m.classes_), m.coef_[:, 3:3 + nk])
     dd = {}
-    for label in ("R+K+S", "R+K+S+C"):
+    for label in ("R+K+S", "R+K+C", "R+K+S+C"):
         m, c, centre, scale, nm, z, fitm_, tstm_ = fitted_c[label]
         _G["xb"], _G["yb"] = z, y[cm]
         gg = game[cm]
@@ -416,12 +421,11 @@ def main(argv: "list | None" = None) -> int:
     rng = np.random.default_rng(SEED + 30)
     tasks = [(np.concatenate([byr[int(g)] for g in rng.choice(gamesr, size=len(gamesr), replace=True)]), fitted_c["R+K"][1], 3 + nk) for _ in range(max(50, a.draws // 2))]
     dd["R+K"] = np.array(pool.map(_terms_task, tasks))[:, 3:3 + nk]
-    for label in ("R+K+S", "R+K+S+C"):
+    for label in ("R+K+S", "R+K+C", "R+K+S+C"):
         shift = dd[label] - dd["R+K"]                          # the same resample (same seed) of games: a paired band of how the term moved
         l, h = bands_of(shift)
-        say(f"kind terms moved by adding {'the statements' if label == 'R+K+S' else 'the statements and the concepts'} to R+K (concept rows, paired refits over games): "
+        say(f"kind terms moved by adding { {'R+K+S': 'the statements', 'R+K+C': 'the concepts', 'R+K+S+C': 'the statements and the concepts'}[label] } to R+K (concept rows, paired refits over games): "
             + "; ".join(f"{kn[k]} {base3['R+K'][k]:+.4f} to {base3[label][k]:+.4f} (moved {base3[label][k] - base3['R+K'][k]:+.4f} [{l[k]:+.4f}, {h[k]:+.4f}])" for k in order))
-    heads["result_human_RKSC_thinned"]["corrections"] = [{"concept": r[0], "term": r[1]} for r in dstats]
     pool.close()
     pool.join()
     rec = json.loads(Path(paths.experiment("estimator_78_58", "full", "estimator_heads.json")).read_text())
