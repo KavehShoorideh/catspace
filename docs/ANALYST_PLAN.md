@@ -9939,3 +9939,101 @@ GATE at 72baf49e (2026-11-15, after the merges of 78.59, 78.60, 78.61): `OBS gat
 
 
 78.62 SAMPLE (stated BEFORE the run of stage A, builder agent, 2026-11-15). The arrival games of 78.59 (the first 100 of each of the 8 shards' hash order, 800 games, 52615 plies, the games whose forcing reads are kept in artifacts/experiments/estimator_78_59/full_arrival/reads_light.jsonl), every ply from ply 10 to the end of the game (about 44600 rows). The probe (20 games, plies 10 to 49, 635 rows) cost 0.026 s a row wall over 10 threads, so the full read is expected near 20 minutes. The read: `BaseGraph.questions_state` (new, Rust, questions_py.rs: the units of every frame read at a row with class, basis, trap word and the observed fate within 8 plies; also the board's units as (role, kind, place)); the seeds, fuses, depth and rules are those of 78.60 (12 seeds of 78.55, FUSE 1500, ROW_FUSE 30000, trap fuse 400, all four rules, root cap 10). THE ORDER OF KINDS the exchange estimate reads is the human-game record of 78.59 (`heads.kind_baseline_human`: terms and the record's own band of each; the goal kind's worth is the rule of 78.58, more than all the others together); no self-play record and no table of values is used. A unit that no frame holds has no record (not read, which is not safe). Fit games and test games are those of 78.59 (the games' own hash split, 7 in 10 fit). Endgame coverage of the sample is printed by the run (units left, small sets by kind, how games ended). The extension was rebuilt from this worktree. Split of work in the plan's order: A state, B sequence, C two heads, D smallest frame, E sacrifice, F sequence model last; each stage committed on its own.
+
+
+78.62 BUILT, stages A and B (builder agent, 2026-11-15; branch worktree-agent-a41fc8a7f44b3dca7; one run each, directions only; numbers only from the OBS lines below, which programs printed). The extension WAS REBUILT from this worktree (`cd rust/engine/py && CARGO_PROFILE_RELEASE_STRIP=none ../../../.venv/bin/maturin develop --release --offline`); the shared install now points here; the parent rebuilds main after the merge. Rust: one added function `questions_state` (rust/engine/py/src/questions_py.rs) and its method `BaseGraph.questions_state` (base_graph_py.rs); nothing removed or changed; layer crates untouched; tests/test_plan78.py scan passes.
+STAGE A. WHAT: `questions_state(games, rows, keys, goal_kind, fuse, row_fuse, max_size, conditional, trap_fuse, horizon, threads)` returns, for every wanted (game, ply), the member units of every frame read there (owner relative to the side to move, kind index, class lost/safe/both/unread/threat/conditional/contested, what the class rests on forced/pruned/estimate/bound, trap word, observed fate within 8 plies) and the board's units as (role, kind, place); the names of kinds, roles, places. Python: catspace/incubator/analyst/discovery/tactical_state.py (resumable chunks of 20 games, all cores), tactical_tables.py (per colour tables, edge distances read from the place names, forcing counts of 78.59 where kept). The estimate's order of kinds is the HUMAN record of 78.59 (heads.kind_baseline_human; the goal kind's worth the 78.58 rule); no self-play record and no table of values. Run: `python -m catspace.incubator.analyst.discovery.tactical_state --out-dir artifacts/experiments/tactical_78_62/state` (1039 s for the 800 games). Test: tests/test_plan78_62_state.py (in scripts/gate.py).
+OBS tactical state: sample: 800 games, 52615 plies; rows from ply 10 to the end; kinds' worth from estimator_78_59/full/estimator_heads_human.json heads.kind_baseline_human (human games): {'pawn': 475, 'knight': 1216, 'bishop': 1301, 'rook': 1945, 'queen': 3583, 'king': 8521}; bands {'pawn': (441, 506), 'knight': (1133, 1285), 'bishop': (1227, 1374), 'rook': (1822, 2046), 'queen': (3336, 3809)}
+OBS tactical state: seeds: the top 12 distinct kept concepts of 78.54 by |z| on its half A; rules on (True, True, True, True); root cap 10; fuses 1500/30000, trap fuse 400; horizon 8
+OBS tactical state: progress: chunk 1 of 40: 973 rows, 20.8 s wall over 10 threads (0.0214 s per row), 365678 questions
+OBS tactical state: progress: chunk 2 of 40: 993 rows, 23.0 s wall over 10 threads (0.0232 s per row), 449859 questions
+OBS tactical state: progress: chunk 3 of 40: 1043 rows, 30.0 s wall over 10 threads (0.0288 s per row), 465899 questions
+OBS tactical state: progress: chunk 4 of 40: 833 rows, 26.6 s wall over 10 threads (0.0320 s per row), 425083 questions
+OBS tactical state: progress: chunk 5 of 40: 1139 rows, 21.0 s wall over 10 threads (0.0185 s per row), 377420 questions
+OBS tactical state: progress: chunk 6 of 40: 1342 rows, 24.0 s wall over 10 threads (0.0179 s per row), 452430 questions
+OBS tactical state: progress: chunk 7 of 40: 1147 rows, 28.8 s wall over 10 threads (0.0251 s per row), 463994 questions
+OBS tactical state: progress: chunk 8 of 40: 1002 rows, 24.4 s wall over 10 threads (0.0244 s per row), 432067 questions
+OBS tactical state: progress: chunk 9 of 40: 1021 rows, 21.2 s wall over 10 threads (0.0208 s per row), 404778 questions
+OBS tactical state: progress: chunk 10 of 40: 1211 rows, 24.3 s wall over 10 threads (0.0201 s per row), 427589 questions
+OBS tactical state: progress: chunk 11 of 40: 1169 rows, 25.4 s wall over 10 threads (0.0217 s per row), 421700 questions
+OBS tactical state: progress: chunk 12 of 40: 1038 rows, 24.1 s wall over 10 threads (0.0233 s per row), 445801 questions
+OBS tactical state: progress: chunk 13 of 40: 1234 rows, 25.8 s wall over 10 threads (0.0209 s per row), 471752 questions
+OBS tactical state: progress: chunk 14 of 40: 1156 rows, 25.5 s wall over 10 threads (0.0221 s per row), 453599 questions
+OBS tactical state: progress: chunk 15 of 40: 1257 rows, 26.4 s wall over 10 threads (0.0210 s per row), 511039 questions
+OBS tactical state: progress: chunk 16 of 40: 1377 rows, 28.4 s wall over 10 threads (0.0206 s per row), 532509 questions
+OBS tactical state: progress: chunk 17 of 40: 1198 rows, 28.5 s wall over 10 threads (0.0238 s per row), 485007 questions
+OBS tactical state: progress: chunk 18 of 40: 1103 rows, 26.4 s wall over 10 threads (0.0240 s per row), 468115 questions
+OBS tactical state: progress: chunk 19 of 40: 1144 rows, 29.0 s wall over 10 threads (0.0253 s per row), 462501 questions
+OBS tactical state: progress: chunk 20 of 40: 1007 rows, 28.5 s wall over 10 threads (0.0283 s per row), 451864 questions
+OBS tactical state: progress: chunk 21 of 40: 930 rows, 22.1 s wall over 10 threads (0.0237 s per row), 398813 questions
+OBS tactical state: progress: chunk 22 of 40: 1073 rows, 26.4 s wall over 10 threads (0.0246 s per row), 483948 questions
+OBS tactical state: progress: chunk 23 of 40: 1119 rows, 28.9 s wall over 10 threads (0.0258 s per row), 485169 questions
+OBS tactical state: progress: chunk 24 of 40: 1185 rows, 28.0 s wall over 10 threads (0.0237 s per row), 499414 questions
+OBS tactical state: progress: chunk 25 of 40: 1174 rows, 27.5 s wall over 10 threads (0.0234 s per row), 489915 questions
+OBS tactical state: progress: chunk 26 of 40: 1140 rows, 22.1 s wall over 10 threads (0.0194 s per row), 416720 questions
+OBS tactical state: progress: chunk 27 of 40: 1238 rows, 27.1 s wall over 10 threads (0.0219 s per row), 475800 questions
+OBS tactical state: progress: chunk 28 of 40: 1141 rows, 25.2 s wall over 10 threads (0.0221 s per row), 484103 questions
+OBS tactical state: progress: chunk 29 of 40: 1313 rows, 25.0 s wall over 10 threads (0.0190 s per row), 431348 questions
+OBS tactical state: progress: chunk 30 of 40: 1251 rows, 32.0 s wall over 10 threads (0.0256 s per row), 453897 questions
+OBS tactical state: progress: chunk 31 of 40: 1144 rows, 28.8 s wall over 10 threads (0.0252 s per row), 449816 questions
+OBS tactical state: progress: chunk 32 of 40: 1296 rows, 36.2 s wall over 10 threads (0.0279 s per row), 503976 questions
+OBS tactical state: progress: chunk 33 of 40: 951 rows, 25.7 s wall over 10 threads (0.0270 s per row), 456936 questions
+OBS tactical state: progress: chunk 34 of 40: 1119 rows, 23.6 s wall over 10 threads (0.0211 s per row), 474450 questions
+OBS tactical state: progress: chunk 35 of 40: 973 rows, 26.5 s wall over 10 threads (0.0272 s per row), 488818 questions
+OBS tactical state: progress: chunk 36 of 40: 1102 rows, 23.7 s wall over 10 threads (0.0215 s per row), 409880 questions
+OBS tactical state: progress: chunk 37 of 40: 1059 rows, 26.6 s wall over 10 threads (0.0251 s per row), 448442 questions
+OBS tactical state: progress: chunk 38 of 40: 1160 rows, 24.0 s wall over 10 threads (0.0207 s per row), 473931 questions
+OBS tactical state: progress: chunk 39 of 40: 1324 rows, 24.2 s wall over 10 threads (0.0183 s per row), 440931 questions
+OBS tactical state: progress: chunk 40 of 40: 1035 rows, 22.0 s wall over 10 threads (0.0213 s per row), 425426 questions
+OBS tactical state: rows 45114; questions per row 402.5; rows with a frame 42865 (0.950); rows with an unread line 4; unit records 463726
+OBS tactical state: unit records by class: lost 15373, safe 291618, both 0, unread 19, threat 1312, conditional 2516, contested 152888
+OBS tactical state: unit records lost or both by what the class rests on: forced 29, pruned 0, estimate 12341, bound 3003
+OBS tactical state: coverage: games read 800 of 800, rows (positions) 45114
+OBS tactical state: coverage: units left <= 24: positions 25970 (57.57 pct), games reaching it 707 (88.4 pct)
+OBS tactical state: coverage: units left <= 16: positions 11445 (25.37 pct), games reaching it 390 (48.8 pct)
+OBS tactical state: coverage: units left <= 12: positions 6700 (14.85 pct), games reaching it 233 (29.1 pct)
+OBS tactical state: coverage: units left <= 8: positions 3101 (6.87 pct), games reaching it 121 (15.1 pct)
+OBS tactical state: coverage: units left <= 6: positions 1800 (3.99 pct), games reaching it 79 (9.9 pct)
+OBS tactical state: coverage: units left <= 4: positions 743 (1.65 pct), games reaching it 40 (5.0 pct)
+OBS tactical state: coverage: small sets (8 units or fewer on the board, the goal units not counted, one list of kinds per side): 215 distinct, 0 with 30 games or more, 193 with fewer than 5 games
+OBS tactical state: coverage: set - | queen: positions 193, games 10
+OBS tactical state: coverage: set pawn+pawn+rook | pawn+rook: positions 133, games 16
+OBS tactical state: coverage: set - | pawn: positions 103, games 13
+OBS tactical state: coverage: set - | rook: positions 102, games 5
+OBS tactical state: coverage: set pawn+pawn+rook | pawn+pawn+rook: positions 100, games 8
+OBS tactical state: coverage: set pawn+pawn+pawn+rook | pawn+rook: positions 87, games 14
+OBS tactical state: coverage: set pawn+rook | pawn+rook: positions 79, games 8
+OBS tactical state: coverage: set pawn+pawn+rook | rook: positions 69, games 9
+OBS tactical state: coverage: set - | knight+pawn+pawn: positions 57, games 4
+OBS tactical state: coverage: set - | pawn+queen: positions 55, games 7
+OBS tactical state: coverage: set pawn+pawn+pawn+rook | rook: positions 54, games 6
+OBS tactical state: coverage: set pawn+pawn | pawn+pawn+pawn: positions 51, games 9
+OBS tactical state: coverage: set - | queen+queen: positions 48, games 5
+OBS tactical state: coverage: set pawn+rook | rook: positions 43, games 8
+OBS tactical state: wall 1039.3 s
+ENDGAME RULE (read of the table above): the sample is thin at the ends: of the small sets (8 units or fewer, goal units not counted) 215 are distinct and none reaches 30 games; 193 have fewer than 5 games. Everything below that reads kinds and edge distances inside such sets is therefore not read; the heads of stage C are fitted over all rows, dominated by the middle game. NOT FILLED with generated games: the generation of playouts from sampled positions was not built here (cut, stated in the final note).
+STAGE B. WHAT: catspace/incubator/analyst/discovery/tactical_sequence.py (no model): the division of plies by state, quiet stretches (frame read and forcing read), onsets with their outcomes within 8 plies, the transition table. Run: `python -m catspace.incubator.analyst.discovery.tactical_sequence`. The first run printed a counter-chance base that counted either colour (0.7821); it was changed to one colour at a time, as an onset's counter-chance is, and re-run; the lines below are the second run.
+OBS tactical sequence: games 800, rows 45114, horizon 8 plies; a standing loss is a unit of the colour lost by the estimate
+OBS tactical sequence: (1) plies by state: none 34204 (0.7582), colour 0 only 5315 (0.1178), colour 1 only 5419 (0.1201), both 176 (0.0039)
+OBS tactical sequence: (1) plies where a unit of the side to move stands lost 2082 (0.0461); where a unit of the other side stands lost (the side to move may win it) 9004 (0.1996)
+OBS tactical sequence: (1) units lost by the estimate 12341, lost resting on a bound 3003, lost forced or pruned 29; units forced safe 28159, safe by the estimate 190491; trapped 32366
+OBS tactical sequence: (2) quiet stretch (no unit of either colour lost by the estimate) [all]: ended by a standing loss: 7006 runs, mean 4.46, median 3.0, 90th percentile 10.0, longest 43; cut by the end of the game: 489 runs, mean 6.03, median 3.0, 90th percentile 15.0, longest 87
+OBS tactical sequence: (2) quiet stretch (no unit of either colour lost by the estimate) [A <1350]: ended by a standing loss: 1592 runs, mean 4.02, median 3.0, 90th percentile 9.0, longest 29; cut by the end of the game: 109 runs, mean 5.42, median 2.0, 90th percentile 12.4, longest 51
+OBS tactical sequence: (2) quiet stretch (no unit of either colour lost by the estimate) [B 1350-1549]: ended by a standing loss: 1787 runs, mean 4.48, median 3.0, 90th percentile 10.0, longest 36; cut by the end of the game: 130 runs, mean 5.95, median 3.0, 90th percentile 14.1, longest 44
+OBS tactical sequence: (2) quiet stretch (no unit of either colour lost by the estimate) [C 1550-1749]: ended by a standing loss: 2006 runs, mean 4.56, median 3.0, 90th percentile 11.0, longest 34; cut by the end of the game: 135 runs, mean 6.85, median 3.0, 90th percentile 16.0, longest 87
+OBS tactical sequence: (2) quiet stretch (no unit of either colour lost by the estimate) [D 1750+]: ended by a standing loss: 1621 runs, mean 4.75, median 3.0, 90th percentile 11.0, longest 43; cut by the end of the game: 115 runs, mean 5.74, median 3.0, 90th percentile 14.0, longest 55
+OBS tactical sequence: (2) quiet stretch by the rules' forcing read (no confirmed threat move for either side), all games: ended: 1419 runs, mean 19.34, median 9.0, 90th percentile 51.0, longest 148; cut: 457 runs, mean 34.07, median 27.0, 90th percentile 74.4, longest 157; rows with a read 45114 of 45114
+OBS tactical sequence: (2) beside it, over the rows with a forcing read: a standing loss by the estimate holds on 0.2336 of the 43018 rows with no confirmed threat move for either side, and on 0.4108 of the 2096 rows where some side holds one
+OBS tactical sequence: (3) onsets of a standing loss with 8 rows after them: 7282 (colour 0: 3635, colour 1: 3647); the counter-chance base: of 59720 (row, colour) pairs over rows with no standing loss for either colour, the colour has one within 8 plies in 0.5346
+OBS tactical sequence: (3) onsets [all]: n 7282; the loss happens (a unit of it taken) 0.7480, taken for nothing 0.7056; parried (nothing taken, the colour's standing loss gone at some ply) 0.2513; a counter-chance of the other colour appears 0.5621
+OBS tactical sequence: (3) onsets [owner to move]: n 937; the loss happens (a unit of it taken) 0.5336, taken for nothing 0.4237; parried (nothing taken, the colour's standing loss gone at some ply) 0.4642; a counter-chance of the other colour appears 0.5656
+OBS tactical sequence: (3) onsets [owner not to move]: n 6345; the loss happens (a unit of it taken) 0.7797, taken for nothing 0.7472; parried (nothing taken, the colour's standing loss gone at some ply) 0.2199; a counter-chance of the other colour appears 0.5615
+OBS tactical sequence: (3) onsets [A <1350]: n 1654; the loss happens (a unit of it taken) 0.7509, taken for nothing 0.7104; parried (nothing taken, the colour's standing loss gone at some ply) 0.2479; a counter-chance of the other colour appears 0.5925
+OBS tactical sequence: (3) onsets [B 1350-1549]: n 1821; the loss happens (a unit of it taken) 0.7474, taken for nothing 0.7079; parried (nothing taken, the colour's standing loss gone at some ply) 0.2515; a counter-chance of the other colour appears 0.5310
+OBS tactical sequence: (3) onsets [C 1550-1749]: n 2125; the loss happens (a unit of it taken) 0.7544, taken for nothing 0.7139; parried (nothing taken, the colour's standing loss gone at some ply) 0.2456; a counter-chance of the other colour appears 0.5558
+OBS tactical sequence: (3) onsets [D 1750+]: n 1682; the loss happens (a unit of it taken) 0.7378, taken for nothing 0.6879; parried (nothing taken, the colour's standing loss gone at some ply) 0.2616; a counter-chance of the other colour appears 0.5737
+OBS tactical sequence: (4) from [none] (n 33715) to the next ply: none 0.7922, colour 0 only 0.1020, colour 1 only 0.1033, both 0.0025
+OBS tactical sequence: (4) from [colour 0 only] (n 5169) to the next ply: none 0.6407, colour 0 only 0.1935, colour 1 only 0.1584, both 0.0074
+OBS tactical sequence: (4) from [colour 1 only] (n 5258) to the next ply: none 0.6539, colour 0 only 0.1529, colour 1 only 0.1858, both 0.0074
+OBS tactical sequence: (4) from [both] (n 172) to the next ply: none 0.3198, colour 0 only 0.3140, colour 1 only 0.2907, both 0.0756
+OBS tactical sequence: (3) duration of one colour's standing loss in plies (runs that ended): 8587 runs, mean 1.22, median 1.0, 90th percentile 2.0, longest 15
