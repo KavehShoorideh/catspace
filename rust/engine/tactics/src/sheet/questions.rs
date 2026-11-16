@@ -544,6 +544,12 @@ pub struct QReader<'a, G: Game + Placed> {
     pub causes: Vec<CauseRec>,
 }
 
+/// 78.70: one answer to a taking (see `QReader::answers`): the move, its class as an index (0 a taking, 1 a threatened unit moves, 2 a bearing added, 3 a counter threat, 4 a unit put between) and whether the unit moves.
+#[derive(Debug, Clone)]
+pub struct Answer { pub ends: (Place, Place), pub how: u8, pub unit_moves: bool }
+#[derive(Debug, Clone)]
+pub struct Answers { pub moves: Vec<Answer>, pub unread: u32, pub tried: u32 }
+
 /// What one reading found.
 #[derive(Debug, Clone)]
 pub struct QForce { pub pairs: Vec<QP>, pub stats: QStats }
@@ -975,6 +981,27 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         let (d0, q0) = (self.depth, self.quiet);
         let pairs = self.solve(&root, &ident, jm0, xr, d0, q0, owed, QPair::ZERO, goal);
         Some(QForce { pairs: pairs.to_vec(), stats: self.stats.since(&before) })
+    }
+
+    /// PLAN 78.70 A. WHAT THE OWNER OF A MEMBER CAN DO ABOUT ITS TAKING: the candidate moves of the read (the same Q1 set as every question) of the side that owns the unit with identity `id`, from `s` when that
+    /// side is to move, from the position after the side to move passes when it is not (the flipped root of a threat). For each candidate the other side is asked, from the position after it, whether it can still
+    /// force the unit's taking for nothing; a candidate after which it cannot is an ANSWER, and its class (a taking, the unit moving, a bearing added, a counter threat, a unit put between) is its reason. A
+    /// candidate whose question the fuse left unread is counted apart and is no answer. None when the position has no root to read (the pass is refused).
+    pub fn answers(&mut self, s: &G::State, owner: Role, id: u8) -> Option<Answers> {
+        let ident = self.root_ident.clone();
+        let jm0 = self.expand(s, &ident, 0).mask;
+        let mover = self.g.mover(s)?;
+        let root = if owner == mover { s.clone() } else { self.expand(s, &ident, jm0).pass.clone()? };
+        let e = self.expand(&root, &ident, jm0);
+        let reading = 1 - owner.min(1);
+        let mut out = Answers { moves: vec![], unread: 0, tried: 0 };
+        for c in e.cands.iter() {
+            out.tried += 1;
+            let f = self.solve_at(&c.state, &c.ident, c.jm, reading, Goal::TakeFree(id));
+            if f.pairs.iter().any(|q| q.fl & F_UNREAD != 0) { out.unread += 1; continue; }
+            if support(&f.pairs, ClaimKind::TakeFree, id).is_none() { out.moves.push(Answer { ends: c.ends, how: class_ix(c.class) as u8, unit_moves: c.moved == id }); }
+        }
+        Some(out)
     }
 
     pub fn root_state_after_pass(&mut self, s: &G::State) -> Option<G::State> { let ident = self.root_ident.clone(); let jm0 = self.expand(s, &ident, 0).mask; self.expand(s, &ident, jm0).pass.clone() }
