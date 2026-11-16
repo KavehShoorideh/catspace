@@ -10982,3 +10982,370 @@ C. Three sleeps and the fixed schedule at equal time again, the wake matches run
 STATUS: written; after 78.65.
 
 GATE at 58b27cb2 (2026-11-16, after the merges of 78.62, 78.63, 78.64): `OBS gate engine: files 110, passed 1689, failed 0, xfailed 1, errors 0, wall 2206.5 s`.
+
+78.65 BUILT, stages B to F, the SHORT RUN on 880 games (builder agent, 2026-11-16; one run each, directions only; numbers only from the OBS lines below, printed by the programs; whole files in artifacts/experiments/frames_heads_78_65/). NO RUST CHANGE; the extension was NOT rebuilt.
+SHORT RUN, stages B to F (THEN stage A on more games, below): on the 880 games that had frame-read rows when the stages were built (the 800 of 78.62 cut to their settled rows, plus 80 drawn at random by the stage A program; 28312 settled rows; the 78.59 split, 606 fit games and 274 test games).
+HOW TO RUN: `python -m catspace.incubator.analyst.discovery.frames_state_rows human --n-games N [--budget-seconds S]` (stage A, resumable; also `fill` for the fill games' rows), then `python -m catspace.incubator.analyst.discovery.frames_heads run --state-dir D --out-dir O` (B to E), `... fill --state-dir D --out-dir O` (F), `... summary --obs O/frames_obs.txt` (the tables below are the program's own arrangement of its OBS lines). Code: catspace/incubator/analyst/discovery/frames_state_rows.py and frames_heads.py; tests tests/test_plan78_65_frames.py (in scripts/gate.py).
+WHAT. A: the frame read's rows made at the settled rows only (the rows the hazard heads use), compact (the unit record's sixth column, what became of the unit, is NOT kept: it is the row's future); the 800 games of 78.62 are cut from their file (no new read), the others are read in chunks of 40 games with a line per chunk; the fill games' rows were made too (27826 rows, 141 s), so the frame inputs are present on every fill row. B: per side as seen by the mover (`us` the side to move, `them` the other; a row with the sides swapped has the two blocks swapped, a test): counts of the units the frame read holds by class and by what the class rests on; by trap word; the units standing lost by the estimate by kind; the frames at the row, the lines unread, the units read per side and per frame. A column nonzero on fewer than 30 fit rows is dropped and counted. C: the linear heads of 78.64 (the same code, no horizon) with the groups added in steps; a learning curve at each step. D: HistGradientBoostingClassifier from scikit-learn on the same hazard records (one record per row, distance bin and flag, the weight the count of its steps; the event's record weight one; the number of rounds chosen on a fifth of the fit games; read by the same likelihood on the same test rows as the linear head); the pairs by Friedman's H on the ten inputs with the widest partial dependence. E: the chance that each side has the event within the rest of the record, and who first, at settled rows. F: the 78.64 fill in the fit with and without, on K+S+E plus the frame inputs (the fill has no ratings and no concepts).
+No Stockfish number, no labeller, no external model; the order of kinds inside the frame read is the human record of 78.59 (as in 78.62).
+STAGE B, the inputs and the columns kept:
+OBS INPUTS [classes]: 70 columns, 17 kept (rows with a nonzero value in the fit rows: least 40, most 9828); dropped under 30 fit rows: 53, of which 51 never nonzero; the others: us: lost resting on forced (4 rows); them: lost resting on forced (12 rows)
+OBS INPUTS [trap]: 12 columns, 6 kept (rows with a nonzero value in the fit rows: least 513, most 7810); dropped under 30 fit rows: 6, of which 5 never nonzero; the others: them: trap word ended (3 rows)
+OBS INPUTS [lost kinds]: 12 columns, 9 kept (rows with a nonzero value in the fit rows: least 40, most 591); dropped under 30 fit rows: 3, of which 2 never nonzero; the others: them: lost by the estimate, kind queen (25 rows)
+OBS INPUTS [frames]: 5 columns, 4 kept (rows with a nonzero value in the fit rows: least 17494, most 17552); dropped under 30 fit rows: 1, of which 1 never nonzero
+OBS INPUTS [concepts]: 64 columns on 3926 thinned rows (2644 fit); 43 kept with at least 30 nonzero fit rows; rows each kept column has (min, median, max): 144, 646, 1776; dropped 21 columns with counts [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8]
+OBS rows: 28312 settled rows of 880 games; fit rows 19027 (606 games), test rows 9285 (274 games); thinned rows with concepts 3926; every row has a frame-read row
+STAGE C, the gain over the base hazard per step of the head's risk set, by input step (all fit games; band over test games), per head (TABLE A), then the thinned rows with the concepts (TABLE C):
+OBS frames table: TABLE A: per head, the gain over its base hazard at ALL the fit games, per step of the head's risk set, with the 90 pct band over test games; columns: base hazard's log loss per step; the steps of inputs, each added to the one before (the first is the K+S+E+R of 78.64); the trees on the last step; the trees' loss less the linear head's on the same test rows (rows, linear loss, trees loss, linear less trees)
+OBS frames table: TABLE A | taken [us] | base loss 0.49345 | base K+S+E+R +0.01734 [+0.01287, +0.02201] | +classes +0.02608 [+0.02122, +0.03112] | +trap +0.02933 [+0.02246, +0.03564] | +lost kinds +0.02807 [+0.02255, +0.03328] | +frames +0.03145 [+0.02509, +0.03746] | TREES +0.04303 [+0.03696, +0.05023] | same rows 9285: linear 0.46200, trees 0.45042, linear less trees +0.01158 [+0.00753, +0.01562]
+OBS frames table: TABLE A | taken [them] | base loss 0.52181 | base K+S+E+R +0.01901 [+0.01392, +0.02395] | +classes +0.02594 [+0.01935, +0.03227] | +trap +0.02765 [+0.02100, +0.03382] | +lost kinds +0.02738 [+0.02052, +0.03361] | +frames +0.03019 [+0.02408, +0.03641] | TREES +0.03619 [+0.02895, +0.04392] | same rows 9285: linear 0.49163, trees 0.48562, linear less trees +0.00600 [+0.00287, +0.00917]
+OBS frames table: TABLE A | keeps [us] | base loss 0.39373 | base K+S+E+R +0.00933 [+0.00662, +0.01215] | +classes +0.01207 [+0.00900, +0.01511] | +trap +0.01259 [+0.00947, +0.01583] | +lost kinds +0.01263 [+0.00933, +0.01604] | +frames +0.01360 [+0.01002, +0.01746] | TREES +0.02099 [+0.01728, +0.02495] | same rows 9285: linear 0.38014, trees 0.37275, linear less trees +0.00739 [+0.00565, +0.00943]
+OBS frames table: TABLE A | keeps [them] | base loss 0.41371 | base K+S+E+R +0.01051 [+0.00764, +0.01352] | +classes +0.01239 [+0.00914, +0.01523] | +trap +0.01287 [+0.00944, +0.01601] | +lost kinds +0.01286 [+0.00955, +0.01592] | +frames +0.01418 [+0.01005, +0.01782] | TREES +0.01822 [+0.01476, +0.02217] | same rows 9285: linear 0.39952, trees 0.39549, linear less trees +0.00404 [+0.00271, +0.00566]
+OBS frames table: TABLE A | taken | pawn [us] | base loss 0.34145 | base K+S+E+R +0.00471 [+0.00304, +0.00630] | +classes +0.00568 [+0.00391, +0.00738] | +trap +0.00700 [+0.00519, +0.00906] | +lost kinds +0.00812 [+0.00622, +0.01029] | +frames +0.00853 [+0.00651, +0.01085] | TREES - | same rows -
+OBS frames table: TABLE A | taken | pawn [them] | base loss 0.34950 | base K+S+E+R +0.00417 [+0.00258, +0.00601] | +classes +0.00470 [+0.00282, +0.00661] | +trap +0.00593 [+0.00403, +0.00800] | +lost kinds +0.00608 [+0.00424, +0.00817] | +frames +0.00682 [+0.00433, +0.00941] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | pawn [us] | base loss 0.24124 | base K+S+E+R +0.00222 [+0.00135, +0.00322] | +classes +0.00259 [+0.00168, +0.00354] | +trap +0.00287 [+0.00191, +0.00379] | +lost kinds +0.00323 [+0.00221, +0.00427] | +frames +0.00333 [+0.00224, +0.00441] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | pawn [them] | base loss 0.24473 | base K+S+E+R +0.00202 [+0.00113, +0.00302] | +classes +0.00219 [+0.00124, +0.00319] | +trap +0.00246 [+0.00150, +0.00339] | +lost kinds +0.00251 [+0.00156, +0.00341] | +frames +0.00262 [+0.00163, +0.00357] | TREES - | same rows -
+OBS frames table: TABLE A | went false | castling_right [us] | base loss 0.03943 | base K+S+E+R +0.00882 [+0.00819, +0.00966] | +classes +0.00878 [+0.00813, +0.00962] | +trap +0.00882 [+0.00818, +0.00967] | +lost kinds +0.00881 [+0.00818, +0.00969] | +frames +0.00884 [+0.00822, +0.00970] | TREES - | same rows -
+OBS frames table: TABLE A | went false | castling_right [them] | base loss 0.03627 | base K+S+E+R +0.00802 [+0.00743, +0.00881] | +classes +0.00799 [+0.00741, +0.00885] | +trap +0.00801 [+0.00744, +0.00886] | +lost kinds +0.00800 [+0.00743, +0.00884] | +frames +0.00801 [+0.00744, +0.00884] | TREES - | same rows -
+OBS frames table: TABLE A | taken | knight [us] | base loss 0.18517 | base K+S+E+R +0.01678 [+0.01463, +0.01851] | +classes +0.01768 [+0.01553, +0.01940] | +trap +0.01765 [+0.01552, +0.01936] | +lost kinds +0.01787 [+0.01561, +0.01961] | +frames +0.01783 [+0.01564, +0.01959] | TREES - | same rows -
+OBS frames table: TABLE A | taken | knight [them] | base loss 0.19105 | base K+S+E+R +0.01676 [+0.01468, +0.01861] | +classes +0.01741 [+0.01530, +0.01929] | +trap +0.01739 [+0.01533, +0.01926] | +lost kinds +0.01750 [+0.01544, +0.01931] | +frames +0.01749 [+0.01543, +0.01934] | TREES - | same rows -
+OBS frames table: TABLE A | taken | bishop [us] | base loss 0.17627 | base K+S+E+R +0.01261 [+0.01042, +0.01463] | +classes +0.01300 [+0.01064, +0.01535] | +trap +0.01292 [+0.01061, +0.01515] | +lost kinds +0.01319 [+0.01089, +0.01554] | +frames +0.01348 [+0.01115, +0.01577] | TREES - | same rows -
+OBS frames table: TABLE A | taken | bishop [them] | base loss 0.17840 | base K+S+E+R +0.01301 [+0.01071, +0.01514] | +classes +0.01331 [+0.01111, +0.01551] | +trap +0.01325 [+0.01100, +0.01546] | +lost kinds +0.01332 [+0.01100, +0.01554] | +frames +0.01355 [+0.01116, +0.01577] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | bishop [us] | base loss 0.12429 | base K+S+E+R +0.00818 [+0.00669, +0.00985] | +classes +0.00839 [+0.00694, +0.00999] | +trap +0.00838 [+0.00691, +0.01004] | +lost kinds +0.00843 [+0.00688, +0.01012] | +frames +0.00850 [+0.00693, +0.01018] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | bishop [them] | base loss 0.12568 | base K+S+E+R +0.00844 [+0.00695, +0.00998] | +classes +0.00864 [+0.00709, +0.01032] | +trap +0.00861 [+0.00704, +0.01027] | +lost kinds +0.00862 [+0.00703, +0.01030] | +frames +0.00869 [+0.00702, +0.01038] | TREES - | same rows -
+OBS frames table: TABLE A | taken | rook [us] | base loss 0.16688 | base K+S+E+R +0.00092 [+0.00017, +0.00165] | +classes +0.00153 [+0.00076, +0.00223] | +trap +0.00173 [+0.00104, +0.00237] | +lost kinds +0.00191 [+0.00119, +0.00258] | +frames +0.00268 [+0.00177, +0.00357] | TREES - | same rows -
+OBS frames table: TABLE A | taken | rook [them] | base loss 0.17286 | base K+S+E+R +0.00128 [+0.00070, +0.00178] | +classes +0.00188 [+0.00124, +0.00247] | +trap +0.00225 [+0.00151, +0.00293] | +lost kinds +0.00232 [+0.00157, +0.00302] | +frames +0.00314 [+0.00225, +0.00407] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | knight [us] | base loss 0.10989 | base K+S+E+R +0.00581 [+0.00474, +0.00696] | +classes +0.00597 [+0.00492, +0.00711] | +trap +0.00593 [+0.00491, +0.00701] | +lost kinds +0.00597 [+0.00486, +0.00712] | +frames +0.00592 [+0.00480, +0.00714] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | knight [them] | base loss 0.11221 | base K+S+E+R +0.00579 [+0.00474, +0.00699] | +classes +0.00586 [+0.00481, +0.00710] | +trap +0.00583 [+0.00478, +0.00706] | +lost kinds +0.00586 [+0.00479, +0.00705] | +frames +0.00583 [+0.00475, +0.00701] | TREES - | same rows -
+OBS frames table: TABLE A | taken | queen [us] | base loss 0.11301 | base K+S+E+R +0.00218 [+0.00125, +0.00302] | +classes +0.00238 [+0.00141, +0.00323] | +trap +0.00255 [+0.00154, +0.00345] | +lost kinds +0.00266 [+0.00154, +0.00357] | +frames +0.00274 [+0.00129, +0.00393] | TREES - | same rows -
+OBS frames table: TABLE A | taken | queen [them] | base loss 0.11660 | base K+S+E+R +0.00207 [+0.00114, +0.00297] | +classes +0.00219 [+0.00126, +0.00303] | +trap +0.00238 [+0.00135, +0.00328] | +lost kinds +0.00238 [+0.00135, +0.00332] | +frames +0.00259 [+0.00125, +0.00374] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | rook [us] | base loss 0.11274 | base K+S+E+R +0.00002 [-0.00074, +0.00077] | +classes +0.00019 [-0.00064, +0.00097] | +trap +0.00014 [-0.00072, +0.00100] | +lost kinds +0.00027 [-0.00058, +0.00107] | +frames +0.00087 [-0.00008, +0.00179] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | rook [them] | base loss 0.11563 | base K+S+E+R +0.00037 [-0.00043, +0.00108] | +classes +0.00063 [-0.00019, +0.00130] | +trap +0.00062 [-0.00024, +0.00135] | +lost kinds +0.00065 [-0.00021, +0.00137] | +frames +0.00129 [+0.00050, +0.00202] | TREES - | same rows -
+OBS frames table: TABLE A | end [us] | base loss 0.05721 | base K+S+E+R +0.00222 [+0.00164, +0.00282] | +classes +0.00227 [+0.00172, +0.00288] | +trap +0.00230 [+0.00174, +0.00289] | +lost kinds +0.00230 [+0.00174, +0.00289] | +frames +0.00229 [+0.00175, +0.00289] | TREES +0.00033 [-0.00120, +0.00186] | same rows 9285: linear 0.05491, trees 0.05688, linear less trees -0.00196 [-0.00316, -0.00079]
+OBS frames table: TABLE A | end [them] | base loss 0.05591 | base K+S+E+R +0.00198 [+0.00147, +0.00248] | +classes +0.00201 [+0.00153, +0.00253] | +trap +0.00203 [+0.00156, +0.00254] | +lost kinds +0.00203 [+0.00156, +0.00255] | +frames +0.00212 [+0.00158, +0.00270] | TREES +0.00082 [-0.00021, +0.00185] | same rows 9285: linear 0.05380, trees 0.05509, linear less trees -0.00130 [-0.00197, -0.00056]
+OBS frames table: TABLE A | keeps | queen [us] | base loss 0.06552 | base K+S+E+R +0.00032 [-0.00032, +0.00095] | +classes +0.00037 [-0.00029, +0.00099] | +trap +0.00047 [-0.00018, +0.00109] | +lost kinds +0.00044 [-0.00020, +0.00106] | +frames +0.00049 [-0.00025, +0.00116] | TREES - | same rows -
+OBS frames table: TABLE A | keeps | queen [them] | base loss 0.06762 | base K+S+E+R +0.00018 [-0.00054, +0.00080] | +classes +0.00013 [-0.00059, +0.00074] | +trap +0.00016 [-0.00059, +0.00082] | +lost kinds +0.00019 [-0.00056, +0.00084] | +frames +0.00020 [-0.00058, +0.00088] | TREES - | same rows -
+OBS frames table: TABLE A | changed kind [us] | base loss 0.04500 | base K+S+E+R +0.00564 [+0.00389, +0.00721] | +classes +0.00563 [+0.00393, +0.00720] | +trap +0.00559 [+0.00395, +0.00714] | +lost kinds +0.00558 [+0.00394, +0.00714] | +frames +0.00562 [+0.00395, +0.00726] | TREES - | same rows -
+OBS frames table: TABLE A | changed kind [them] | base loss 0.04494 | base K+S+E+R +0.00563 [+0.00389, +0.00731] | +classes +0.00555 [+0.00383, +0.00721] | +trap +0.00554 [+0.00383, +0.00717] | +lost kinds +0.00552 [+0.00382, +0.00715] | +frames +0.00558 [+0.00388, +0.00722] | TREES - | same rows -
+OBS frames table: TABLE A | vanished | pawn [us] | base loss 0.00222 | base K+S+E+R +0.00001 [+0.00000, +0.00001] | +classes +0.00001 [+0.00000, +0.00001] | +trap +0.00001 [+0.00000, +0.00001] | +lost kinds +0.00001 [+0.00000, +0.00001] | +frames +0.00001 [+0.00000, +0.00001] | TREES - | same rows -
+OBS frames table: TABLE A | vanished | pawn [them] | base loss 0.00235 | base K+S+E+R +0.00003 [+0.00001, +0.00005] | +classes +0.00001 [+0.00000, +0.00002] | +trap +0.00001 [+0.00000, +0.00002] | +lost kinds +0.00001 [+0.00000, +0.00002] | +frames +0.00001 [+0.00000, +0.00002] | TREES - | same rows -
+OBS frames table: TABLE A | vanished [us] | base loss 0.00222 | base K+S+E+R +0.00001 [+0.00000, +0.00001] | +classes +0.00001 [+0.00000, +0.00001] | +trap +0.00001 [+0.00000, +0.00001] | +lost kinds +0.00001 [+0.00000, +0.00001] | +frames +0.00001 [+0.00000, +0.00001] | TREES - | same rows -
+OBS frames table: TABLE A | vanished [them] | base loss 0.00235 | base K+S+E+R +0.00003 [+0.00001, +0.00005] | +classes +0.00001 [+0.00000, +0.00002] | +trap +0.00001 [+0.00000, +0.00002] | +lost kinds +0.00001 [+0.00000, +0.00002] | +frames +0.00001 [+0.00000, +0.00002] | TREES - | same rows -
+OBS frames table: TABLE C: the thinned rows (the rows that have the 64 concepts; 'concepts' a step of its own), the gain at ALL the fit games on those rows
+OBS frames table: TABLE C | taken [us] [thinned rows] | base K+S+E+R | +0.01459 [+0.01012, +0.01859] (606 fit games)
+OBS frames table: TABLE C | taken [us] [thinned rows] | base +concepts | +0.02206 [+0.01468, +0.02952] (606 fit games)
+OBS frames table: TABLE C | taken [us] [thinned rows] | +all frames | +0.02469 [+0.01674, +0.03158] (606 fit games)
+OBS frames table: TABLE C | taken [us] [thinned rows] | +all frames +concepts | +0.02594 [+0.01752, +0.03385] (606 fit games)
+OBS frames table: TABLE C | taken [them] [thinned rows] | base K+S+E+R | +0.01610 [+0.01132, +0.02086] (606 fit games)
+OBS frames table: TABLE C | taken [them] [thinned rows] | base +concepts | +0.02345 [+0.01599, +0.03110] (606 fit games)
+OBS frames table: TABLE C | taken [them] [thinned rows] | +all frames | +0.01917 [+0.00666, +0.03055] (606 fit games)
+OBS frames table: TABLE C | taken [them] [thinned rows] | +all frames +concepts | +0.02161 [+0.00993, +0.03231] (606 fit games)
+OBS frames table: TABLE C | keeps [us] [thinned rows] | base K+S+E+R | +0.00778 [+0.00473, +0.01060] (606 fit games)
+OBS frames table: TABLE C | keeps [us] [thinned rows] | base +concepts | +0.00821 [+0.00474, +0.01117] (606 fit games)
+OBS frames table: TABLE C | keeps [us] [thinned rows] | +all frames | +0.00971 [+0.00487, +0.01494] (606 fit games)
+OBS frames table: TABLE C | keeps [us] [thinned rows] | +all frames +concepts | +0.00943 [+0.00402, +0.01509] (606 fit games)
+OBS frames table: TABLE C | keeps [them] [thinned rows] | base K+S+E+R | +0.00883 [+0.00579, +0.01196] (606 fit games)
+OBS frames table: TABLE C | keeps [them] [thinned rows] | base +concepts | +0.01200 [+0.00715, +0.01692] (606 fit games)
+OBS frames table: TABLE C | keeps [them] [thinned rows] | +all frames | +0.01007 [+0.00435, +0.01457] (606 fit games)
+OBS frames table: TABLE C | keeps [them] [thinned rows] | +all frames +concepts | +0.01167 [+0.00607, +0.01605] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [us] [thinned rows] | base K+S+E+R | +0.00386 [+0.00207, +0.00548] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [us] [thinned rows] | base +concepts | +0.00461 [+0.00279, +0.00660] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [us] [thinned rows] | +all frames | +0.00489 [+0.00257, +0.00752] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [us] [thinned rows] | +all frames +concepts | +0.00517 [+0.00254, +0.00803] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [them] [thinned rows] | base K+S+E+R | +0.00425 [+0.00236, +0.00586] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [them] [thinned rows] | base +concepts | +0.00487 [+0.00286, +0.00683] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [them] [thinned rows] | +all frames | +0.00704 [+0.00454, +0.00961] (606 fit games)
+OBS frames table: TABLE C | taken | pawn [them] [thinned rows] | +all frames +concepts | +0.00712 [+0.00438, +0.01004] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [us] [thinned rows] | base K+S+E+R | +0.00227 [+0.00128, +0.00328] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [us] [thinned rows] | base +concepts | +0.00225 [+0.00113, +0.00346] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [us] [thinned rows] | +all frames | +0.00254 [+0.00127, +0.00395] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [us] [thinned rows] | +all frames +concepts | +0.00243 [+0.00104, +0.00418] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [them] [thinned rows] | base K+S+E+R | +0.00167 [+0.00057, +0.00286] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [them] [thinned rows] | base +concepts | +0.00179 [+0.00072, +0.00311] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [them] [thinned rows] | +all frames | +0.00214 [+0.00076, +0.00356] (606 fit games)
+OBS frames table: TABLE C | keeps | pawn [them] [thinned rows] | +all frames +concepts | +0.00215 [+0.00090, +0.00365] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [us] [thinned rows] | base K+S+E+R | +0.01025 [+0.00925, +0.01133] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [us] [thinned rows] | base +concepts | +0.01041 [+0.00947, +0.01153] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [us] [thinned rows] | +all frames | +0.01002 [+0.00905, +0.01108] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [us] [thinned rows] | +all frames +concepts | +0.00995 [+0.00890, +0.01114] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [them] [thinned rows] | base K+S+E+R | +0.01042 [+0.00948, +0.01167] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [them] [thinned rows] | base +concepts | +0.01126 [+0.01026, +0.01259] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [them] [thinned rows] | +all frames | +0.01020 [+0.00919, +0.01139] (606 fit games)
+OBS frames table: TABLE C | went false | castling_right [them] [thinned rows] | +all frames +concepts | +0.01107 [+0.01001, +0.01238] (606 fit games)
+OBS frames table: TABLE C | taken | knight [us] [thinned rows] | base K+S+E+R | +0.01660 [+0.01337, +0.01945] (606 fit games)
+OBS frames table: TABLE C | taken | knight [us] [thinned rows] | base +concepts | +0.01734 [+0.01395, +0.02032] (606 fit games)
+OBS frames table: TABLE C | taken | knight [us] [thinned rows] | +all frames | +0.01725 [+0.01413, +0.02019] (606 fit games)
+OBS frames table: TABLE C | taken | knight [us] [thinned rows] | +all frames +concepts | +0.01683 [+0.01291, +0.02032] (606 fit games)
+OBS frames table: TABLE C | taken | knight [them] [thinned rows] | base K+S+E+R | +0.01632 [+0.01379, +0.01838] (606 fit games)
+OBS frames table: TABLE C | taken | knight [them] [thinned rows] | base +concepts | +0.01693 [+0.01444, +0.01918] (606 fit games)
+OBS frames table: TABLE C | taken | knight [them] [thinned rows] | +all frames | +0.01482 [+0.01274, +0.01671] (606 fit games)
+OBS frames table: TABLE C | taken | knight [them] [thinned rows] | +all frames +concepts | +0.01534 [+0.01324, +0.01720] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [us] [thinned rows] | base K+S+E+R | +0.01277 [+0.01046, +0.01495] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [us] [thinned rows] | base +concepts | +0.01209 [+0.00969, +0.01471] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [us] [thinned rows] | +all frames | +0.01402 [+0.01147, +0.01643] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [us] [thinned rows] | +all frames +concepts | +0.01218 [+0.01012, +0.01417] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [them] [thinned rows] | base K+S+E+R | +0.01107 [+0.00805, +0.01413] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [them] [thinned rows] | base +concepts | +0.01083 [+0.00781, +0.01401] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [them] [thinned rows] | +all frames | +0.01035 [+0.00810, +0.01266] (606 fit games)
+OBS frames table: TABLE C | taken | bishop [them] [thinned rows] | +all frames +concepts | +0.01000 [+0.00753, +0.01259] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [us] [thinned rows] | base K+S+E+R | +0.00756 [+0.00588, +0.00911] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [us] [thinned rows] | base +concepts | +0.00678 [+0.00498, +0.00865] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [us] [thinned rows] | +all frames | +0.00632 [+0.00493, +0.00775] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [us] [thinned rows] | +all frames +concepts | +0.00598 [+0.00449, +0.00740] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [them] [thinned rows] | base K+S+E+R | +0.00818 [+0.00630, +0.01012] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [them] [thinned rows] | base +concepts | +0.00778 [+0.00589, +0.00978] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [them] [thinned rows] | +all frames | +0.00740 [+0.00591, +0.00894] (606 fit games)
+OBS frames table: TABLE C | keeps | bishop [them] [thinned rows] | +all frames +concepts | +0.00767 [+0.00570, +0.01000] (606 fit games)
+OBS frames table: TABLE C | taken | rook [us] [thinned rows] | base K+S+E+R | +0.00065 [+0.00008, +0.00120] (606 fit games)
+OBS frames table: TABLE C | taken | rook [us] [thinned rows] | base +concepts | +0.00201 [+0.00084, +0.00324] (606 fit games)
+OBS frames table: TABLE C | taken | rook [us] [thinned rows] | +all frames | +0.00256 [+0.00164, +0.00356] (606 fit games)
+OBS frames table: TABLE C | taken | rook [us] [thinned rows] | +all frames +concepts | +0.00348 [+0.00248, +0.00462] (606 fit games)
+OBS frames table: TABLE C | taken | rook [them] [thinned rows] | base K+S+E+R | +0.00054 [+0.00005, +0.00107] (606 fit games)
+OBS frames table: TABLE C | taken | rook [them] [thinned rows] | base +concepts | +0.00101 [-0.00091, +0.00258] (606 fit games)
+OBS frames table: TABLE C | taken | rook [them] [thinned rows] | +all frames | +0.00205 [+0.00118, +0.00290] (606 fit games)
+OBS frames table: TABLE C | taken | rook [them] [thinned rows] | +all frames +concepts | +0.00279 [+0.00175, +0.00374] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [us] [thinned rows] | base K+S+E+R | +0.00496 [+0.00347, +0.00649] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [us] [thinned rows] | base +concepts | +0.00504 [+0.00369, +0.00653] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [us] [thinned rows] | +all frames | +0.00530 [+0.00374, +0.00677] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [us] [thinned rows] | +all frames +concepts | +0.00523 [+0.00362, +0.00685] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [them] [thinned rows] | base K+S+E+R | +0.00549 [+0.00419, +0.00672] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [them] [thinned rows] | base +concepts | +0.00559 [+0.00418, +0.00686] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [them] [thinned rows] | +all frames | +0.00459 [+0.00358, +0.00557] (606 fit games)
+OBS frames table: TABLE C | keeps | knight [them] [thinned rows] | +all frames +concepts | +0.00480 [+0.00371, +0.00596] (606 fit games)
+OBS frames table: TABLE C | taken | queen [us] [thinned rows] | base K+S+E+R | +0.00162 [+0.00056, +0.00266] (606 fit games)
+OBS frames table: TABLE C | taken | queen [us] [thinned rows] | base +concepts | +0.00114 [-0.00010, +0.00238] (606 fit games)
+OBS frames table: TABLE C | taken | queen [us] [thinned rows] | +all frames | +0.00200 [+0.00111, +0.00291] (606 fit games)
+OBS frames table: TABLE C | taken | queen [us] [thinned rows] | +all frames +concepts | +0.00150 [-0.00014, +0.00305] (606 fit games)
+OBS frames table: TABLE C | taken | queen [them] [thinned rows] | base K+S+E+R | +0.00162 [+0.00091, +0.00230] (606 fit games)
+OBS frames table: TABLE C | taken | queen [them] [thinned rows] | base +concepts | +0.00140 [+0.00085, +0.00184] (606 fit games)
+OBS frames table: TABLE C | taken | queen [them] [thinned rows] | +all frames | +0.00175 [+0.00100, +0.00229] (606 fit games)
+OBS frames table: TABLE C | taken | queen [them] [thinned rows] | +all frames +concepts | +0.00199 [+0.00120, +0.00254] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [us] [thinned rows] | base K+S+E+R | -0.00006 [-0.00084, +0.00071] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [us] [thinned rows] | base +concepts | -0.00042 [-0.00134, +0.00055] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [us] [thinned rows] | +all frames | +0.00039 [-0.00020, +0.00102] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [us] [thinned rows] | +all frames +concepts | +0.00031 [-0.00049, +0.00101] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [them] [thinned rows] | base K+S+E+R | -0.00003 [-0.00048, +0.00047] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [them] [thinned rows] | base +concepts | +0.00008 [-0.00062, +0.00074] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [them] [thinned rows] | +all frames | +0.00010 [-0.00058, +0.00086] (606 fit games)
+OBS frames table: TABLE C | keeps | rook [them] [thinned rows] | +all frames +concepts | +0.00022 [-0.00063, +0.00108] (606 fit games)
+OBS frames table: TABLE C | end [us] [thinned rows] | base K+S+E+R | +0.00217 [+0.00157, +0.00281] (606 fit games)
+OBS frames table: TABLE C | end [us] [thinned rows] | base +concepts | +0.00223 [+0.00161, +0.00291] (606 fit games)
+OBS frames table: TABLE C | end [us] [thinned rows] | +all frames | +0.00218 [+0.00159, +0.00281] (606 fit games)
+OBS frames table: TABLE C | end [us] [thinned rows] | +all frames +concepts | +0.00218 [+0.00156, +0.00284] (606 fit games)
+OBS frames table: TABLE C | end [them] [thinned rows] | base K+S+E+R | +0.00179 [+0.00130, +0.00238] (606 fit games)
+OBS frames table: TABLE C | end [them] [thinned rows] | base +concepts | +0.00179 [+0.00131, +0.00235] (606 fit games)
+OBS frames table: TABLE C | end [them] [thinned rows] | +all frames | +0.00176 [+0.00126, +0.00235] (606 fit games)
+OBS frames table: TABLE C | end [them] [thinned rows] | +all frames +concepts | +0.00172 [+0.00122, +0.00229] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [us] [thinned rows] | base K+S+E+R | -0.00043 [-0.00145, +0.00047] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [us] [thinned rows] | base +concepts | +0.00007 [-0.00076, +0.00086] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [us] [thinned rows] | +all frames | -0.00052 [-0.00153, +0.00045] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [us] [thinned rows] | +all frames +concepts | +0.00009 [-0.00069, +0.00094] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [them] [thinned rows] | base K+S+E+R | +0.00020 [-0.00048, +0.00081] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [them] [thinned rows] | base +concepts | +0.00014 [-0.00048, +0.00068] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [them] [thinned rows] | +all frames | +0.00041 [+0.00009, +0.00076] (606 fit games)
+OBS frames table: TABLE C | keeps | queen [them] [thinned rows] | +all frames +concepts | +0.00048 [+0.00008, +0.00087] (606 fit games)
+OBS frames table: TABLE C | changed kind [us] [thinned rows] | base K+S+E+R | +0.00484 [+0.00371, +0.00611] (606 fit games)
+OBS frames table: TABLE C | changed kind [us] [thinned rows] | base +concepts | +0.00444 [+0.00309, +0.00588] (606 fit games)
+OBS frames table: TABLE C | changed kind [us] [thinned rows] | +all frames | +0.00344 [+0.00227, +0.00475] (606 fit games)
+OBS frames table: TABLE C | changed kind [us] [thinned rows] | +all frames +concepts | +0.00384 [+0.00270, +0.00514] (606 fit games)
+OBS frames table: TABLE C | changed kind [them] [thinned rows] | base K+S+E+R | +0.00508 [+0.00265, +0.00794] (606 fit games)
+OBS frames table: TABLE C | changed kind [them] [thinned rows] | base +concepts | +0.00447 [+0.00209, +0.00718] (606 fit games)
+OBS frames table: TABLE C | changed kind [them] [thinned rows] | +all frames | +0.00477 [+0.00276, +0.00717] (606 fit games)
+OBS frames table: TABLE C | changed kind [them] [thinned rows] | +all frames +concepts | +0.00464 [+0.00270, +0.00698] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [us] [thinned rows] | base K+S+E+R | -0.00001 [-0.00005, +0.00003] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [us] [thinned rows] | base +concepts | -0.00002 [-0.00010, +0.00006] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [us] [thinned rows] | +all frames | +0.00001 [-0.00000, +0.00002] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [us] [thinned rows] | +all frames +concepts | +0.00001 [-0.00000, +0.00002] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [them] [thinned rows] | base K+S+E+R | +0.00007 [+0.00001, +0.00013] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [them] [thinned rows] | base +concepts | +0.00002 [-0.00000, +0.00004] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [them] [thinned rows] | +all frames | +0.00003 [+0.00001, +0.00005] (606 fit games)
+OBS frames table: TABLE C | vanished | pawn [them] [thinned rows] | +all frames +concepts | +0.00003 [+0.00001, +0.00006] (606 fit games)
+OBS frames table: TABLE C | vanished [us] [thinned rows] | base K+S+E+R | -0.00001 [-0.00005, +0.00003] (606 fit games)
+OBS frames table: TABLE C | vanished [us] [thinned rows] | base +concepts | -0.00002 [-0.00010, +0.00006] (606 fit games)
+OBS frames table: TABLE C | vanished [us] [thinned rows] | +all frames | +0.00001 [-0.00000, +0.00002] (606 fit games)
+OBS frames table: TABLE C | vanished [us] [thinned rows] | +all frames +concepts | +0.00001 [-0.00000, +0.00002] (606 fit games)
+OBS frames table: TABLE C | vanished [them] [thinned rows] | base K+S+E+R | +0.00007 [+0.00001, +0.00013] (606 fit games)
+OBS frames table: TABLE C | vanished [them] [thinned rows] | base +concepts | +0.00002 [-0.00000, +0.00004] (606 fit games)
+OBS frames table: TABLE C | vanished [them] [thinned rows] | +all frames | +0.00003 [+0.00001, +0.00005] (606 fit games)
+OBS frames table: TABLE C | vanished [them] [thinned rows] | +all frames +concepts | +0.00003 [+0.00001, +0.00006] (606 fit games)
+STAGE C, the learning curves (an eighth, a quarter, a half, all of the fit games) of the largest heads:
+OBS frames table: TABLE B | taken [us] | base K+S+E+R | 76 games: +0.01713 [+0.01295, +0.02178] | 152 games: +0.01685 [+0.01240, +0.02158] | 303 games: +0.01731 [+0.01311, +0.02189] | 606 games: +0.01734 [+0.01287, +0.02201]
+OBS frames table: TABLE B | taken [us] | +classes | 76 games: +0.02509 [+0.02052, +0.02959] | 152 games: +0.02537 [+0.02009, +0.03074] | 303 games: +0.02631 [+0.02155, +0.03114] | 606 games: +0.02608 [+0.02122, +0.03112]
+OBS frames table: TABLE B | taken [us] | +trap | 76 games: +0.02602 [+0.01940, +0.03225] | 152 games: +0.02665 [+0.01950, +0.03360] | 303 games: +0.02862 [+0.02178, +0.03490] | 606 games: +0.02933 [+0.02246, +0.03564]
+OBS frames table: TABLE B | taken [us] | +lost kinds | 76 games: +0.02693 [+0.02166, +0.03182] | 152 games: +0.02653 [+0.02052, +0.03225] | 303 games: +0.02797 [+0.02250, +0.03349] | 606 games: +0.02807 [+0.02255, +0.03328]
+OBS frames table: TABLE B | taken [us] | +frames | 76 games: +0.02831 [+0.02164, +0.03452] | 152 games: +0.02817 [+0.02093, +0.03496] | 303 games: +0.03047 [+0.02378, +0.03688] | 606 games: +0.03145 [+0.02509, +0.03746]
+OBS frames table: TABLE B | taken [us] | +frames [TREES] | 76 games: +0.02328 [+0.01149, +0.03451] | 152 games: +0.03236 [+0.02240, +0.04305] | 303 games: +0.03752 [+0.03086, +0.04609] | 606 games: +0.04303 [+0.03696, +0.05023]
+OBS frames table: TABLE B | taken [them] | base K+S+E+R | 76 games: +0.01814 [+0.01373, +0.02279] | 152 games: +0.01816 [+0.01320, +0.02322] | 303 games: +0.01854 [+0.01377, +0.02351] | 606 games: +0.01901 [+0.01392, +0.02395]
+OBS frames table: TABLE B | taken [them] | +classes | 76 games: +0.02121 [+0.01480, +0.02686] | 152 games: +0.02258 [+0.01587, +0.02942] | 303 games: +0.02472 [+0.01828, +0.03096] | 606 games: +0.02594 [+0.01935, +0.03227]
+OBS frames table: TABLE B | taken [them] | +trap | 76 games: +0.02342 [+0.01658, +0.02960] | 152 games: +0.02448 [+0.01750, +0.03102] | 303 games: +0.02673 [+0.02003, +0.03278] | 606 games: +0.02765 [+0.02100, +0.03382]
+OBS frames table: TABLE B | taken [them] | +lost kinds | 76 games: +0.02306 [+0.01637, +0.02919] | 152 games: +0.02406 [+0.01693, +0.03053] | 303 games: +0.02657 [+0.01975, +0.03284] | 606 games: +0.02738 [+0.02052, +0.03361]
+OBS frames table: TABLE B | taken [them] | +frames | 76 games: +0.02594 [+0.01941, +0.03203] | 152 games: +0.02638 [+0.01983, +0.03306] | 303 games: +0.02887 [+0.02279, +0.03511] | 606 games: +0.03019 [+0.02408, +0.03641]
+OBS frames table: TABLE B | taken [them] | +frames [TREES] | 76 games: +0.00368 [-0.01187, +0.01621] | 152 games: +0.00984 [-0.00378, +0.02457] | 303 games: +0.02633 [+0.01779, +0.03585] | 606 games: +0.03619 [+0.02895, +0.04392]
+OBS frames table: TABLE B | keeps [us] | base K+S+E+R | 76 games: +0.00879 [+0.00586, +0.01168] | 152 games: +0.00898 [+0.00596, +0.01214] | 303 games: +0.00959 [+0.00667, +0.01247] | 606 games: +0.00933 [+0.00662, +0.01215]
+OBS frames table: TABLE B | keeps [us] | +classes | 76 games: +0.01047 [+0.00741, +0.01349] | 152 games: +0.01117 [+0.00786, +0.01455] | 303 games: +0.01214 [+0.00890, +0.01546] | 606 games: +0.01207 [+0.00900, +0.01511]
+OBS frames table: TABLE B | keeps [us] | +trap | 76 games: +0.01089 [+0.00782, +0.01408] | 152 games: +0.01149 [+0.00807, +0.01500] | 303 games: +0.01258 [+0.00931, +0.01601] | 606 games: +0.01259 [+0.00947, +0.01583]
+OBS frames table: TABLE B | keeps [us] | +lost kinds | 76 games: +0.01015 [+0.00678, +0.01324] | 152 games: +0.01120 [+0.00767, +0.01479] | 303 games: +0.01247 [+0.00906, +0.01590] | 606 games: +0.01263 [+0.00933, +0.01604]
+OBS frames table: TABLE B | keeps [us] | +frames | 76 games: +0.01095 [+0.00738, +0.01435] | 152 games: +0.01192 [+0.00825, +0.01570] | 303 games: +0.01336 [+0.00970, +0.01729] | 606 games: +0.01360 [+0.01002, +0.01746]
+OBS frames table: TABLE B | keeps [us] | +frames [TREES] | 76 games: +0.00312 [-0.00271, +0.00983] | 152 games: +0.00998 [+0.00477, +0.01599] | 303 games: +0.01732 [+0.01301, +0.02229] | 606 games: +0.02099 [+0.01728, +0.02495]
+OBS frames table: TABLE B | keeps [them] | base K+S+E+R | 76 games: +0.00920 [+0.00591, +0.01226] | 152 games: +0.01004 [+0.00682, +0.01316] | 303 games: +0.01071 [+0.00766, +0.01367] | 606 games: +0.01051 [+0.00764, +0.01352]
+OBS frames table: TABLE B | keeps [them] | +classes | 76 games: +0.01028 [+0.00661, +0.01342] | 152 games: +0.01173 [+0.00819, +0.01511] | 303 games: +0.01246 [+0.00893, +0.01554] | 606 games: +0.01239 [+0.00914, +0.01523]
+OBS frames table: TABLE B | keeps [them] | +trap | 76 games: +0.01055 [+0.00692, +0.01376] | 152 games: +0.01183 [+0.00794, +0.01520] | 303 games: +0.01286 [+0.00933, +0.01609] | 606 games: +0.01287 [+0.00944, +0.01601]
+OBS frames table: TABLE B | keeps [them] | +lost kinds | 76 games: +0.00985 [+0.00629, +0.01343] | 152 games: +0.01152 [+0.00768, +0.01496] | 303 games: +0.01281 [+0.00922, +0.01602] | 606 games: +0.01286 [+0.00955, +0.01592]
+OBS frames table: TABLE B | keeps [them] | +frames | 76 games: +0.00825 [+0.00420, +0.01269] | 152 games: +0.01170 [+0.00704, +0.01602] | 303 games: +0.01413 [+0.01011, +0.01820] | 606 games: +0.01418 [+0.01005, +0.01782]
+OBS frames table: TABLE B | keeps [them] | +frames [TREES] | 76 games: +0.00115 [-0.00516, +0.00715] | 152 games: +0.00563 [-0.00009, +0.01230] | 303 games: +0.01500 [+0.01076, +0.01961] | 606 games: +0.01822 [+0.01476, +0.02217]
+OBS frames table: TABLE B | end [us] | base K+S+E+R | 76 games: +0.00175 [+0.00102, +0.00241] | 152 games: +0.00208 [+0.00148, +0.00273] | 303 games: +0.00211 [+0.00155, +0.00273] | 606 games: +0.00222 [+0.00164, +0.00282]
+OBS frames table: TABLE B | end [us] | +classes | 76 games: +0.00172 [+0.00097, +0.00238] | 152 games: +0.00211 [+0.00154, +0.00274] | 303 games: +0.00214 [+0.00159, +0.00274] | 606 games: +0.00227 [+0.00172, +0.00288]
+OBS frames table: TABLE B | end [us] | +trap | 76 games: +0.00169 [+0.00098, +0.00237] | 152 games: +0.00210 [+0.00154, +0.00272] | 303 games: +0.00215 [+0.00160, +0.00275] | 606 games: +0.00230 [+0.00174, +0.00289]
+OBS frames table: TABLE B | end [us] | +lost kinds | 76 games: +0.00166 [+0.00096, +0.00235] | 152 games: +0.00210 [+0.00154, +0.00273] | 303 games: +0.00215 [+0.00159, +0.00274] | 606 games: +0.00230 [+0.00174, +0.00289]
+OBS frames table: TABLE B | end [us] | +frames | 76 games: +0.00162 [+0.00088, +0.00230] | 152 games: +0.00209 [+0.00152, +0.00272] | 303 games: +0.00213 [+0.00157, +0.00274] | 606 games: +0.00229 [+0.00175, +0.00289]
+OBS frames table: TABLE B | end [us] | +frames [TREES] | 76 games: -0.00438 [-0.00654, -0.00250] | 152 games: -0.00409 [-0.00612, -0.00160] | 303 games: +0.00005 [-0.00125, +0.00143] | 606 games: +0.00033 [-0.00120, +0.00186]
+OBS frames table: TABLE B | end [them] | base K+S+E+R | 76 games: +0.00153 [+0.00087, +0.00221] | 152 games: +0.00184 [+0.00131, +0.00239] | 303 games: +0.00192 [+0.00145, +0.00243] | 606 games: +0.00198 [+0.00147, +0.00248]
+OBS frames table: TABLE B | end [them] | +classes | 76 games: +0.00149 [+0.00079, +0.00217] | 152 games: +0.00185 [+0.00132, +0.00239] | 303 games: +0.00193 [+0.00144, +0.00245] | 606 games: +0.00201 [+0.00153, +0.00253]
+OBS frames table: TABLE B | end [them] | +trap | 76 games: +0.00147 [+0.00078, +0.00214] | 152 games: +0.00184 [+0.00133, +0.00239] | 303 games: +0.00193 [+0.00145, +0.00245] | 606 games: +0.00203 [+0.00156, +0.00254]
+OBS frames table: TABLE B | end [them] | +lost kinds | 76 games: +0.00138 [+0.00068, +0.00201] | 152 games: +0.00180 [+0.00129, +0.00234] | 303 games: +0.00192 [+0.00144, +0.00242] | 606 games: +0.00203 [+0.00156, +0.00255]
+OBS frames table: TABLE B | end [them] | +frames | 76 games: +0.00013 [-0.00099, +0.00114] | 152 games: +0.00160 [+0.00098, +0.00222] | 303 games: +0.00192 [+0.00138, +0.00250] | 606 games: +0.00212 [+0.00158, +0.00270]
+OBS frames table: TABLE B | end [them] | +frames [TREES] | 76 games: -0.00277 [-0.00463, -0.00116] | 152 games: -0.00178 [-0.00322, -0.00023] | 303 games: +0.00067 [-0.00023, +0.00158] | 606 games: +0.00082 [-0.00021, +0.00185]
+STAGE D, the trees beside the linear head on the same test rows, the groups that carry the gain, the pairs:
+OBS HEAD taken [us] set +frames: SAME 9285 TEST ROWS, log loss per step linear 0.46200, trees 0.45042; linear less trees +0.01158 [+0.00753, +0.01562] (positive: the trees are better)
+OBS HEAD taken [them] set +frames: SAME 9285 TEST ROWS, log loss per step linear 0.49163, trees 0.48562; linear less trees +0.00600 [+0.00287, +0.00917] (positive: the trees are better)
+OBS HEAD keeps [us] set +frames: SAME 9285 TEST ROWS, log loss per step linear 0.38014, trees 0.37275; linear less trees +0.00739 [+0.00565, +0.00943] (positive: the trees are better)
+OBS HEAD keeps [them] set +frames: SAME 9285 TEST ROWS, log loss per step linear 0.39952, trees 0.39549; linear less trees +0.00404 [+0.00271, +0.00566] (positive: the trees are better)
+OBS HEAD end [us] set +frames: SAME 9285 TEST ROWS, log loss per step linear 0.05491, trees 0.05688; linear less trees -0.00196 [-0.00316, -0.00079] (positive: the trees are better)
+OBS HEAD end [them] set +frames: SAME 9285 TEST ROWS, log loss per step linear 0.05380, trees 0.05509; linear less trees -0.00130 [-0.00197, -0.00056] (positive: the trees are better)
+OBS IMPORTANCE taken [us] [LINEAR]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00682 [+0.00376, +0.00966]; classes +0.01009 [+0.00808, +0.01200]; trap +0.00219 [+0.00135, +0.00325]; lost kinds +0.00152 [+0.00078, +0.00228]; frames +0.02480 [+0.01999, +0.02967]; kinds, statements, edges +0.00212 [+0.00141, +0.00273]
+OBS IMPORTANCE taken [us] [TREES]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.01463 [+0.00991, +0.01952]; classes +0.01817 [+0.01589, +0.02071]; trap +0.00060 [+0.00036, +0.00086]; lost kinds +0.00008 [-0.00008, +0.00023]; frames +0.01334 [+0.01042, +0.01629]; kinds, statements, edges +0.01033 [+0.00882, +0.01195]
+OBS IMPORTANCE taken [them] [LINEAR]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00773 [+0.00424, +0.01099]; classes +0.00820 [+0.00660, +0.00984]; trap +0.00186 [+0.00107, +0.00273]; lost kinds +0.00028 [-0.00023, +0.00083]; frames +0.02698 [+0.02255, +0.03218]; kinds, statements, edges +0.00244 [+0.00177, +0.00311]
+OBS IMPORTANCE taken [them] [TREES]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.01890 [+0.01206, +0.02530]; classes +0.01133 [+0.00964, +0.01307]; trap +0.00054 [+0.00030, +0.00081]; lost kinds +0.00010 [-0.00008, +0.00030]; frames +0.01113 [+0.00846, +0.01391]; kinds, statements, edges +0.00701 [+0.00516, +0.00877]
+OBS IMPORTANCE keeps [us] [LINEAR]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00404 [+0.00270, +0.00546]; classes +0.00175 [+0.00107, +0.00228]; trap +0.00049 [+0.00022, +0.00078]; lost kinds +0.00097 [+0.00051, +0.00140]; frames +0.00585 [+0.00411, +0.00753]; kinds, statements, edges +0.00126 [+0.00088, +0.00178]
+OBS IMPORTANCE keeps [us] [TREES]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00882 [+0.00616, +0.01197]; classes +0.00582 [+0.00484, +0.00688]; trap +0.00005 [+0.00001, +0.00009]; lost kinds +0.00004 [-0.00006, +0.00017]; frames +0.00442 [+0.00285, +0.00651]; kinds, statements, edges +0.00950 [+0.00830, +0.01091]
+OBS IMPORTANCE keeps [them] [LINEAR]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00520 [+0.00310, +0.00732]; classes +0.00239 [+0.00156, +0.00311]; trap +0.00076 [+0.00034, +0.00117]; lost kinds +0.00029 [+0.00002, +0.00060]; frames +0.00990 [+0.00785, +0.01167]; kinds, statements, edges +0.00168 [+0.00125, +0.00219]
+OBS IMPORTANCE keeps [them] [TREES]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00940 [+0.00612, +0.01302]; classes +0.00540 [+0.00455, +0.00642]; trap +0.00014 [+0.00002, +0.00027]; lost kinds +0.00005 [-0.00004, +0.00015]; frames +0.00303 [+0.00182, +0.00427]; kinds, statements, edges +0.00422 [+0.00320, +0.00524]
+OBS IMPORTANCE end [us] [LINEAR]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00055 [+0.00027, +0.00075]; classes +0.00008 [+0.00003, +0.00012]; trap +0.00004 [+0.00000, +0.00008]; lost kinds +0.00002 [+0.00001, +0.00004]; frames +0.00002 [-0.00001, +0.00005]; kinds, statements, edges +0.00461 [+0.00404, +0.00522]
+OBS IMPORTANCE end [us] [TREES]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00123 [-0.00026, +0.00258]; classes +0.00007 [+0.00003, +0.00011]; trap +0.00001 [+0.00000, +0.00002]; lost kinds +0.00001 [+0.00000, +0.00002]; frames +0.00002 [-0.00008, +0.00012]; kinds, statements, edges +0.00430 [+0.00362, +0.00499]
+OBS IMPORTANCE end [them] [LINEAR]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00137 [+0.00105, +0.00165]; classes +0.00007 [+0.00002, +0.00012]; trap +0.00004 [-0.00002, +0.00010]; lost kinds +0.00001 [-0.00001, +0.00002]; frames +0.00014 [+0.00006, +0.00023]; kinds, statements, edges +0.00457 [+0.00397, +0.00519]
+OBS IMPORTANCE end [them] [TREES]: loss per step that returns when the group is shuffled across the test rows (larger: the group carries more): ratings and ply +0.00132 [+0.00047, +0.00213]; classes +0.00001 [-0.00000, +0.00001]; trap +0.00001 [+0.00000, +0.00001]; lost kinds +0.00000 [+0.00000, +0.00000]; frames +0.00001 [-0.00006, +0.00006]; kinds, statements, edges +0.00318 [+0.00268, +0.00370]
+OBS PAIRS taken [us] [TREES, Friedman's H squared on the ten inputs with the widest partial dependence, 80 test records]: 0.418 frames at the row WITH mean rating; 0.068 distance bin WITH them: contested resting on nothing; 0.051 distance bin WITH ply; 0.035 ply WITH frames at the row; 0.031 distance bin WITH statement overloaded; 0.029 distance bin WITH them: lost resting on estimate; 0.023 ply WITH mean rating; 0.017 units read per frame WITH frames at the row
+OBS PAIRS taken [them] [TREES, Friedman's H squared on the ten inputs with the widest partial dependence, 80 test records]: 0.119 distance bin WITH them: contested resting on nothing; 0.077 ply WITH mean rating; 0.074 mean rating WITH frames at the row; 0.051 distance bin WITH us: contested resting on nothing; 0.049 ply WITH distance bin; 0.040 distance bin WITH statement overloaded; 0.031 units read per frame WITH frames at the row; 0.025 frames at the row WITH rating difference
+OBS PAIRS keeps [us] [TREES, Friedman's H squared on the ten inputs with the widest partial dependence, 80 test records]: 0.159 kind pawn WITH mean rating; 0.080 rating difference WITH mean rating; 0.023 distance bin WITH ply; 0.018 distance bin WITH units read per frame; 0.015 ply WITH mean rating; 0.014 distance bin WITH them: contested resting on nothing; 0.012 distance bin WITH statement attackers; 0.012 rating difference WITH kind pawn
+OBS PAIRS keeps [them] [TREES, Friedman's H squared on the ten inputs with the widest partial dependence, 80 test records]: 0.249 distance bin WITH statement overloaded; 0.194 distance bin WITH them: contested resting on nothing; 0.174 rating difference WITH mean rating; 0.167 mean rating WITH them: units read; 0.078 mean rating WITH edge distances of knight; 0.066 distance bin WITH them: units read; 0.065 distance bin WITH us: contested resting on nothing; 0.045 us: contested resting on nothing WITH edge distances of knight
+OBS PAIRS end [us] [TREES, Friedman's H squared on the ten inputs with the widest partial dependence, 80 test records]: 0.096 rating difference WITH mean rating; 0.045 ply WITH statement bearing_total; 0.043 distance bin WITH ply; 0.034 flag WITH distance bin; 0.026 distance bin WITH rating difference; 0.021 flag WITH rating difference; 0.017 ply WITH statement units; 0.015 mean rating WITH kind queen
+OBS PAIRS end [them] [TREES, Friedman's H squared on the ten inputs with the widest partial dependence, 80 test records]: 0.080 rating difference WITH mean rating; 0.057 distance bin WITH ply; 0.030 flag WITH distance bin; 0.029 ply WITH statement bearing_total; 0.025 rating difference WITH distance bin; 0.023 flag WITH rating difference; 0.022 ply WITH statement units; 0.022 rating difference WITH kind pawn
+STAGE E, the reading for a leaf at settled rows (the chance that each side next wins and keeps a unit, and who first, calibration, by band of rating; linear head with the frames, linear head without, trees):
+OBS LEAF [linear, all frames] keeps [us]: chance that the side has the event before the record ends, 8604 test rows (not cut; observed 0.8212, predicted 0.8015); log loss gain over the base hazard's chance +0.06267 [+0.04005, +0.08531]; calibration (predicted>observed) 0.156>0.146 0.496>0.505 0.716>0.782 0.843>0.882 0.912>0.950 0.950>0.978 0.971>0.984 0.983>0.992 0.991>0.998 0.998>0.998
+OBS LEAF [linear, all frames] keeps [them]: chance that the side has the event before the record ends, 8604 test rows (not cut; observed 0.8164, predicted 0.7940); log loss gain over the base hazard's chance +0.06780 [+0.04517, +0.09379]; calibration (predicted>observed) 0.131>0.137 0.457>0.488 0.697>0.767 0.837>0.871 0.915>0.967 0.953>0.979 0.974>0.980 0.986>0.990 0.993>0.990 0.998>0.997
+OBS LEAF [linear, all frames] keeps: WHO FIRST, 7661 test rows where the class occurred before the record ended (the mover first in 0.5199); accuracy head 0.5615 [0.5433, 0.5805], base hazard 0.5168 [0.5072, 0.5263]; log loss gain over the base hazard's chance +0.01524 [+0.00872, +0.02054]; calibration 0.359>0.379 0.426>0.456 0.452>0.486 0.472>0.463 0.488>0.504 0.504>0.521 0.521>0.557 0.544>0.539 0.577>0.559 0.675>0.735
+OBS LEAF [linear, all frames] keeps: WHO FIRST by rating band 0: 1400 rows; accuracy head 0.5593, base hazard 0.5093; log loss gain +0.01134 [-0.00044, +0.02463]; mean predicted 0.500, observed 0.524
+OBS LEAF [linear, all frames] keeps: WHO FIRST by rating band 1: 2041 rows; accuracy head 0.5551, base hazard 0.5390; log loss gain +0.01727 [+0.00848, +0.02638]; mean predicted 0.498, observed 0.512
+OBS LEAF [linear, all frames] keeps: WHO FIRST by rating band 2: 2028 rows; accuracy head 0.5528, base hazard 0.4926; log loss gain +0.01104 [-0.00079, +0.02139]; mean predicted 0.505, observed 0.524
+OBS LEAF [linear, all frames] keeps: WHO FIRST by rating band 3: 2192 rows; accuracy head 0.5771, base hazard 0.5233; log loss gain +0.01971 [+0.00597, +0.03105]; mean predicted 0.505, observed 0.521
+OBS LEAF [linear, base inputs only] keeps [us]: chance that the side has the event before the record ends, 8604 test rows (not cut; observed 0.8212, predicted 0.8042); log loss gain over the base hazard's chance +0.04986 [+0.03314, +0.06893]; calibration (predicted>observed) 0.173>0.174 0.526>0.526 0.731>0.771 0.843>0.862 0.905>0.929 0.941>0.980 0.964>0.984 0.978>0.990 0.987>0.999 0.994>0.999
+OBS LEAF [linear, base inputs only] keeps [them]: chance that the side has the event before the record ends, 8604 test rows (not cut; observed 0.8164, predicted 0.8040); log loss gain over the base hazard's chance +0.05528 [+0.03820, +0.07390]; calibration (predicted>observed) 0.169>0.166 0.526>0.515 0.731>0.755 0.842>0.850 0.906>0.933 0.942>0.972 0.965>0.991 0.978>0.986 0.988>0.999 0.994>0.999
+OBS LEAF [linear, base inputs only] keeps: WHO FIRST, 7661 test rows where the class occurred before the record ended (the mover first in 0.5199); accuracy head 0.5625 [0.5393, 0.5832], base hazard 0.5168 [0.5072, 0.5263]; log loss gain over the base hazard's chance +0.01194 [+0.00688, +0.01625]; calibration 0.393>0.355 0.447>0.445 0.469>0.479 0.483>0.505 0.494>0.504 0.505>0.517 0.516>0.542 0.530>0.546 0.552>0.587 0.605>0.719
+OBS LEAF [linear, base inputs only] keeps: WHO FIRST by rating band 0: 1400 rows; accuracy head 0.5879, base hazard 0.5093; log loss gain +0.01141 [+0.00164, +0.02119]; mean predicted 0.498, observed 0.524
+OBS LEAF [linear, base inputs only] keeps: WHO FIRST by rating band 1: 2041 rows; accuracy head 0.5394, base hazard 0.5390; log loss gain +0.01172 [+0.00509, +0.02034]; mean predicted 0.498, observed 0.512
+OBS LEAF [linear, base inputs only] keeps: WHO FIRST by rating band 2: 2028 rows; accuracy head 0.5464, base hazard 0.4926; log loss gain +0.00987 [+0.00122, +0.01862]; mean predicted 0.500, observed 0.524
+OBS LEAF [linear, base inputs only] keeps: WHO FIRST by rating band 3: 2192 rows; accuracy head 0.5826, base hazard 0.5233; log loss gain +0.01438 [+0.00331, +0.02338]; mean predicted 0.500, observed 0.521
+OBS LEAF [trees, all frames] keeps [us]: chance that the side has the event before the record ends, 8604 test rows (not cut; observed 0.8212, predicted 0.8112); log loss gain over the base hazard's chance +0.07270 [+0.05049, +0.09426]; calibration (predicted>observed) 0.113>0.121 0.472>0.523 0.747>0.800 0.884>0.885 0.944>0.944 0.973>0.976 0.987>0.974 0.994>0.991 0.998>1.000 1.000>1.000
+OBS LEAF [trees, all frames] keeps [them]: chance that the side has the event before the record ends, 8604 test rows (not cut; observed 0.8164, predicted 0.8077); log loss gain over the base hazard's chance +0.07601 [+0.05333, +0.09883]; calibration (predicted>observed) 0.111>0.116 0.466>0.505 0.736>0.780 0.877>0.882 0.940>0.941 0.971>0.970 0.986>0.984 0.994>0.990 0.998>0.999 1.000>0.999
+OBS LEAF [trees, all frames] keeps: WHO FIRST, 7661 test rows where the class occurred before the record ended (the mover first in 0.5199); accuracy head 0.5585 [0.5401, 0.5763], base hazard 0.5168 [0.5072, 0.5263]; log loss gain over the base hazard's chance +0.01521 [+0.00849, +0.02212]; calibration 0.330>0.357 0.407>0.441 0.439>0.480 0.462>0.523 0.483>0.497 0.502>0.507 0.522>0.567 0.548>0.542 0.593>0.569 0.725>0.715
+OBS LEAF [trees, all frames] keeps: WHO FIRST by rating band 0: 1400 rows; accuracy head 0.5750, base hazard 0.5093; log loss gain +0.01920 [+0.00651, +0.03279]; mean predicted 0.506, observed 0.524
+OBS LEAF [trees, all frames] keeps: WHO FIRST by rating band 1: 2041 rows; accuracy head 0.5488, base hazard 0.5390; log loss gain +0.01053 [-0.00370, +0.02420]; mean predicted 0.490, observed 0.512
+OBS LEAF [trees, all frames] keeps: WHO FIRST by rating band 2: 2028 rows; accuracy head 0.5404, base hazard 0.4926; log loss gain +0.01143 [-0.00064, +0.02290]; mean predicted 0.506, observed 0.524
+OBS LEAF [trees, all frames] keeps: WHO FIRST by rating band 3: 2192 rows; accuracy head 0.5739, base hazard 0.5233; log loss gain +0.02053 [+0.00825, +0.03296]; mean predicted 0.504, observed 0.521
+OBS LEAF [linear, all frames] end: WHO FIRST, 8297 test rows where the class occurred before the record ended (the mover first in 0.5073); accuracy head 0.6981 [0.6681, 0.7271], base hazard 0.5073 [0.5020, 0.5122]; log loss gain over the base hazard's chance +0.11155 [+0.07717, +0.14570]; calibration 0.114>0.094 0.277>0.227 0.373>0.320 0.444>0.411 0.502>0.502 0.557>0.512 0.614>0.583 0.686>0.672 0.785>0.811 0.933>0.942
+OBS LEAF [linear, all frames] end: WHO FIRST by rating band 0: 1470 rows; accuracy head 0.6605, base hazard 0.5109; log loss gain +0.01723 [-0.11836, +0.14738]; mean predicted 0.522, observed 0.511
+OBS LEAF [linear, all frames] end: WHO FIRST by rating band 1: 2279 rows; accuracy head 0.7179, base hazard 0.5050; log loss gain +0.15212 [+0.10027, +0.19635]; mean predicted 0.521, observed 0.505
+OBS LEAF [linear, all frames] end: WHO FIRST by rating band 2: 2404 rows; accuracy head 0.7180, base hazard 0.5046; log loss gain +0.14158 [+0.08425, +0.18966]; mean predicted 0.531, observed 0.505
+OBS LEAF [linear, all frames] end: WHO FIRST by rating band 3: 2144 rows; accuracy head 0.6805, base hazard 0.5103; log loss gain +0.09942 [+0.02736, +0.16380]; mean predicted 0.537, observed 0.510
+OBS LEAF [linear, base inputs only] end: WHO FIRST, 8297 test rows where the class occurred before the record ended (the mover first in 0.5073); accuracy head 0.6876 [0.6567, 0.7167], base hazard 0.5073 [0.5020, 0.5122]; log loss gain over the base hazard's chance +0.10695 [+0.07704, +0.13889]; calibration 0.126>0.092 0.281>0.239 0.370>0.342 0.434>0.431 0.489>0.493 0.541>0.508 0.594>0.573 0.663>0.650 0.761>0.807 0.922>0.938
+OBS LEAF [linear, base inputs only] end: WHO FIRST by rating band 0: 1470 rows; accuracy head 0.6354, base hazard 0.5109; log loss gain +0.02706 [-0.08655, +0.14066]; mean predicted 0.513, observed 0.511
+OBS LEAF [linear, base inputs only] end: WHO FIRST by rating band 1: 2279 rows; accuracy head 0.7034, base hazard 0.5050; log loss gain +0.14107 [+0.09007, +0.18451]; mean predicted 0.513, observed 0.505
+OBS LEAF [linear, base inputs only] end: WHO FIRST by rating band 2: 2404 rows; accuracy head 0.7101, base hazard 0.5046; log loss gain +0.13597 [+0.08424, +0.18063]; mean predicted 0.520, observed 0.505
+OBS LEAF [linear, base inputs only] end: WHO FIRST by rating band 3: 2144 rows; accuracy head 0.6814, base hazard 0.5103; log loss gain +0.09291 [+0.02635, +0.15396]; mean predicted 0.524, observed 0.510
+OBS LEAF [trees, all frames] end: WHO FIRST, 8297 test rows where the class occurred before the record ended (the mover first in 0.5073); accuracy head 0.6858 [0.6540, 0.7173], base hazard 0.5073 [0.5020, 0.5122]; log loss gain over the base hazard's chance +0.10924 [+0.07722, +0.14518]; calibration 0.091>0.087 0.224>0.234 0.337>0.371 0.418>0.433 0.478>0.483 0.534>0.529 0.599>0.560 0.690>0.628 0.807>0.817 0.939>0.932
+OBS LEAF [trees, all frames] end: WHO FIRST by rating band 0: 1470 rows; accuracy head 0.6395, base hazard 0.5109; log loss gain +0.03325 [-0.07227, +0.14133]; mean predicted 0.504, observed 0.511
+OBS LEAF [trees, all frames] end: WHO FIRST by rating band 1: 2279 rows; accuracy head 0.6955, base hazard 0.5050; log loss gain +0.13721 [+0.08590, +0.18776]; mean predicted 0.513, observed 0.505
+OBS LEAF [trees, all frames] end: WHO FIRST by rating band 2: 2404 rows; accuracy head 0.7142, base hazard 0.5046; log loss gain +0.15029 [+0.09035, +0.20479]; mean predicted 0.507, observed 0.505
+OBS LEAF [trees, all frames] end: WHO FIRST by rating band 3: 2144 rows; accuracy head 0.6754, base hazard 0.5103; log loss gain +0.08558 [-0.01866, +0.17021]; mean predicted 0.522, observed 0.510
+ENDGAME COVERAGE (the standing rule) of the games of this run:
+OBS coverage [fit games]: games 606, positions 39926
+OBS coverage [fit games]: units left <= 24: positions 19604 (49.10 pct), games reaching it 539 (88.9 pct)
+OBS coverage [fit games]: units left <= 16: positions 8584 (21.50 pct), games reaching it 298 (49.2 pct)
+OBS coverage [fit games]: units left <= 12: positions 5056 (12.66 pct), games reaching it 173 (28.5 pct)
+OBS coverage [fit games]: units left <= 8: positions 2450 (6.14 pct), games reaching it 92 (15.2 pct)
+OBS coverage [fit games]: units left <= 6: positions 1436 (3.60 pct), games reaching it 59 (9.7 pct)
+OBS coverage [fit games]: units left <= 4: positions 583 (1.46 pct), games reaching it 30 (5.0 pct)
+OBS coverage [fit games]: small sets (at most 6 units, the goal units not counted, the two sides in either order): 182 distinct, 0 in 30 games or more, 182 thin (under 30 games), 164 in under 5 games; positions in them 2450 (6.14 pct of all), in the thin ones 2450
+OBS coverage [fit games]: set - | queen: positions 128, games 8
+OBS coverage [fit games]: set - | rook: positions 104, games 5
+OBS coverage [fit games]: set pawn+pawn+rook | pawn+pawn+rook: positions 99, games 7
+OBS coverage [fit games]: set - | pawn: positions 93, games 10
+OBS coverage [fit games]: set pawn+rook | pawn+pawn+rook: positions 82, games 13
+OBS coverage [fit games]: set pawn+rook | pawn+rook: positions 73, games 7
+OBS coverage [fit games]: set pawn+pawn | pawn+pawn+pawn: positions 47, games 9
+OBS coverage [fit games]: set pawn+pawn | pawn+pawn+pawn+rook: positions 45, games 5
+OBS coverage [fit games]: set - | pawn+pawn+pawn: positions 45, games 1
+OBS coverage [fit games]: set pawn+rook | pawn+pawn+pawn+rook: positions 42, games 9
+OBS coverage [fit games]: set rook | pawn+rook: positions 41, games 6
+OBS coverage [fit games]: set rook | pawn+pawn+pawn+rook: positions 41, games 3
+OBS coverage [fit games]: how the games ended: decisive, the rules' end on the board 221 (36.5 pct), decisive, stopped before it 353 (58.3 pct), drawn, the rules' end on the board 12 (2.0 pct), drawn, stopped before it 20 (3.3 pct)
+OBS coverage [test games]: games 274, positions 18814
+OBS coverage [test games]: units left <= 24: positions 9318 (49.53 pct), games reaching it 246 (89.8 pct)
+OBS coverage [test games]: units left <= 16: positions 4246 (22.57 pct), games reaching it 139 (50.7 pct)
+OBS coverage [test games]: units left <= 12: positions 2463 (13.09 pct), games reaching it 83 (30.3 pct)
+OBS coverage [test games]: units left <= 8: positions 1096 (5.83 pct), games reaching it 44 (16.1 pct)
+OBS coverage [test games]: units left <= 6: positions 659 (3.50 pct), games reaching it 27 (9.9 pct)
+OBS coverage [test games]: units left <= 4: positions 321 (1.71 pct), games reaching it 16 (5.8 pct)
+OBS coverage [test games]: small sets (at most 6 units, the goal units not counted, the two sides in either order): 119 distinct, 0 in 30 games or more, 119 thin (under 30 games), 117 in under 5 games; positions in them 1096 (5.83 pct of all), in the thin ones 1096
+OBS coverage [test games]: set - | queen: positions 96, games 3
+OBS coverage [test games]: set pawn+rook | pawn+pawn+rook: positions 56, games 4
+OBS coverage [test games]: set - | pawn+pawn: positions 50, games 4
+OBS coverage [test games]: set pawn+rook | pawn+pawn+pawn+rook: positions 47, games 7
+OBS coverage [test games]: set - | queen+queen: positions 42, games 4
+OBS coverage [test games]: set - | pawn+queen: positions 40, games 5
+OBS coverage [test games]: set - | knight+queen: positions 35, games 1
+OBS coverage [test games]: set rook | pawn+pawn+rook: positions 34, games 3
+OBS coverage [test games]: set - | knight+pawn+pawn: positions 29, games 3
+OBS coverage [test games]: set pawn | pawn+pawn+pawn+queen+rook: positions 25, games 2
+OBS coverage [test games]: set rook | pawn+pawn+rook+rook: positions 22, games 2
+OBS coverage [test games]: set pawn | pawn+pawn+pawn+pawn+rook: positions 22, games 2
+OBS coverage [test games]: how the games ended: decisive, the rules' end on the board 93 (33.9 pct), decisive, stopped before it 167 (60.9 pct), drawn, the rules' end on the board 8 (2.9 pct), drawn, stopped before it 6 (2.2 pct)
+STAGE F, the fill with and without (a positive number: the fill helps), for all human test rows and for the test rows with at most 8 units:
+OBS rows: human 28312 (fit 19027, test 9285), fill 27826 from 1942 games, every one with a frame-read row; test rows with at most 8 units: 748; fill rows with at most 8 units: 27826
+OBS HEAD keeps [us] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00204 [-0.00292, -0.00104] (positive: the fill helps)
+OBS HEAD keeps [us] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00098 [-0.00188, +0.00318] (positive: the fill helps)
+OBS HEAD keeps [us] [trees] on all human test rows: log loss per step WITHOUT the fill less WITH all of it +0.00052 [-0.00051, +0.00172] (positive: the fill helps)
+OBS HEAD keeps [us] [trees] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00756 [+0.00027, +0.01396] (positive: the fill helps)
+OBS HEAD keeps [them] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00170 [-0.00274, -0.00061] (positive: the fill helps)
+OBS HEAD keeps [them] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00093 [-0.00261, +0.00308] (positive: the fill helps)
+OBS HEAD keeps [them] [trees] on all human test rows: log loss per step WITHOUT the fill less WITH all of it +0.00172 [+0.00044, +0.00307] (positive: the fill helps)
+OBS HEAD keeps [them] [trees] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00680 [-0.00149, +0.01386] (positive: the fill helps)
+OBS HEAD taken [us] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00209 [-0.00422, -0.00024] (positive: the fill helps)
+OBS HEAD taken [us] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00465 [-0.00133, +0.01057] (positive: the fill helps)
+OBS HEAD taken [us] [trees] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00023 [-0.00155, +0.00120] (positive: the fill helps)
+OBS HEAD taken [us] [trees] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00248 [-0.00290, +0.00728] (positive: the fill helps)
+OBS HEAD taken [them] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00188 [-0.00405, -0.00001] (positive: the fill helps)
+OBS HEAD taken [them] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00675 [-0.00128, +0.01405] (positive: the fill helps)
+OBS HEAD taken [them] [trees] on all human test rows: log loss per step WITHOUT the fill less WITH all of it +0.00132 [-0.00030, +0.00287] (positive: the fill helps)
+OBS HEAD taken [them] [trees] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00452 [-0.00004, +0.00822] (positive: the fill helps)
+OBS HEAD taken | bishop [us] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00018 [-0.00053, +0.00012] (positive: the fill helps)
+OBS HEAD taken | bishop [us] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00123 [+0.00091, +0.00157] (positive: the fill helps)
+OBS HEAD taken | bishop [them] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00026 [-0.00062, +0.00002] (positive: the fill helps)
+OBS HEAD taken | bishop [them] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00121 [+0.00085, +0.00161] (positive: the fill helps)
+OBS HEAD taken | knight [us] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00024 [-0.00061, +0.00010] (positive: the fill helps)
+OBS HEAD taken | knight [us] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00026 [-0.00028, +0.00099] (positive: the fill helps)
+OBS HEAD taken | knight [them] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00022 [-0.00065, +0.00026] (positive: the fill helps)
+OBS HEAD taken | knight [them] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00106 [-0.00056, +0.00332] (positive: the fill helps)
+OBS HEAD taken | pawn [us] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00304 [-0.00476, -0.00123] (positive: the fill helps)
+OBS HEAD taken | pawn [us] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00223 [-0.00514, +0.00814] (positive: the fill helps)
+OBS HEAD taken | pawn [them] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00314 [-0.00492, -0.00147] (positive: the fill helps)
+OBS HEAD taken | pawn [them] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00150 [-0.00567, +0.00773] (positive: the fill helps)
+OBS HEAD taken | queen [us] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it +0.00010 [-0.00014, +0.00038] (positive: the fill helps)
+OBS HEAD taken | queen [us] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00309 [+0.00076, +0.00584] (positive: the fill helps)
+OBS HEAD taken | queen [them] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00005 [-0.00029, +0.00025] (positive: the fill helps)
+OBS HEAD taken | queen [them] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00372 [+0.00105, +0.00702] (positive: the fill helps)
+OBS HEAD taken | rook [us] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00023 [-0.00054, +0.00014] (positive: the fill helps)
+OBS HEAD taken | rook [us] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00071 [-0.00049, +0.00176] (positive: the fill helps)
+OBS HEAD taken | rook [them] [linear] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00008 [-0.00039, +0.00034] (positive: the fill helps)
+OBS HEAD taken | rook [them] [linear] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00094 [-0.00035, +0.00203] (positive: the fill helps)
+Files: artifacts/experiments/frames_heads_78_65/run880/frames_obs.txt, frames_table.txt; artifacts/experiments/frames_heads_78_65/fill880/fill_obs.txt. Wall of the run: OBS wall 434.9 s; disk of the outputs 0.30 MB
