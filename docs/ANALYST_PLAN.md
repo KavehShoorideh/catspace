@@ -9783,3 +9783,24 @@ OBS odds movement: kind pawn: gen 0 +0.437
 OBS odds movement: kind queen: gen 0 +1.588
 OBS odds movement: kind rook: gen 0 -0.025
 OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+
+STAGE D, GENERATION 1 (plays with the Worth judge fed from the record of generation 0; same settings, same openings; per-start lines in obs.txt). Directions only.
+OBS odds gen 1: load 6.63 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 1: players: {"kind": "worth", "worth": {"queen": 1588, "bishop": 496, "pawn": 437, "knight": 312, "rook": -25}}; 1860 games
+OBS odds gen 1: 1860 games in 750 s wall; unfinished 2 (0.1 pct, counted as draws); mean plies 67.5
+OBS odds gen 1: even start (white's view): W 99 D 49 L 32 of 180, unfinished 0
+OBS odds gen 1: kind queen: one short +1.255 [+0.723, +2.015]
+OBS odds gen 1: kind pawn: one short +0.640 [+0.331, +0.983]; two short (per unit) +0.534 [+0.393, +0.705]; two less one -0.106 [-0.466, +0.234]
+OBS odds gen 1: kind bishop: one short +0.467 [+0.169, +0.801]; two short (per unit) +0.273 [+0.081, +0.502]; two less one -0.194 [-0.552, +0.157]
+OBS odds gen 1: kind rook: one short +0.365 [+0.056, +0.680]; two short (per unit) +0.214 [+0.004, +0.445]; two less one -0.151 [-0.555, +0.236]
+OBS odds gen 1: kind knight: one short -0.075 [-0.380, +0.223]; two short (per unit) -0.139 [-0.377, +0.066]; two less one -0.064 [-0.455, +0.296]
+OBS odds gen 1: order (highest effect first) ['queen', 'pawn', 'bishop', 'rook', 'knight']; pairs not ordered at 95 pct: [['queen', 'pawn'], ['pawn', 'bishop'], ['pawn', 'rook'], ['bishop', 'rook']]
+OBS odds gen 1: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen1/record.json; kind values {'queen': 1255, 'pawn': 640, 'bishop': 467, 'rook': 365, 'knight': -75}
+OBS odds movement: kind bishop: gen 0 +0.496; gen 1 +0.467
+OBS odds movement: kind knight: gen 0 +0.312; gen 1 -0.075
+OBS odds movement: kind pawn: gen 0 +0.437; gen 1 +0.640
+OBS odds movement: kind queen: gen 0 +1.588; gen 1 +1.255
+OBS odds movement: kind rook: gen 0 -0.025; gen 1 +0.365
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+OBS odds movement: gen 1 order ['queen', 'pawn', 'bishop', 'rook', 'knight']
+OBS odds movement: order of gen 0 the same as gen 1: False
