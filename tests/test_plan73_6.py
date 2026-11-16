@@ -134,7 +134,7 @@ def test_the_emitted_file_is_the_emitters_output_and_states_the_obligation():
     assert len(re.findall(r"^\s*sorry\s*$", text, re.M)) == 1
     assert f"Ideas.Forced.forced_by_measure inClass mu {k} conjecture_hprog" in text and "theorem conjecture_forced_mate" in text    # (open: the repo's name)
     assert "theorem hprog :" in TL.emit_text(e, proof=dict(proof="exact h", tool="t", run="r"))                                      # (proved: the plain name)
-    src = (TL.LEAN_DIR / "Ideas" / "ForcedByMeasure.lean").read_text()
+    src = (TL.LEAN_DIR / "Ideas" / "Core" / "ForcedByMeasure.lean").read_text()
     assert "(hprog : ∀ p, S p → Reach ours theirs goal (fun r => S r ∧ μ r < μ p) k p)" in src           # the generic premise, the same shape
     assert "p.board P = some ⟨p.turn, .rook⟩" in text and "p.board L = some ⟨Color.opposite p.turn, .king⟩" in text
     assert "def atom1 (p : Position) (c : Color) (W L P O : Square) : Nat := (areaOf (oreach (some L) (fun u => !(attackedBy p c L u))))" in text

@@ -4,7 +4,7 @@ import Ideas.Core.Game
 # The neglect theorem, game-free (PLAN 78.56 stage B; moved out of `Ideas/Frame.lean`, proofs unchanged)
 
 `ReadsOnly`, `IsDiff`, `neglect`, `neglect_step`, `frame_of_diff`: over any `Game`, any type of locations and any view of a state at a location. No chess file is imported; the
-namespace is the one they had (`Ideas.Frame`). The chess view and diff, and `chess_neglect`, stay in `Ideas/Frame.lean` (story: ANALYST_PLAN 72.10).
+names stay in the namespace they had (`Ideas.Frame`). The chess view and diff, and `chess_neglect`, stay in `Ideas/Frame.lean` (story: ANALYST_PLAN 72.10).
 -/
 
 namespace Ideas.Frame

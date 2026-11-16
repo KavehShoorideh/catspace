@@ -234,7 +234,7 @@ def test_75_4_2_the_strict_form_is_proved_in_lean_and_the_rule_is_not_the_cycle(
     for n in ("Ideas.Game.forced_cycle_threefold", "Ideas.Game.forcedLine_replays", "Ideas.Game.Congruent", "Ideas.Game.ForcedLine"):
         assert n in idx, n
     import pathlib
-    src = (pathlib.Path(__file__).resolve().parents[1] / "lean" / "ideas" / "Ideas" / "Draws.lean").read_text()
+    src = (pathlib.Path(__file__).resolve().parents[1] / "lean" / "ideas" / "Ideas" / "Core" / "Draws.lean").read_text()
     assert "sorry" not in src and "theorem forced_cycle_threefold" in src
 
 
