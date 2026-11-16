@@ -10961,3 +10961,22 @@ What does not hold:
 7. The sacrifice reading was not redone; the condition for it was not met.
 So the limit is the INPUTS AND THE FORM OF THE HEAD, in that order. This is section 13's own claim turned into a finding: a position is valued from its frames, and the heads so far were not given the frames.
 Next, owed by this read: the frame read's units and classes, and the concepts, as inputs on ALL the games (the state rows exist for 800 only; about two hours of machine time for the rest); then a head that can use pairs of inputs; each with its learning curve.
+
+
+PLAN 78.65: THE EVENT HEADS GIVEN THE FRAMES (the 78.64 read, points 5 and 7; SYSTEM_SPEC 13: a position is valued from its parts). Written 2026-11-16 by the main agent. Python over the installed extension; human games; no engine evaluation; a sandbox.
+A. THE STATE ROWS ON MORE GAMES. The frame read's row per ply (78.62 stage A) made for as many of the 12000 games as fit in about two hours of machine time, the games chosen at random and the count stated before the run; resumable in chunks.
+B. THE INPUTS FROM THE FRAMES, per side as seen by the mover: counts of units by class and by what the class rests on, trapped units, the kinds of the units standing lost, the count and size of frames; and the concepts on every row that has them (state how many rows a column has; drop columns under a stated count).
+C. THE SAME LINEAR HAZARD HEADS of 78.64 with these inputs added in steps, a learning curve at each step.
+D. A HEAD THAT CAN USE PAIRS OF INPUTS: gradient-boosted trees from scikit-learn on the same hazard records (imported, not written), with its learning curve; printed beside the linear head on the same test games. If it is clearly better, the pairs it leans on most are printed in words.
+E. THE READING THAT MATTERS FOR A LEAF: at settled rows only, the chance that each side next wins and keeps a unit, and who first; calibration; by band of rating.
+F. Endgame coverage printed; the 78.64 fill used in the fit, with and without printed for rows with few units.
+The sacrifice reading is redone only if E clearly beats the base.
+
+STATUS: to a builder after the engine gate at 58b27cb2.
+
+PLAN 78.66: THE SLEEP'S YARDSTICK MADE OF WHAT THE PLAYER READS (the 78.63 read, points 4 to 6). Written 2026-11-16 by the main agent. Extends sleep_loop.py; a sandbox.
+A. The yardstick: held-out games of the sleep's OWN current player and held-out human games, both scored by the record the player reads (the worths as a result head), fixed per sleep before its first action; nothing the player does not read is in it.
+B. An action's observed gain is judged over at least three slices before the chooser's record is updated.
+C. Three sleeps and the fixed schedule at equal time again, the wake matches run with nothing else running and the load printed; the yardstick against time printed so that the sleep length can be read from it.
+
+STATUS: written; after 78.65.
