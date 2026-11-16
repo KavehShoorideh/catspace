@@ -9275,3 +9275,6 @@ F. SMALL ROOTS. The seed units and what bears on them, capped at 6, the rest spl
 Short run on the 40 games, then the 500.
 
 STATUS: given to a builder agent on 2026-11-15, after the gate.
+
+
+GATE at 23d55f0a (2026-11-15, main agent): OBS gate engine: files 102, passed 1631, failed 0, xfailed 1, errors 0, wall 2165.9 s. Plans 78.59 and 78.60 given to builders at c92a5d9d.
