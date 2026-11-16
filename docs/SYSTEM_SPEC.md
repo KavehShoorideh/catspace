@@ -67,9 +67,23 @@ is worth. Every decision can be read as a chain of claims.
 - **Frames focus attention.** A frame in a far corner with no bearing on the action is not looked at.
 - **Reuse.** The September and October work on frames, the intermezzo, the chase, the trap and cornering is brought
   over, "otherwise we will be rehashing those exact same problems, specifically around the chase."
-- OPEN: when two frames stop being separate. A long-range unit can join a quiet corner to the action in one move.
-  Candidate: two frames are separate while no claim in one reads a place of the other. Known from October: frames in
-  contact are resolved jointly, and a tempo is worth what the other side proves with the move passed to it.
+- **When frames are separate, and how they join** (DECIDED 2026-11-16). Frames are separate while the linkage
+  between them is not executed. "Every frame needs to have some sort of an interface that allows us to connect to
+  intermezzos, passes, other places, threats in other places, deflections."
+  - *The far end is a variable.* "It doesn't matter where the piece is deflected to. What matters is it's deflected
+    from here." It is enough to know the unit is drawn to something of higher stake, "so this one is unguarded".
+    "By maintaining these variables, we're able to kind of limit the size of the frame."
+  - *Exact where the stake is smaller.* "You want to be exact on the frame with a smaller stake. The frame with a
+    bigger stake, that's the one that's not going to execute because it's going to be vetoed": the defender saves
+    the bigger thing, so the smaller one is what actually happens.
+  - *Two frames at once.* "I make one move here and then one move there ... there's nothing stopping me from
+    maintaining two frames in my memory." Instances of frames are graph nodes, "added, deleted as the stake
+    progresses", with the graph network over them.
+  - Caution added by the main agent: the bigger frame must still be read far enough to know its threat is real and
+    that it can be met; if it cannot be met, it is the one that executes (a double threat).
+  - Known from October and kept: frames in contact are resolved jointly; a tempo is worth what the other side
+    proves with the move passed to it. Already built toward this: the named causes of plan 78.60 (the only guard
+    left, a line uncovered) and the reopening through another frame.
 
 ## 4. Tactical reasoning (DECIDED 2026-11-14, 2026-11-15)
 
@@ -95,6 +109,8 @@ is worth. Every decision can be read as a chain of claims.
   incrementally add the pieces and see what comes out of it ... some sort of ablation".
 - **The unknown stays in the analysis.** "An unknown placeholder for the value of each piece, and then do an
   analysis given that variable unknown."
+- **Confirmed intent** (2026-11-16): "I wanted to learn the value ... and I don't want to program it. So it has to
+  come somehow naturally from experience."
 - PROPOSED, built in part: generation zero knows the rules and the end of the game and otherwise moves at random;
   odds games measure each kind's effect on the result; that record is the next generation's judge; repeat. A
   comparison that needs worth is returned as a CONDITION on the unknowns ("good if this kind is worth more than
@@ -136,8 +152,16 @@ is worth. Every decision can be read as a chain of claims.
   subgoal; a conditional claim of the graph (section 2) is such a subgoal.
 - **Two halves at the wake.** Go toward the tactics, then recognise when they are there and use them.
 - **Standing rule:** subgoals enter through the prior, never the value (AGENTS.md rule 7).
-- OPEN: the form of the model (he floated a quasi-metric and left it open). PROPOSED: a sparse readable fit over
-  game-free statements before any network.
+- **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
+  kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
+  Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
+  kind of a Markov process ... we have a transition to the next state. So what's good for a Markov process? I'm
+  actually not sure."
+- PROPOSED answer: if the tactical state is Markov, the model is a TRANSITION model (the chance of each event of
+  the rules at the next step given the present state, which the event heads already are) and a VALUE learned over
+  it from our own games by bootstrapping from the next state. The experts are the heads, one per event and side,
+  gated by which frames are present. Whether the state is Markov is measured, not assumed: does adding earlier
+  states improve the prediction of the next one. If it does, a short memory of earlier states is added as input.
 
 ## 8. Wake
 
@@ -189,7 +213,7 @@ Kaveh: "the most complex piece".
   does not. The head then predicts "what I would conclude if I thought longer". It stays tied to the truth by the
   ends of games and by proved lemmas, never by an engine's number. The oracle remains the finder of questions and a
   MEASURE of the heads on held-out positions. If the heads stall, the last resort is taken up with his word.
-- **When it wakes.** "No more than 5 hours", and "it could be more than 5 actions". One hour at most an action. He
+- **When it wakes.** "No more than 5 hours", and "it could be more than 5 actions". One hour at most an action; the ceiling stays "unless we see some evidence that that's harming". He
   left the length to be scaled down ("maybe you need like a 5-minute sleep"); PROPOSED: a test at ten minutes, then
   an hour, the length then read from the printed curve of gain against time.
 - **How it chooses with few, late rewards** (agreed 2026-11-15: "Let's go with your plan"): the expected gain of an
@@ -201,7 +225,13 @@ Kaveh: "the most complex piece".
   Tactics first, since steering toward opportunity is worth nothing without tactics to use it. The counts per rung
   of the ladder are that diagnosis.
 - **What it produces.** Lemmas, statistics (the heads), vocabulary, the policy.
-- **Do not break the rest, and do not retest everything.** OPEN, with this candidate: proved lemmas cannot be
+- **Watching for regress, and going back** (DECIDED 2026-11-16). "Some sort of a rolling window statistical measure
+  of how many centipawns we lose or something, and then we see over time if we're getting worse or we're getting
+  better." And: "we need the ability to revert the final set of things that were added, that were learned, so that
+  we can go to a past learning state ... if we see some sort of regression, we can go back and say, okay, why did we
+  regress here?" So each sleep's additions are one set that can be taken back, the store keeps its past states, and
+  a rolling measure of play is kept across sleeps. The oracle may serve as that measure; a measure is not a fit.
+- **Do not break the rest, and do not retest everything.** Beyond the above, this candidate: proved lemmas cannot be
   broken by later ones; fitted things are rechecked only where the dependency memory says the new item reaches;
   each explained surprise is kept as a standing test case.
 - **No outside language model inside the learning loop.** Statements come from the miner, proofs from the prover.
@@ -249,16 +279,14 @@ State on 2026-11-16, in words only (plans 78.52 to 78.67 in docs/ANALYST_PLAN.md
 
 ## 13. Open questions for Kaveh
 
-1. AGENTS rule 7. The chances read at the leaf are treated as an estimate of the position's worth, and subgoal
-   bonuses still stay out of the value. Is that reading right?
-2. ANSWERED 2026-11-16: a head may be fitted to the oracle only as a last resort; first our own reasoning traces
-   and playouts (section 9).
-3. Does the ceiling of one hour an action stand now that the cap on the count of actions is gone?
-4. The design of section 5 (generation zero, odds games as the judge of the next generation) was told and run, not
-   confirmed in words.
-5. When two frames stop being separate (section 3).
-6. How new learning is kept from breaking the rest without retesting everything (section 9).
-7. The form of the policy's model (section 7).
+1. AGENTS rule 7, asked again in plainer words on 2026-11-16: may the estimate of each side's chances be part of
+   how a position is scored, or may it only order which moves are looked at first?
+2. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
+3. The exact content of a frame's interface (section 3): which ports, and what each carries.
+
+Answered on 2026-11-16 and written into their sections: the oracle as a last resort (9); the ceiling of an hour an
+action stays (9); worth must come from experience (5); when frames are separate (3); regress watched by a rolling
+measure, with the ability to go back (9); the policy is modular and models a sequence, not a distance (7).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -276,6 +304,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.67 in docs/ANALYST_PLAN.md
 | "Until it improves by a certain percent" as the stop | PROPOSED: the stop is gain per second or the time limit; the improvement is tested by the wake's match | 2026-11-15 night |
 | "The edges will also be graph nodes" read as every relation being a node | He meant the board's edge. Decided separately: only relations something must point at are nodes | 2026-11-15 |
 | A menu of odds games and fits only | The menu of section 9 | 2026-11-16 |
+| The opportunity policy as a quasi-metric (floated) | "Quasi-metric is not the right way. Like it's a distance. What I want is ... something to model a sequence" | 2026-11-16 |
 | No head is ever fitted to the oracle (the main agent's proposed boundary) | Allowed as a last resort; preferred: predict our own deeper reasoning and our playouts | 2026-11-16 |
 
 ## 15. Standing limits that apply to every plan
@@ -290,13 +319,13 @@ word. Endgame coverage printed for every human sample. Numbers only where a prog
 |---|---|---|
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
-| Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused | 2026-11-15 | 3 |
+| Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
 | Reasoning by questions; the outcome ends at the settled end; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: parts as inputs, sources, rating, several heads, chances at the leaf, events from the rules, no horizon, the sequence, the opponent | 2026-11-14, 15, 16 | 6 |
-| The opportunity policy; maxims come out; subgoals; rule 7 | 2026-11-14 | 7 |
+| The opportunity policy; maxims come out; subgoals; rule 7; modular, a sequence model over a Markov state | 2026-11-14, 16 | 7 |
 | The wake and the wall | 2026-11-14 | 8 |
-| Sleep: the agent, the menu, the oracle and the ladder, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, do not break the rest | 2026-11-14, 15, 16 | 9 |
+| Sleep: the agent, the menu, the oracle and the ladder, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
 | What exists and the state of the build | 2026-11-16 | 12 |
