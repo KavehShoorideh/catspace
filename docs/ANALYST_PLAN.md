@@ -9806,3 +9806,24 @@ OBS odds movement: gen 1 order ['queen', 'pawn', 'bishop', 'rook', 'knight']
 OBS odds movement: order of gen 0 the same as gen 1: False
 
 STAGE D FAILURE, FOUND AFTER THE FIRST gen 1 AND gen 2 RUNS (above): the Worth table was handed to the engine keyed by the graph's kind WORDS, but the engine's ledger names a captured unit by its own symbol (`Game::captured`), so every kind was worth 0 to it and "generation 1" and "generation 2" played as a zero-worth judge in the engine's default root order (deterministic, no random order). Found because 91 pct of the gen 2 games (1698 of 1860) had the same plies and outcome as gen 1 although the tables differ, and a probe of 60 positions gave the same move for the table and for an all-zero table in 60 of 60 (script lines printed by the check, not kept). The two OBS blocks above for generations 1 and 2 (and their record files, kept apart as gen1_invalid_keys and gen2_invalid_keys) are VOID: nothing of them is used below. Generation 0 never touched this path (judge "nothing") and stands. FIX: `players_of` maps the record's kinds through the game's position codec (`kernel_names`: graph word -> the engine's symbol, read from the ordinary start) and refuses a kind it cannot map; test added (a table keyed by the graph's words picks as a zero table does, a mapped one takes the loose unit). With the fix a probe of 60 positions: a mapped table and an all-zero table choose the same move in 28 of 60 (the plain count in 28 of 60). Time cost: two reruns of about 13 minutes each.
+
+STAGE D, GENERATION 1, RERUN AFTER THE FIX (plays with the Worth judge fed from the record of generation 0, kinds mapped to the engine's symbols; same settings and openings; per-start lines in obs.txt). THIS replaces the void block. Directions only; the queen's band is narrow because the short side almost never scores (the half added to each count saturates the log odds).
+OBS odds gen 1: load 4.60 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 1: players: {"kind": "worth", "worth": {"q": 1588, "b": 496, "p": 437, "n": 312, "r": -25}, "record_kinds": {"queen": 1588, "bishop": 496, "pawn": 437, "knight": 312, "rook": -25}}; 1860 games
+OBS odds gen 1: 1860 games in 952 s wall; unfinished 71 (3.8 pct, counted as draws); mean plies 84.0
+OBS odds gen 1: even start (white's view): W 56 D 88 L 36 of 180, unfinished 8
+OBS odds gen 1: kind queen: one short +4.625 [+4.554, +4.691]
+OBS odds gen 1: kind bishop: one short +1.370 [+1.069, +1.764]; two short (per unit) +1.584 [+1.429, +1.819]; two less one +0.214 [-0.178, +0.591]
+OBS odds gen 1: kind rook: one short +1.110 [+0.785, +1.507]; two short (per unit) +0.909 [+0.676, +1.263]; two less one -0.201 [-0.624, +0.285]
+OBS odds gen 1: kind knight: one short +0.638 [+0.325, +0.969]; two short (per unit) +0.838 [+0.619, +1.172]; two less one +0.201 [-0.192, +0.651]
+OBS odds gen 1: kind pawn: one short +0.480 [+0.155, +0.802]; two short (per unit) +0.481 [+0.328, +0.650]; two less one +0.001 [-0.362, +0.360]
+OBS odds gen 1: order (highest effect first) ['queen', 'bishop', 'rook', 'knight', 'pawn']; pairs not ordered at 95 pct: [['bishop', 'rook'], ['rook', 'knight'], ['knight', 'pawn']]
+OBS odds gen 1: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen1/record.json; kind values {'queen': 4625, 'bishop': 1370, 'rook': 1110, 'knight': 638, 'pawn': 480}
+OBS odds movement: kind bishop: gen 0 +0.496; gen 1 +1.370
+OBS odds movement: kind knight: gen 0 +0.312; gen 1 +0.638
+OBS odds movement: kind pawn: gen 0 +0.437; gen 1 +0.480
+OBS odds movement: kind queen: gen 0 +1.588; gen 1 +4.625
+OBS odds movement: kind rook: gen 0 -0.025; gen 1 +1.110
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+OBS odds movement: gen 1 order ['queen', 'bishop', 'rook', 'knight', 'pawn']
+OBS odds movement: order of gen 0 the same as gen 1: False
