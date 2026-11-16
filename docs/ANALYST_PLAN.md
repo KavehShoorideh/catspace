@@ -9754,3 +9754,14 @@ READING (builder, directions only, one run each): (1) The result head from human
 6. Once the statements are inputs the kind terms cannot be read alone (the statements carry material).
 7. Stage E (the played move against one random legal move) shows what the heads see a random move spoil; it does not show that they rank good moves.
 Limits: the arrival sample is 800 games; quiet is defined differently for the two heads; no engine evaluation was read and none was found in the records (0 of 1600000 games carried an annotation).
+
+
+ENDGAME CHECK ON THE HUMAN SAMPLE (2026-11-15, main agent; Kaveh: human games often end by resignation, so there may not be enough endings; "check for it. Remember that this is a risk. And if we turn out to not have enough endgames, then let us balance it by creating some." He first thought of completing resigned games with a tablebase or an engine and withdrew it: "That is a bad idea, actually."). A scratch count over the 12000 games of the 78.59 sample, printed by a program:
+OBS endgame check: games 12000, positions 799641
+OBS endgame check: men<=12: positions 100888 (12.62 pct), games reaching it 3565 (29.7 pct)
+OBS endgame check: men<=7: positions 34977 (4.37 pct), games reaching it 1480 (12.3 pct)
+OBS endgame check: men<=5: positions 17720 (2.22 pct), games reaching it 861 (7.2 pct)
+OBS endgame check: pieces<=2 (units other than pawns and the two goal units): positions 86400 (10.80 pct), games reaching it 2926 (24.4 pct)
+OBS endgame check: no_piece: positions 10975 (1.37 pct), games reaching it 638 (5.3 pct)
+OBS endgame check: how games end: decisive and stopped before mate 7180 (59.8 pct), mate on the board 4243 (35.4 pct), drawn and stopped 307 (2.6 pct), stalemate or dead draw 270 (2.2 pct)
+Read: endings are not rare in this source at these ratings, and the records hold over a million qualifying games per eight shards, so the count can be raised a hundredfold by sampling more. Not checked, and the real risk: WHICH endings (a given small set of units may still be rare), and their quality (endings between weak players). A resigned game still has its result, so the result head needs no completion; what resignation removes is the PLAY of the ending, which matters for following unit fates and the tactical state to the end. Standing rule from now: every plan that samples human games prints this table for its sample, per set of units for the small sets, and where a set is too thin it is filled by generated games (self-play or playouts from sampled positions), never by an engine evaluation.
