@@ -410,3 +410,24 @@ OPEN, to confirm with him: on 2026-11-15 he decided "stockfish cannot be read in
 main agent's reading that keeps both: the oracle is on the menu as a FINDER of our mistakes (where our move or our
 estimate is far off, a surprise), and what is learned about that position then comes from our own tools; no oracle
 number enters a fit or anything the wake reads. If he means to lift the earlier decision, he says so.
+
+**The oracle in the sleep, decided (Kaveh, 2026-11-16).** His words: "during the sleep, we are allowed to consult
+the oracle in order to ask about a position and figure out what the best move is, and then figure out if our
+reasoning supports the best move, if it's sharp, and if it's not sharp, then with our statistics kind of explain the
+best move, and if there is some sort of a surprise remaining, then mine some sort of a lemma or reasoning, keep going
+deeper ... get to the point where you can explain away the surprise, because chess is concrete ... if it takes too
+much, then that means too much calculation. Then that means you need to either reduce it to some sort of a lemma or
+to turn it into some sort of a statistical thing, add it into your learning algorithm."
+So the oracle gives THE BEST MOVE of a position, and the sleep's work on that position is a ladder:
+1. Sharp: does our reasoning (the frame read, the forcing read, the search) reach that move by itself? If yes,
+   nothing to learn.
+2. Not sharp: do our statistics (the heads) prefer it? If yes, explained.
+3. A surprise remains: go deeper, concretely, until our own reasoning explains the move.
+4. If that took too much calculation: compress what was found, either into a lemma (stated, then proved) or into a
+   statistical input the heads learn from, so that next time it is cheap.
+The stop test of a surprise is that OUR tools now pick the move, cheaply. The main agent's reading of the boundary,
+which keeps the 2026-11-15 decision: the oracle supplies the move and so the question; what enters the store is
+what our own tools made and checked (a proved lemma, or statistics from games and playouts). No head is fitted to
+the oracle's evaluation or to "the oracle's move" as a label. To confirm if leaned on.
+What exists to reuse: the diagnosis and tool choice of plan 78.17 (sleep.py), the surprise meter of 78.37, the
+construction and scenario work of 78.38 and 78.39, the prover (discovery/prover.py).
