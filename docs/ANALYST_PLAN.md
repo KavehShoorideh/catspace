@@ -10037,3 +10037,78 @@ OBS tactical sequence: (4) from [colour 0 only] (n 5169) to the next ply: none 0
 OBS tactical sequence: (4) from [colour 1 only] (n 5258) to the next ply: none 0.6539, colour 0 only 0.1529, colour 1 only 0.1858, both 0.0074
 OBS tactical sequence: (4) from [both] (n 172) to the next ply: none 0.3198, colour 0 only 0.3140, colour 1 only 0.2907, both 0.0756
 OBS tactical sequence: (3) duration of one colour's standing loss in plies (runs that ended): 8587 runs, mean 1.22, median 1.0, 90th percentile 2.0, longest 15
+
+
+78.62 BUILT, stage C (builder agent). WHAT: catspace/incubator/analyst/discovery/tactical_chances.py: two heads (L1 logistic, penalty by grouped 5-fold on fit games) for the chance that within 8 plies a unit of theirs stands lost by the estimate with us to move (US) and that a unit of ours does with them to move (THEM), over the settled (quiet) rows of the 78.59 file that fall in the stage A games; inputs R, K, S (26 statements), E (edge distances by kind, ours less theirs, read from the place names), and C (the 64 concepts) on the thinned rows. Fit and test games are the games' own 78.59 split. Beside it the arrival head of 78.59 refit on the same rows (sparse linear, K+S). Run: `python -m catspace.incubator.analyst.discovery.tactical_chances` (seconds). Cautions: both targets have a base rate near one half; the heads are weak; `ply` carries weight (later plies have fewer units and a shorter run to the horizon); a concept comparison on the thinned rows has 1036 test rows and 104 columns on about 2200 fit rows; no verdict.
+OBS tactical chances: rows: 22990 quiet rows of the 78.59 file in the 800 games of stage A (of 396085 rows in all) with 8 rows after them; fit 15538 (553 games), test 7452 (247 games); thinned rows with concepts 3229
+OBS tactical chances: target US (a unit of theirs stands lost by the estimate with us to move within 8 plies): fit rate 0.4823, test rate 0.4987
+OBS tactical chances: target THEM (a unit of ours stands lost by the estimate with them to move within 8 plies): fit rate 0.4655, test rate 0.4678
+OBS tactical chances: arrival difference h=8 of 78.59 on these rows: present on 22990 rows; mean over the test rows +0.0099
+OBS tactical chances: [us] test log loss, base rate: 0.69368
+OBS tactical chances: [us] test log loss, R: 0.69084 [0.68573, 0.69489]; gain over the base rate +0.00284 [-0.00058, +0.00698]; penalty C 0.1, columns kept 3 of 3
+OBS tactical chances: [us] calibration R (predicted>observed, ten equal-count bins): 0.393>0.359 0.436>0.430 0.457>0.537 0.472>0.523 0.485>0.564 0.495>0.530 0.504>0.533 0.514>0.538 0.525>0.477 0.554>0.495
+OBS tactical chances: [us] test log loss, K: 0.69254 [0.69012, 0.69505]; gain over the base rate +0.00113 [-0.00140, +0.00365]; penalty C 3.0, columns kept 5 of 5
+OBS tactical chances: [us] calibration K (predicted>observed, ten equal-count bins): 0.423>0.387 0.464>0.488 0.473>0.518 0.481>0.470 0.482>0.491 0.482>0.518 0.483>0.528 0.490>0.510 0.500>0.533 0.547>0.544
+OBS tactical chances: [us] test log loss, K+S: 0.69011 [0.68764, 0.69257]; gain over the base rate +0.00356 [+0.00112, +0.00607]; penalty C 0.03, columns kept 16 of 31
+OBS tactical chances: [us] calibration K+S (predicted>observed, ten equal-count bins): 0.420>0.456 0.455>0.432 0.466>0.479 0.474>0.456 0.481>0.498 0.488>0.477 0.495>0.529 0.503>0.530 0.514>0.534 0.553>0.596
+OBS tactical chances: [us] test log loss, K+S+E: 0.69022 [0.68735, 0.69297]; gain over the base rate +0.00346 [+0.00067, +0.00634]; penalty C 0.03, columns kept 21 of 37
+OBS tactical chances: [us] calibration K+S+E (predicted>observed, ten equal-count bins): 0.414>0.426 0.450>0.464 0.462>0.456 0.472>0.499 0.481>0.471 0.489>0.491 0.497>0.519 0.507>0.558 0.520>0.518 0.560>0.583
+OBS tactical chances: [us] test log loss, K+S+E+R: 0.68704 [0.68222, 0.69101]; gain over the base rate +0.00664 [+0.00295, +0.01112]; penalty C 0.03, columns kept 23 of 40
+OBS tactical chances: [us] calibration K+S+E+R (predicted>observed, ten equal-count bins): 0.372>0.358 0.428>0.445 0.452>0.510 0.469>0.483 0.483>0.522 0.496>0.528 0.509>0.532 0.524>0.515 0.542>0.519 0.581>0.574
+OBS tactical chances: [us] test log loss gain of K+S over K: +0.00243 [+0.00108, +0.00396] (positive: the second is better)
+OBS tactical chances: [us] test log loss gain of K+S+E over K+S: -0.00011 [-0.00115, +0.00082] (positive: the second is better)
+OBS tactical chances: [us] test log loss gain of K+S+E+R over K+S+E: +0.00318 [-0.00040, +0.00729] (positive: the second is better)
+OBS tactical chances: [us] test log loss gain of K over R: -0.00170 [-0.00730, +0.00321] (positive: the second is better)
+OBS tactical chances: [us] head R against its target: rank correlation +0.0554 [+0.0086, +0.0934] (300 draws)
+OBS tactical chances: [us] head K against its target: rank correlation +0.0572 [+0.0234, +0.0922] (300 draws)
+OBS tactical chances: [us] head K+S against its target: rank correlation +0.0862 [+0.0543, +0.1198] (300 draws)
+OBS tactical chances: [us] head K+S+E against its target: rank correlation +0.0849 [+0.0520, +0.1193] (300 draws)
+OBS tactical chances: [us] head K+S+E+R against its target: rank correlation +0.0940 [+0.0584, +0.1253] (300 draws)
+OBS tactical chances: [us] band A <1350, head K+S+E+R: rank correlation +0.1105 [+0.0216, +0.1919] (150 draws)
+OBS tactical chances: [us] band A <1350, head K: rank correlation +0.0372 [-0.0310, +0.1098] (150 draws)
+OBS tactical chances: [us] band B 1350-1549, head K+S+E+R: rank correlation +0.0908 [+0.0314, +0.1521] (150 draws)
+OBS tactical chances: [us] band B 1350-1549, head K: rank correlation +0.0601 [-0.0210, +0.1422] (150 draws)
+OBS tactical chances: [us] band C 1550-1749, head K+S+E+R: rank correlation +0.0939 [+0.0347, +0.1638] (150 draws)
+OBS tactical chances: [us] band C 1550-1749, head K: rank correlation +0.0818 [+0.0160, +0.1609] (150 draws)
+OBS tactical chances: [us] band D 1750+, head K+S+E+R: rank correlation +0.0931 [+0.0200, +0.1673] (150 draws)
+OBS tactical chances: [us] band D 1750+, head K: rank correlation +0.0472 [-0.0278, +0.1115] (150 draws)
+OBS tactical chances: [us] rank correlation of the target with the arrival difference h=8 of 78.59 over the 7452 test rows that have both: +0.0365; of the head K+S+E+R: +0.1512
+OBS tactical chances: [us] [thinned rows 1036 of 247 games] test log loss, K+S+E+R: 0.69331 [0.68972, 0.69684]; columns kept 7 of 40
+OBS tactical chances: [us] [thinned rows 1036 of 247 games] test log loss, K+S+E+R+C: 0.69127 [0.68713, 0.69548]; columns kept 9 of 104
+OBS tactical chances: [us] [thinned rows] test log loss gain of adding the concepts: +0.00205 [+0.00070, +0.00341] (positive: with them is better)
+OBS tactical chances: [them] test log loss, base rate: 0.69108
+OBS tactical chances: [them] test log loss, R: 0.68680 [0.68017, 0.69227]; gain over the base rate +0.00428 [-0.00022, +0.00941]; penalty C 0.1, columns kept 3 of 3
+OBS tactical chances: [them] calibration R (predicted>observed, ten equal-count bins): 0.358>0.324 0.408>0.393 0.434>0.490 0.452>0.511 0.467>0.511 0.480>0.507 0.491>0.507 0.502>0.493 0.515>0.471 0.545>0.470
+OBS tactical chances: [them] test log loss, K: 0.68731 [0.68451, 0.69033]; gain over the base rate +0.00378 [+0.00149, +0.00608]; penalty C 0.1, columns kept 4 of 5
+OBS tactical chances: [them] calibration K (predicted>observed, ten equal-count bins): 0.391>0.316 0.443>0.468 0.461>0.541 0.466>0.413 0.466>0.481 0.466>0.479 0.466>0.493 0.472>0.460 0.491>0.490 0.538>0.537
+OBS tactical chances: [them] test log loss, K+S: 0.68421 [0.68062, 0.68796]; gain over the base rate +0.00687 [+0.00395, +0.01001]; penalty C 0.03, columns kept 16 of 31
+OBS tactical chances: [them] calibration K+S (predicted>observed, ten equal-count bins): 0.363>0.412 0.424>0.397 0.442>0.443 0.453>0.458 0.461>0.466 0.470>0.464 0.479>0.401 0.490>0.491 0.511>0.526 0.576>0.620
+OBS tactical chances: [them] test log loss, K+S+E: 0.68433 [0.68060, 0.68799]; gain over the base rate +0.00676 [+0.00370, +0.01004]; penalty C 0.03, columns kept 19 of 37
+OBS tactical chances: [them] calibration K+S+E (predicted>observed, ten equal-count bins): 0.361>0.397 0.422>0.428 0.440>0.468 0.452>0.440 0.461>0.436 0.469>0.440 0.479>0.459 0.491>0.470 0.513>0.514 0.577>0.626
+OBS tactical chances: [them] test log loss, K+S+E+R: 0.68070 [0.67417, 0.68632]; gain over the base rate +0.01038 [+0.00555, +0.01541]; penalty C 0.03, columns kept 23 of 40
+OBS tactical chances: [them] calibration K+S+E+R (predicted>observed, ten equal-count bins): 0.323>0.327 0.391>0.421 0.423>0.448 0.446>0.452 0.465>0.477 0.480>0.451 0.496>0.491 0.511>0.528 0.532>0.464 0.589>0.619
+OBS tactical chances: [them] test log loss gain of K+S over K: +0.00310 [+0.00108, +0.00512] (positive: the second is better)
+OBS tactical chances: [them] test log loss gain of K+S+E over K+S: -0.00011 [-0.00067, +0.00049] (positive: the second is better)
+OBS tactical chances: [them] test log loss gain of K+S+E+R over K+S+E: +0.00363 [-0.00058, +0.00828] (positive: the second is better)
+OBS tactical chances: [them] test log loss gain of K over R: -0.00050 [-0.00618, +0.00514] (positive: the second is better)
+OBS tactical chances: [them] head R against its target: rank correlation +0.0672 [+0.0245, +0.1035] (300 draws)
+OBS tactical chances: [them] head K against its target: rank correlation +0.0724 [+0.0431, +0.1086] (300 draws)
+OBS tactical chances: [them] head K+S against its target: rank correlation +0.1018 [+0.0727, +0.1334] (300 draws)
+OBS tactical chances: [them] head K+S+E against its target: rank correlation +0.0968 [+0.0693, +0.1256] (300 draws)
+OBS tactical chances: [them] head K+S+E+R against its target: rank correlation +0.1217 [+0.0855, +0.1511] (300 draws)
+OBS tactical chances: [them] band A <1350, head K+S+E+R: rank correlation +0.1850 [+0.0973, +0.2624] (150 draws)
+OBS tactical chances: [them] band A <1350, head K: rank correlation +0.0736 [+0.0123, +0.1336] (150 draws)
+OBS tactical chances: [them] band B 1350-1549, head K+S+E+R: rank correlation +0.1236 [+0.0717, +0.1908] (150 draws)
+OBS tactical chances: [them] band B 1350-1549, head K: rank correlation +0.0840 [+0.0232, +0.1534] (150 draws)
+OBS tactical chances: [them] band C 1550-1749, head K+S+E+R: rank correlation +0.1086 [+0.0522, +0.1649] (150 draws)
+OBS tactical chances: [them] band C 1550-1749, head K: rank correlation +0.0779 [+0.0047, +0.1471] (150 draws)
+OBS tactical chances: [them] band D 1750+, head K+S+E+R: rank correlation +0.0907 [+0.0243, +0.1604] (150 draws)
+OBS tactical chances: [them] band D 1750+, head K: rank correlation +0.0549 [-0.0133, +0.1286] (150 draws)
+OBS tactical chances: [them] rank correlation of the target with the arrival difference h=8 of 78.59 over the 7452 test rows that have both: -0.0576; of the head K+S+E+R: -0.1806
+OBS tactical chances: [them] [thinned rows 1036 of 247 games] test log loss, K+S+E+R: 0.67818 [0.67252, 0.68454]; columns kept 20 of 40
+OBS tactical chances: [them] [thinned rows 1036 of 247 games] test log loss, K+S+E+R+C: 0.66382 [0.65402, 0.67259]; columns kept 33 of 104
+OBS tactical chances: [them] [thinned rows] test log loss gain of adding the concepts: +0.01436 [+0.00729, +0.02206] (positive: with them is better)
+OBS tactical chances: the arrival head h=8 of 78.59 refit on these rows, inputs K+S: rank correlation +0.2702 [+0.2222, +0.3187] (300 draws)
+OBS tactical chances: the arrival head h=8 of 78.59 refit on these rows, inputs K+S+E: rank correlation +0.2662 [+0.2149, +0.3147] (300 draws)
+OBS tactical chances: [them] the inputs of K+S+E+R with the largest weight (per standard deviation, log-odds): ply -0.164; statement 10 -0.129; rating difference -0.097; kind queen -0.092; kind bishop -0.052; mean rating -0.051; statement 5 -0.049; statement 18 -0.039; kind knight -0.038; statement 1 -0.038; edge distance of king -0.036; edge distance of rook -0.036
+OBS tactical chances: [us] the inputs of K+S+E+R with the largest weight (per standard deviation, log-odds): ply -0.134; rating difference +0.105; kind queen +0.091; statement 23 +0.085; statement 21 -0.064; mean rating -0.056; statement 10 +0.046; edge distance of king +0.046; statement 17 -0.041; edge distance of knight -0.038; edge distance of pawn -0.033; edge distance of bishop +0.027
