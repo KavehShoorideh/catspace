@@ -215,7 +215,7 @@ def play_game(spec: dict) -> dict:
         if seen[key] >= 3:
             outcome = DRAW
             break
-    return {"gid": spec["gid"], "start": spec.get("start"), "colour": spec.get("colour"), "outcome": outcome, "plies": len(moves), "unfinished": unfinished, "depth": depth}
+    return {"gid": spec["gid"], "start": spec.get("start"), "colour": spec.get("colour"), "outcome": outcome, "plies": len(moves), "unfinished": unfinished, "depth": depth, "moves": moves}
 
 
 def run_games(specs: list, workers: int, out_file: Path, say=print) -> list:
