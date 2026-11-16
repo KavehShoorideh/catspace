@@ -9001,3 +9001,32 @@ F. THE MEASURE of 78.55 G again, same seeds, same rows, old numbers beside new: 
 Short run before long run; fuses stated before the run.
 
 STATUS: given to a builder agent on 2026-11-15, after the gate.
+
+
+
+78.57 CHANGE (2026-11-15, Kaveh's direction before the builder was started; this replaces stages A, B and E of PLAN 78.57 as written above; C, D and F stand).
+His words: "we should be able to look at a frame and quickly analyze with only a few questions the result of this frame"; "we automatically prune all the bad branches ... material is lost, it's a bad branch", unless a sacrifice, and "that edge case should join via a frame with an intermezzo ... to this other frame"; "inside of the frame, we're losing, but outside of the frame, we're winning"; "there are like three real options where I don't lose material. So those are the only options you analyze"; "the questioner ... should know to ask the right questions and not spend an eternity in the frame"; "the frame should not be bound to the square. The frame should be bound to the piece ... if the piece moves ... now it's in a new location ... can we trap it? Can we chase it?"; the October chase and cornering work "need[s] to be looked into, because otherwise we will be rehashing those exact same problems"; "damaging the structure ... is a sub-goal in itself".
+Why 78.55 spent thousands of positions per frame: it lists every sequence of the frame and compares the ends. It asks no question and prunes nothing.
+
+WHAT OCTOBER ALREADY LEARNED ABOUT THE CHASE (read before building: plans 52.10 to 52.13, 52.17, 52.18, 52.23, 59, 61, 64.1, 72.3, 72.9, 72.10 in this file, and the code they name; the BUILT note says what was carried and what was not):
+ 1. The cost of a chase is the NUMBER OF QUESTIONS. After each reply the old chase re-asked the whole board, about 25 questions where one was needed (72.10). After a move ask three: does the claim still hold on what the move touched; what new threats of theirs pass through what it touched; what delays do they have off the frame.
+ 2. A chase needs an END that is a reason, not a depth: a taking or another move that cannot be undone is progress; otherwise "did we get closer or are we going in circles" (52.23, the capture clock; the irreversible-move note of 2026-10-22). More forcing moves that only give the chased unit more room are not progress (52.17, the region kill).
+ 3. A static balance is never a result until the OTHER side has been asked from there (52.13: a false claim credited a gain with no question from their side).
+ 4. Whether a unit is trapped is read on QUIET routes only; read under a forcing move, everything looks trapped (52.10 bug).
+ 5. Keep searching only while no move in hand keeps the status (plan 59). A move that holds is the stop.
+ 6. A slow plan dies to a NAMED in-between move of theirs, and the kill should carry that name (the tempo note of 2026-10-21). A tempo is worth what the other side proves with it (72.3).
+ 7. Answers are kept with the relations they read; an unchanged read set means the same answer (52.12, 52.19).
+
+A'. THE FRAME IS BOUND TO UNITS. A frame is a set of units (the seed's, plus those that bear on them or on the places between them, by the lifting rule). Its places are derived from where those units stand and bear NOW. When a member moves, the frame is the same frame at the new position: its places are derived again, and units that now bear on it join. Identity is the seed's units, so a claim about a frame survives the move.
+B'. THE READ BY QUESTIONS, in place of the table of all sequences. For the side to move in a frame:
+   Q0 what stands to be lost here if nothing is done (their takings that are pure gain by inclusion).
+   Q1 the candidate moves, which are ONLY: a taking that is not a pure loss; a move that answers Q0 (move the unit away, put a unit between, add a bearing, take the taker); a move that makes a new Q0 for the other side. Every other move of a member is not asked about.
+   Q2 for each candidate, the other side's answer, asked the same way from their side (lesson 3). A candidate that ends in a pure loss for the mover is PRUNED, and the prune is kept with its reason (which unit is lost, to which reply).
+   Stop as soon as a candidate keeps the status (lesson 5). The chase of a unit that steps away goes on only under lesson 2.
+   Comparison stays by inclusion (pure loss and pure gain need no worth). An UNEQUAL trade is neither; it is reported as a trade of kinds and left open in this plan. The baseline that would settle it is the statistic of SYSTEM_SPEC 12, not a hand table, and is not built here.
+   Count and print: questions asked per frame, positions read, candidates pruned by reason.
+E'. THE PRUNED BRANCH AND THE OTHER FRAME. A pruned candidate is reopened only by a claim in ANOTHER frame that the same move serves: the move loses a unit here and, as a move, is the arrival or the forcing move of a claim there. That pair is the conditional link between frames, written as nodes: `prune:<frame>:<move>:<reason>` and a link `reopened_by` to the claim. The tempo is charged as in stage D: the gain there counts only if it is still forced after the other side has taken here. Arrivals for conditional claims are tried for both sides, and a claim may name a change of structure as its gain only as a statement the graph can make (for instance: a unit of theirs no longer borne on by any of theirs), never a named shape.
+TRAP. One question for any unit, the goal unit included: on quiet routes, has it a place to go that is not a pure loss (lesson 4). The goal unit's case is the game's own end. The October cornering lemmas are looked up in docs/LEAN_INDEX.md and mirrored where they apply; nothing new is claimed proved.
+F stands, with the question counts added: old 78.55 numbers beside new, per class and per frame.
+
+STATUS: given to a builder agent on 2026-11-15, after the gate.
