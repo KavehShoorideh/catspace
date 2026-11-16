@@ -9764,3 +9764,22 @@ THE ODDS STARTS. The units are read from the layer-1 graph of the ordinary start
 THE EFFECT. Per kind the log odds of white wins against white losses (a half added to each count, draws and unfinished the reference), the control's less the short side's, from the short side's view, per unit lacking, averaged over the two sides; band: 5th to 95th percentile of 1000 bootstrap draws, resampling games within each start (the control within its cell). Two kinds are ORDERED when one is above the other in at least 95 pct of the draws; else NOT ORDERED. Two short is the effect per unit lacking (the effect of two divided by two), beside one short.
 STATED BEFORE THE RUN (the odds games and matches). Seconds per move 0.05 (both sides); ply cap 120; workers 8 of 11 cores (the clock is the search's; with all cores the clocks would measure contention); games per start G = 60 for every odds start and 3 x G for the even control, the SAME number in every generation, fixed in advance, no sequential stop; three rounds of odds games (generations 0, 1, 2), then stop. Matches: 50 opening pairs (random four-ply openings from the ordinary start, seeds 9100 up, colours alternated), 0.05 s a move, ply cap 120, 8 workers, bands by bootstrap over opening pairs, nine pairings (g1 v g0, g2 v g1, g2 v g0, each v random, each v count); the load average and the cores busy at the instant of the start are printed per match (the machine carries other users' work of about two or three cores; I started nothing else). Short runs first (tag short: G 3 and 2, 2 opening pairs): the whole path ran; its lines are not used.
 CUT TO FIT the two hours: G = 60 and 50 pairs (the plan names no size); the two-short starts sample 2 pairs of a kind; one run of each, no repeat.
+
+STAGES B AND C, GENERATION 0 (one run, G 60, 0.05 s a move, ply cap 120, 8 workers; the 28 per-start lines are in artifacts/experiments/odds_78_61/full/obs.txt; record gen0/record.json holds the head and the table of starts and results). Directions only. Reading: the games are not too noisy to order everything: the queen stands above the rest in the bands, rook one short has a point estimate near zero while rook two short per unit is positive (the sampled starts differ: the band of one short says it is not ordered from knight), and the record feeds generation 1 with the rook worth negative as measured (no clamp).
+OBS odds gen 0: load 6.78 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 0: players: {"kind": "nothing"}; 1860 games
+OBS odds gen 0: 1860 games in 1201 s wall; unfinished 1002 (53.9 pct, counted as draws); mean plies 102.4
+OBS odds gen 0: even start (white's view): W 35 D 112 L 33 of 180, unfinished 112
+OBS odds gen 0: kind queen: one short +1.588 [+1.106, +2.499]
+OBS odds gen 0: kind bishop: one short +0.496 [+0.156, +0.854]; two short (per unit) +0.230 [+0.016, +0.479]; two less one -0.266 [-0.665, +0.170]
+OBS odds gen 0: kind pawn: one short +0.437 [+0.118, +0.786]; two short (per unit) +0.034 [-0.124, +0.188]; two less one -0.403 [-0.791, -0.043]
+OBS odds gen 0: kind knight: one short +0.312 [+0.011, +0.662]; two short (per unit) +0.310 [+0.111, +0.531]; two less one -0.001 [-0.412, +0.395]
+OBS odds gen 0: kind rook: one short -0.025 [-0.340, +0.272]; two short (per unit) +0.457 [+0.240, +0.734]; two less one +0.482 [+0.112, +0.925]
+OBS odds gen 0: order (highest effect first) ['queen', 'bishop', 'pawn', 'knight', 'rook']; pairs not ordered at 95 pct: [['bishop', 'pawn'], ['bishop', 'knight'], ['pawn', 'knight'], ['knight', 'rook']]
+OBS odds gen 0: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen0/record.json; kind values {'queen': 1588, 'bishop': 496, 'pawn': 437, 'knight': 312, 'rook': -25}
+OBS odds movement: kind bishop: gen 0 +0.496
+OBS odds movement: kind knight: gen 0 +0.312
+OBS odds movement: kind pawn: gen 0 +0.437
+OBS odds movement: kind queen: gen 0 +1.588
+OBS odds movement: kind rook: gen 0 -0.025
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
