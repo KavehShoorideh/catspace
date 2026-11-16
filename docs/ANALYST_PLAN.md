@@ -12150,3 +12150,363 @@ TESTS (printed by scripts/gate.py engine, one file per call): OBS gate engine: t
 NEXT: 78.70.
 
 78.70 AMENDMENT (main agent, 2026-11-16, from the 78.69 read and SYSTEM_SPEC 8 as it now stands). SPEC: serves section 8 (the threat list; the rule for choosing a move reads it) and section 4 (carrying). INTERFACE to be built: threat_list(position) returns, for each side, rows of {the unit threatened, by what, the frame's units, the class (lost kept apart from contested), the stake, the response and its reason if one was found, how the line ended, the READ SET of the claim}; called by a printing script and a measure script now, by the wake's choice of move and the sleep's ladder later; no player is changed here. (1) THE READ SET PER CLAIM is returned by the frame read (Rust, sheet/questions.rs, if it does not return it now), because 78.69 could not test carrying without it. (2) CARRYING, the true test of 78.69 E(3): a claim held at one position is held again two plies on whenever nothing in its read set changed (a miss is a defect of the read, each printed), and a claim first seen later whose read set was already as it is two plies before (a miss carrying would have caught). (3) THE BANDS TWO WAYS, since 78.69 found the stake-against-spread line adds little with the present heads: by the spread of the two readings, and by the stake ranked within the position; stage D's checks are printed for both and neither is called the winner on one run. (4) BOTH SIDES: the list holds their threats against us and ours against them. (5) THE PRINT must let a reader set the position up: the place of every unit, the side to move, the game and ply it came from, by the game's own renderer outside the layer and measure files.
+
+
+78.70 BUILT, stages A to E (builder agent, 2026-11-16; branch worktree-agent-a795c4095d47a4948; one run each, directions only; numbers only from the OBS lines below, which programs printed; whole files in artifacts/experiments/threats_78_70/ (read_obs.txt, measure_obs.txt, carry_obs.txt, puzzles_obs.txt, print.txt), untracked). SPEC CHECK: serves SYSTEM_SPEC 8 "The threat list" (the rule for choosing a move reads it later and is NOT built) and 4 ("open tactics are carried forward", "how a line ends"); the piece is the frame read's view for the wake. RUST CHANGED: sheet crate rust/engine/tactics/src/sheet/questions.rs gains `QReader::answers` (+ the structs Answer, Answers); the binding gains `questions_threats` (py/src/questions_py.rs, base_graph_py.rs) and the shared helper `unit_class` (the class code of questions_state moved into it, behaviour unchanged: the new read agrees with questions_state on classes in tests/test_plan78_70_threats.py). THE EXTENSION WAS REBUILT FROM THIS WORKTREE (`maturin develop --release --offline`); the shared editable install points here; the parent rebuilds main after the merge. No Cargo change. Code: catspace/incubator/analyst/discovery/threat_list.py (the list; interface in its doc comment), threat_measure.py (read, measure, carry, puzzles), threat_puzzle_pairs.py (loader, knows the puzzle files' field names), threat_print.py (the print, python-chess renderer); tests tests/test_plan78_70_threats.py (in scripts/gate.py; includes the scan of the list, measure and the added Rust).
+INTERFACE: threat_list(moves, ply, reader, start=None, stake_of=None, spread=None) -> {"mover": rows against the mover's units (their threats), "other": rows against the other side's (ours), "raw"}; a row = unit (kind, place), by (bearers), class (lost, both, threat, conditional, contested; lost apart from contested), frames (the smallest frame that wins and every wider one holding the unit, each with its unit count, class, answers), response ([(move, reason, whether the unit itself moves)]), widened, ended (concrete / quiet / out of budget; lost beyond doubt not produced), read_set (side to move, members, places of the winning frame), stake (change of the owner's chance of the result by the kinds reading of 78.69 if the unit is lost; None for kinds outside the head), band_spread and band_rank. Rust: BaseGraph.questions_threats(games, rows, keys, goal, fuse, row_fuse, max_size, conditional, answer_fuse, threads).
+WHAT WAS BUILT AND HOW (choices stated): THE RESPONSE of a claim = the candidate moves of the read (the Q1 set of 78.57) of the unit's owner after which the other side can no longer force the unit's taking for nothing (the read's own question, asked per candidate); its reason is the candidate's class (a taking, the unit moves, a guard is added, a counter threat, a unit is put between). For a unit of the side NOT to move the answers are the owner's after we pass (hypothetical). A class `lost` (forced now) is not asked for answers. THE WIDENING: the read builds one frame per unit, so there was nothing wider to widen to; the smallest frame of the same seed (the unit and what bears on it, the 78.60 F mode) is now read as well, and a unit that wins there and is answered in the frame as built is ONE row "with a response", both named. THE STAKE: kinds head, class `result`, signed. BANDS: by the spread = stake above |delta| of the two readings at the row; by the rank = the stake in the top half of the position's rows (both sides pooled; middle row of an odd count high; a stake not above zero never high). HOW A LINE ENDED: forced or pruned = concrete; an estimate or a bound = quiet; unread lines = out of budget (a mapping of this build, spec 4 does not give one). THE READ SET of a claim = its frame's members (absolute side, kind, place), places and the side to move. THE SAMPLE: the first 1000 held-out games (the games the 78.59 split did not fit) in the md5 order of their ids, all their settled rows; carrying: 150 of them at EVERY ply from 10.
+
+READ (read_obs.txt):
+OBS threats: sample: 1000 held-out games (the games the 78.59 split did not fit), the first in the md5 order of their ids with the seed word '78.70:held-out games'; held-out games in all 2748, rows 90213
+OBS threats: progress: chunk 1 of 20: 1698 rows, 38.2 s wall over 10 threads (0.0225 s per row); run so far 38 s
+OBS threats: progress: chunk 2 of 20: 1697 rows, 43.5 s wall over 10 threads (0.0257 s per row); run so far 82 s
+OBS threats: progress: chunk 3 of 20: 1903 rows, 43.3 s wall over 10 threads (0.0227 s per row); run so far 125 s
+OBS threats: progress: chunk 4 of 20: 1781 rows, 39.9 s wall over 10 threads (0.0224 s per row); run so far 165 s
+OBS threats: progress: chunk 5 of 20: 1841 rows, 34.2 s wall over 10 threads (0.0186 s per row); run so far 199 s
+OBS threats: progress: chunk 6 of 20: 1535 rows, 36.7 s wall over 10 threads (0.0239 s per row); run so far 236 s
+OBS threats: progress: chunk 7 of 20: 1412 rows, 33.9 s wall over 10 threads (0.0240 s per row); run so far 270 s
+OBS threats: progress: chunk 8 of 20: 1889 rows, 46.5 s wall over 10 threads (0.0246 s per row); run so far 316 s
+OBS threats: progress: chunk 9 of 20: 1587 rows, 36.6 s wall over 10 threads (0.0230 s per row); run so far 353 s
+OBS threats: progress: chunk 10 of 20: 1745 rows, 41.7 s wall over 10 threads (0.0239 s per row); run so far 395 s
+OBS threats: progress: chunk 11 of 20: 1331 rows, 34.2 s wall over 10 threads (0.0257 s per row); run so far 429 s
+OBS threats: progress: chunk 12 of 20: 1491 rows, 35.4 s wall over 10 threads (0.0237 s per row); run so far 464 s
+OBS threats: progress: chunk 13 of 20: 1674 rows, 38.3 s wall over 10 threads (0.0229 s per row); run so far 502 s
+OBS threats: progress: chunk 14 of 20: 1660 rows, 34.1 s wall over 10 threads (0.0206 s per row); run so far 536 s
+OBS threats: progress: chunk 15 of 20: 1600 rows, 33.8 s wall over 10 threads (0.0211 s per row); run so far 570 s
+OBS threats: progress: chunk 16 of 20: 1578 rows, 38.6 s wall over 10 threads (0.0245 s per row); run so far 609 s
+OBS threats: progress: chunk 17 of 20: 1478 rows, 36.1 s wall over 10 threads (0.0245 s per row); run so far 645 s
+OBS threats: progress: chunk 18 of 20: 1835 rows, 40.5 s wall over 10 threads (0.0221 s per row); run so far 686 s
+OBS threats: progress: chunk 19 of 20: 1857 rows, 42.4 s wall over 10 threads (0.0228 s per row); run so far 728 s
+OBS threats: progress: chunk 20 of 20: 1770 rows, 40.5 s wall over 10 threads (0.0229 s per row); run so far 768 s
+OBS threats: done: 33362 rows of 1000 games, 86508 claims; saved /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a795c4095d47a4948/artifacts/experiments/threats_78_70/raw.pkl; wall 774 s
+
+STAGE C AND D (measure_obs.txt):
+OBS threats: stage D: 33362 settled held-out rows of 1000 games (the games the 78.59 split did not fit; the kinds reading fitted on the others); one run, directions only; the stake is the change of the owner's chance of the result by the kinds reading of 78.69 if the unit is lost; the spread is |delta| of the two readings of 78.69 at the row; bands: 1 high, no response, 2 high, with a response, 3 low, no response, 4 low, with a response
+OBS threats: ENDGAME COVERAGE of the sample (rows by number of units on the board; human games end early): 0-5: 1136 rows (3.41 pct); 6-12: 3865 rows (11.59 pct); 13-20: 6357 rows (19.05 pct); 21-more: 22004 rows (65.96 pct)
+OBS threats: the spread |delta| of the rows: quantiles 10/50/90 0.0061 / 0.0554 / 0.2014
+OBS threats: THE ROWS: 25524 threat rows in 16643 of 33362 positions; 740 rows have no stake (a unit of the goal kind or a kind outside the head's inputs); stake quantiles 10/50/90 +0.0331 / +0.1523 / +0.4018; stake above 0 in 99.43 pct
+OBS threats: THE ROWS by class and response: conditional no response 768; conditional with response 1940; contested no response 4423; contested with response 10692; lost no response 6666; lost with response 275; threat no response 282; threat with response 478
+OBS threats: THE WIDENING: rows answered in a wider frame than the one that wins: 1010, of which lost 275; rows of class lost with no response: 6666
+OBS threats: HOW THE LINES ENDED (the four reasons of spec 4; the read produces concrete, quiet and out of budget; lost beyond doubt is a verdict of the readings): concrete (basis forced) 53; quiet (basis bound) 5308; quiet (basis estimate) 5048; quiet (basis nothing) 15115
+OBS threats: BANDS BY SPREAD: rows per position (mean over all 33362 positions; share of positions with at least one): band 1 0.268 (23.42 pct); band 2 0.327 (23.84 pct); band 3 0.078 (6.83 pct); band 4 0.069 (5.19 pct); against the mover's units 0.164/0.151/0.042/0.031, against the other side's 0.104/0.176/0.037/0.038
+OBS threats: BANDS BY RANK: rows per position (mean over all 33362 positions; share of positions with at least one): band 1 0.269 (25.99 pct); band 2 0.263 (24.10 pct); band 3 0.077 (7.52 pct); band 4 0.134 (12.83 pct); against the mover's units 0.165/0.127/0.041/0.055, against the other side's 0.105/0.135/0.036/0.079
+OBS threats: THE EVENT: a unit of the side is taken (a taking by the other side, the events of the rules in the sample's record, any kind taken); rate per 100 plies of exposure (to the first such taking at or after the row, or to the end of the record); no horizon; cells (a position and a side) 66724; with the event 58138; mean exposure 7.37 plies; overall rate per 100 plies 11.825
+OBS threats: D BANDS BY SPREAD, the cell's top band, both sides: events per 100 plies of exposure, 90 pct band over games: no row (46314 cells, 38968 with the event): 10.244 [9.801, 10.700]; median plies to the event 6.0; band 1 (8307 cells, 7809 with the event): 16.152 [15.706, 16.639]; median plies to the event 4.0; band 2 (8709 cells, 8352 with the event): 18.819 [18.256, 19.465]; median plies to the event 3.0; band 3 (1979 cells, 1728 with the event): 16.545 [15.503, 17.673]; median plies to the event 4.0; band 4 (1415 cells, 1281 with the event): 15.838 [14.989, 17.021]; median plies to the event 4.0
+OBS threats: D BANDS BY SPREAD, the cell's top band, both sides: CONTROL the same labels SHUFFLED inside each quintile of ply: no row 11.368 [10.923, 11.854]; band 1 12.644 [12.270, 13.116]; band 2 13.680 [13.378, 14.068]; band 3 11.362 [10.731, 12.134]; band 4 12.762 [12.237, 13.461]
+OBS threats: D BANDS BY SPREAD, the cell's top band, both sides: PLY HELD FIXED (the mix of the five quintiles of ply as in all cells): no row 11.356 [11.162, 11.631]; band 1 16.065 [15.644, 16.542]; band 2 17.965 [17.470, 18.770]; band 3 17.092 [16.034, 18.209]; band 4 15.432 [14.618, 16.754]
+OBS threats: D BANDS BY SPREAD, the cell's top band, both sides: first row group over no row: 1.577 [1.509, 1.647]; with ply held fixed 1.415 [1.373, 1.446]
+OBS threats: D BANDS BY RANK, the cell's top band, both sides: events per 100 plies of exposure, 90 pct band over games: no row (46314 cells, 38968 with the event): 10.244 [9.801, 10.700]; median plies to the event 6.0; band 1 (8770 cells, 8145 with the event): 15.699 [15.240, 16.141]; median plies to the event 4.0; band 2 (8161 cells, 7798 with the event): 17.740 [17.280, 18.400]; median plies to the event 4.0; band 3 (1199 cells, 1083 with the event): 20.346 [19.172, 21.756]; median plies to the event 3.0; band 4 (2280 cells, 2144 with the event): 21.236 [20.318, 22.109]; median plies to the event 3.0
+OBS threats: D BANDS BY RANK, the cell's top band, both sides: CONTROL the same labels SHUFFLED inside each quintile of ply: no row 11.336 [10.905, 11.775]; band 1 12.312 [11.871, 12.834]; band 2 13.690 [13.376, 14.040]; band 3 12.790 [12.311, 13.402]; band 4 13.791 [13.349, 14.360]
+OBS threats: D BANDS BY RANK, the cell's top band, both sides: PLY HELD FIXED (the mix of the five quintiles of ply as in all cells): no row 11.356 [11.162, 11.631]; band 1 15.854 [15.379, 16.291]; band 2 16.889 [16.416, 17.596]; band 3 20.192 [19.072, 21.928]; band 4 20.615 [19.574, 21.766]
+OBS threats: D BANDS BY RANK, the cell's top band, both sides: first row group over no row: 1.533 [1.467, 1.598]; with ply held fixed 1.396 [1.358, 1.424]
+OBS threats: D CLASS of the worst row of the cell (no row, lost, both, threat, conditional, contested), both sides: events per 100 plies of exposure, 90 pct band over games: no row (45908 cells, 38664 with the event): 10.256 [9.810, 10.714]; median plies to the event 6.0; lost (6611 cells, 6120 with the event): 16.329 [15.799, 16.797]; median plies to the event 4.0; both (0 cells, 0 with the event): 0.000 [0.000, 0.000]; median plies to the event nan; threat (665 cells, 640 with the event): 21.398 [20.000, 23.166]; median plies to the event 2.0; conditional (2037 cells, 1891 with the event): 14.105 [13.562, 14.734]; median plies to the event 5.0; contested (11503 cells, 10823 with the event): 17.805 [17.293, 18.392]; median plies to the event 3.0
+OBS threats: D CLASS of the worst row of the cell (no row, lost, both, threat, conditional, contested), both sides: CONTROL the same labels SHUFFLED inside each quintile of ply: no row 11.412 [10.954, 11.859]; lost 12.947 [12.547, 13.349]; both 0.000 [0.000, 0.000]; threat 12.998 [12.333, 13.993]; conditional 12.872 [12.348, 13.393]; contested 12.695 [12.375, 13.087]
+OBS threats: D CLASS of the worst row of the cell (no row, lost, both, threat, conditional, contested), both sides: PLY HELD FIXED (the mix of the five quintiles of ply as in all cells): no row 11.348 [11.155, 11.621]; lost 16.180 [15.665, 16.661]; both 0.000 [0.000, 0.000]; threat 20.402 [19.167, 22.553]; conditional 13.651 [13.134, 14.314]; contested 17.438 [16.946, 18.010]
+OBS threats: D CLASS of the worst row of the cell (no row, lost, both, threat, conditional, contested), both sides: first row group over no row: 1.592 [1.526, 1.662]; with ply held fixed 1.426 [1.382, 1.463]
+OBS threats: D RESPONSE PLAYED, bands by SPREAD, band 2 (high, with a response), all classes: 5036 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 11.64 [10.75, 12.38] pct, the first named in 7.01 [6.38, 7.58] pct; CONTROL a candidate of the read drawn at random would be a response in 70.27 [69.62, 70.98] pct; by the reason of the response played: a taking 295, a counter threat 218, a unit is put between 73
+OBS threats: D RESPONSE PLAYED, bands by SPREAD, band 2 (high, with a response), the classes the read forces or threatens (lost, both, threat, conditional): 1329 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 12.64 [11.09, 14.24] pct, the first named in 7.00 [5.84, 8.10] pct; CONTROL a candidate of the read drawn at random would be a response in 65.67 [64.17, 67.00] pct; by the reason of the response played: a counter threat 81, a taking 66, a unit is put between 21
+OBS threats: D RESPONSE PLAYED, bands by SPREAD, band 2 (high, with a response), contested: 3707 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 11.28 [10.37, 12.22] pct, the first named in 7.01 [6.37, 7.79] pct; CONTROL a candidate of the read drawn at random would be a response in 71.93 [71.15, 72.62] pct; by the reason of the response played: a taking 229, a counter threat 137, a unit is put between 52
+OBS threats: D RESPONSE PLAYED, bands by SPREAD, band 4 (low, with a response), all classes: 1011 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 11.87 [9.97, 14.04] pct, the first named in 6.63 [5.16, 8.14] pct; CONTROL a candidate of the read drawn at random would be a response in 75.69 [74.43, 77.13] pct; by the reason of the response played: a counter threat 67, a taking 46, a unit is put between 7
+OBS threats: D RESPONSE PLAYED, bands by SPREAD, band 4 (low, with a response), the classes the read forces or threatens (lost, both, threat, conditional): 286 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 15.03 [11.42, 18.47] pct, the first named in 8.39 [5.60, 11.27] pct; CONTROL a candidate of the read drawn at random would be a response in 76.79 [73.78, 79.69] pct; by the reason of the response played: a counter threat 24, a taking 14, a unit is put between 5
+OBS threats: D RESPONSE PLAYED, bands by SPREAD, band 4 (low, with a response), contested: 725 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 10.62 [8.57, 12.61] pct, the first named in 5.93 [4.45, 7.64] pct; CONTROL a candidate of the read drawn at random would be a response in 75.26 [73.70, 76.83] pct; by the reason of the response played: a counter threat 43, a taking 32, a unit is put between 2
+OBS threats: D RESPONSE PLAYED, bands by RANK, band 2 (high, with a response), all classes: 4252 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 12.28 [11.44, 13.17] pct, the first named in 7.08 [6.46, 7.81] pct; CONTROL a candidate of the read drawn at random would be a response in 69.32 [68.62, 69.99] pct; by the reason of the response played: a counter threat 232, a taking 223, a unit is put between 67
+OBS threats: D RESPONSE PLAYED, bands by RANK, band 2 (high, with a response), the classes the read forces or threatens (lost, both, threat, conditional): 1197 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 13.45 [11.81, 15.38] pct, the first named in 7.27 [5.96, 8.49] pct; CONTROL a candidate of the read drawn at random would be a response in 64.09 [62.55, 65.45] pct; by the reason of the response played: a counter threat 86, a taking 53, a unit is put between 22
+OBS threats: D RESPONSE PLAYED, bands by RANK, band 2 (high, with a response), contested: 3055 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 11.82 [10.84, 12.94] pct, the first named in 7.00 [6.22, 7.99] pct; CONTROL a candidate of the read drawn at random would be a response in 71.36 [70.66, 72.25] pct; by the reason of the response played: a taking 170, a counter threat 146, a unit is put between 45
+OBS threats: D RESPONSE PLAYED, bands by RANK, band 4 (low, with a response), all classes: 1795 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 10.25 [9.12, 11.83] pct, the first named in 6.63 [5.69, 7.65] pct; CONTROL a candidate of the read drawn at random would be a response in 75.59 [74.48, 76.61] pct; by the reason of the response played: a taking 118, a counter threat 53, a unit is put between 13
+OBS threats: D RESPONSE PLAYED, bands by RANK, band 4 (low, with a response), the classes the read forces or threatens (lost, both, threat, conditional): 418 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 11.96 [9.43, 14.49] pct, the first named in 7.18 [5.13, 9.03] pct; CONTROL a candidate of the read drawn at random would be a response in 77.78 [75.07, 80.11] pct; by the reason of the response played: a taking 27, a counter threat 19, a unit is put between 4
+OBS threats: D RESPONSE PLAYED, bands by RANK, band 4 (low, with a response), contested: 1377 rows against the mover's units that name a response, at positions where the game's move is known: the move played was one of the named responses in 9.73 [8.33, 10.90] pct, the first named in 6.46 [5.47, 7.43] pct; CONTROL a candidate of the read drawn at random would be a response in 74.93 [73.76, 76.06] pct; by the reason of the response played: a taking 91, a counter threat 34, a unit is put between 9
+OBS threats: stage D wall 3 s
+
+CARRYING, the true test (carry_obs.txt):
+OBS threats: carrying: 150 held-out games (the first in the md5 order of the ids), every ply from 10 to the end: 9101 rows
+OBS threats: progress: 2940 rows read, 76 s
+OBS threats: progress: 5730 rows read, 150 s
+OBS threats: progress: 9042 rows read, 222 s
+OBS threats: E(3) CARRYING [lost or contested (78.69's open claims)]: claims at ply n with a row two plies later (same side to move): 6959; read set UNCHANGED 738, of which held again 408; read set CHANGED 6221, of which held again 1330
+OBS threats: E(3) [lost or contested (78.69's open claims)]: share held again when the read set is UNCHANGED 55.28 [49.93, 59.67] pct; when it CHANGED 21.38 [19.62, 22.81] pct
+OBS threats: E(3) [lost or contested (78.69's open claims)] DEFECTS OF THE READ (read set unchanged, claim not held again): no frame at n+2 holds the unit: 234; the unit has a claim of another class at n+2: 40; the unit is a member of a frame at n+2 with no claim on it: 56; share of all unchanged claims 44.72 [40.33, 50.07] pct
+OBS threats: E(3) [lost or contested (78.69's open claims)] FIRST SEEN AT n+2: 5341; read set already as it is at n 466 (8.72 [7.78, 9.72] pct of them: a miss at n); read set changed 4875
+OBS threats: E(3) [lost or contested (78.69's open claims)] MISSES AT n (first seen at n+2 though its read set was already as it is): no frame at n held the unit: 355; the unit had a claim of another class at n: 45; the unit was a member of a frame at n with no claim on it: 66
+OBS threats: E(3) CARRYING [lost only]: claims at ply n with a row two plies later (same side to move): 3091; read set UNCHANGED 381, of which held again 197; read set CHANGED 2710, of which held again 400
+OBS threats: E(3) [lost only]: share held again when the read set is UNCHANGED 51.71 [43.83, 57.75] pct; when it CHANGED 14.76 [12.93, 16.37] pct
+OBS threats: E(3) [lost only] DEFECTS OF THE READ (read set unchanged, claim not held again): no frame at n+2 holds the unit: 110; the unit has a claim of another class at n+2: 20; the unit is a member of a frame at n+2 with no claim on it: 54; share of all unchanged claims 48.29 [42.25, 56.17] pct
+OBS threats: E(3) [lost only] FIRST SEEN AT n+2: 2587; read set already as it is at n 273 (10.55 [9.38, 11.70] pct of them: a miss at n); read set changed 2314
+OBS threats: E(3) [lost only] MISSES AT n (first seen at n+2 though its read set was already as it is): no frame at n held the unit: 186; the unit had a claim of another class at n: 30; the unit was a member of a frame at n with no claim on it: 57
+OBS threats: carrying wall 224 s
+
+PUZZLES (puzzles_obs.txt):
+OBS threats: puzzles: 300 positions read, 300 rows; solution move known to the engine in 300; wall 14 s
+OBS threats: PUZZLES (a measure only, one run): 300 puzzles with a known first move; with at least one row against the other side's units 191 (63.67 pct); with a row in the top band (band 1 by the rank of the stake: high, no response) 106 (35.33 pct)
+OBS threats: PUZZLES: the solution's first move is made by a unit that bears on a unit of theirs in a band-1 row: 69 of 300 (23.00 pct); it takes that unit: 48 of 300 (16.00 pct); CONTROL a unit of ours drawn at random is such a bearer in 6.07 pct (mean over the puzzles)
+OBS threats: puzzles wall 18 s
+
+WHAT THE LINES SAY (directions, one run each): (1) in the cells (a position and a side) the rate of a unit of the side then being taken is above the no-row rate in every band with ply held fixed, highest where the units are the OTHER side's (ours against them) and for bands 1 and 2; but band 1 (high, no response) is NOT clearly above band 2 (high, with a response) by the spread, and by the rank bands 3 and 4 are higher than 1 and 2 on the small counts: the order the spec wants (band 1 highest) is not shown; the shuffled-label control is flat. (2) The response named was the move played in about 11 to 15 pct of rows with a response; the random control printed is a candidate of the read, not a legal move: most played moves are not candidates of the read at all, so this is not a comparison with chance. (3) Rows of class lost with basis bound or estimate are often not lost in the plain sense (first printed position: a bishop standing unattacked; second: a knight exchange): the class `lost` of the read rests on the bound or the estimate there; the 53 rows resting on `forced` are the only concrete ones. (4) CARRYING: with the read set unchanged a claim is held again in about half the cases, and with it changed in about a fifth: the read set is rarely unchanged over two plies (frames are about ten units), and when it is, the defect that dominates is that no frame at n+2 holds the unit (the frame was not asked: a miss of attention), then a frame that holds the unit with no claim on it; a claim first seen at n+2 had its read set already as it is at n in about a tenth of cases (a miss at n, mostly the unit in no frame at n). (5) PUZZLES, as a measure only: the solution's first move is by a unit bearing on a unit of theirs in a band-1 row in 23 pct of the 300, and takes it in 16 pct, against 6 pct for a unit drawn at random; band by rank only (the spread needs inputs not rebuilt outside the 9000 games). NOT BUILT / CUT: the spread at a puzzle position; the roll-over of the list from move to move (the memory of spec 4 reads this list, it does not exist yet); `lost beyond doubt`; no sleep or player reads the list; the guard (trace_identity) was not run (no trace, read set or leaf verdict of any player changed: questions_state is unchanged, tested); the negative control of AGENT_BRIEF section 2 is the shuffled-label control above (it is flat).
+
+STAGE E, THE TEN POSITIONS (the same text is in artifacts/experiments/threats_78_70/print.txt):
+THE TEN POSITIONS (rule in threat_print.py: held-out games of the 78.59 split in the md5 order of their ids; per phase, the first settled row of a game in the phase with a row in band 1 by the spread, one per game); chosen 10; the lists come from the frame read with answers (threat_list.py); the stake is the change of the owner's chance of the result by the kinds reading of 78.69; the spread is that of the two readings; `us` is the side to move
+How to read a row: kind and place of the unit threatened [class], its stake; by: the units that bear on it (kind place); the response (the move, from-to, and its reason: a taking, the unit moves, a guard is added, a counter threat, a unit is put between), `none found` when no candidate move of the read answers; the frame(s) the claim was read in (the number of units in each); how the line ended (spec 4) and what the claim rests on. For the other side's units the response is what its owner would answer after we pass (the move is not available to us now).
+
+=== POSITION 1 of 10 (early play) ===
+game 3:773528, ply 11 (the position after the first 11 moves; black to move); moves so far: e2e4 e7e6 d2d4 d7d5 e4d5 e6d5 c2c4 d5c4 f1c4 c8f5 g1f3
+set up: rn1qkbnr/ppp2ppp/8/5b2/2BP4/5N2/PP3PPP/RNBQK2R b KQkq - 2 6   [the engine's board and the renderer's agree]
+r n . q k b n r
+p p p . . p p p
+. . . . . . . .
+. . . . . b . .
+. . B P . . . .
+. . . . . N . .
+P P . . . P P P
+R N B Q K . . R
+white: bishop c1, bishop c4, king e1, knight b1, knight f3, pawn a2, pawn b2, pawn d4, pawn f2, pawn g2, pawn h2, queen d1, rook a1, rook h1
+black: bishop f5, bishop f8, king e8, knight b8, knight g8, pawn a7, pawn b7, pawn c7, pawn f7, pawn g7, pawn h7, queen d8, rook a8, rook h8
+spread of the two readings at the position: 0.0490
+THREATS AGAINST BLACK (the side to move: their threats against us)
+  band 1 by the spread, high, no response: 
+    - bishop f5 [lost], stake +0.257; by: no unit bears on it (a standing claim); response: none found; the frame that wins has 8 units; the line ended: quiet (the read rests on: bound) [band by rank: 1]
+  band 2 by the spread, high, with a response: 
+    - pawn b7 [conditional], stake +0.098; by: no unit bears on it (a standing claim); response: f5-d3 (a counter threat) and 5 more; the frame that wins has 7 units; the line ended: quiet (the read rests on: bound) [band by rank: 4]
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST WHITE (the other side: ours against them)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 2 of 10 (early play) ===
+game 39:7926538, ply 10 (the position after the first 10 moves; white to move); moves so far: d2d4 d7d5 e2e4 b8c6 e4e5 f7f6 g1f3 f6e5 f3e5 c8e6
+set up: r2qkbnr/ppp1p1pp/2n1b3/3pN3/3P4/8/PPP2PPP/RNBQKB1R w KQkq - 1 6   [the engine's board and the renderer's agree]
+r . . q k b n r
+p p p . p . p p
+. . n . b . . .
+. . . p N . . .
+. . . P . . . .
+. . . . . . . .
+P P P . . P P P
+R N B Q K B . R
+white: bishop c1, bishop f1, king e1, knight b1, knight e5, pawn a2, pawn b2, pawn c2, pawn d4, pawn f2, pawn g2, pawn h2, queen d1, rook a1, rook h1
+black: bishop e6, bishop f8, king e8, knight c6, knight g8, pawn a7, pawn b7, pawn c7, pawn d5, pawn e7, pawn g7, pawn h7, queen d8, rook a8, rook h8
+spread of the two readings at the position: 0.1198
+THREATS AGAINST WHITE (the side to move: their threats against us)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST BLACK (the other side: ours against them)
+  band 1 by the spread, high, no response: 
+    - knight c6 [lost], stake +0.369; by: knight e5; response: none found; frames 8 units (lost, 0 answers), 10 units (lost, 0 answers); the line ended: quiet (the read rests on: estimate) [band by rank: 1]
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 3 of 10 (early play) ===
+game 39:7918119, ply 12 (the position after the first 12 moves; white to move); moves so far: d2d4 d7d5 g1f3 g8f6 c2c4 e7e6 b1c3 d5c4 e2e3 c7c5 f1c4 c5d4
+set up: rnbqkb1r/pp3ppp/4pn2/8/2Bp4/2N1PN2/PP3PPP/R1BQK2R w KQkq - 0 7   [the engine's board and the renderer's agree]
+r n b q k b . r
+p p . . . p p p
+. . . . p n . .
+. . . . . . . .
+. . B p . . . .
+. . N . P N . .
+P P . . . P P P
+R . B Q K . . R
+white: bishop c1, bishop c4, king e1, knight c3, knight f3, pawn a2, pawn b2, pawn e3, pawn f2, pawn g2, pawn h2, queen d1, rook a1, rook h1
+black: bishop c8, bishop f8, king e8, knight b8, knight f6, pawn a7, pawn b7, pawn d4, pawn e6, pawn f7, pawn g7, pawn h7, queen d8, rook a8, rook h8
+spread of the two readings at the position: 0.0177
+THREATS AGAINST WHITE (the side to move: their threats against us)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST BLACK (the other side: ours against them)
+  band 1 by the spread, high, no response: 
+    - pawn d4 [lost], stake +0.165; by: knight f3, pawn e3, queen d1; response: none found; the frame that wins has 9 units; the line ended: quiet (the read rests on: estimate) [band by rank: 1]
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 4 of 10 (middle play) ===
+game 15:3117243, ply 26 (the position after the first 26 moves; white to move); moves so far: e2e4 c7c5 g1f3 b8c6 f1c4 e7e6 b1c3 a7a6 a2a4 g7g6 e1g1 f8g7 c3e2 d7d5 e4d5 e6d5 c4a2 g8e7 c2c3 e8g8 d2d4 c5c4 c1g5 f7f6 g5f4 g6g5
+set up: r1bq1rk1/1p2n1bp/p1n2p2/3p2p1/P1pP1B2/2P2N2/BP2NPPP/R2Q1RK1 w - - 0 14   [the engine's board and the renderer's agree]
+r . b q . r k .
+. p . . n . b p
+p . n . . p . .
+. . . p . . p .
+P . p P . B . .
+. . P . . N . .
+B P . . N P P P
+R . . Q . R K .
+white: bishop a2, bishop f4, king g1, knight e2, knight f3, pawn a4, pawn b2, pawn c3, pawn d4, pawn f2, pawn g2, pawn h2, queen d1, rook a1, rook f1
+black: bishop c8, bishop g7, king g8, knight c6, knight e7, pawn a6, pawn b7, pawn c4, pawn d5, pawn f6, pawn g5, pawn h7, queen d8, rook a8, rook f8
+spread of the two readings at the position: 0.0023
+THREATS AGAINST WHITE (the side to move: their threats against us)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: 
+    - bishop f4 [conditional], stake +0.387; by: pawn g5; response: f3-g5 (a taking) and 1 more; frames 8 units (conditional, 2 answers), 10 units (safe, 4 answers); the line ended: quiet (the read rests on: estimate) [band by rank: 2]
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST BLACK (the other side: ours against them)
+  band 1 by the spread, high, no response: 
+    - pawn g5 [contested], stake +0.151; by: bishop f4, knight f3; response: none found; frames 8 units (contested, 0 answers), 10 units (contested, 0 answers); the line ended: quiet (the read rests on: nothing) [band by rank: 3]
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 5 of 10 (middle play) ===
+game 39:7983988, ply 21 (the position after the first 21 moves; black to move); moves so far: e2e4 e7e5 g1f3 b8c6 f1b5 g8e7 e1g1 a7a6 b5a4 f7f6 f1e1 d7d5 c2c3 c8g4 a4c2 d8d6 d2d4 e8c8 d4e5 c6e5 c1f4
+set up: 2kr1b1r/1pp1n1pp/p2q1p2/3pn3/4PBb1/2P2N2/PPB2PPP/RN1QR1K1 b - - 1 11   [the engine's board and the renderer's agree]
+. . k r . b . r
+. p p . n . p p
+p . . q . p . .
+. . . p n . . .
+. . . . P B b .
+. . P . . N . .
+P P B . . P P P
+R N . Q R . K .
+white: bishop c2, bishop f4, king g1, knight b1, knight f3, pawn a2, pawn b2, pawn c3, pawn e4, pawn f2, pawn g2, pawn h2, queen d1, rook a1, rook e1
+black: bishop f8, bishop g4, king c8, knight e5, knight e7, pawn a6, pawn b7, pawn c7, pawn d5, pawn f6, pawn g7, pawn h7, queen d6, rook d8, rook h8
+spread of the two readings at the position: 0.1001
+THREATS AGAINST BLACK (the side to move: their threats against us)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST WHITE (the other side: ours against them)
+  band 1 by the spread, high, no response: 
+    - knight f3 [lost], stake +0.230; by: bishop g4, knight e5; response: none found; frames 9 units (lost, 0 answers), 10 units (lost, 0 answers); the line ended: quiet (the read rests on: estimate) [band by rank: 1]
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 6 of 10 (middle play) ===
+game 75:15069428, ply 23 (the position after the first 23 moves; black to move); moves so far: d2d4 d7d5 c2c4 g8f6 b1c3 d5c4 e2e4 e7e6 f1c4 f8b4 d1a4 b8c6 d4d5 b4c3 b2c3 e6d5 e4d5 f6d5 c1a3 d5c3 a4c2 d8d4 c4d3
+set up: r1b1k2r/ppp2ppp/2n5/8/3q4/B1nB4/P1Q2PPP/R3K1NR b KQkq - 3 12   [the engine's board and the renderer's agree]
+r . b . k . . r
+p p p . . p p p
+. . n . . . . .
+. . . . . . . .
+. . . q . . . .
+B . n B . . . .
+P . Q . . P P P
+R . . . K . N R
+white: bishop a3, bishop d3, king e1, knight g1, pawn a2, pawn f2, pawn g2, pawn h2, queen c2, rook a1, rook h1
+black: bishop c8, king e8, knight c3, knight c6, pawn a7, pawn b7, pawn c7, pawn f7, pawn g7, pawn h7, queen d4, rook a8, rook h8
+spread of the two readings at the position: 0.0552
+THREATS AGAINST BLACK (the side to move: their threats against us)
+  band 1 by the spread, high, no response: 
+    - pawn h7 [lost], stake +0.068; by: bishop d3; response: none found; the frame that wins has 9 units; the line ended: quiet (the read rests on: estimate) [band by rank: 3]
+  band 2 by the spread, high, with a response: 
+    - knight c3 [conditional], stake +0.157; by: queen c2; response: d4-f2 (a taking) and 1 more; the frame that wins has 9 units; the line ended: quiet (the read rests on: estimate) [band by rank: 2]
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST WHITE (the other side: ours against them)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 7 of 10 (middle play) ===
+game 75:15037218, ply 36 (the position after the first 36 moves; white to move); moves so far: e2e4 e7e6 d2d4 c7c5 d4c5 f8c5 g1f3 d7d5 e4d5 e6d5 c2c4 g8f6 c4d5 d8d5 d1d5 f6d5 b1c3 d5c3 b2c3 e8g8 f3d4 f8e8 c1e3 b8c6 d4c6 c5e3 f2e3 e8e3 e1d2 e3e6 c6d4 e6d6 f1d3 c8d7 h1e1 a8d8
+set up: 3r2k1/pp1b1ppp/3r4/8/3N4/2PB4/P2K2PP/R3R3 w - - 8 19   [the engine's board and the renderer's agree]
+. . . r . . k .
+p p . b . p p p
+. . . r . . . .
+. . . . . . . .
+. . . N . . . .
+. . P B . . . .
+P . . K . . P P
+R . . . R . . .
+white: bishop d3, king d2, knight d4, pawn a2, pawn c3, pawn g2, pawn h2, rook a1, rook e1
+black: bishop d7, king g8, pawn a7, pawn b7, pawn f7, pawn g7, pawn h7, rook d6, rook d8
+spread of the two readings at the position: 0.0109
+THREATS AGAINST WHITE (the side to move: their threats against us)
+  band 1 by the spread, high, no response: 
+    - pawn h2 [lost], stake +0.011; by: no unit bears on it (a standing claim); response: none found; the frame that wins has 8 units; the line ended: quiet (the read rests on: bound) [band by rank: 1]
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST BLACK (the other side: ours against them)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 8 of 10 (late play) ===
+game 75:15140593, ply 50 (the position after the first 50 moves; white to move); moves so far: d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 e2e3 b8c6 f1d3 f8b4 c1d2 b4c3 d2c3 f6e4 d3e4 d5e4 f2f3 f7f5 d1c2 e8g8 e1c1 a7a6 f3e4 f5e4 c2e4 c8d7 g1f3 b7b5 f3e5 c6e5 e4e5 b5c4 g2g4 d8f6 e5c7 a8d8 c7c4 f6g5 h2h3 g5e3 c1b1 e3e4 b1a1 e4c6 c4d3 g7g6 h3h4 f8f3 d3e2 d8f8
+set up: 5rk1/3b3p/p1q1p1p1/8/3P2PP/2B2r2/PP2Q3/K2R3R w - - 3 26   [the engine's board and the renderer's agree]
+. . . . . r k .
+. . . b . . . p
+p . q . p . p .
+. . . . . . . .
+. . . P . . P P
+. . B . . r . .
+P P . . Q . . .
+K . . R . . . R
+white: bishop c3, king a1, pawn a2, pawn b2, pawn d4, pawn g4, pawn h4, queen e2, rook d1, rook h1
+black: bishop d7, king g8, pawn a6, pawn e6, pawn g6, pawn h7, queen c6, rook f3, rook f8
+spread of the two readings at the position: 0.0317
+THREATS AGAINST WHITE (the side to move: their threats against us)
+  band 1 by the spread, high, no response: 
+    - queen e2 [lost], stake +0.270; by: no unit bears on it (a standing claim); response: none found; the frame that wins has 9 units; the line ended: quiet (the read rests on: bound) [band by rank: 1]
+    - pawn g4 [lost], stake +0.033; by: no unit bears on it (a standing claim); response: none found; the frame that wins has 5 units; the line ended: quiet (the read rests on: bound) [band by rank: 3]
+  band 2 by the spread, high, with a response: 
+    - bishop c3 [contested], stake +0.086; by: queen c6, rook f3; response: e2-f3 (a taking) and 2 more; the frame that wins has 9 units; the line ended: quiet (the read rests on: nothing) [band by rank: 2]
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST BLACK (the other side: ours against them)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 9 of 10 (late play) ===
+game 3:601205, ply 66 (the position after the first 66 moves; white to move); moves so far: e2e4 e7e5 g1f3 b8c6 f1b5 d7d6 c2c3 c8g4 h2h3 g4h5 e1g1 g8f6 d2d3 f8e7 f1e1 e8g8 b1d2 h5g6 d2f1 f6h5 d3d4 g8h8 d4d5 c6b8 b2b4 f7f5 b5d3 f5f4 a2a4 c7c6 c3c4 d8b6 c1d2 b8d7 d1c2 h5g3 a4a5 b6d8 f2g3 f4g3 f1g3 e7h4 g1h2 h4g3 h2g3 f8f3 g2f3 d7f6 g3h2 f6h5 e1g1 d8f6 d3e2 a8f8 a1f1 h5f4 d2f4 f6f4 g1g3 h7h5 c2c1 f4h4 c1g5 h4g5 g3g5 h8h7
+set up: 5r2/pp4pk/2pp2b1/P2Pp1Rp/1PP1P3/5P1P/4B2K/5R2 w - - 1 34   [the engine's board and the renderer's agree]
+. . . . . r . .
+p p . . . . p k
+. . p p . . b .
+P . . P p . R p
+. P P . P . . .
+. . . . . P . P
+. . . . B . . K
+. . . . . R . .
+white: bishop e2, king h2, pawn a5, pawn b4, pawn c4, pawn d5, pawn e4, pawn f3, pawn h3, rook f1, rook g5
+black: bishop g6, king h7, pawn a7, pawn b7, pawn c6, pawn d6, pawn e5, pawn g7, pawn h5, rook f8
+spread of the two readings at the position: 0.0489
+THREATS AGAINST WHITE (the side to move: their threats against us)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST BLACK (the other side: ours against them)
+  band 1 by the spread, high, no response: 
+    - pawn c6 [lost], stake +0.100; by: pawn d5; response: none found; the frame that wins has 10 units; the line ended: quiet (the read rests on: estimate) [band by rank: 1]
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+
+=== POSITION 10 of 10 (late play) ===
+game 63:12664513, ply 52 (the position after the first 52 moves; white to move); moves so far: e2e4 e7e5 b1c3 f8c5 f1c4 g8f6 g1f3 b8c6 e1g1 e8g8 a2a3 h7h6 b2b4 c5b6 c3a4 b6d4 c2c3 b7b5 c4b5 d4b6 a4b6 a7b6 a3a4 c6a7 b5e2 c8b7 d2d3 d7d5 e4d5 b7d5 d3d4 e5d4 f3d4 c7c5 d4f5 d8d7 e2f3 d7f5 f3d5 f6d5 b4c5 d5c3 d1d6 c3e2 g1h1 a7c8 d6c6 a8a7 c5b6 c8b6 c6b6 a7a8
+set up: r4rk1/5pp1/1Q5p/5q2/P7/8/4nPPP/R1B2R1K w - - 1 27   [the engine's board and the renderer's agree]
+r . . . . r k .
+. . . . . p p .
+. Q . . . . . p
+. . . . . q . .
+P . . . . . . .
+. . . . . . . .
+. . . . n P P P
+R . B . . R . K
+white: bishop c1, king h1, pawn a4, pawn f2, pawn g2, pawn h2, queen b6, rook a1, rook f1
+black: king g8, knight e2, pawn f7, pawn g7, pawn h6, queen f5, rook a8, rook f8
+spread of the two readings at the position: 0.0313
+THREATS AGAINST WHITE (the side to move: their threats against us)
+  band 1 by the spread, high, no response: 
+    - rook a1 [lost], stake +0.083; by: no unit bears on it (a standing claim); response: none found; the frame that wins has 4 units; the line ended: quiet (the read rests on: bound) [band by rank: 1]
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
+THREATS AGAINST BLACK (the other side: ours against them)
+  band 1 by the spread, high, no response: none
+  band 2 by the spread, high, with a response: none
+  band 3 by the spread, low, no response: none
+  band 4 by the spread, low, with a response: none
