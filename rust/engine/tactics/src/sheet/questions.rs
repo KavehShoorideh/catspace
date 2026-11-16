@@ -498,7 +498,7 @@ struct Cand<G: Game> { state: G::State, ident: Ident, jm: u64, lost: u64, captur
 
 fn class_ix(c: Class) -> usize { match c { Class::Capture => 0, Class::Answer => 1, Class::Defend => 2, Class::Threat => 3, Class::Block => 4 } }
 
-struct Exp<G: Game> { frame_places: Vec<Place>, att: u64, mask: u64, mover: Option<Role>, gone: bool, big: bool, cands: Vec<Rc<Cand<G>>>, pass: Option<G::State>, att_o: u64, contacts: Vec<Cell>, contact_pos: bool, sig: u64 }
+struct Exp<G: Game> { frame_places: Vec<Place>, att: u64, mask: u64, mover: Option<Role>, gone: bool, big: bool, cands: Vec<Rc<Cand<G>>>, pass: Option<G::State>, att_o: u64, contacts: Vec<(Cell, bool)>, contact_pos: bool, sig: u64 }
 
 type MKey = (u64, u64, u8, i8, u8, u8, u64, u16, u64);
 
@@ -540,6 +540,7 @@ pub struct QReader<'a, G: Game + Placed> {
     pub bands: Option<Rc<Vec<(Val, Val)>>>,
     vmode: u8,
     path: Vec<u64>,
+    trap_memo: FxHashMap<(u64, Cell), TrapWord>,
     pub causes: Vec<CauseRec>,
 }
 
@@ -556,7 +557,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         for (c, id) in &ident { omask[c.0.min(1)] |= 1u64 << id; }
         let seed_ids: Vec<u8> = frame.seed.units.iter().filter_map(|c| id_at(&ident, c)).collect();
         let root_p = PlaceSet::from_places(np, frame.places.iter().copied());
-        QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np, kv: None, rules: Rules::default(), bands: None, vmode: frame.mode, path: vec![], causes: vec![] }
+        QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np, kv: None, rules: Rules::default(), bands: None, vmode: frame.mode, path: vec![], trap_memo: FxHashMap::default(), causes: vec![] }
     }
 
     /// The identity of a root member (index into `frame.members`).
@@ -615,7 +616,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         let opp_member_places: Vec<Place> = members.iter().map(|&i| &part.units[i]).filter(|u| u.owner != mover && !g.strikes_place(s, other, u.at)).map(|u| u.at).collect();
         // 78.60 A: what stands to be lost for the OTHER side (its members that nothing of theirs guards and that the mover bears on), and the contacts: members of either side that the other bears on while
         // their own side guards them. A contact stands to be lost when some taking on it is worth something by the estimate (or at all when no estimate is set: it cannot be told).
-        let (mut att_o, mut contacts, mut contact_pos) = (0u64, Vec::<Cell>::new(), false);
+        let (mut att_o, mut contacts, mut contact_pos) = (0u64, Vec::<(Cell, bool)>::new(), false);
         if self.rules.settle {
             for &i in &members {
                 let u = &part.units[i];
@@ -625,15 +626,17 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
                 if !g.strikes_place(s, o, u.at) {
                     if o != mover.min(1) { if let Some(x) = ident.iter().find(|x| x.0 == cell) { att_o |= 1u64 << x.1; } }
                 } else {
-                    contacts.push(cell);
+                    // the trap question (answers kept by position and unit) is asked only of a contact member that some taking does not lose by the estimate (a level trade): where every taking loses, the member is not at risk
+                    let mut level = false;
                     match &self.kv {
                         None => contact_pos = true,
                         Some(kv) => {
                             for r in part.bears.iter().filter(|r| r.place == u.at && part.units[r.unit].owner.min(1) != o) {
-                                if estimate_taking(&part, u.at, r.unit, kv).is_some_and(|e| e.value > 0) { contact_pos = true; }
+                                match estimate_taking(&part, u.at, r.unit, kv) { Some(e) if e.value > 0 => contact_pos = true, Some(e) if e.value == 0 => level = true, _ => {} }
                             }
                         }
                     }
+                    contacts.push((cell, level));
                 }
             }
         }
@@ -783,12 +786,21 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         // between the sides on the frame the end rests on nothing; with a contact that the estimate read as no loss it carries the estimate mark.
         if self.rules.settle && left < self.depth - 1 && e.att == 0 && e.att_o == 0 && !e.contact_pos {
             let mut ok = true;
-            for cell in e.contacts.clone() {
-                let ta = trap(self.g, self.st, s, cell, SETTLE_TRAP_FUSE);
-                self.stats.settle_trap_q += ta.stats.questions;
-                self.stats.settle_trap_pos += ta.stats.positions;
-                if ta.word == TrapWord::Trapped { self.stats.settle_trapped += 1; }
-                if matches!(ta.word, TrapWord::Trapped | TrapWord::NotQuiet | TrapWord::Unread) { ok = false; break; }
+            let sk = self.g.key(s);
+            for (cell, level) in e.contacts.clone() {
+                if !level { continue; }
+                let word = match self.trap_memo.get(&(sk, cell)) {
+                    Some(w) => *w,
+                    None => {
+                        let ta = trap(self.g, self.st, s, cell, SETTLE_TRAP_FUSE);
+                        self.stats.settle_trap_q += ta.stats.questions;
+                        self.stats.settle_trap_pos += ta.stats.positions;
+                        self.trap_memo.insert((sk, cell), ta.word);
+                        ta.word
+                    }
+                };
+                if word == TrapWord::Trapped { self.stats.settle_trapped += 1; }
+                if matches!(word, TrapWord::Trapped | TrapWord::NotQuiet | TrapWord::Unread) { ok = false; break; }
             }
             if ok {
                 let fl = if e.contacts.is_empty() { 0 } else { F_EST_READ };

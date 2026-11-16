@@ -9,7 +9,12 @@ takings are read on, EXT = 2 more plies of takings (questions.rs, stated there w
 frames apart, with the same fuse. The frame classes are those of 78.55 (LOST, SAFE, BOTH, THREAT, CONDITIONAL, CONTESTED, UNREAD) made from the claims of the questions read (only for members that stand
 attacked, or that the frame's own question names: see questions.rs claims_q).
 
-  .venv/bin/python -m catspace.incubator.analyst.discovery.frames_questions_measure --game NAME --games-dir D --reads R [--concepts-dir C] [--games N] [--threads K] [--out-dir O]
+PLAN 78.60 (a line ends for a reason): `--rules settle,progress,cause,band` switches the four rules of questions.rs on (none: the 78.58 read, and with no estimator the 78.57 read), `--root-cap N` the cap of members at
+the root of a frame (below 10: the seed units and what bears on them). The new lines: the ends of lines by kind (settled, settled by estimate, bound, circling, fuse), the classes by what a claim rests on (FORCED, PRUNED,
+ESTIMATE, BOUND beside the old ones), the named causes, the band, and the 78.58 numbers (frames_78_58/short40) beside the 78.57 and 78.55 ones. The fuses and the depth are those of 78.58 (named in docs/ANALYST_PLAN.md,
+"78.60 FUSES AND STOP RULE", before the run).
+
+  .venv/bin/python -m catspace.incubator.analyst.discovery.frames_questions_measure --game NAME --games-dir D --reads R [--concepts-dir C] [--games N] [--threads K] [--out-dir O] [--estimator E] [--rules LIST] [--root-cap N]
 """
 from __future__ import annotations
 
@@ -37,8 +42,11 @@ FUSE = 1_500
 ROW_FUSE = 30_000
 COMPOSE_EVERY = 5
 TRAP_FUSE = 400
-CLASSES = OLD.CLASSES + ["READ_BOTH", "READ_LOST", "READ_SAFE"]       # 78.58: a claim that rests on a bound, a prune or an estimate is READ, not forced
+BASES = ["FORCED", "PRUNED", "ESTIMATE", "BOUND"]                      # 78.60 E: what a claim rests on, in order
+CLASSES = OLD.CLASSES + ["READ_BOTH", "READ_LOST", "READ_SAFE"] + [f"{b}_{k}" for k in ("LOST", "SAFE", "BOTH") for b in BASES]       # 78.58: READ_*; 78.60: by what the claim rests on
 PRIOR_DIR = ("frames_78_57", "short40b")
+PRIOR58_DIR = ("frames_78_58", "short40")
+RULE_NAMES = ("settle", "progress", "cause", "band")
 TRAP_WORDS = ["free", "trapped", "immobile", "not_quiet", "ended", "unread"]
 OLD_DIR = ("frames_78_55", "games_s5016_n500")
 
@@ -66,6 +74,8 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--games", type=int, default=0, help="a subset: the first N games by id")
     ap.add_argument("--seeds", type=int, default=SEEDS)
     ap.add_argument("--estimator", default=None, help="78.58: the estimator record: its kind_values are the worth of the kinds the exchange reads; without it the read is the 78.57 read")
+    ap.add_argument("--rules", default="", help="78.60: a comma list out of settle, progress, cause, band (the rules of a line's end); empty: none")
+    ap.add_argument("--root-cap", type=int, default=0, help="78.60 F: the cap of members at the root of a frame; 0 or 10: as before")
     ap.add_argument("--prior", default=None, help="the directory of the 78.57 raw_counts.json to set beside (default frames_78_57/short40b)")
     ap.add_argument("--threads", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     a = ap.parse_args(argv)
@@ -73,7 +83,7 @@ def main(argv: "list | None" = None) -> int:
     records = sorted(FO.read_games(a.games_dir), key=lambda r: r["game"])
     variant = records[0]["variant"]
     label = Path(a.games_dir).name + (f"_first{a.games}" if a.games else "")
-    out = Path(a.out_dir or paths.experiment("frames_78_57", label))
+    out = Path(a.out_dir or paths.experiment("frames_78_60", label))
     out.mkdir(parents=True, exist_ok=True)
     concepts_dir = Path(a.concepts_dir or paths.experiment("unit_fates_78_54", Path(a.games_dir).name))
     reads_by_id = {}
@@ -109,6 +119,18 @@ def main(argv: "list | None" = None) -> int:
         rec = json.loads(Path(a.estimator).read_text())
         model.set_kind_values([(k, int(v)) for k, v in rec["kind_values"].items()])
         say(f"estimator record {a.estimator}: source {rec['source']}; dated {rec['date']}; the worth of the kinds the exchange reads {rec['kind_values']}")
+        scale = rec.get("scale", 1000)
+        bands = [(o["kind"], int(round(scale * o["lo"])), int(round(scale * o["hi"]))) for o in rec["order_of_kinds"]]
+        model.set_kind_bands(bands)
+        say(f"the bands of the kinds (the record's order of kinds, times {scale}): {bands}")
+    rules = [r for r in a.rules.split(",") if r]
+    bad = [r for r in rules if r not in RULE_NAMES]
+    if bad:
+        raise SystemExit(f"unknown rule {bad}")
+    if rules and not a.estimator:
+        say("RULES ON WITHOUT AN ESTIMATOR: a contact cannot be told from a loss, the band has nothing to widen")
+    model.set_rules(*[(r in rules) for r in RULE_NAMES], int(a.root_cap))
+    say(f"rules on: {rules or 'none'}; root cap {a.root_cap or 10}")
     gi, rows = G2M.layout(t, test)
     t1 = time.perf_counter()
     res = model.questions_measure([wires[g] for g in gi], rows, [k for _d, k, _x, _z in picked], goal, list(HORIZONS), FUSE, ROW_FUSE, COMPOSE_EVERY, MAX_SEED_SIZE, True, TRAP_FUSE, a.threads)
@@ -121,6 +143,10 @@ def main(argv: "list | None" = None) -> int:
     pdir = Path(a.prior) if a.prior else Path(paths.experiment(*PRIOR_DIR))
     prior = json.loads((pdir / "raw_counts.json").read_text()) if (pdir / "raw_counts.json").exists() else None
     pc, ps, pobs = (prior["count"], prior["secs"], prior["obs"]) if prior else ({}, {}, {})
+    p58dir = Path(paths.experiment(*PRIOR58_DIR))
+    p58 = json.loads((p58dir / "raw_counts.json").read_text()) if (p58dir / "raw_counts.json").exists() else None
+    qc, qs_, qobs = (p58["count"], p58["secs"], p58["obs"]) if p58 else ({}, {}, {})
+    qn = lambda k: qc.get(k, 0)
     pn = lambda k: pc.get(k, 0)
     n = lambda k: c.get(k, 0)
     on = lambda k: oc.get(k, 0)
@@ -137,7 +163,19 @@ def main(argv: "list | None" = None) -> int:
     few = lambda f, cc: sum(cc.get(f"hist|{k}", 0) for k in ("q<=1", "q<=3", "q<=10", "q<=30")) / max(1, f("frames_read"))
     pfr = max(1, pn("frames_read"))
     say(f"1 cost: share of frames at 30 questions or fewer {few(n, c):.4f} ({sum(c.get(f'hist|{k}', 0) for k in ('q<=1', 'q<=3', 'q<=10', 'q<=30'))} of {n('frames_read')})  |  78.57: {few(pn, pc):.4f}; 78.57 QUESTIONS per frame {pn('questions') / pfr:.1f}, members per frame {pn('members') / pfr:.2f}, frames read {pn('frames_read')}")
-    say(f"1 cost: 78.58 exchange: takings pruned by the estimate {n('est_pruned')}, takings whose exchange was read by the estimate as one question {n('est_read')} (the line went on below, a bearing off the place changed: {n('est_cont')}), lines the game could not play {n('est_unplayed')}")
+    p58fr = max(1, qn("frames_read"))
+    say(f"1 cost: 78.58 (the same 40 games, the exchange only): share of frames at 30 questions or fewer {few(qn, qc):.4f}, QUESTIONS per frame {qn('questions') / p58fr:.1f}, members per frame {qn('members') / p58fr:.2f}, frames read {qn('frames_read')}")
+    say(f"1 cost: 78.58 exchange: takings pruned by the estimate {n('est_pruned')}, takings whose exchange was read by the estimate as one question {n('est_read')} (the line went on below: {n('est_cont')}), lines the game could not play {n('est_unplayed')}")
+    # ---- (1a) 78.60: how the lines ended, by kind; the named causes; the band; the cost of settling
+    ends = {"settled (nothing in contact, rests on nothing)": n("end_settled"), "settled by estimate (a contact read as no loss)": n("end_settled_est"), "bound (depth, quiet plies, extension)": n("bounded"),
+            "circling (no progress)": n("end_circle"), "fuse (unread)": n("unread_lines")}
+    tot_ends = max(1, sum(ends.values()))
+    say("1a ends of lines by kind: " + "; ".join(f"{k} {v} ({v / tot_ends:.3f})" for k, v in ends.items()) + f"; lines in all {sum(ends.values())}")
+    pe = {"bound": qn("bounded"), "fuse": qn("unread_lines")}
+    say(f"1a ends of lines, 78.58 (the same 40 games): bound {pe['bound']} ({pe['bound'] / max(1, sum(pe.values())):.3f}), fuse {pe['fuse']}; every claim there carried the bound mark by construction")
+    say(f"1a named causes for an exchange to go on below: only guard of a member {n('cause_guard')}, a line uncovered onto a member {n('cause_line')}; exchanges that stopped for want of a cause {n('est_stop')}; exchanges read in all {n('est_read')}")
+    say(f"1a the band: takings pruned by the estimate {n('est_pruned')} (78.58: {qn('est_pruned')}), takings the band held back and read {n('band_held')}; quiet moves not read for want of progress {n('quiet_skipped')}")
+    say(f"1a the cost of settling: trap questions asked to settle {n('settle_trap_q')} (positions {n('settle_trap_pos')}; not counted in the questions above), members found trapped so a line was read on {n('settle_trapped')}")
     say(f"1 cost: candidates asked {n('candidates')}, legal moves not asked {n('not_asked')}, pruned (a member lost, none gained, against one reply): the moved unit {n('pruned_moved')}, another member {n('pruned_other')}; "
         f"questions that stopped at the first move that holds {n('stops')}; lines ended by a bound {n('bounded')}; moves of a member to a place off the root frame, followed {n('follows')}")
     say(f"1 cost: frames with some line UNREAD (fuse) {n('frames_with_unread_lines')} of {n('frames_read')} ({n('frames_with_unread_lines') / fr:.4f}); lines unread {n('unread_lines')}; stuck {n('stuck')}; forced passes {n('forced_pass')}; "
@@ -166,6 +204,10 @@ def main(argv: "list | None" = None) -> int:
         qa = pn("split|all|questions")
         say(f"1b 78.57 [all]: questions by the class of the move that led to the node: " + "; ".join(f"{cls[i]} {pn(f'split|all|qclass|{i}')} ({pn(f'split|all|qclass|{i}') / max(1, qa):.3f})" for i in range(6)))
         say(f"1b 78.57 [all]: questions by ply below the root: " + ", ".join(f"{d}: {pn(f'split|all|depth|{d}')} ({pn(f'split|all|depth|{d}') / max(1, qa):.3f})" for d in range(16) if pn(f"split|all|depth|{d}")))
+    if p58:
+        qa8 = qn("split|all|questions")
+        say(f"1b 78.58 [all]: questions by the class of the move that led to the node: " + "; ".join(f"{cls[i]} {qn(f'split|all|qclass|{i}')} ({qn(f'split|all|qclass|{i}') / max(1, qa8):.3f})" for i in range(6)))
+        say(f"1b 78.58 [all]: questions by ply below the root: " + ", ".join(f"{d}: {qn(f'split|all|depth|{d}')} ({qn(f'split|all|depth|{d}') / max(1, qa8):.3f})" for d in range(16) if qn(f"split|all|depth|{d}")))
     sizes = sorted({int(k.split("|")[1]) for k in c if k.startswith("size|")})
     say("1b by frame size (members: frames, questions per frame): " + "; ".join(f"{m}: {n(f'size|{m}|frames')}, {n(f'size|{m}|questions') / max(1, n(f'size|{m}|frames')):.0f}" for m in sizes))
 
@@ -190,9 +232,13 @@ def main(argv: "list | None" = None) -> int:
         mem, omem = totals(obs, "MEMBER", h), totals(oobs, "MEMBER", h)
         for cls in ["MEMBER"] + CLASSES:
             v, ov, pv = totals(obs, cls, h), totals(oobs, cls, h), totals(pobs, cls, h)
-            if not v[0] and not ov[0] and not pv[0]:
+            if not v[0] and not ov[0] and not pv[0] and not totals(qobs, cls, h)[0]:
                 continue
             pet, pef = expected(cls, h, pobs)
+            qv = totals(qobs, cls, h)
+            if qv[0]:
+                qet, qef = expected(cls, h, qobs)
+                say(f"2 class {cls:<11} h={h} [78.58, 40 games]: units {qv[0]:>7} (share {qv[0] / max(1, totals(qobs, 'MEMBER', h)[0]):.4f}), taken {rate(qv):.4f} (base {qet:.4f}), for nothing {qv[2] / max(1, qv[0]):.4f} (base {qef:.4f})")
             say(f"2 class {cls:<11} h={h} [78.57, 40 games]: units {pv[0]:>7} (share {pv[0] / max(1, pmem[0]):.4f}), taken {rate(pv):.4f} (base {pet:.4f}), for nothing {pv[2] / max(1, pv[0]):.4f} (base {pef:.4f})")
             et, ef = expected(cls, h, obs)
             oet, oef = expected(cls, h, oobs)
@@ -200,7 +246,7 @@ def main(argv: "list | None" = None) -> int:
             say(f"2 class {cls:<11} h={h}: units {v[0]:>7} (share of member units {share:.4f}), taken {rate(v):.4f} (base for the same kinds and owners {et:.4f}), for nothing {v[2] / max(1, v[0]):.4f} (base {ef:.4f}), after taking {v[3] / max(1, v[0]):.4f}"
                 f"  |  78.55: units {ov[0]:>7} (share {oshare:.4f}), taken {rate(ov):.4f} (base {oet:.4f}), for nothing {ov[2] / max(1, ov[0]):.4f} (base {oef:.4f})")
             table.append((cls, h, v, et, ef, ov, oet, oef))
-    for cls in ("LOST", "THREAT"):
+    for cls in ("LOST", "THREAT", "READ_LOST") + tuple(f"{b}_LOST" for b in BASES):
         m = n(f"marks|{cls}|n")
         if m:
             say(f"2 marks on {cls} claims (a mark is on a claim only if every line that supports it has it): n {m}, followed off the frame {n(f'marks|{cls}|followed') / m:.3f}, ended by a bound {n(f'marks|{cls}|bound') / m:.3f}, "
