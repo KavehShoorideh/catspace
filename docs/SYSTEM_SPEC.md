@@ -133,6 +133,22 @@ is worth. Every decision can be read as a chain of claims.
   concretely. But while we do have budget ... there's no reason to fall back to an estimate." So the estimate is
   part of how a leaf is scored, and it never replaces a concrete conclusion that the budget could still reach.
   Before that point it may only order what is looked at first. Subgoal bonuses stay out of the value, as before.
+- **The loop while there is budget** (2026-11-16). "Any sort of estimate or hint is basically telling me what order
+  to check the questions in. And those orders will kind of create new facts, and the new facts will get me to change
+  the order of my questions." When the budget is gone, "I have to stop and ask a different question ... from here,
+  what are my chances to win? And that chance is essentially an estimate and can take into account all of the facts
+  on the board and all of the claims we've gotten, and whether or not the rooks are connected is part of those
+  facts. So yes, it can be used as a belief."
+- **Quiet or sharp, told by two readings agreeing** (2026-11-16). "When the statistical end aligns with the material
+  reading, that means the position is quiet and we can read the estimate. When the statistical reading is not the
+  same as the material reading, that means there's something sharp going on ... and then we have to follow the
+  reasoning." And a line that is statistically lost, "a big material disadvantage", need not be followed to its end.
+  PROPOSED form: with no worth assumed, the material reading is the head on kinds alone and the statistical reading
+  is the head on all the parts; their difference is the correction of this section, and its size is the signal of
+  sharpness. Three cautions: both readings can be blind to the same tactic, so the frame read's own test (nothing
+  stands to be lost) stays the first check; a difference can be lasting compensation that no reasoning resolves,
+  so a difference that persists across settled positions is accepted as the estimate; and whether the difference
+  does foretell events soon is measured before it is relied on.
 - **What is read at the leaf is chances, for each side.** What a forcing line leaves standing ("your queen is going
   to be at the corner", doubled pawns) is input to "the potential future tactical probabilities of you and your
   opponent". A loss now can be right: "I let the queen take my rook because ... I have immense tactical chances."
