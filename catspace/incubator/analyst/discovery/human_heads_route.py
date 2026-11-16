@@ -97,19 +97,27 @@ def main(argv: "list | None" = None) -> int:
     rec = json.loads(Path(a.record).read_text())
     rng = np.random.default_rng(SEED)
     cand = np.flatnonzero(~rows["fit"] & (rows["ply"] < np.array([len(games[g]["moves"]) for g in rows["game"]])))
-    pick = rng.choice(cand, size=a.routes, replace=False)
-    wires_p, wires_o, meta, band = [], [], [], []
-    for r in pick:
+    order = rng.permutation(cand)
+    wires_p, wires_o, meta, band, pick, forced = [], [], [], [], [], 0
+    for r in order:
+        if len(pick) >= a.routes:
+            break
         g = games[int(rows["game"][r])]
         p = int(rows["ply"][r])
         mv = g["moves"]
         legal = [m for m in legal_words(mv[:p]) if m != mv[p]]
+        if not legal:
+            forced += 1                                                  # the move played was the only legal move: no other to compare
+            continue
+        pick.append(r)
         other = legal[int(rng.integers(0, len(legal)))]
         wires_p.append((None, mv[:p] + [mv[p]]))
         wires_o.append((None, mv[:p] + [other]))
         meta.append((g["welo"], g["belo"]))
         band.append(g["band"])
     band = np.array(band)
+    pick = np.array(pick)
+    say(f"positions skipped because the move played was the only legal move: {forced}")
     say(f"routes: {len(pick)} test positions (quiet, from ply {HD.OPEN_PLIES} on) of {len(np.unique(rows['game'][pick]))} games; the move played and one other legal move chosen at random")
     bp = reached(wires_p, meta, a.threads, True)
     bo = reached(wires_o, meta, a.threads, True)
