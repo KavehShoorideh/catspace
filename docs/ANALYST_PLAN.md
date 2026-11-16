@@ -9030,3 +9030,6 @@ TRAP. One question for any unit, the goal unit included: on quiet routes, has it
 F stands, with the question counts added: old 78.55 numbers beside new, per class and per frame.
 
 STATUS: given to a builder agent on 2026-11-15, after the gate.
+
+
+GATE at 183e272b (2026-11-15, main agent): OBS gate engine: files 100, passed 1602, failed 1, xfailed 1, errors 0, wall 2130.8 s. The one failure was real: the source scan of tests/test_plan78.py found a position-text word as a variable name in rust/engine/py/src/base_graph_py.rs and frames_py.rs (there since 78.52; the gate had not been run since 78.51) and two square-like test variable names in sheet/fates.rs. Renamed in 9e924aa9; tests/test_plan78.py then passes (17) with the four graph test files. Builders are now told to run that file. Plans 78.56 and 78.57 given to builders at 9e924aa9.
