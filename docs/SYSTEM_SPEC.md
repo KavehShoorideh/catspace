@@ -26,6 +26,18 @@ opportunity, saying which subgoal it is pursuing. Asleep, an agent with tools st
 explanation back as lemmas, statistics and a better policy. Nothing about the game is assumed, not even what a unit
 is worth. Every decision can be read as a chain of claims.
 
+**The overall goal (Kaveh 2026-11-16).** "The overall goal has to be able to reason like a human being ... Think
+through the concrete tactical steps and then evaluate the position at the end of the tactical steps." This is the
+test every piece is held to: the tactical reasoning of section 4 is the concrete steps, the estimator of section 6
+is the evaluation where those steps end, and the trace of a decision should read like a master's line of thought:
+this threat, that answer, so this, and the position that results is about so good.
+
+He added: "you already know how to reason like a human being because you've read a lot of chess books." READING
+(mine, for him to correct): what the builder has read may shape the procedure, meaning the order of the steps, what
+is asked at each and when the thinking stops. It may not enter as knowledge of the game: no worth, rule of thumb
+or pattern is put in by hand (sections 5 and 15), and no model is called inside the learning loop (section 15).
+Those are derived in sleep and stored.
+
 ## 2. The graph (DECIDED 2026-11-14, 2026-11-15)
 
 - **One place for everything.** Units are graph nodes in the same band as the facts, the claims and the
@@ -443,6 +455,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Decision or direction | Date | Section |
 |---|---|---|
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
+| The overall goal: reason like a human, concrete tactical steps then an evaluation at their end; what the builder knows shapes the procedure, never the knowledge | 2026-11-16 | 1 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
 | Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the three reasons for a sacrifice; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
