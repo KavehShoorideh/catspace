@@ -101,3 +101,13 @@ def test_the_engine_reads_the_units_of_frames_at_every_ply_of_a_short_game():
     sizes = np.diff(part["boff"])
     assert sizes[0] == 32 and sizes[-1] < 32
     print(f"OBS 78.62 state read: {len(part['ply'])} rows, {len(part['units'])} unit records, class counts {np.bincount(part['units'][:, 2], minlength=7).tolist()}, board sizes {sizes.tolist()}")
+
+
+def test_the_sacrifice_comparison_is_s_less_l_with_a_band_over_games():
+    from catspace.incubator.analyst.discovery import tactical_sacrifice as SA
+    games = np.repeat(np.arange(40), 2)
+    s = np.tile([True, False], 40)
+    v = np.where(s, 1.0, 0.0)
+    d, lo, hi = SA.band_diff(games, s, v, 50, 1)
+    assert abs(d - 1.0) < 1e-9 and lo > 0.99 and hi < 1.01
+    print(f"OBS 78.62 sacrifice comparison: planted difference 1 read as {d:+.3f} [{lo:+.3f}, {hi:+.3f}]")

@@ -10112,3 +10112,21 @@ OBS tactical chances: the arrival head h=8 of 78.59 refit on these rows, inputs 
 OBS tactical chances: the arrival head h=8 of 78.59 refit on these rows, inputs K+S+E: rank correlation +0.2662 [+0.2149, +0.3147] (300 draws)
 OBS tactical chances: [them] the inputs of K+S+E+R with the largest weight (per standard deviation, log-odds): ply -0.164; statement 10 -0.129; rating difference -0.097; kind queen -0.092; kind bishop -0.052; mean rating -0.051; statement 5 -0.049; statement 18 -0.039; kind knight -0.038; statement 1 -0.038; edge distance of king -0.036; edge distance of rook -0.036
 OBS tactical chances: [us] the inputs of K+S+E+R with the largest weight (per standard deviation, log-odds): ply -0.134; rating difference +0.105; kind queen +0.091; statement 23 +0.085; statement 21 -0.064; mean rating -0.056; statement 10 +0.046; edge distance of king +0.046; statement 17 -0.041; edge distance of knight -0.038; edge distance of pawn -0.033; edge distance of bishop +0.027
+
+
+78.62 BUILT, stage E (builder agent). WHAT: catspace/incubator/analyst/discovery/tactical_sacrifice.py: in the test games, the events where a colour to move had a unit lost by the estimate that was taken for nothing within 8 plies and still stood lost after its own move; group S (the colour did not lose the game) against group L (it lost); the chances of the stage C heads (K+S+E+R) at the first settled row after the event, and what was observed. Run: `python -m catspace.incubator.analyst.discovery.tactical_sacrifice`. A count and a comparison; the groups are selected by the game's result, which the heads' inputs also relate to; 166 events.
+OBS tactical sacrifice: events (a colour to move, a unit of it lost by the estimate and taken for nothing within 8 plies, still standing lost after its own move) in the test games: 197 in 110 games
+OBS tactical sacrifice: events with a settled row of the 78.59 file within 8 plies after them: 166 (dropped for none: 31)
+OBS tactical sacrifice: group S (the colour did not lose the game): 63 events in 42 games; group L (it lost): 103 events in 64 games
+OBS tactical sacrifice: the head's chance that the colour gains a unit (a unit of the other side stands lost with it to move within 8 plies): S mean 0.4493, L mean 0.4039, S less L +0.0454 [+0.0213, +0.0722]
+OBS tactical sacrifice: the head's chance that the other side gains one against it: S mean 0.4542, L mean 0.4916, S less L -0.0374 [-0.0573, -0.0192]
+OBS tactical sacrifice: observed: the colour gained one: S mean 0.4921, L mean 0.3592, S less L +0.1328 [-0.0177, +0.2667]
+OBS tactical sacrifice: observed: the other side gained one against it: S mean 0.4921, L mean 0.4951, S less L -0.0031 [-0.1367, +0.1500]
+OBS tactical sacrifice: the head's net chance (gain less loss): S mean -0.0049, L mean -0.0877, S less L +0.0828 [+0.0503, +0.1178]
+OBS tactical sacrifice: unit given up knight: S 9 events, L 12; net chance S less L -0.0079 [-0.0622, +0.0487]
+OBS tactical sacrifice: unit given up pawn: S 47 events, L 67; net chance S less L +0.0975 [+0.0553, +0.1397]
+OBS tactical sacrifice: band A <1350: S 20 events, L 25; net chance S less L +0.0704 [+0.0200, +0.1073]
+OBS tactical sacrifice: band B 1350-1549: S 17 events, L 22; net chance S less L +0.0659 [-0.0074, +0.1638]
+OBS tactical sacrifice: band C 1550-1749: S 19 events, L 33; net chance S less L +0.0980 [+0.0320, +0.1586]
+OBS tactical sacrifice: band D 1750+: S 7 events, L 23; net chance S less L +0.0971 [+0.0384, +0.1532]
+OBS tactical sacrifice: reference: mean of the head's net chance over all 7452 test rows (mover's gain less loss) +0.0200
