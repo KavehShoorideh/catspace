@@ -1,3 +1,6 @@
+> BANNER (2026-11-16): this is the appended record of the spec as it grew from 2026-11-14 to 2026-11-16, kept unchanged.
+> The current, cleaned spec is docs/SYSTEM_SPEC.md; its section 14 lists what in this record was later replaced.
+
 # SYSTEM_SPEC: what we are building
 
 Written 2026-11-14 from Kaveh's statements of that day. This is the high-level spec of the target system: the pieces
