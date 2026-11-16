@@ -10947,3 +10947,17 @@ OBS hazard: HEAD taken [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the o
 OBS hazard: HEAD keeps [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 101903 test rows, observed rate 0.4574, fit rate 0.4559): log loss gain over the plain rate +0.01532 [+0.01323, +0.01715]; over the base hazard's own chance +0.01624 [+0.01422, +0.01801]
 OBS hazard: HEAD keeps [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 101758 test rows, observed rate 0.5024, fit rate 0.5026): log loss gain over the plain rate +0.01788 [+0.01595, +0.02042]; over the base hazard's own chance +0.01884 [+0.01693, +0.02105]
 Reading is in the report: the sacrifice reading of 78.62 was NOT redone: the gains of the heads over the base hazard are small beside the base loss (a few hundredths of a nat per step against about 0.5 for the class of any taking), so "clearly beats the base" was not met.
+
+
+78.64 READ (2026-11-16, by the main agent, merged as 58b27cb2; tests test_plan78, the three test_plan78_64 files, _63, _61, _59 pass on main; no Rust change; outputs in artifacts/experiments/events_78_64; numbers are the builder's OBS lines, one run each, directions only).
+What holds:
+1. THE EVENT LIST IS READ FROM THE RULES AND THE TRACKER, with no event word in the code: units taken (by kind), a change of kind, the end with its goal values, and the one kind of fact the rules keep and never make again (found by reading the clauses, with no violation on the games). Counts printed before any fit.
+2. THE TARGET HAS NO HORIZON. One chance per step for each (event, side), cut where the game ends. "Within a count of plies" and "who first" are read off it afterwards.
+3. THE INPUTS TELL SOMETHING AT EVERY DISTANCE and no cutoff shows; the most at several plies out. So the old window of 8 was not a property of the data.
+4. THE ENDGAME FILL IS BUILT AND HELPS WHERE IT IS AIMED: on test positions with few units the heads fitted with the generated games are better, with bands above zero; on all positions they are slightly worse. The fill games are our own player's, not human play.
+What does not hold:
+5. THE HEADS ARE STILL WEAK, and now we know why it is not the count of games: the learning curves are flat from an eighth of 12000 games. Nearly all of the gain of the taking heads comes from the ply and the ratings; counts of kinds, the statements and the edge distances add next to nothing. What does add is what describes the position's tactics: the present tactical state (on the 800 games that have it) and the concepts (on thinned rows).
+6. "Who ends the game" and "who loses the kept fact first" are predicted clearly better than the base; "who takes first" and "who wins a unit and keeps it first" only a little.
+7. The sacrifice reading was not redone; the condition for it was not met.
+So the limit is the INPUTS AND THE FORM OF THE HEAD, in that order. This is section 13's own claim turned into a finding: a position is valued from its frames, and the heads so far were not given the frames.
+Next, owed by this read: the frame read's units and classes, and the concepts, as inputs on ALL the games (the state rows exist for 800 only; about two hours of machine time for the rest); then a head that can use pairs of inputs; each with its learning curve.
