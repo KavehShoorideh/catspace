@@ -30,7 +30,7 @@ def test_71_4_the_lean_game_structure_states_the_axioms_and_restates_reach_and_t
     (Forced.Reach with the game's step) and `Game.race_sound` (Race.race_sound restated with the game's hypotheses); `chess` the instance; `kothGoal` a variant by its goal."""
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[1]
-    src = (root / "lean" / "ideas" / "Ideas" / "Game.lean").read_text()
+    src = (root / "lean" / "ideas" / "Ideas" / "Game.lean").read_text() + (root / "lean" / "ideas" / "Ideas" / "Core" / "Game.lean").read_text()      # plan 78.56: the structure moved to the core
     for name in ("structure Game (State Move : Type) where", "def step", "def terminal", "def mated", "def stalemated", "theorem terminal_iff", "def Reach",
                  "theorem race_sound", "def chess : Game Position Chess.Move where", "theorem chess_measure_pass", "def kothGoal"):
         assert name in src, name

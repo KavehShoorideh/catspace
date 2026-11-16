@@ -10,6 +10,7 @@ from catspace.incubator.analyst.discovery.agenda import Agenda
 from catspace.incubator.analyst.discovery.state import Claim, state_of
 
 LEAN = Path(__file__).resolve().parents[1] / "lean/ideas/Ideas/Forcing.lean"
+LEAN_CORE = Path(__file__).resolve().parents[1] / "lean/ideas/Ideas/Core/Forcing.lean"      # plan 78.56: claim_mono, routeLow ... moved here
 J3YBL = "5rk1/5p1p/p1p5/1p3b1q/P2P1bp1/2P4P/1P1N1P2/R1BBrQK1 w - - 0 23"      # rand9_10 j3ybl: Qxe1 +2 is a schema claim of Q1 (no chase); the status is 'losing' (-2, their threat 4)
 
 
@@ -41,7 +42,7 @@ def _game(rng: random.Random, size: int = 5):
 def test_66_1_claim_mono_and_refutation_not_mono_are_the_lean_statements():
     """Lean `Ideas.Forcing.claim_mono` (a claim forced with route set R is forced with any R' >= R) and `refutation_not_mono` (a kill under R is not a kill under R') are in the file with no sorry, and
     hold on 300 random finite games, checked by the Python mirror of `Reach`: every proof under R survives every superset R'; some position refuted under R is proved under a superset."""
-    src = LEAN.read_text()
+    src = LEAN.read_text() + LEAN_CORE.read_text()
     for name in ("theorem claim_mono", "theorem refutation_not_mono"):
         assert name in src
     assert "sorry" not in src
@@ -135,7 +136,7 @@ def _route_low(gs, top=100):
 
 def test_66_2_route_low_mono_is_the_lean_statement():
     """Lean `Ideas.Forcing.routeLow_mono`: carried gains each at most the full read's give a route value at most the full read's (a carried proof is a floor). Mirrored on random lists."""
-    src = LEAN.read_text()
+    src = LEAN.read_text() + LEAN_CORE.read_text()
     assert "def routeLow" in src and "theorem routeLow_mono" in src and "sorry" not in src
     rng = random.Random(662)
     for _ in range(500):
@@ -215,7 +216,7 @@ MH1Q8 = "3rrknQ/1pp2p2/p2b1q1p/3pNPp1/1P1P1BP1/P6P/8/R3R1K1 w - g6 0 29"      # 
 def test_66_4_still_forcing_is_the_lean_definition():
     """Lean `Ideas.Forcing.stillForcing` (every step threatens and its reply parries), `stillForcing_append`, `quiet_breaks`, `stillForcing_parryList`: in the file, no sorry; the Python `_still_forcing` is the
     conjunction of `_step_forcing` over the steps (mirrored with stubbed steps), and a quiet step anywhere breaks it."""
-    src = LEAN.read_text()
+    src = LEAN.read_text() + LEAN_CORE.read_text()
     for name in ("def stillForcing", "theorem stillForcing_append", "theorem quiet_breaks", "theorem stillForcing_parryList", "structure Step"):
         assert name in src
     assert "sorry" not in src

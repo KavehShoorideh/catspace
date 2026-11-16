@@ -29,6 +29,15 @@ import Ideas.Refuter
 import Ideas.Skewer
 import Ideas.Forcing
 import Ideas.ForcedByMeasure
+import Ideas.Core.Prelude
+import Ideas.Core.ForcedByMeasure
+import Ideas.Core.Race
+import Ideas.Core.Game
+import Ideas.Core.Frame
+import Ideas.Core.Draws
+import Ideas.Core.Forcing
+import Ideas.Core.Plan
+import Ideas.Core.Board
 import Ideas.Base.Vocabulary
 import Ideas.Generated.Measures
 import Ideas.Mirror
@@ -37,6 +46,7 @@ import Ideas.Root
 import Ideas.Mined.Schemas
 import Ideas.Duty
 import Ideas.Race
+import Ideas.BoardInstance
 import Ideas.Plan
 import Ideas.Game
 import Ideas.Reach

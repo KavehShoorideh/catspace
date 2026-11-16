@@ -13,6 +13,7 @@ from catspace.incubator.analyst.discovery.state import state_of
 POS2 = "r1bqnr1k/1p1n2p1/p2p2P1/2pPp3/4Pp1b/2N1BP1N/PPP4Q/2KR1B2 w - - 0 1"
 VDTX = "r5k1/7p/pp2q1p1/2p5/3pN3/PP1nb3/1B5Q/1K3R2 w - - 0 33"       # rand3_10 2VDtX: Nf6+ is a cost-8 check, Qxh7+ a cost-5 one
 LEAN = Path(__file__).resolve().parents[1] / "lean/ideas/Ideas/Forcing.lean"
+LEAN_CORE = Path(__file__).resolve().parents[1] / "lean/ideas/Ideas/Core/Forcing.lean"      # plan 78.56: the judge and the route lemmas moved here
 
 
 def _agenda(fen: str, seconds: float = 15.0) -> Agenda:
@@ -28,7 +29,7 @@ def _q(ag: Agenda, stake: int = 100):
 
 def test_65_1_judge_next_is_the_lean_definition():
     """Lean `Ideas.Forcing.judgeNext` (+ judgeNext_cut / _read / _mono / none_affordable_of_cheapest) is in the file, no sorry, and the Python mirror agrees on a grid."""
-    src = LEAN.read_text()
+    src = LEAN.read_text() + LEAN_CORE.read_text()
     for name in ("def judgeNext", "theorem judgeNext_cut", "theorem judgeNext_read", "theorem judgeNext_mono", "theorem none_affordable_of_cheapest"):
         assert name in src
     assert "sorry" not in src

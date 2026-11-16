@@ -18,6 +18,7 @@ from catspace.incubator.analyst.discovery.state import Claim
 
 ROOT = Path(__file__).resolve().parent.parent
 RACE_LEAN = ROOT / "lean" / "ideas" / "Ideas" / "Race.lean"
+RACE_CORE = ROOT / "lean" / "ideas" / "Ideas" / "Core" / "Race.lean"      # plan 78.56: the race arithmetic and the walks moved here
 
 
 def mask(*sqs) -> int:
@@ -30,7 +31,7 @@ def mask(*sqs) -> int:
 # ---------------------------------------------------------------------------------------------------------------- Lean: the words
 
 def test_lean_file_has_no_sorry_and_is_imported():
-    text = RACE_LEAN.read_text()
+    text = RACE_LEAN.read_text() + RACE_CORE.read_text()
     code = re.sub(r"/-.*?-/", "", text, flags=re.S)
     assert "sorry" not in code
     for name in ("race_sound", "race_first", "frame_sound", "frame_sound_pass", "far_stays_off", "deny_sound", "stopper_king_only", "lifted_is_gap", "claim_only_if_closed", "overloaded_exclusive", "no_stand_adjacent", "no_stand_pawn", "lb_step"):
@@ -250,7 +251,7 @@ def test_support_moves_make_the_king_no_stopper():
 
 
 def test_status_lean_names_present():
-    text = RACE_LEAN.read_text()
+    text = RACE_LEAN.read_text() + RACE_CORE.read_text()
     assert "def status" in text and "inductive Status" in text
 
 
