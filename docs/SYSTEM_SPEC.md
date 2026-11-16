@@ -448,7 +448,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.70 in docs/ANALYST_PLAN.md
 | The Lean core with chess as an instance | Built; three results not reached |
 | No assumed worth: generations, odds games | Built; only the top kind is settled |
 | The heads: result, kinds, arrival, events with no horizon, frames as inputs | Built as measurements; weak; not yet a leaf reading to lean on |
-| The player reading the heads | Being built (plan 78.67) |
+| The player reading a head as tie-break among moves the search holds equal | Built as a measurement (plan 78.67); the cheap arrival number is level with the frame heads and far cheaper; not switched on |
 | The sleep loop with a chooser | Built; lost twice to a fixed schedule on a menu of one kind; parked until the menu of section 9 exists |
 | The menu, the ladder, the list of surprises and the score of a rule, heads fitted on our own deeper reading | Written (plan 78.68), not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Written as a measurement (plan 78.69), not run |
