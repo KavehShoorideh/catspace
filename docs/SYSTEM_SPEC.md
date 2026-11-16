@@ -8,6 +8,9 @@ up and remove any inconsistencies and make sure that we don't miss anything").
   the full quotes, the corrections, and the three inventories of existing code. Nothing was dropped from it.
 - **How this file is kept.** A new decision is written into the section it belongs to, with its date, and gets a
   row in the index of section 16. Where it replaces an earlier one, the earlier one is moved to section 14.
+- **After every change the whole file is reread** (Kaveh 2026-11-16: "every time you modify the spec, you need to
+  do a once-over to check that the spec ... still basically makes sense. There's no kind of conflicting or missing
+  pieces"). Conflicts are fixed in the same change; a gap that needs his word goes to section 13.
 - **No measured number is here.** Numbers are in docs/ANALYST_PLAN.md beside the runs that printed them.
 - **Marks.** DECIDED: Kaveh said it. PROPOSED: the main agent's design, told to him, not confirmed. OPEN: undecided.
 
@@ -35,8 +38,9 @@ this threat, that answer, so this, and the position that results is about so goo
 Same day, the second half of the goal: "and then be able to have sub goals and then navigate towards those sub
 goals." So the goal has two halves. Where something is forced, think the concrete steps through and evaluate at
 their end. Where nothing is forced, hold a subgoal, say which one, and choose moves that bring it nearer, over
-several moves and not only the next one. Section 7 is the piece that serves this half. It is not built (section
-12), and the subgoal is held across moves the same way open tactics are carried (section 4).
+several moves and not only the next one. Section 7 is the piece that serves this half and says what "nearer"
+means; section 8 has the rule for the move. It is not built (section 12). PROPOSED: the subgoal is held across
+moves the same way open tactics are carried (section 4).
 
 He added: "you already know how to reason like a human being because you've read a lot of chess books." READING
 (mine, for him to correct): what the builder has read may shape the procedure, meaning the order of the steps, what
@@ -232,6 +236,12 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
 - **It talks in subgoals:** "connect the rooks", "open a file". Goal-conditioned reasoning works toward the
   subgoal; a conditional claim of the graph (section 2) is such a subgoal.
 - **Two halves at the wake.** Go toward the tactics, then recognise when they are there and use them.
+- **Holding a subgoal and navigating toward it** (DECIDED 2026-11-16, section 1). PROPOSED form, so that it agrees
+  with the rest: a subgoal is a condition on the graph, either the condition of a conditional claim (section 2) or
+  an event of the rules (section 6). "Nearer" is not a distance, since he set the quasi-metric aside (below). It is
+  the chance that the condition comes true and the time to it, which is what the event heads predict. Moves that
+  raise that chance are tried first; the chances of section 6 decide among what was reached, so the subgoal still
+  never adds to the value. Where subgoals come from and how one is preferred to another is OPEN (section 13).
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -257,38 +267,36 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
    the subgoal.
 7. Give the reasons for the move as a chain of claims, each line with the reason it ended.
 
-**The rule for choosing a move** (DECIDED 2026-11-16). "Evaluate the threats of the opponent. Whenever there is no
-threat, we advance towards our sub goal. Whenever there is a threat, we defend the threat and advance towards our
-sub goal." So every move begins from the opponent's rows of the threat list below.
-- No threat of theirs stands: the move is the one that brings our subgoal nearest.
-- A threat of theirs stands: the move must answer it, and among the answers the one that also brings the subgoal
-  nearest is chosen. A threat that already has a response in the list needs no new move; the response is carried.
+**The rule for choosing a move** (DECIDED 2026-11-16, as a guide). It says how steps 3 to 6 fit together. His
+words, in the order he gave them:
+- "Evaluate the threats of the opponent. Whenever there is no threat, we advance towards our sub goal. Whenever
+  there is a threat, we defend the threat and advance towards our sub goal."
+- "Sub-goals might become refuting opponent's threats when the threat is big. Otherwise, if it's small, then we
+  might consider sacrifices, things like that, to go crazy and attack."
+- "I'm not saying like this is how it should really go, but because at every point something is threatened. It
+  might not be immediately apparent now what it is, and so that's when we use statistics. When it is immediately
+  apparent what the threat is, then we think through the response."
 
-PROPOSED (mine, two cases his sentence leaves open, for him to accept or strike; a third, leaving a small
-threat unanswered, he settled below):
-- Our own threats are read first too. If we can win something by force, that is the move, and winning it may be
-  the subgoal of the moment.
-- An answer need not be a defence. A threat of ours with a larger stake than theirs is also an answer, which is
-  how a master meets a threat with a counter-threat. It is allowed only when the reasoning shows it concretely.
+Put together:
+- **The threats are read first**, theirs and ours, as the threat list below. A confirmed tactic of ours is used
+  (step 4; section 7, "recognise when they are there and use them").
+- **Answering a threat is itself a subgoal**, and it competes with the others by stake. A big threat of theirs:
+  refuting it is the subgoal of the moment, and among the answers those that also serve our own subgoal are tried
+  first. A small one: it may be left standing and our own subgoal goes on, an attack by sacrifice included. A
+  sacrifice still needs one of the three reasons of section 3. A threat that already has a response needs no new
+  move; the response is carried.
+- **No threat apparent does not mean no threat.** An apparent threat is met by concrete reasoning (section 4). One
+  not yet apparent is met by statistics (section 6). READING (mine): the event heads are that reading, the chance
+  that an event such as a unit being taken happens to a side, with no line shown. While budget remains they point
+  the questions at where the unseen threat most likely is, as a hint; when the reasoning has ended they are part
+  of the belief the leaf is scored by. This keeps "concrete first" of section 6.
+- **"Advance toward the subgoal" means what step 6 says**: the subgoal orders what is tried, the chances decide
+  among what was reached (section 7). The subgoal does not score the position.
+- **It is a guide to the shape of the thinking, not a fixed procedure.**
 
-Refined the same day: "Sub-goals might become refuting opponent's threats when the threat is big. Otherwise, if
-it's small, then we might consider sacrifices, things like that, to go crazy and attack." So answering a threat is
-not a separate duty beside the subgoal. It is a subgoal, and it competes with the others by stake.
-- Their threat is big: refuting it becomes the subgoal of the moment.
-- Their threat is small: it may be left standing, and our own subgoal goes on, an attack by sacrifice included.
-  This settles the third proposed case above as his. A sacrifice still needs one of the three reasons of section 3;
-  one made on the estimate alone is the least wanted and becomes a surprise for sleep.
-- Big and small are the bands of the threat list: the stake against the spread of the two readings.
-
-How firmly to hold this rule (Kaveh, same day): "I'm not saying like this is how it should really go, but because
-at every point something is threatened. It might not be immediately apparent now what it is, and so that's when we
-use statistics. When it is immediately apparent what the threat is, then we think through the response." So the
-rule above is a guide to the shape of the thinking, not a fixed procedure. What he holds to is the split beneath it:
-- A threat that is apparent is met by concrete reasoning (section 4).
-- A threat that is not yet apparent is met by statistics (section 6): there is never "no threat", only a threat
-  not yet seen. READING (mine): the event heads are this reading. Each gives the chance that a named event, such
-  as a unit being taken, happens to a side, with no line shown. "No threat stands" in the rule above therefore
-  means "none apparent", and the move is then chosen with the statistics in hand, not with the board assumed safe.
+PROPOSED (mine, one case his sentences leave open): an answer need not be a defence. A threat of ours with a
+larger stake than theirs is also an answer, the counter-threat. It is allowed only when the reasoning shows it
+concretely, never on the estimate alone.
 
 **The threat list: what any position must be able to answer** (DECIDED 2026-11-16). "In any given position, I want
 us to be able to answer what are the threats and what is the stake there." A threat that wins in one frame and is
@@ -301,6 +309,10 @@ stake and the response", ordered so:
 | High | Found | Shown: "if the opponent does this, this is what we're going to do" |
 | Low | None found | Worked on after the first row; "likely to be found throughout the game, and we will likely find answers" |
 | Low | Found | Bottom: "we probably don't want to see them" |
+
+PROPOSED: the line between high and low is not a number put in. A stake is high when it is above the spread of the
+two readings of section 6 at that position, the same line that decides whether an open tactic must be checked
+before the estimate is trusted. "Big" and "small" in the rule for choosing a move are these bands.
 
 Each row names the frame it was read in, the stake in the one unit of section 4, the response with its reason, and
 how the line ended. The list is made for both sides (their threats against us, ours against them). It is the same
@@ -427,7 +439,7 @@ The three inventories (the repo against these pieces; the earlier frame and inte
 library against the game-free graph) are in docs/SYSTEM_SPEC_HISTORY.md, sections 9.1, 12.1 and 12.2, as made on
 2026-11-14 and 2026-11-15. One correction to the third: Reach.lean is chess-bound, not generic.
 
-State on 2026-11-16, in words only (plans 78.52 to 78.69 in docs/ANALYST_PLAN.md hold the runs and the plans):
+State on 2026-11-16, in words only (plans 78.52 to 78.70 in docs/ANALYST_PLAN.md hold the runs and the plans):
 
 | Piece | State |
 |---|---|
@@ -443,7 +455,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.69 in docs/ANALYST_PLAN.md
 | The threat list (threats with stake and response, in four bands) | Written (plan 78.70), not built; the frame read's classes are its raw form |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
-| The opportunity policy and subgoal vocabulary | Not built |
+| The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | Not built; no plan written |
 | The unknown as a condition in the frame read; the sequence model; the endgame fill from human play | Not built |
 
 ## 13. Open questions for Kaveh
@@ -452,13 +464,19 @@ State on 2026-11-16, in words only (plans 78.52 to 78.69 in docs/ANALYST_PLAN.md
 2. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
 3. What counts as the heads having stalled, so that the last resort of fitting on the oracle is raised with him
    (section 9)? Proposed: the measure against the oracle's move not rising over three sleeps.
+4. Where do subgoals come from, and how is one preferred to another (section 7)? Proposed: conditions of
+   conditional claims and events of the rules, preferred by the chance and the stake of what they lead to.
+5. Is a counter-threat an allowed answer to a threat (section 8)? Proposed: yes, when shown concretely.
+6. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
+   from what the builder has read, the knowledge of the game may not?
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
 (9); worth must come from experience (5); when frames are separate (3); regress watched by a rolling measure, with
 the ability to go back (9); the policy is modular and models a sequence, not a distance (7); a line may end quiet while budget remains once
 every open tactic is checked (4); a sacrifice needs a reason, and one taken on the estimate alone is a surprise for
-the sleep (3, 9).
+the sleep (3, 9); the overall goal and its two halves (1); the rule for choosing a move, as a guide (8); the threat
+list (8); every build checked against the spec (11).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -484,7 +502,8 @@ the sleep (3, 9).
 ## 15. Standing limits that apply to every plan
 
 No number of the oracle in a fit or in the wake, unless the last resort of section 9 is taken on his word. No
-outside language model in the learning loop. No assumed worth.
+outside language model in the learning loop. No assumed worth. Names are supplied, never knowledge of the game.
+A subgoal orders and never adds to the value.
 No game object named in a layer. No player id written. Lean before a lemma is relied on. The real store only on his
 word. Endgame coverage printed for every human sample. Numbers only where a program printed them. Every line of
 reasoning carries the reason it ended. A candidate rule is scored on surprises it was not made from.
@@ -495,14 +514,13 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 |---|---|---|
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
 | The overall goal: reason like a human, concrete tactical steps then an evaluation at their end; what the builder knows shapes the procedure, never the knowledge; the second half: hold subgoals and navigate toward them over several moves | 2026-11-16 | 1, 7 |
-| The rule for choosing a move: read their threats; none, advance the subgoal; one, answer it and advance the subgoal; refuting a big threat is itself the subgoal, a small one may be left for an attack; a guide, not a fixed procedure; an apparent threat is reasoned, one not yet apparent is read by statistics | 2026-11-16 | 8 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
 | Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the three reasons for a sacrifice; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
-| The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state | 2026-11-14, 16 | 7 |
-| The wake, step by step; the threat list with stake and response; the wall | 2026-11-14, 16 | 8 |
+| The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition, nearer as its chance and time | 2026-11-14, 16 | 7 |
+| The wake, step by step; the rule for choosing a move (threats first, answering a big threat is the subgoal, a small one may be left for an attack, the unseen threat read by statistics; a guide); the threat list with stake and response, high and low set by the spread; the wall | 2026-11-14, 16 | 8 |
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
