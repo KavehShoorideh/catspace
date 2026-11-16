@@ -61,9 +61,18 @@ is worth. Every decision can be read as a chain of claims.
   a table.
 - **The sacrifice goes through another frame.** A cut losing move is reopened when it joins another frame by an
   INTERMEZZO (a move here, a move elsewhere, back here) with the right tempo: "inside of the frame, we're losing,
-  but outside of the frame, we're winning." The other way a loss can be right, lasting chances with no second frame
-  to point at, is not a reopening inside the frame read; it is seen where the line ends, by the estimate (section 6:
-  "a loss now can be right"). PROPOSED reading of how the two statements fit.
+  but outside of the frame, we're winning."
+- **A sacrifice needs a reason, in this order of preference** (DECIDED 2026-11-16). "I feel like there's gotta be a
+  concrete reason."
+  1. It stops the opponent from making progress, "because you can cite the reason why".
+  2. "You can recover what you sacrificed and you can state the reason why."
+  3. Neither: "somehow you have to have an estimate ... You don't know why exactly you're sacrificing, you just
+     know it's better. That third one is the least desirable, but if it exists, then we should do it. Or ... better
+     yet, we should try to figure out why is that better."
+  The third case is itself a surprise: "your own reasoning disagreed with your own statistics ... So it should
+  become a source of surprise ... we should less and less depend on it ... the surprises will pop up during sleep,
+  and we will find the rules to explain them." It is marked as unexplained in the reasons for the move and goes on
+  the sleep's list (section 9).
 - **Where concepts and frames come from:** from games, human games first. "We can skip the bottoms up one": the
   pass that enumerated small material bottom-up is dropped (see section 14).
 - **The smallest frame that explains wins.** "If a smaller frame can explain it, the smaller frame is great. Like
@@ -113,13 +122,12 @@ is worth. Every decision can be read as a chain of claims.
   1. CONCRETE: the end of the game, or a proved lemma, decides it.
   2. QUIET: nothing stands to be lost for either side ("the end of the forcing sequence", the settled end); no open
      tactic carried in the memory has a stake above the spread between the two readings of section 6; and the two
-     readings agree. The estimate is then read. This is not a fallback while budget remains: the line has nothing
-     sharp left, and the budget goes to the lines that have.
+     readings agree. The estimate is then read. Confirmed 2026-11-16: a line may end so while budget remains "if
+     none of the tactics lead anywhere ... we have to check all of our tactics that are open." The budget then goes
+     to the lines that still have something sharp.
   3. LOST BEYOND DOUBT: "a big material disadvantage" by the readings. The line "need not be followed to its end".
   4. OUT OF BUDGET: the estimate is read because nothing more can be asked, and the line is marked as cut. No forced
      claim is made from a cut line.
-  Whether reason 2 may end a line while budget remains is the main agent's reading of his statements of 2026-11-16,
-  to be confirmed (section 13).
 - **Damage to the structure is a subgoal in itself.**
 
 ## 5. Value: nothing assumed (DECIDED 2026-11-15)
@@ -263,6 +271,10 @@ Kaveh: "the most complex piece".
   4. "If it takes too much, then that means too much calculation. Then ... reduce it to some sort of a lemma or
      ... turn it into some sort of a statistical thing, add it into your learning algorithm."
 - **The goal of a step** is a surprise explained away. A surprise generates the question.
+- **Three sources of surprise.** The wake's own games (a claim that failed, a loss not foreseen); the oracle's best
+  move that our tools do not pick; and (2026-11-16) our own statistics preferring a move our reasoning cannot
+  explain, such as a sacrifice taken on the estimate alone. The share of moves decided by an unexplained estimate
+  is printed for each sleep and should fall as the rules that explain them are found.
 - **A rule is scored by how many surprises it resolves** (DECIDED 2026-11-16). A blind spot is missed on every move
   for the same reason, so it leaves a LIST of surprises with one cause. "One rule during the sleep phase, which
   covers the blind spot, will then fix all of the surprises at once and will give me a huge positive signal." And:
@@ -360,20 +372,17 @@ State on 2026-11-16, in words only (plans 78.52 to 78.69 in docs/ANALYST_PLAN.md
 
 ## 13. Open questions for Kaveh
 
-1. May a line end as QUIET, with the estimate read, while budget remains (section 4, reason 2)? Written as yes:
-   his "no reason to fall back to an estimate" while there is budget is read as applying to lines that still have
-   something sharp in them.
-2. A loss that is right for lasting chances, with no second frame to point at: written as seen by the estimate
-   where the line ends, not as a reopening inside the frame read (section 3). Is that the intent?
-3. The exact content of a frame's interface (section 3): which ports, and what each carries.
-4. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
-5. What counts as the heads having stalled, so that the last resort of fitting on the oracle is raised with him
+1. The exact content of a frame's interface (section 3): which ports, and what each carries.
+2. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
+3. What counts as the heads having stalled, so that the last resort of fitting on the oracle is raised with him
    (section 9)? Proposed: the measure against the oracle's move not rising over three sleeps.
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
 (9); worth must come from experience (5); when frames are separate (3); regress watched by a rolling measure, with
-the ability to go back (9); the policy is modular and models a sequence, not a distance (7).
+the ability to go back (9); the policy is modular and models a sequence, not a distance (7); a line may end quiet while budget remains once
+every open tactic is checked (4); a sacrifice needs a reason, and one taken on the estimate alone is a surprise for
+the sleep (3, 9).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -410,7 +419,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 |---|---|---|
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
-| Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
+| Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the three reasons for a sacrifice; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
