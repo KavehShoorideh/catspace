@@ -383,3 +383,6 @@ Design, the main agent's proposal, not yet confirmed by him:
 probably, let's say, 5 actions ... Each action ... no more than an hour. So can't spend more than 5 hours sleeping."
 So: at most five actions a sleep, at most one hour an action, at most five hours a sleep. These are ceilings. The
 gain-per-second rule above may still wake it sooner, and an action may end before its hour.
+
+**Correction to the limits (Kaveh, same night):** "It could be more than 5 actions, but no more than 5 hours."
+So the count of actions is not capped. The ceilings are one hour an action and five hours a sleep.
