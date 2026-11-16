@@ -10215,3 +10215,14 @@ What does not hold:
 7. The present tactical state adds a little to the next-step prediction; a linear one-step head, not a sequence model.
 8. ENDGAME RULE NOT MET: the small sets of units are thin in this sample (no set with thirty games) and the builder did not generate games to fill them. Everything above reads the middle game. Owed.
 Next, owed by this read: a chance target of units actually won within the horizon, per side; the fill of thin endings with generated games; then the leaf reading tried inside the frame read.
+
+78.62 LEARNING CURVE (2026-11-15, main agent, on Kaveh's question whether the chance heads are weak for want of data; a scratch script over tactical_chances' own functions, inputs K+S+E+R, fit on a share of the fit games, read on all test games; one draw of the shares):
+OBS chance curve [us]: fit games 69, fit rows 1791: test log loss 0.68865, gain over base +0.00540, rank corr +0.0735
+OBS chance curve [us]: fit games 138, fit rows 3831: test log loss 0.69121, gain over base +0.00261, rank corr +0.0874
+OBS chance curve [us]: fit games 276, fit rows 7521: test log loss 0.68616, gain over base +0.00754, rank corr +0.1028
+OBS chance curve [us]: fit games 553, fit rows 15538: test log loss 0.68704, gain over base +0.00664, rank corr +0.0940
+OBS chance curve [them]: fit games 69, fit rows 1791: test log loss 0.68804, gain over base +0.00336, rank corr +0.0918
+OBS chance curve [them]: fit games 138, fit rows 3831: test log loss 0.68330, gain over base +0.00794, rank corr +0.1049
+OBS chance curve [them]: fit games 276, fit rows 7521: test log loss 0.68051, gain over base +0.01058, rank corr +0.1220
+OBS chance curve [them]: fit games 553, fit rows 15538: test log loss 0.68070, gain over base +0.01038, rank corr +0.1217
+Read: for THIS head (a linear fit on these inputs) the curve is flat over the last doubling, so more games of the same kind would not lift it. That says nothing about a richer head (the concept columns had few rows and are starved) or about a better target; both remain to try before more data is the answer.
