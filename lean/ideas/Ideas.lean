@@ -29,6 +29,14 @@ import Ideas.Refuter
 import Ideas.Skewer
 import Ideas.Forcing
 import Ideas.ForcedByMeasure
+import Ideas.Core.Prelude
+import Ideas.Core.ForcedByMeasure
+import Ideas.Core.Race
+import Ideas.Core.Game
+import Ideas.Core.Frame
+import Ideas.Core.Draws
+import Ideas.Core.Forcing
+import Ideas.Core.Plan
 import Ideas.Base.Vocabulary
 import Ideas.Generated.Measures
 import Ideas.Mirror
