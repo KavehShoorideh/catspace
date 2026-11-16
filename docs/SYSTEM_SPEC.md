@@ -396,3 +396,17 @@ learned from reward; (2) each slice is scored by the near signal, the held-out y
 yardstick is changed; (5) later and untested: a learned agent trained on small games, where a whole sleep and wake
 takes seconds. With (1) to (4) the agent is a calculator with a running record, not a learner; the record is the
 data a learner would need.
+
+**The menu must hold different kinds of action (Kaveh, 2026-11-16):** "Why do we only have one item on the menu? Why
+don't we have like Monte Carlo playouts to see where it goes ... or maybe querying the database, or ... playouts
+with odds games, or maybe asking the oracle, either the stockfish or the table base ... Things like that should be
+part of the menu." He is right; the menu of plans 78.63 and 78.66 held only odds games because the main agent
+admitted only actions whose product the player already read, and the player read five numbers. The menu, restated:
+playouts from a chosen position (statistics of results and events from there); a query of the human games
+(conditional statistics for a frame or concept, by rating); odds games; the oracle (Stockfish, which itself reads
+the tablebase); the frame read on a surprise; mining a concept; a Lean statement; a fit of the heads. Each needs
+the player to read what it makes, so the menu grows with what the wake reads.
+OPEN, to confirm with him: on 2026-11-15 he decided "stockfish cannot be read in. It has to be statistical." The
+main agent's reading that keeps both: the oracle is on the menu as a FINDER of our mistakes (where our move or our
+estimate is far off, a surprise), and what is learned about that position then comes from our own tools; no oracle
+number enters a fit or anything the wake reads. If he means to lift the earlier decision, he says so.

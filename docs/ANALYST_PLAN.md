@@ -11797,3 +11797,15 @@ E. If and only if the number clearly beats random tie-break on both sets: one sl
 Cautions: the heads were fitted on human games and are read here in games of our own player; the tie-break only acts where the search holds moves equal; AGENTS rule 7 is kept, since nothing is added to the value, the order among equals is all that changes.
 
 STATUS: to a builder now.
+
+
+PLAN 78.68: A MENU OF DIFFERENT KINDS OF ACTION FOR THE SLEEP (SYSTEM_SPEC 16, last paragraph; Kaveh 2026-11-16: "Why do we only have one item on the menu? ... Monte Carlo playouts ... querying the database ... playouts with odds games ... asking the oracle ... Things like that should be part of the menu"). Written 2026-11-16 by the main agent. Extends sleep_loop66.py's action interface; a sandbox. Waits for 78.67, since most of these actions pay only through the heads, and 78.67 is what makes the player read the heads.
+A. PLAYOUTS FROM A POSITION: from a chosen position, games by the current player (and by the random mover as a second source), the results and the rules' events recorded; rows for the heads. Positions chosen where the heads are least sure or disagree with what happened.
+B. QUERY OF THE HUMAN GAMES: for a frame, concept or small set of units, the conditional statistics of result and events, by band of rating, from the shards not yet read; rows for the heads. This is also the endgame fill done from human play where it exists.
+C. ODDS GAMES, as built, and odds from playout positions.
+D. THE ORACLE AS A FINDER (Stockfish; it reads the tablebase itself): over the sleep's own games, the positions where our move or our head is far from the oracle's reading are listed as surprises. Only the LIST of positions leaves this action; no oracle number is written into any row, fit or record (a test checks the rows hold none). What is learned at those positions comes from A, B and the frame read. If Kaveh lifts the 2026-11-15 decision, this stage changes; until then it stands as written.
+E. THE FRAME READ ON A SURPRISE and A REFIT OF THE HEADS, as actions.
+F. The chooser of 78.66 unparked on this menu, with the fixed schedule (each action in turn, equal shares) as the comparison, the yardstick being the heads' and the record's held-out loss on games of the sleep's own player and on human games, with held-out sets large enough that two draws agree (state the size from the 78.66 spread).
+Each action prints what it made and what reads it.
+
+STATUS: written; after 78.67.
