@@ -307,3 +307,15 @@ as a structure over places, units and the step relation, with chess shown to sat
 layer 3 rest on them; (4) the tests that tie the Rust graph to the Lean statements. Whether a game's rules satisfy the
 five hypotheses is a property to be checked per game, by the engine on sampled positions and in Lean for the games we
 have a kernel for.
+
+
+## 13. The value at the end of a reasoning step (Kaveh, 2026-11-15)
+
+His words: "things like damage structure and like material imbalances, all of that can be statistically answered using the query question from human games ... We can even condition on ELO. So during the sleep cycle, these should be available. And then that should be then distilled into some sort of a probabilistic value head ... so that at the end of a reasoning step, we can basically do what like Stockfish does ... We will also estimate the value, but using some sort of a stats thing that we have learned." And: "sometimes we will never have seen this exact position. But this position is made up of smaller frames, and those frames we have seen ... Frames with certain properties. So like connected rooks, for example."
+
+Read as a design statement (main agent):
+- Sleep queries games for the result given what is present in a position: the kinds each side has, and the concepts and frames of layers 2 and 3 that hold. Ratings of both players are conditions of the query.
+- The answers are distilled into one estimator of the result as a probability. Its inputs are counts of kinds and of concepts and frame properties, never the whole position, so a position never seen is valued from parts that were. This is the baseline and the correction of section 12 made into one model.
+- The wake reads it at the end of a reasoning step, where the frame reads say nothing more is forced. It replaces the hand worth table and settles the unequal trade that plan 78.57 leaves open.
+- Open, his to decide: (1) the standing limit that human game files are not read until he asks is not lifted by this statement; a run needs his word. (2) What crosses from sleep to wake: this makes a fitted estimator from human games cross, where so far only self-play fits did; no engine number crosses. (3) AGENTS rule 7 says subgoals enter through the prior, never the value: a concept as an input of the value estimate is a feature, not a subgoal bonus, and the rule is read as still standing; to be confirmed.
+- Cautions carried into any plan: corrections of frames are not additive in general (frames in contact); what players did is not what was forced, so the estimate is read only where the reasoning is quiet; rating conditions only part of the confound between a concept being present and the stronger side having made it.
