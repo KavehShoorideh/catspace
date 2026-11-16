@@ -37,7 +37,8 @@ FUSE = 1_500
 ROW_FUSE = 30_000
 COMPOSE_EVERY = 5
 TRAP_FUSE = 400
-CLASSES = OLD.CLASSES
+CLASSES = OLD.CLASSES + ["READ_BOTH", "READ_LOST", "READ_SAFE"]       # 78.58: a claim that rests on a bound, a prune or an estimate is READ, not forced
+PRIOR_DIR = ("frames_78_57", "short40b")
 TRAP_WORDS = ["free", "trapped", "immobile", "not_quiet", "ended", "unread"]
 OLD_DIR = ("frames_78_55", "games_s5016_n500")
 
@@ -64,6 +65,8 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--out-dir", default=None)
     ap.add_argument("--games", type=int, default=0, help="a subset: the first N games by id")
     ap.add_argument("--seeds", type=int, default=SEEDS)
+    ap.add_argument("--estimator", default=None, help="78.58: the estimator record: its kind_values are the worth of the kinds the exchange reads; without it the read is the 78.57 read")
+    ap.add_argument("--prior", default=None, help="the directory of the 78.57 raw_counts.json to set beside (default frames_78_57/short40b)")
     ap.add_argument("--threads", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
@@ -102,6 +105,10 @@ def main(argv: "list | None" = None) -> int:
     wires = [(r.get("start"), list(r["moves"])) for r in records]
     model.learn_profile(wires[:PROFILE_GAMES])
     goal = G2M.goal_kind_of(variant)
+    if a.estimator:
+        rec = json.loads(Path(a.estimator).read_text())
+        model.set_kind_values([(k, int(v)) for k, v in rec["kind_values"].items()])
+        say(f"estimator record {a.estimator}: source {rec['source']}; dated {rec['date']}; the worth of the kinds the exchange reads {rec['kind_values']}")
     gi, rows = G2M.layout(t, test)
     t1 = time.perf_counter()
     res = model.questions_measure([wires[g] for g in gi], rows, [k for _d, k, _x, _z in picked], goal, list(HORIZONS), FUSE, ROW_FUSE, COMPOSE_EVERY, MAX_SEED_SIZE, True, TRAP_FUSE, a.threads)
@@ -111,6 +118,10 @@ def main(argv: "list | None" = None) -> int:
     old_dir = Path(paths.experiment(*OLD_DIR))
     old = json.loads((old_dir / "raw_counts.json").read_text()) if (old_dir / "raw_counts.json").exists() else None
     oc, os_, oobs = (old["count"], old["secs"], old["obs"]) if old else ({}, {}, {})
+    pdir = Path(a.prior) if a.prior else Path(paths.experiment(*PRIOR_DIR))
+    prior = json.loads((pdir / "raw_counts.json").read_text()) if (pdir / "raw_counts.json").exists() else None
+    pc, ps, pobs = (prior["count"], prior["secs"], prior["obs"]) if prior else ({}, {}, {})
+    pn = lambda k: pc.get(k, 0)
     n = lambda k: c.get(k, 0)
     on = lambda k: oc.get(k, 0)
 
@@ -123,6 +134,10 @@ def main(argv: "list | None" = None) -> int:
     hist = [(k.split("|", 1)[1], v) for k, v in sorted(c.items()) if k.startswith("hist|")]
     order = ["q<=1", "q<=3", "q<=10", "q<=30", "q<=100", "q<=300", "q<=1000", "q>1000"]
     say("1 cost: frames by questions asked: " + ", ".join(f"{k} {dict(hist).get(k, 0)} ({dict(hist).get(k, 0) / fr:.3f})" for k in order))
+    few = lambda f, cc: sum(cc.get(f"hist|{k}", 0) for k in ("q<=1", "q<=3", "q<=10", "q<=30")) / max(1, f("frames_read"))
+    pfr = max(1, pn("frames_read"))
+    say(f"1 cost: share of frames at 30 questions or fewer {few(n, c):.4f} ({sum(c.get(f'hist|{k}', 0) for k in ('q<=1', 'q<=3', 'q<=10', 'q<=30'))} of {n('frames_read')})  |  78.57: {few(pn, pc):.4f}; 78.57 QUESTIONS per frame {pn('questions') / pfr:.1f}, members per frame {pn('members') / pfr:.2f}, frames read {pn('frames_read')}")
+    say(f"1 cost: 78.58 exchange: takings pruned by the estimate {n('est_pruned')}, takings whose exchange was read by the estimate as one question {n('est_read')} (the line went on below, a bearing off the place changed: {n('est_cont')}), lines the game could not play {n('est_unplayed')}")
     say(f"1 cost: candidates asked {n('candidates')}, legal moves not asked {n('not_asked')}, pruned (a member lost, none gained, against one reply): the moved unit {n('pruned_moved')}, another member {n('pruned_other')}; "
         f"questions that stopped at the first move that holds {n('stops')}; lines ended by a bound {n('bounded')}; moves of a member to a place off the root frame, followed {n('follows')}")
     say(f"1 cost: frames with some line UNREAD (fuse) {n('frames_with_unread_lines')} of {n('frames_read')} ({n('frames_with_unread_lines') / fr:.4f}); lines unread {n('unread_lines')}; stuck {n('stuck')}; forced passes {n('forced_pass')}; "
@@ -147,6 +162,10 @@ def main(argv: "list | None" = None) -> int:
         say(f"1b split [{b}]: questions by the class of the move that led to the node: " + "; ".join(f"{cls[i]} {n(f'split|{b}|qclass|{i}')} ({n(f'split|{b}|qclass|{i}') / max(1, qb):.3f})" for i in range(6)))
         say(f"1b split [{b}]: candidates made / asked by class: " + "; ".join(f"{gcls[i]} {n(f'split|{b}|gen|{i}')} / {n(f'split|{b}|ask|{i}')}" for i in range(5)))
         say(f"1b split [{b}]: questions by ply below the root: " + ", ".join(f"{d}: {n(f'split|{b}|depth|{d}')} ({n(f'split|{b}|depth|{d}') / max(1, qb):.3f})" for d in range(16) if n(f"split|{b}|depth|{d}")))
+    if prior:
+        qa = pn("split|all|questions")
+        say(f"1b 78.57 [all]: questions by the class of the move that led to the node: " + "; ".join(f"{cls[i]} {pn(f'split|all|qclass|{i}')} ({pn(f'split|all|qclass|{i}') / max(1, qa):.3f})" for i in range(6)))
+        say(f"1b 78.57 [all]: questions by ply below the root: " + ", ".join(f"{d}: {pn(f'split|all|depth|{d}')} ({pn(f'split|all|depth|{d}') / max(1, qa):.3f})" for d in range(16) if pn(f"split|all|depth|{d}")))
     sizes = sorted({int(k.split("|")[1]) for k in c if k.startswith("size|")})
     say("1b by frame size (members: frames, questions per frame): " + "; ".join(f"{m}: {n(f'size|{m}|frames')}, {n(f'size|{m}|questions') / max(1, n(f'size|{m}|frames')):.0f}" for m in sizes))
 
@@ -166,12 +185,15 @@ def main(argv: "list | None" = None) -> int:
     table = []
     for h in HORIZONS:
         base, obase = totals(obs, "ALL", h), totals(oobs, "ALL", h)
+        pbase, pmem = totals(pobs, "ALL", h), totals(pobs, "MEMBER", h)
         say(f"2 base h={h}: units {base[0]}, taken {rate(base):.4f}, taken for nothing {base[2] / max(1, base[0]):.4f}, after taking {base[3] / max(1, base[0]):.4f}  |  78.55 base: units {obase[0]}, taken {rate(obase):.4f}, for nothing {obase[2] / max(1, obase[0]):.4f}")
         mem, omem = totals(obs, "MEMBER", h), totals(oobs, "MEMBER", h)
         for cls in ["MEMBER"] + CLASSES:
-            v, ov = totals(obs, cls, h), totals(oobs, cls, h)
-            if not v[0] and not ov[0]:
+            v, ov, pv = totals(obs, cls, h), totals(oobs, cls, h), totals(pobs, cls, h)
+            if not v[0] and not ov[0] and not pv[0]:
                 continue
+            pet, pef = expected(cls, h, pobs)
+            say(f"2 class {cls:<11} h={h} [78.57, 40 games]: units {pv[0]:>7} (share {pv[0] / max(1, pmem[0]):.4f}), taken {rate(pv):.4f} (base {pet:.4f}), for nothing {pv[2] / max(1, pv[0]):.4f} (base {pef:.4f})")
             et, ef = expected(cls, h, obs)
             oet, oef = expected(cls, h, oobs)
             share = v[0] / max(1, mem[0]); oshare = ov[0] / max(1, omem[0])

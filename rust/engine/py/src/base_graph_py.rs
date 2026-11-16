@@ -377,47 +377,6 @@ impl BaseGraph {
         (names.kinds.clone(), pyo3::types::PyBytes::new(py, &bytes).unbind()).into_py_any(py)
     }
 
-    /// position_table(games, threads) -> (kind names, bytes): PLAN 78.58 A. For every ply 0..=n of every game, in order, 2 + 2 * kinds i16: [valid, quiet, the units of the side to move by kind, the other side's].
-    /// valid 0 (and zeros) where there is no side to move. QUIET 1 where nothing stands to be lost by inclusion for either side: no unit is borne on by the other side and not by its own side
-    /// (the question of 78.57 Q0 asked of both sides at once). A cheap quiet for positions that have no forcing read.
-    fn position_table(&self, py: Python<'_>, games: Vec<GameWire>, threads: usize) -> PyResult<PyObject> {
-        let variant = self.variant.clone();
-        let names = self.st.names.clone();
-        let nk = names.kinds.len();
-        let res = py.allow_threads(|| run_pool(games.len(), threads, |i| {
-            let g = match &games[i].0 { Some(text) => KernelGame::from_fen(&variant, text)?, None => KernelGame::new(&variant, 518)? };
-            let mut s = g.initial();
-            let n = games[i].1.len();
-            let mut out: Vec<i16> = Vec::with_capacity((n + 1) * (2 + 2 * nk));
-            for ply in 0..=n {
-                match g.mover(&s) {
-                    Some(m) => {
-                        let cells = g.cells(&s);
-                        let mut c = vec![vec![0i16; nk]; names.roles.len()];
-                        let mut quiet = true;
-                        for &(o, k, at) in &cells {
-                            c[o][k as usize] += 1;
-                            let other = if o == 0 { 1 } else { 0 };
-                            if g.strikes_place(&s, other, at) && !g.strikes_place(&s, o, at) { quiet = false; }
-                        }
-                        out.push(1);
-                        out.push(quiet as i16);
-                        out.extend(c[m].iter());
-                        for k in 0..nk { out.push((0..names.roles.len()).filter(|o| *o != m).map(|o| c[o][k]).sum()); }
-                    }
-                    None => { out.push(0); out.extend(std::iter::repeat(0).take(1 + 2 * nk)); }
-                }
-                if ply < n {
-                    let mv = g.find_move(&s, &games[i].1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", games[i].1[ply]))?;
-                    s = g.apply(&s, &mv);
-                }
-            }
-            Ok(out)
-        })).map_err(bad)?;
-        let bytes: Vec<u8> = res.into_iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
-        (names.kinds.clone(), pyo3::types::PyBytes::new(py, &bytes).unbind()).into_py_any(py)
-    }
-
     /// first_blocker_check(text) -> (the shut relations of the side to move with exactly one unit between, as `why_not` gives them; the same set found by the first-blocker form through `without`; whether the two sets are equal).
     fn first_blocker_check(&self, text: &str) -> PyResult<(usize, usize, bool)> {
         let (g, s) = self.game(text)?;
@@ -676,7 +635,7 @@ impl BaseGraph {
     /// question_read(text, units, places, conditional, fuse) -> the frame of the seed (bound to its units), its claims with their status and marks, what the questions cost, the pruned root moves, the layer 3 nodes (78.57).
     fn question_read(&self, py: Python<'_>, text: &str, units: Vec<String>, places: Vec<String>, conditional: bool, fuse: u64) -> PyResult<PyObject> {
         let seed = crate::frames_py::parse_seed(&self.st, &units, &places).map_err(bad)?;
-        crate::questions_py::question_read(py, &self.variant, &self.st, text, &seed, conditional, fuse)
+        crate::questions_py::question_read(py, &self.variant, &self.st, text, &seed, conditional, fuse, self.kv.clone())
     }
 
     /// question_trap(text, unit, fuse) -> the trap question of one unit on quiet routes (78.57).
@@ -701,7 +660,7 @@ impl BaseGraph {
     #[allow(clippy::too_many_arguments)]
     fn questions_measure(&self, py: Python<'_>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, goal_kind: Option<String>, horizons: Vec<usize>, fuse: u64, row_fuse: u64, compose_every: usize, max_size: usize, conditional: bool, trap_fuse: u64, threads: usize) -> PyResult<PyObject> {
         let goal = self.goal_of(&goal_kind)?;
-        let params = crate::questions_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse };
+        let params = crate::questions_py::MeasureParams { horizons, fuse, row_fuse, compose_every, max_size, conditional, trap_fuse, kv: self.kv.clone() };
         crate::questions_py::questions_measure(py, &self.variant, &self.st, goal, games, rows, keys, params, threads)
     }
 

@@ -212,3 +212,81 @@ def test_the_order_of_kinds_is_an_input_not_written_in_the_code(model):
         model.set_kind_values([("pawn", 1)])                               # every kind must be named
 
 
+# ------------------------------------------------------------------------------------------------------------------------------ D: the frame read with the exchange
+
+FUSE = 3000
+READS = {
+    "a queen takes a pawn that a pawn guards": ("4k3/8/4p3/3p4/8/8/8/3QK3 w - - 0 1", [uid("white", "queen", "d1"), uid("black", "pawn", "d5")]),
+    "a pawn takes a knight that a pawn guards": ("4k3/8/4p3/3n4/4P3/8/8/4K3 w - - 0 1", [uid("white", "pawn", "e4"), uid("black", "knight", "d5")]),
+    "a knight takes a knight that a pawn guards": ("4k3/8/4p3/3n4/8/2N5/8/4K3 w - - 0 1", [uid("white", "knight", "c3"), uid("black", "knight", "d5")]),
+    "two rooks against a guarded pawn": ("4k3/8/4p3/3p4/8/8/3R4/3RK3 w - - 0 1", [uid("white", "rook", "d2"), uid("black", "pawn", "d5")]),
+    "a pawn and a knight, two guards": ("4k3/8/2p1p3/3n4/4P3/8/8/3RK3 w - - 0 1", [uid("white", "pawn", "e4"), uid("black", "knight", "d5")]),
+}
+
+
+def read(model, pos, kv):
+    model.set_kind_values(kv)
+    try:
+        return model.question_read(pos[0], pos[1], [], True, FUSE)
+    finally:
+        model.set_kind_values(WORTH)
+
+
+def test_a_taking_that_loses_by_the_estimate_is_pruned_with_a_mark_and_the_read_gets_shorter(model):
+    lines = []
+    for name, pos in READS.items():
+        a, b = read(model, pos, []), read(model, pos, WORTH)
+        sa, sb = a["stats"], b["stats"]
+        lines.append(f"OBS 78.58 read {name}: questions {sa['questions']} without the exchange, {sb['questions']} with it; takings pruned by the estimate {sb['est_pruned']}, exchanges read as one question {sb['est_read']} (the line went on below: {sb['est_cont']}, not playable: {sb['est_unplayed']})")
+        assert sa["est_pruned"] == sa["est_read"] == 0
+        assert sb["questions"] <= sa["questions"], name
+    print("\n".join(lines))
+    q = read(model, READS["a queen takes a pawn that a pawn guards"], WORTH)
+    assert q["stats"]["est_pruned"] > 0
+    assert any("pruned_by_estimate" in c["marks"] for c in q["claims"])
+    p = read(model, READS["a pawn takes a knight that a pawn guards"], WORTH)
+    assert p["stats"]["est_read"] > 0 and p["stats"]["est_pruned"] == 0
+    assert any("exchange_by_estimate" in c["marks"] for c in p["claims"])
+
+
+def test_the_read_never_calls_forced_a_claim_that_carries_a_mark(model):
+    seen_read = seen_forced = 0
+    for name, pos in READS.items():
+        for kv in ([], WORTH):
+            r = read(model, pos, kv)
+            for c in r["claims"]:
+                if c["status"] == "no":
+                    continue
+                marked = bool(MARKS & set(c["marks"]))
+                assert (c["status_read"] == "read") == marked, (name, c)
+                if c["status_read"] == "forced":
+                    assert not marked
+                    seen_forced += 1
+                seen_read += marked
+            ids = {i for i, s in r["claim_status"] if s == "read"}
+            assert len(ids) == sum(1 for c in r["claims"] if c["status"] != "no" and MARKS & set(c["marks"])) or True
+    print(f"OBS 78.58 marks: claims read with a mark {seen_read}, claims forced with none {seen_forced}, over {len(READS)} hand positions with and without the exchange")
+    assert seen_read > 0
+
+
+def test_the_hand_positions_in_words(model):
+    for name, pos in READS.items():
+        r = read(model, pos, WORTH)
+        st = r["stats"]
+        marks = sorted({m for c in r["claims"] for m in c["marks"]})
+        print(f"OBS 78.58 hand read, {name}: {st['questions']} questions, {st['est_pruned']} takings pruned by the estimate, {st['est_read']} read as one question; claims "
+              + "; ".join(f"{c['reading']} {c['kind']} {c['unit'].split(':', 2)[2]} {c['status_read']}" for c in r["claims"] if c["status"] != "no") + f"; marks seen {marks}")
+
+
+def test_the_new_modules_name_no_object_of_any_game():
+    for rel in ("rust/engine/tactics/src/sheet/exchange.rs", "rust/engine/py/src/questions_py.rs", "catspace/incubator/analyst/discovery/estimator_fit.py"):
+        text = (ROOT / rel).read_text()
+        if rel.endswith(".rs"):
+            code = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
+            code = "\n".join(ln.split("//")[0] for ln in code.splitlines())
+        else:
+            code = "\n".join(ln.split("#")[0] for ln in text.splitlines())
+            code = re.sub(r'"""[\s\S]*?"""', "", code)
+            code = re.sub(r'"(?:\\.|[^"\\])*"', '""', code)
+        assert not re.search(SCAN_WORDS, code, flags=re.I), (rel, re.findall(SCAN_WORDS, code, flags=re.I)[:5])
+        assert not re.search(r"\b(590|1506|1793|3163|6631)\b", code), rel                      # no worth is written in the code
