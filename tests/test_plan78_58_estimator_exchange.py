@@ -108,3 +108,107 @@ def test_the_source_of_the_fit_names_no_object_of_any_game():
     assert not re.search(SCAN_WORDS, code, flags=re.I)
 
 
+# ------------------------------------------------------------------------------------------------------------------------------ C: the exchange
+
+def brute_value(on, mine, theirs):
+    """The capture game by exhaustive search, independent of the Rust: the mover may take with any of its pieces or stop; the value to the mover."""
+    best = 0
+    for i, a in enumerate(mine):
+        rest = mine[:i] + mine[i + 1:]
+        best = max(best, on - brute_value(a, theirs, rest))
+    return best
+
+
+def test_the_exchange_lists_equal_what_lean_evaluated():
+    doc = json.loads(FIXTURE.read_text())
+    plain = rays = 0
+    for c in doc["cases"]:
+        if c["kind"] == "plain":
+            got = CE.BaseGraph.exchange_plain(c["on"], c["mine"], c["theirs"])
+            assert got == (c["cheapest"], c["value"]), c
+            plain += 1
+        else:
+            mine = [(r[0], [(bool(o), v) for o, v in r[1]]) for r in c["mine"]]
+            theirs = [(r[0], [(bool(o), v) for o, v in r[1]]) for r in c["theirs"]]
+            got = CE.BaseGraph.exchange_rays(c["white"], c["on"], mine, theirs)
+            assert got[0] == c["cheapest_xf"], c
+            rays += 1
+    print(f"OBS 78.58 exchange against Lean: {plain} plain cases (cheapest and value) and {rays} ray cases (cheapestXF) equal what Lean evaluated")
+
+
+def test_the_lean_file_has_the_definitions_that_were_mirrored():
+    text = LEAN.read_text()
+    for needle in ("def valueF", "def cheapestF", "def reveal", "def cheapestXF", "max 0 (onS - cheapestXF n (!white) a theirs' mine')", "theorem cheapestXF_plain"):
+        assert needle in text, needle
+
+
+def test_the_exchange_against_a_brute_read_of_every_order_of_takings():
+    rng = random.Random(7)
+    same = diff = 0
+    for _ in range(300):
+        on = rng.randint(1, 9)
+        mine = sorted(rng.randint(1, 9) for _ in range(rng.randint(0, 3)))
+        theirs = sorted(rng.randint(1, 9) for _ in range(rng.randint(0, 3)))
+        cheap, val = CE.BaseGraph.exchange_plain(on, mine, theirs)
+        assert val == brute_value(on, mine, theirs), (on, mine, theirs)
+        assert 0 <= cheap and 0 <= val
+        same += cheap == val
+        diff += cheap != val
+    print(f"OBS 78.58 exchange: on 300 random small lists the minimax over every order of takings equals the Rust value in all; the least-kind-first read equals it in {same} and differs in {diff}")
+    # hand cases: one piece a side, the two reads agree
+    for on, a, b in itertools.product(range(1, 6), range(1, 6), range(1, 6)):
+        assert CE.BaseGraph.exchange_plain(on, [a], [b])[0] == CE.BaseGraph.exchange_plain(on, [a], [b])[1]
+    # rays: the least-kind-first read against the brute read of every order, the rays uncovered as they leave
+    agree = 0
+    for _ in range(120):
+        def ray():
+            return (rng.randint(1, 9), [(rng.random() < 0.5, rng.randint(1, 9)) for _ in range(rng.randint(0, 1))])
+        mine = sorted((ray() for _ in range(rng.randint(0, 2))), key=lambda r: r[0])
+        theirs = sorted((ray() for _ in range(rng.randint(0, 2))), key=lambda r: r[0])
+        c, b = CE.BaseGraph.exchange_rays(True, rng.randint(1, 9), mine, theirs)
+        assert c >= 0 and b >= 0
+        agree += c == b
+    print(f"OBS 78.58 exchange with units behind: the least-kind-first read equals the brute read in {agree} of 120 random small cases")
+
+
+HAND = {
+    "a queen takes a pawn that a pawn guards": ("4k3/8/4p3/3p4/8/8/8/3QK3 w - - 0 1", uid("white", "queen", "d1"), "d5"),
+    "a pawn takes a knight that a pawn guards": ("4k3/8/4p3/3n4/4P3/8/8/4K3 w - - 0 1", uid("white", "pawn", "e4"), "d5"),
+    "a knight takes a knight that a pawn guards": ("4k3/8/4p3/3n4/8/2N5/8/4K3 w - - 0 1", uid("white", "knight", "c3"), "d5"),
+    "a rook with a rook behind takes a pawn that a pawn guards": ("4k3/8/4p3/3p4/8/8/3R4/3RK3 w - - 0 1", uid("white", "rook", "d2"), "d5"),
+    "a rook takes a pawn nothing guards": ("4k3/8/8/3p4/8/8/3R4/4K3 w - - 0 1", uid("white", "rook", "d2"), "d5"),
+}
+
+
+def test_the_exchange_on_hand_positions_read_from_the_graph(model):
+    w = dict(WORTH)
+    out = {k: model.exchange_taking(*v) for k, v in HAND.items()}
+    for k, v in out.items():
+        print(f"OBS 78.58 hand exchange: {k}: estimate {v[0]:+d}, takes in order {[u.split(':', 2)[2] for u in v[1]]}, bearers (mine, theirs) {v[2]}")
+    q, pn, nn, rr, free = (out[k] for k in HAND)
+    assert q[0] == w["pawn"] - w["queen"] and q[0] < 0                      # it loses: the guard takes the queen
+    assert pn[0] == w["knight"] - w["pawn"] and pn[0] > 0                   # it wins: the guard takes the pawn back
+    assert nn[0] == 0 and len(nn[1]) == 2                                   # level: the guard takes the knight back
+    assert rr[0] == 2 * w["pawn"] - w["rook"]                               # the rook behind, uncovered by the first taking, takes the pawn back
+    assert [u.split(":")[2:] for u in rr[1]] == [["rook", "d2"], ["pawn", "e6"], ["rook", "d1"]]
+    assert free[0] == w["pawn"] and len(free[1]) == 1
+    # without the unit behind (no profile of the kinds learned) the same exchange is worth less to the taker
+    plain = GL.model("chess", "chess")
+    plain.set_kind_values(WORTH)
+    assert plain.exchange_taking(*HAND["a rook with a rook behind takes a pawn that a pawn guards"])[0] == w["pawn"] - w["rook"]
+
+
+def test_the_order_of_kinds_is_an_input_not_written_in_the_code(model):
+    pos = HAND["a queen takes a pawn that a pawn guards"]
+    lost = model.exchange_taking(*pos)[0]
+    swapped = dict(WORTH)
+    swapped["pawn"], swapped["queen"] = WORTH[4][1], WORTH[0][1]
+    model.set_kind_values(list(swapped.items()))
+    try:
+        assert model.exchange_taking(*pos)[0] == swapped["pawn"] - swapped["queen"] > 0 > lost
+    finally:
+        model.set_kind_values(WORTH)
+    with pytest.raises(ValueError):
+        model.set_kind_values([("pawn", 1)])                               # every kind must be named
+
+
