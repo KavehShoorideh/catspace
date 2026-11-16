@@ -386,3 +386,13 @@ gain-per-second rule above may still wake it sooner, and an action may end befor
 
 **Correction to the limits (Kaveh, same night):** "It could be more than 5 actions, but no more than 5 hours."
 So the count of actions is not capped. The ceilings are one hour an action and five hours a sleep.
+
+**How the sleep chooses with few, late rewards (agreed by Kaveh, 2026-11-15 night: "Sounds good. Let's go with your
+plan").** His concern: "its reward signal is very delayed, and it's not that many." Agreed answer: (1) the expected
+gain of an action is computed where it can be (width of bands on a pair of kinds, a fit's learning curve), not
+learned from reward; (2) each slice is scored by the near signal, the held-out yardstick and surprises explained;
+(3) actions are small, one to five minutes, so a sleep holds many choices and the record carries across sleeps;
+(4) the wake match answers one question only, whether yardstick gains turn into better play, and if not the
+yardstick is changed; (5) later and untested: a learned agent trained on small games, where a whole sleep and wake
+takes seconds. With (1) to (4) the agent is a calculator with a running record, not a learner; the record is the
+data a learner would need.
