@@ -488,7 +488,7 @@ The three inventories (the repo against these pieces; the earlier frame and inte
 library against the game-free graph) are in docs/SYSTEM_SPEC_HISTORY.md, sections 9.1, 12.1 and 12.2, as made on
 2026-11-14 and 2026-11-15. One correction to the third: Reach.lean is chess-bound, not generic.
 
-State on 2026-11-16, in words only (plans 78.52 to 78.70 in docs/ANALYST_PLAN.md hold the runs and the plans):
+State on 2026-11-16, in words only (plans 78.52 to 78.72 in docs/ANALYST_PLAN.md hold the runs and the plans):
 
 | Piece | State |
 |---|---|
@@ -501,7 +501,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.70 in docs/ANALYST_PLAN.md
 | The sleep loop with a chooser | Built; lost twice to a fixed schedule on a menu of one kind; parked until the menu of section 9 exists |
 | The menu, the ladder, the list of surprises and the score of a rule, heads fitted on our own deeper reading | Written (plan 78.68), not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying measured by a proxy only, the true test is owed |
-| The threat list (threats with stake and response, in four bands) | Written (plan 78.70), not built; the frame read's classes are its raw form |
+| The threat list (threats with stake and response, in four bands) | Built in a first form (plan 78.70) that does not yet meet section 8: its rows are classes of the frame read, not lines read to an end, so exchanges show as losses and named responses can lose more than they save. Carrying measured: the read flickers. Plan 78.72 makes each row and response concrete |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
 | The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | Not built; plan 78.71 written (goals as facts, means-ends, the grading of subgoals) |
