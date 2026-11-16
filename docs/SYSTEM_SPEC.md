@@ -255,6 +255,9 @@ Kaveh: "the most complex piece".
   class of positions is not a proof.
 - **Reuse.** Search the history and the indexes before building.
 - **The real lemma store is written only on his word.**
+- **New Rust dependencies are allowed if they are well maintained** (2026-11-16). The crate, its version and the
+  reason are stated in the plan note.
+- **The work is pushed to GitHub** (2026-11-16), with no AI trailer in any commit message.
 
 ## 12. What exists
 
