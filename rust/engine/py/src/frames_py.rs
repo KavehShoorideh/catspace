@@ -36,8 +36,8 @@ pub fn parse_seed(st: &Static, units: &[String], places: &[String]) -> Result<Se
     Ok(Seed { units: u, places: p })
 }
 
-fn game_at(variant: &str, fen: &str) -> Result<(KernelGame, St), String> {
-    let g = KernelGame::from_fen(variant, fen)?;
+fn game_at(variant: &str, text: &str) -> Result<(KernelGame, St), String> {
+    let g = KernelGame::from_fen(variant, text)?;
     let s = g.initial();
     Ok((g, s))
 }
@@ -62,8 +62,8 @@ fn frame_dict<'py>(py: Python<'py>, st: &Static, f: &Frame) -> PyResult<Bound<'p
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn frame_read(py: Python<'_>, variant: &str, st: &Static, fen: &str, seed: &Seed, conditional: bool, full_tempo: bool, table_passes: Option<u8>, fuse: u64) -> PyResult<PyObject> {
-    let (g, s) = game_at(variant, fen).map_err(bad)?;
+pub fn frame_read(py: Python<'_>, variant: &str, st: &Static, text: &str, seed: &Seed, conditional: bool, full_tempo: bool, table_passes: Option<u8>, fuse: u64) -> PyResult<PyObject> {
+    let (g, s) = game_at(variant, text).map_err(bad)?;
     let frame = Frame::new(st, &g, &s, seed).map_err(|e| bad(e.word()))?;
     let mut rep = frames::claims_of(&g, st, &frame, &s, conditional, fuse);
     if full_tempo {
@@ -131,8 +131,8 @@ pub fn frame_read(py: Python<'_>, variant: &str, st: &Static, fen: &str, seed: &
 }
 
 /// The frames of several seeds on a position, those in contact joined: [(frame, how many seeds it came from)] or the refusal.
-pub fn frame_join(py: Python<'_>, variant: &str, st: &Static, fen: &str, seeds: &[Seed]) -> PyResult<PyObject> {
-    let (g, s) = game_at(variant, fen).map_err(bad)?;
+pub fn frame_join(py: Python<'_>, variant: &str, st: &Static, text: &str, seeds: &[Seed]) -> PyResult<PyObject> {
+    let (g, s) = game_at(variant, text).map_err(bad)?;
     let part = st.position(&g, &s);
     let mut fs = vec![];
     let mut errs = vec![];
@@ -147,8 +147,8 @@ pub fn frame_join(py: Python<'_>, variant: &str, st: &Static, fen: &str, seeds: 
 }
 
 /// Two frames not in contact: the composed set and the joint read, for both sides.
-pub fn frame_compose(py: Python<'_>, variant: &str, st: &Static, fen: &str, a: &Seed, b: &Seed, fuse: u64) -> PyResult<PyObject> {
-    let (g, s) = game_at(variant, fen).map_err(bad)?;
+pub fn frame_compose(py: Python<'_>, variant: &str, st: &Static, text: &str, a: &Seed, b: &Seed, fuse: u64) -> PyResult<PyObject> {
+    let (g, s) = game_at(variant, text).map_err(bad)?;
     let part = st.position(&g, &s);
     let fa = Frame::from_part(st, &part, a).map_err(|e| bad(e.word()))?;
     let fb = Frame::from_part(st, &part, b).map_err(|e| bad(e.word()))?;
@@ -215,7 +215,7 @@ pub struct MeasureParams { pub horizons: Vec<usize>, pub fuse: u64, pub row_fuse
 
 #[allow(clippy::too_many_arguments)]
 fn read_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wanted: &[usize], want: &FxHashMap<u64, u32>, p: &MeasureParams, gid: usize, agg: &mut Agg) -> Result<(), String> {
-    let g = match &game.0 { Some(fen) => KernelGame::from_fen(variant, fen)?, None => KernelGame::new(variant, 518)? };
+    let g = match &game.0 { Some(text) => KernelGame::from_fen(variant, text)?, None => KernelGame::new(variant, 518)? };
     let mut s = g.initial();
     let n = game.1.len();
     let (mut plies, mut states) = (vec![], vec![]);

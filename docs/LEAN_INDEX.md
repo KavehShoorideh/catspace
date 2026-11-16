@@ -1607,7 +1607,7 @@ Do not edit by hand.
 - **theorem `Ideas.Race.frame_sound`** (line 185): THE FRAME LEMMA
 - **def `Ideas.Race.withPass`** (line 206): Their replies in the frame game WITH THE PASS: a frame reply, or standing still.
 - **theorem `Ideas.Race.frame_sound_pass`** (line 210): THE FRAME LEMMA, the form the mirror checks: the frame claim is forced against the frame replies AND the pass; each whole-board reply is a frame reply or leaves the projection unchanged (an excluded piece's move); the wh
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/frames_mirror.py, catspace/incubator/analyst/discovery/race.py
 - **theorem `Ideas.Race.excluded_is_pass`** (line 224): An EXCLUDED PIECE'S MOVE IS A PASS: if no square it touches bears on the frame, the board on the frame and every attack onto the frame are as they were (`Ideas.FrameLemma.frame_unchanged`), so the frame's projection does
 - **def `Ideas.Race.Steps`** (line 231): Iterated steps of a piece.
 - **theorem `Ideas.Race.far_stays_off`** (line 237): (a) OF THE CONDITION, for a piece with a step-1-Lipschitz lower bound `d` on the moves it needs (kings: `kdist`; pawns: `Passer2.pdist`; the rest: `lb`): a piece more than `k` moves from every square that bears on the fr

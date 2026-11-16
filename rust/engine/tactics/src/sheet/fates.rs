@@ -264,14 +264,14 @@ mod tests {
         let tr = track(&plies);
         let a = plies[0].iter().position(|x| *x == (0, 1, 5)).unwrap();
         let b = plies[0].iter().position(|x| *x == (0, 3, 2)).unwrap();
-        let h1 = fate_history(&tr, &plies, 0, a, 1);
-        assert_eq!(h1.took, vec![0]);
-        assert_eq!(h1.end, End::Moved);
-        assert_eq!(history_class(&h1, 4), 3);
-        let h3 = fate_history(&tr, &plies, 0, a, 3);
-        assert_eq!(h3.took, vec![0]);
-        assert_eq!(h3.end, End::Taken(2));
-        assert_eq!(history_class(&h3, 4), 4 + 4 + 2);            // an exchange
+        let hist_one = fate_history(&tr, &plies, 0, a, 1);
+        assert_eq!(hist_one.took, vec![0]);
+        assert_eq!(hist_one.end, End::Moved);
+        assert_eq!(history_class(&hist_one, 4), 3);
+        let hist_three = fate_history(&tr, &plies, 0, a, 3);
+        assert_eq!(hist_three.took, vec![0]);
+        assert_eq!(hist_three.end, End::Taken(2));
+        assert_eq!(history_class(&hist_three, 4), 4 + 4 + 2);            // an exchange
         let hb = fate_history(&tr, &plies, 0, b, 4);
         assert!(hb.took.is_empty());
         assert_eq!(hb.end, End::Taken(2));

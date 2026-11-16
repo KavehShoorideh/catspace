@@ -1,5 +1,5 @@
 //! PLAN 78.52: the Python entry of the layer-1 graph (cs_tactics::sheet::base_graph and base_statements). A `BaseGraph` holds the static part of one game (built once from the rules'
-//! description through `Placed::steps`); `position(fen)` returns the per-position part as plain node and link lists. Game-free: every name arrives as data.
+//! description through `Placed::steps`); `position(text)` returns the per-position part as plain node and link lists. Game-free: every name arrives as data.
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
 use cs_game::Game;
@@ -31,7 +31,7 @@ pub(crate) type GameWire = (Option<String>, Vec<String>);
 
 /// The boards of the wanted plies of one game: (row number within the call, the board, the position part's units by (owner is the side to move, kind) counts are made by the callers).
 fn walk_rows<T>(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wanted: &[usize], mut f: impl FnMut(usize, &Board, &cs_tactics::sheet::base_graph::PositionPart) -> T) -> Result<Vec<Option<T>>, String> {
-    let g = match &game.0 { Some(fen) => KernelGame::from_fen(variant, fen)?, None => KernelGame::new(variant, 518)? };
+    let g = match &game.0 { Some(text) => KernelGame::from_fen(variant, text)?, None => KernelGame::new(variant, 518)? };
     let mut s = g.initial();
     let last = wanted.iter().copied().max().map_or(0, |m| m + 1);
     let mut out: Vec<Option<T>> = (0..wanted.len()).map(|_| None).collect();
@@ -68,7 +68,7 @@ fn run_pool<T: Send>(n: usize, threads: usize, f: impl Fn(usize) -> Result<T, St
 type Walked = (Vec<Vec<Cell>>, Vec<Option<usize>>, Vec<RowBoard>);
 
 fn walk_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wanted: &[usize]) -> Result<Walked, String> {
-    let g = match &game.0 { Some(fen) => KernelGame::from_fen(variant, fen)?, None => KernelGame::new(variant, 518)? };
+    let g = match &game.0 { Some(text) => KernelGame::from_fen(variant, text)?, None => KernelGame::new(variant, 518)? };
     let mut s = g.initial();
     let n = game.1.len();
     let (mut plies, mut movers, mut boards) = (vec![], vec![], vec![]);
@@ -114,8 +114,8 @@ impl BaseGraph {
         match goal_kind { Some(k) => Ok(Some(self.st.names.kind(k).map_err(bad)?)), None => Ok(None) }
     }
 
-    fn game(&self, fen: &str) -> PyResult<(KernelGame, <KernelGame as Game>::State)> {
-        let g = KernelGame::from_fen(&self.variant, fen).map_err(bad)?;
+    fn game(&self, text: &str) -> PyResult<(KernelGame, <KernelGame as Game>::State)> {
+        let g = KernelGame::from_fen(&self.variant, text).map_err(bad)?;
         let s = g.initial();
         Ok((g, s))
     }
@@ -144,9 +144,9 @@ impl BaseGraph {
         d.into_py_any(py)
     }
 
-    /// position(fen) -> {mover, offset (the number of static nodes: the indices of these nodes and links continue after them), nodes, links}.
-    fn position(&self, py: Python<'_>, fen: &str) -> PyResult<PyObject> {
-        let (g, s) = self.game(fen)?;
+    /// position(text) -> {mover, offset (the number of static nodes: the indices of these nodes and links continue after them), nodes, links}.
+    fn position(&self, py: Python<'_>, text: &str) -> PyResult<PyObject> {
+        let (g, s) = self.game(text)?;
         let p = self.st.position(&g, &s);
         let d = PyDict::new(py);
         d.set_item("mover", p.mover.map(|m| self.st.names.roles[m].clone()))?;
@@ -156,15 +156,15 @@ impl BaseGraph {
         d.into_py_any(py)
     }
 
-    /// dump(fen) -> text: the position's nodes, one per line, with their links.
-    fn dump(&self, fen: &str) -> PyResult<String> {
-        let (g, s) = self.game(fen)?;
+    /// dump(text) -> text: the position's nodes, one per line, with their links.
+    fn dump(&self, text: &str) -> PyResult<String> {
+        let (g, s) = self.game(text)?;
         Ok(self.st.position(&g, &s).dump(&self.st))
     }
 
-    /// bearings(fen) -> [(owner, kind, place, [places borne on])]: what `Placed::bearing_from` reports for each unit, straight from the trait (for the check that the graph holds each once).
-    fn bearings(&self, fen: &str) -> PyResult<Vec<(String, String, String, Vec<String>)>> {
-        let (g, s) = self.game(fen)?;
+    /// bearings(text) -> [(owner, kind, place, [places borne on])]: what `Placed::bearing_from` reports for each unit, straight from the trait (for the check that the graph holds each once).
+    fn bearings(&self, text: &str) -> PyResult<Vec<(String, String, String, Vec<String>)>> {
+        let (g, s) = self.game(text)?;
         let n = &self.st.names;
         Ok(g.cells(&s).into_iter().map(|(o, k, at)| (n.roles[o].clone(), n.kinds[k as usize].clone(), n.places[at as usize].clone(),
             g.bearing_from(&s, o, k, at).into_iter().map(|p| n.places[p as usize].clone()).collect())).collect())
@@ -175,9 +175,9 @@ impl BaseGraph {
         (base_statements::names(&self.st), base_statements::BOARD.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect())
     }
 
-    /// statements(fen, worth, goal_kind) -> (us, them, board): the statements over the graph of the position, the side to move first.
-    fn statements(&self, fen: &str, worth: HashMap<String, f64>, goal_kind: Option<String>) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>)> {
-        let (g, s) = self.game(fen)?;
+    /// statements(text, worth, goal_kind) -> (us, them, board): the statements over the graph of the position, the side to move first.
+    fn statements(&self, text: &str, worth: HashMap<String, f64>, goal_kind: Option<String>) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+        let (g, s) = self.game(text)?;
         let n = &self.st.names;
         let w: Vec<f64> = n.kinds.iter().map(|k| worth.get(k).copied().unwrap_or(0.0)).collect();
         let gk = match goal_kind { Some(k) => Some(n.kind(&k).map_err(bad)?), None => None };
@@ -187,18 +187,18 @@ impl BaseGraph {
         Ok((a, b, board))
     }
 
-    /// open_lengths(fen) -> [(line id, the longest run of places with no unit)].
-    fn open_lengths(&self, fen: &str) -> PyResult<Vec<(String, usize)>> {
-        let (g, s) = self.game(fen)?;
+    /// open_lengths(text) -> [(line id, the longest run of places with no unit)].
+    fn open_lengths(&self, text: &str) -> PyResult<Vec<(String, usize)>> {
+        let (g, s) = self.game(text)?;
         let p = self.st.position(&g, &s);
         Ok((0..self.st.lines.len()).map(|l| (self.st.nodes[self.st.line_node[l] as usize].id.clone(), p.open_length(&self.st, l))).collect())
     }
 
-    /// measure(fens) -> {positions, seconds (the graph build alone, the states parsed beforehand), nodes: {type: count}, links: {type: count}, static_nodes, static_links} over the
+    /// measure(texts) -> {positions, seconds (the graph build alone, the states parsed beforehand), nodes: {type: count}, links: {type: count}, static_nodes, static_links} over the
     /// positions (summed).
-    fn measure(&self, py: Python<'_>, fens: Vec<String>) -> PyResult<PyObject> {
+    fn measure(&self, py: Python<'_>, texts: Vec<String>) -> PyResult<PyObject> {
         let mut states = vec![];
-        for f in &fens { states.push(self.game(f)?); }
+        for f in &texts { states.push(self.game(f)?); }
         let mut parts: Vec<PositionPart> = Vec::with_capacity(states.len());
         let t0 = std::time::Instant::now();
         for (g, s) in &states { parts.push(self.st.position(g, s)); }
@@ -301,7 +301,7 @@ impl BaseGraph {
         let names = self.st.names.clone();
         let nk = names.kinds.len();
         let res = py.allow_threads(|| run_pool(games.len(), threads, |i| {
-            let g = match &games[i].0 { Some(fen) => KernelGame::from_fen(&variant, fen)?, None => KernelGame::new(&variant, 518)? };
+            let g = match &games[i].0 { Some(text) => KernelGame::from_fen(&variant, text)?, None => KernelGame::new(&variant, 518)? };
             let mut s = g.initial();
             let n = games[i].1.len();
             // per ply: the mover and the units by owner and kind
@@ -334,9 +334,9 @@ impl BaseGraph {
         (names.kinds.clone(), pyo3::types::PyBytes::new(py, &bytes).unbind()).into_py_any(py)
     }
 
-    /// first_blocker_check(fen) -> (the shut relations of the side to move with exactly one unit between, as `why_not` gives them; the same set found by the first-blocker form through `without`; whether the two sets are equal).
-    fn first_blocker_check(&self, fen: &str) -> PyResult<(usize, usize, bool)> {
-        let (g, s) = self.game(fen)?;
+    /// first_blocker_check(text) -> (the shut relations of the side to move with exactly one unit between, as `why_not` gives them; the same set found by the first-blocker form through `without`; whether the two sets are equal).
+    fn first_blocker_check(&self, text: &str) -> PyResult<(usize, usize, bool)> {
+        let (g, s) = self.game(text)?;
         let mut p = self.st.position(&g, &s);
         let ns = self.st.nodes.len() as u32;
         let Some(m) = p.mover else { return Ok((0, 0, true)) };
@@ -354,7 +354,7 @@ impl BaseGraph {
     /// from then on every position part also holds its `through` relation nodes. Sequential, a sample.
     fn learn_profile(&mut self, games: Vec<GameWire>) -> PyResult<Vec<(String, String, bool)>> {
         for game in &games {
-            let g = match &game.0 { Some(fen) => KernelGame::from_fen(&self.variant, fen).map_err(bad)?, None => KernelGame::new(&self.variant, 518).map_err(bad)? };
+            let g = match &game.0 { Some(text) => KernelGame::from_fen(&self.variant, text).map_err(bad)?, None => KernelGame::new(&self.variant, 518).map_err(bad)? };
             let mut s = g.initial();
             for ply in 0..=game.1.len() {
                 let p = self.st.position(&g, &s);
@@ -376,11 +376,11 @@ impl BaseGraph {
         out
     }
 
-    /// through_check(fen) -> (through relations of the side to move, shut relations of the side to move, in both, through only, shut only): THE AGREEMENT of 78.54 A with the rules' own answer for the side
+    /// through_check(text) -> (through relations of the side to move, shut relations of the side to move, in both, through only, shut only): THE AGREEMENT of 78.54 A with the rules' own answer for the side
     /// to move. A shut node (`why_not` says the line is shut) with exactly one unit between, whose end place holds a unit of the other side, is compared with a through node of the same unit and end place
     /// (the rules say nothing of an end place held by the unit's own side, so those are left out of both).
-    fn through_check(&self, fen: &str) -> PyResult<(usize, usize, usize, usize, usize)> {
-        let (g, s) = self.game(fen)?;
+    fn through_check(&self, text: &str) -> PyResult<(usize, usize, usize, usize, usize)> {
+        let (g, s) = self.game(text)?;
         let p = self.st.position(&g, &s);
         let Some(m) = p.mover else { return Ok((0, 0, 0, 0, 0)) };
         let other = |r: &cs_tactics::sheet::base_graph::RelRec| p.units[r.unit].owner == m && match p.occupant[r.place as usize] { 0 => false, i => p.units[i as usize - 1].owner != m };
@@ -517,10 +517,10 @@ impl BaseGraph {
         Ok((n.kinds.clone(), out))
     }
 
-    /// frame_seeds(fen, keys, goal_kind, max_size) -> [(concept number, unit ids, place ids)]: the units and empty places each match of the concepts (by key) binds on a position.
-    fn frame_seeds(&self, fen: &str, keys: Vec<u64>, goal_kind: Option<String>, max_size: usize) -> PyResult<Vec<(u32, Vec<String>, Vec<String>)>> {
+    /// frame_seeds(text, keys, goal_kind, max_size) -> [(concept number, unit ids, place ids)]: the units and empty places each match of the concepts (by key) binds on a position.
+    fn frame_seeds(&self, text: &str, keys: Vec<u64>, goal_kind: Option<String>, max_size: usize) -> PyResult<Vec<(u32, Vec<String>, Vec<String>)>> {
         let goal = self.goal_of(&goal_kind)?;
-        let (g, s) = self.game(fen)?;
+        let (g, s) = self.game(text)?;
         let part = self.st.position(&g, &s);
         let b = Board::new(&self.st, &part, goal);
         let want: FxHashMap<u64, u32> = keys.iter().enumerate().map(|(i, k)| (*k, i as u32)).collect();
@@ -529,25 +529,25 @@ impl BaseGraph {
             .map(|(c, sd)| (c, sd.units.iter().map(|u| cs_tactics::sheet::frames::unit_id(&self.st, u)).collect(), sd.places.iter().map(|p| format!("place:{}", self.st.names.places[*p as usize])).collect())).collect())
     }
 
-    /// frame_read(fen, units, places, conditional, full_tempo, table_passes, fuse) -> the frame of the seed on the position, its claims with their status, the tempo table, the outcomes table
+    /// frame_read(text, units, places, conditional, full_tempo, table_passes, fuse) -> the frame of the seed on the position, its claims with their status, the tempo table, the outcomes table
     /// (when `table_passes` is given), the layer 3 nodes and links, and what the reading cost (78.55 A to E).
     #[allow(clippy::too_many_arguments)]
-    fn frame_read(&self, py: Python<'_>, fen: &str, units: Vec<String>, places: Vec<String>, conditional: bool, full_tempo: bool, table_passes: Option<u8>, fuse: u64) -> PyResult<PyObject> {
+    fn frame_read(&self, py: Python<'_>, text: &str, units: Vec<String>, places: Vec<String>, conditional: bool, full_tempo: bool, table_passes: Option<u8>, fuse: u64) -> PyResult<PyObject> {
         let seed = crate::frames_py::parse_seed(&self.st, &units, &places).map_err(bad)?;
-        crate::frames_py::frame_read(py, &self.variant, &self.st, fen, &seed, conditional, full_tempo, table_passes, fuse)
+        crate::frames_py::frame_read(py, &self.variant, &self.st, text, &seed, conditional, full_tempo, table_passes, fuse)
     }
 
-    /// frame_join(fen, seeds) -> {frames, refused}: the frames of the seeds [(unit ids, place ids)] on a position, those in contact joined.
-    fn frame_join(&self, py: Python<'_>, fen: &str, seeds: Vec<(Vec<String>, Vec<String>)>) -> PyResult<PyObject> {
+    /// frame_join(text, seeds) -> {frames, refused}: the frames of the seeds [(unit ids, place ids)] on a position, those in contact joined.
+    fn frame_join(&self, py: Python<'_>, text: &str, seeds: Vec<(Vec<String>, Vec<String>)>) -> PyResult<PyObject> {
         let sds: Vec<_> = seeds.iter().map(|(u, p)| crate::frames_py::parse_seed(&self.st, u, p)).collect::<Result<_, _>>().map_err(bad)?;
-        crate::frames_py::frame_join(py, &self.variant, &self.st, fen, &sds)
+        crate::frames_py::frame_join(py, &self.variant, &self.st, text, &sds)
     }
 
-    /// frame_compose(fen, seed_a, seed_b, fuse) -> the composition of two frames and the joint read of the union frame, for both sides (78.55 F: checked, not proved).
-    fn frame_compose(&self, py: Python<'_>, fen: &str, a: (Vec<String>, Vec<String>), b: (Vec<String>, Vec<String>), fuse: u64) -> PyResult<PyObject> {
+    /// frame_compose(text, seed_a, seed_b, fuse) -> the composition of two frames and the joint read of the union frame, for both sides (78.55 F: checked, not proved).
+    fn frame_compose(&self, py: Python<'_>, text: &str, a: (Vec<String>, Vec<String>), b: (Vec<String>, Vec<String>), fuse: u64) -> PyResult<PyObject> {
         let sa = crate::frames_py::parse_seed(&self.st, &a.0, &a.1).map_err(bad)?;
         let sb = crate::frames_py::parse_seed(&self.st, &b.0, &b.1).map_err(bad)?;
-        crate::frames_py::frame_compose(py, &self.variant, &self.st, fen, &sa, &sb, fuse)
+        crate::frames_py::frame_compose(py, &self.variant, &self.st, text, &sa, &sb, fuse)
     }
 
     /// frames_measure(games, rows, keys, goal_kind, horizons, fuse, row_fuse, compose_every, max_size, conditional, threads) -> {obs, count, secs, dump}: stage G over the wanted rows of the games.
