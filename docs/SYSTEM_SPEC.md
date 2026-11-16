@@ -248,7 +248,45 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   an event of the rules (section 6). "Nearer" is not a distance, since he set the quasi-metric aside (below). It is
   the chance that the condition comes true and the time to it, which is what the event heads predict. Moves that
   raise that chance are tried first; the chances of section 6 decide among what was reached, so the subgoal still
-  never adds to the value. Where subgoals come from and how one is preferred to another is OPEN (section 13).
+  never adds to the value. Where subgoals come from is the next item.
+- **Choosing a subgoal, and getting there** (DECIDED 2026-11-16; said in another session and brought over by him).
+  - *Many goals, one to choose.* "My goal is to mate the opponent. There might be multiple mates. My goal is to get
+    a material advantage. Multiple material advantages. Which one? In which direction? ... this is the material
+    that's the most weak. So this is the highest probability of success ... And then I have to search for, okay,
+    now what is the move that gets me to that outcome?"
+  - *Something points at the weakness, with a reason.* "Something has to look at the position and basically point
+    at the weakness for a particular reason." It works from the graph: "something needs to be able to use the
+    graph to tell me what sub goal I should be pursuing and how to kind of do the means end analysis to get there."
+  - *An imagined future, and whether it can be reached.* "We need to basically imagine a future where a threat is
+    happening ... 3, 4, 5 moves in future is this situation ... which one of the ... situations is reachable from
+    here?"
+  - *No name is needed.* "Even if the mating pattern has no concept, the concept of attacking the king from this
+    direction has ... The base concept exists and we can describe it and then we can build upon it ... This is
+    pinned, that's under attack. This would deflect here and then we win that ... we don't need to have a name for
+    it." So a goal is a set of facts of the graph with units as variables (section 3), not a named pattern.
+  - *A problem, a proposed fix, and the fix becomes the subgoal.* "There's a problem and there's a proposer for a
+    solution ... Becomes a sub goal itself, and we find a move that gets that sub goal."
+  - *Subgoals must be graded.* "We could spend a long time pursuing bad sub goals. Like, how do we know this is a
+    good sub goal? It's reachable, and how do we know we got the right mitigation for the problem? ... in
+    evaluating sub goals, I don't think we ever got there."
+- PROPOSED form of the above (the handoff's suggestion and the main agent's, not decided):
+  - *Means-ends over facts.* A goal is a list of facts that must hold. Those that hold are ticked. Each one that
+    does not hold is a problem; the proposer names what stops it and a fix (remove, pin, block or draw away the
+    unit that stops it, the far end a variable); the fix is the next subgoal, and so on down to a move. Goals are
+    compared by how few facts are unmet and by the chance of each.
+  - *Reachable is a chance, not a distance.* He said "some sort of a quasi-metric type model" here and, the same
+    day, "quasi-metric is not the right way". docs/THESIS.md records why the distance was dropped: reachability
+    against a player who answers is a probability. So "reachable" is the chance the facts come true within the
+    time, given the opponent, which is also what "nearer" means above.
+  - *Each subgoal makes four claims, and each is graded:* it is worth having (if the facts held we would be better
+    off); the fix is the right one (with the fix alone the goal works, and without it the goal does not); it can be
+    reached; it is the best use of the moves. And a pursuit is dropped when the facts still unmet stop falling,
+    when its chance falls, when our own estimate falls, or when another subgoal is better by a margin.
+  - *Who referees.* In play, only our own reasoning and our own estimate (the wall of section 8). As a MEASURE of
+    the proposer, outside play, the oracle may referee (section 9: a measure is not a fit).
+  - *Whether a language model does the pointing* is OPEN (section 13). He said: "I'm not sure if it has to be Gen
+    AI or not." The standing limit is no outside model in the learning loop; the first build uses the graph, the
+    frame read and the heads.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -327,7 +365,8 @@ and the one that separates what is then lost is kept.
 Each row names the frame it was read in, the stake in the one unit of section 4, the response with its reason, and
 how the line ended. The list is made for both sides (their threats against us, ours against them). It is the same
 object the reasoning works from: the first and third rows are where the budget goes, the second row is what is
-carried forward as open tactics, and the list is the readable form of the chain of claims.
+carried forward as open tactics, and the list is the readable form of the chain of claims. Our threats against
+them that do not work yet, each with the fact that stops it, are the first source of subgoals (section 7).
 
 **The wall.** No number of the oracle is read by the wake or by anything the wake reads. The one exception is the
 last resort of section 9, which needs his word and has not been taken.
@@ -465,7 +504,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.70 in docs/ANALYST_PLAN.md
 | The threat list (threats with stake and response, in four bands) | Written (plan 78.70), not built; the frame read's classes are its raw form |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
-| The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | Not built; no plan written |
+| The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | Not built; plan 78.71 written (goals as facts, means-ends, the grading of subgoals) |
+| Earlier work on subgoals to be reused, all on older systems | The what-if edits (catspace/incubator/analyst/whatif*.py); the October vocabulary of why a fix fails; the subgoal former and the waypoint decomposer of the summer (docs/SUBGOALFORMER.md, subgoal_cascade), built on a learned embedding; the subgoal fit and play of plans 78.49 and 78.50. Subgoals themselves were never graded |
 | The unknown as a condition in the frame read; the sequence model; the endgame fill from human play | Not built |
 
 ## 13. Open questions for Kaveh
@@ -474,8 +514,13 @@ State on 2026-11-16, in words only (plans 78.52 to 78.70 in docs/ANALYST_PLAN.md
 2. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
 3. What counts as the heads having stalled, so that the last resort of fitting on the oracle is raised with him
    (section 9)? Proposed: the measure against the oracle's move not rising over three sleeps.
-4. Where do subgoals come from, and how is one preferred to another (section 7)? Proposed: conditions of
-   conditional claims and events of the rules, preferred by the chance and the stake of what they lead to.
+4. Where do subgoals come from, and how is one preferred to another (section 7)? Partly answered 2026-11-16:
+   something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
+   the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
+   pursuit is dropped).
+7. May a language model do the pointing at a weakness (section 7)? He is unsure. It would need the limit of
+   section 15 lifted for that use.
+8. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
 5. Is a counter-threat an allowed answer to a threat (section 8)? Proposed: yes, when shown concretely.
 6. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
    from what the builder has read, the knowledge of the game may not?
@@ -513,7 +558,7 @@ list (8); every build checked against the spec (11).
 
 No number of the oracle in a fit or in the wake, unless the last resort of section 9 is taken on his word. No
 outside language model in the learning loop. No assumed worth. Names are supplied, never knowledge of the game.
-A subgoal orders and never adds to the value.
+A subgoal orders and never adds to the value. In play a subgoal is refereed by our own reasoning and estimate only.
 No game object named in a layer. No player id written. Lean before a lemma is relied on. The real store only on his
 word. Endgame coverage printed for every human sample. Numbers only where a program printed them. Every line of
 reasoning carries the reason it ended. A candidate rule is scored on surprises it was not made from.
@@ -529,7 +574,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
-| The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition, nearer as its chance and time | 2026-11-14, 16 | 7 |
+| The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition, nearer as its chance and time; choosing among goals by the weakness pointed at, goals as facts with no name, the fix of a problem as the subgoal, subgoals graded | 2026-11-14, 16 | 7 |
 | The wake, step by step; the rule for choosing a move (threats first, answering a big threat is the subgoal, a small one may be left for an attack, the unseen threat read by statistics; a guide); the threat list with stake and response, high and low set by the spread; the wall | 2026-11-14, 16 | 8 |
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
