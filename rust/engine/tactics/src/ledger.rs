@@ -41,6 +41,17 @@ impl Judge for Count {
     fn name(&self) -> String { "count (no record: a unit lost is a unit lost; ours first)".into() }
 }
 
+/// PLAN 78.61 THE JUDGE THAT COUNTS NOTHING: no capture adds anything, for either side, and a change of kind adds nothing. Every ledger is then worth the same, so the search's value
+/// differs only where a line ends the game (`WIN` above or below every ledger): it looks for a forced end and otherwise holds all moves that do not lose by force equal.
+#[derive(Clone, Copy)]
+pub struct Nothing;
+impl Judge for Nothing {
+    fn delta(&self, _me: Role, _owner: Role, _kind: &str) -> i64 { 0 }
+    fn change(&self, _me: Role, _owner: Role, _from: &str, _to: &str) -> i64 { 0 }
+    fn worth(&self, _kind: &str) -> i64 { 0 }
+    fn name(&self) -> String { "nothing (no unit counts: only the end of the game)".into() }
+}
+
 /// A VALUATION RECORD plugged in (the store's entry in use: its worths by kind name, `ours_first` -- our losses weighted by LOSS: avoided before any gain).
 #[derive(Clone)]
 pub struct Worth { pub name: String, pub table: HashMap<String, i64>, pub ours_first: bool }

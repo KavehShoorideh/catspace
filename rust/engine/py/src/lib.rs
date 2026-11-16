@@ -536,13 +536,15 @@ fn load_store(path: &str, specs: HashMap<String, String>) -> PyResult<Store> {
 /// tags the log, its judge is used when `worth` is empty, and its lemmas are bound through `specs` ({variant: description text}) by the lemma operator, whose proposals
 /// the ledger search reads first (`ablate`: lemma names left out). `labels` names the positions in the log. With `trace_path` every decision's steps are appended to
 /// that JSON Lines log. Plan 78.36: `claims` (default True) lets the snapshot's CLAIM rules be read by the search toward claims (operator "claim"); False leaves it out (the A / B
-/// measurement; a snapshot with no claim rule decides the same either way).
+/// measurement; a snapshot with no claim rule decides the same either way). Plan 78.61: `judge="nothing"` (default None: the judge is chosen as before) plays with the judge that counts nothing.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false, wdl=false, wdl_table=None, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string()))]
+#[pyo3(signature = (positions, seconds=1.0, worth=HashMap::new(), ours_first=false, valuation=String::new(), snapshot=String::new(), trace_path=None, threads=0, prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, store=None, specs=HashMap::new(), labels=None, ablate=vec![], ties=false, reason=false, wdl=false, wdl_table=None, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), judge=None))]
 #[allow(clippy::too_many_arguments)]
 fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, snapshot: String,
                trace_path: Option<String>, threads: usize, prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool,
-               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool, wdl: bool, wdl_table: Option<String>, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String) -> PyResult<Vec<BatchRow>> {
+               extend: bool, store: Option<String>, specs: HashMap<String, String>, labels: Option<Vec<String>>, ablate: Vec<String>, ties: bool, reason: bool, wdl: bool, wdl_table: Option<String>, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, judge: Option<String>) -> PyResult<Vec<BatchRow>> {
+    // plan 78.61: judge="nothing" selects the judge that counts nothing (only the end of the game is valued); absent: the choice below, as it was
+    let nothing = match judge.as_deref() { None => false, Some("nothing") => true, Some(other) => return Err(pyo3::exceptions::PyValueError::new_err(format!("judge: {other}: only the name nothing is known"))) };
     if root_orders.is_some() && !ordering { return Err(pyo3::exceptions::PyValueError::new_err("root_orders are read by the ordered search only (ordering=True)")); }
     let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
     let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
@@ -556,13 +558,15 @@ fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: H
         store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
     } else { Some((worth.clone(), ours_first, valuation.clone())) };
     let lab = |i: usize| labels.as_ref().map(|l| l[i].clone()).unwrap_or_default();
-    let done = py.allow_threads(|| match &judge_worth {
+    let done = py.allow_threads(|| if nothing {
+        cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &cs_tactics::ledger::Nothing, seconds, &snapshot, &params, record, store.as_ref(), &ablate, orders[i].clone()))
+    } else { match &judge_worth {
         None => cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &cs_tactics::ledger::Count, seconds, &snapshot, &params, record, store.as_ref(), &ablate, orders[i].clone())),
         Some((w, of, name)) => {
             let j = cs_tactics::ledger::Worth { name: name.clone(), table: w.clone(), ours_first: *of };
             cs_decision::batch::solve(&positions, threads, &snapshot, |i, it| batch_one(i, it, &lab(i), &j, seconds, &snapshot, &params, record, store.as_ref(), &ablate, orders[i].clone()))
         }
-    });
+    } });
     if let Some(path) = trace_path {
         let rows: Vec<serde_json::Value> = done.iter().map(|(_, v)| v.clone()).collect();
         cs_decision::batch::append(std::path::Path::new(&path), &rows).map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("{path}: {e}")))?;
