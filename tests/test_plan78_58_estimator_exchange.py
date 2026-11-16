@@ -81,6 +81,26 @@ def test_the_estimator_record_round_trips_and_the_record_alone_predicts(tmp_path
     print(f"OBS 78.58 record round trip: {len(x)} rows, largest difference {np.abs(EF.predict_record(back['kinds_model'], x) - EF.probs(m, x)).max():.2e}")
 
 
+def test_the_record_holds_named_heads_and_answers_by_head_name(tmp_path):
+    from catspace.incubator.analyst.discovery import estimator_heads as EH
+    x, y = synthetic(2000, [0.3, 0.8, 1.4], 3)
+    m = EF.fit_lr(x, y, 1.0)
+    mean, sd = x.mean(axis=0), x.std(axis=0)
+    coef = np.array([0.1, 0.2, 0.3])
+    rec = {"heads": {"result": {"type": "probability", "model": EF.model_record(m, 1.0), "source": "synthetic", "date": "2026-11-15"},
+                     "kind_baseline": {"type": "terms", "terms": [0.3, 0.8, 1.4]},
+                     "arrival": {"type": "expected_value", "model": {"mean": mean.tolist(), "scale": sd.tolist(), "coef": coef.tolist(), "intercept": 0.5}},
+                     "unfitted": {"type": "expected_value", "model": None, "note": "not fitted"}}}
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(rec))
+    back = json.loads(path.read_text())
+    assert np.allclose(EH.head_predict(back, "result", x), EF.probs(m, x), atol=1e-9)
+    assert np.allclose(EH.head_predict(back, "arrival", x)[:, 0], ((x - mean) / sd) @ coef + 0.5)
+    assert list(EH.head_predict(back, "kind_baseline", x)) == [0.3, 0.8, 1.4]
+    with pytest.raises(ValueError):
+        EH.head_predict(back, "unfitted", x)
+
+
 def test_the_order_of_kinds_is_read_off_the_fit():
     x, y = synthetic(6000, [0.3, 0.8, 1.4], 2)
     m = EF.fit_lr(x, y, 10.0)
@@ -279,7 +299,7 @@ def test_the_hand_positions_in_words(model):
 
 
 def test_the_new_modules_name_no_object_of_any_game():
-    for rel in ("rust/engine/tactics/src/sheet/exchange.rs", "rust/engine/py/src/questions_py.rs", "catspace/incubator/analyst/discovery/estimator_fit.py"):
+    for rel in ("rust/engine/tactics/src/sheet/exchange.rs", "rust/engine/py/src/questions_py.rs", "catspace/incubator/analyst/discovery/estimator_fit.py", "catspace/incubator/analyst/discovery/estimator_heads.py"):
         text = (ROOT / rel).read_text()
         if rel.endswith(".rs"):
             code = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
