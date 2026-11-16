@@ -10277,3 +10277,47 @@ What does not hold:
 7. The matches ran with the machine loaded (printed). Scores near the middle are not to be leaned on.
 8. No endings in the positions sampled for the later-position odds; the small sets are thin; the fill is still owed (it is in plan 78.64 E).
 Next, owed by this read: a yardstick made of what the player reads (held-out games of the sleep's own player and of human games scored by the SAME record the player uses); observed gain judged over several slices of one action, not one; then the comparison with the fixed list again.
+
+
+78.64 BUILT, stage A (builder agent, 2026-11-16; branch worktree-agent-af21e50ac974a0d46; one run, directions only; numbers only from the OBS lines below, printed by the program, full list in artifacts/experiments/events_78_64/sample/events_obs.txt). NO RUST CHANGE; the extension was NOT rebuilt.
+WHAT: catspace/incubator/analyst/discovery/events_rules.py. THE LIST OF EVENTS IS READ AT RUN TIME, no event word is in the code: (1) the roles, the goal values and the FLUENTS THAT ARE KEPT AND NEVER MADE are read from the clauses of the description (a fluent whose every `next` clause holds the fluent itself, same arguments, in its body); (2) the census events (taken, by which kind; changed kind; vanished) are read from the unit tracker of 78.54 (unit_fates.steps_between) on the units of every position (BaseGraph.unit_fates); (3) the ends from the goal values and the record's result. Classes at three grains. Plus the derived reading "keeps": a taking followed by a settled position (a quiet row of 78.59) with the taker's side not having lost in between a unit at or above the taken one in the HUMAN record's order of kinds (78.59 heads.kind_baseline_human, stated); a taking with no settled position after it is CUT, not counted. Run: `python -m catspace.incubator.analyst.discovery.events_rules --state-games` (the 800 games of 78.62; 7 s on 10 workers; no `--state-games`: the 12000 of 78.59). Tests: tests/test_plan78_64_events.py (4; a made-up description gives its own list, no event word is a literal of the code, the tracker with made-up words, no event on an unchanged census; in scripts/gate.py).
+FOR THE FACTS THAT GO FALSE AND NEVER TRUE AGAIN: READ FROM THE RULES, not found on the games: the description's only such fluent is read by `persistent_fluents`; on the games it went false and was never true again in all of them (the violation count is printed, 0). The CANDIDATES found on games (a (side, kind) count that never rose in 800 games) are printed as such and are NOT fitted: they follow from the census events already listed (a unit count falls only by a taking, and rises by a change of kind).
+LIMITS: `vanished` is the tracker's stated limit (a taking that leaves the victim's place); the end event of a human game includes resignation and agreement, not only the rules' own end; a class under 100 events in the fit games is printed as too rare and left out of the fit.
+OBS events: sample: 800 games of the 12000 of the 78.59 file; kinds' order for the derived reading from the human record of 78.59: {'pawn': 475, 'knight': 1216, 'bishop': 1301, 'rook': 1945, 'queen': 3583, 'king': 8521}
+OBS events: read from the rules: roles ['white', 'black']; goal values [0, 50, 100]; fluents that are kept and never made: ['castling_right']; instances: castling_right: [('black', 'kingside'), ('black', 'queenside'), ('white', 'kingside'), ('white', 'queenside')]
+OBS events: read from the rules: ways a game ends ['goal 100 for white', 'goal 100 for black', 'no role at the highest goal value']
+OBS events: class fields: taken | the side that took | the kind taken | the kind that took; changed kind | side | kind it was | kind it became; vanished | side that moved | kind gone; went false | fluent | side | other arguments; keeps | side that took | kind taken; end | the role at the highest goal value (empty: none)
+OBS events: games 800; steps 52615; games where the sides alternate on every step 800; fluent instances that went from false to true after being false (violations of the kept-never-made reading) 0
+OBS events: THE ENDS (the record's result; a game stopped before the rules' own end is one by resignation or agreement): no role at the highest value: 44, black: 369, white: 387
+OBS events: CLASSES COARSE (type, side): class: events in the fit games / in the test games / games holding it
+OBS events:   taken | black: 4368 / 1958 / 799; fitted
+OBS events:   taken | white: 4299 / 1994 / 800; fitted
+OBS events:   keeps | black: 2461 / 1174 / 782; fitted
+OBS events:   keeps | white: 2392 / 1156 / 776; fitted
+OBS events:   end | white: 268 / 119 / 387; fitted
+OBS events:   end | black: 254 / 115 / 369; fitted
+OBS events:   changed kind | white: 53 / 30 / 67; too rare to fit (under 100 events in the fit games): candidate for the endgame fill
+OBS events:   changed kind | black: 41 / 27 / 57; too rare to fit (under 100 events in the fit games): candidate for the endgame fill
+OBS events:   end | : 31 / 13 / 44; too rare to fit (under 100 events in the fit games): candidate for the endgame fill
+OBS events:   vanished | white: 9 / 3 / 12; too rare to fit (under 100 events in the fit games): candidate for the endgame fill
+OBS events:   vanished | black: 4 / 3 / 6; too rare to fit (under 100 events in the fit games): candidate for the endgame fill
+OBS events: CLASSES MID: class: events in the fit games / in the test games / games holding it
+OBS events:   taken | black | pawn: 1970 / 883 / 776; fitted
+OBS events:   taken | white | pawn: 1932 / 894 / 789; fitted
+OBS events:   keeps | black | pawn: 1068 / 521 / 646; fitted
+OBS events:   keeps | white | pawn: 1066 / 515 / 671; fitted
+OBS events:   went false | castling_right | white: 1049 / 481 / 771; fitted
+OBS events:   went false | castling_right | black: 1045 / 474 / 768; fitted
+OBS events:   taken | white | knight: 836 / 394 / 728; fitted
+OBS events:   taken | black | knight: 819 / 375 / 732; fitted
+OBS events:   taken | black | bishop: 797 / 323 / 708; fitted
+OBS events:   taken | white | bishop: 742 / 332 / 687; fitted
+OBS events:   keeps | black | bishop: 551 / 240 / 586; fitted
+OBS events:   taken | white | rook: 497 / 227 / 491; fitted
+OBS events:   keeps | white | bishop: 503 / 220 / 546; fitted
+OBS events:   taken | black | rook: 479 / 221 / 485; fitted
+OBS events:   keeps | white | knight: 393 / 217 / 477; fitted
+OBS events:   keeps | black | knight: 398 / 185 / 465; fitted
+OBS events:   taken | black | queen: 303 / 156 / 434; fitted
+OBS events: CLASSES FINE: class: events in the fit games / in the test games / games holding it
+OBS events: CANDIDATES found on games, not read from the rules: (side, kind) counts that never rose from one position to the next in any of the 800 games (a count of units that, once lower, was not made higher again here): [('black', 'bishop'), ('black', 'king'), ('black', 'knight'), ('black', 'pawn'), ('white', 'bishop'), ('white', 'king'), ('white', 'knight'), ('white', 'pawn')]
