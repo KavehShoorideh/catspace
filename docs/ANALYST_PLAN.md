@@ -10980,3 +10980,5 @@ B. An action's observed gain is judged over at least three slices before the cho
 C. Three sleeps and the fixed schedule at equal time again, the wake matches run with nothing else running and the load printed; the yardstick against time printed so that the sleep length can be read from it.
 
 STATUS: written; after 78.65.
+
+GATE at 58b27cb2 (2026-11-16, after the merges of 78.62, 78.63, 78.64): `OBS gate engine: files 110, passed 1689, failed 0, xfailed 1, errors 0, wall 2206.5 s`.
