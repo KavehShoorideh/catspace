@@ -430,3 +430,99 @@ pub fn questions_measure(py: Python<'_>, variant: &str, st: &Static, goal: Optio
 }
 
 pub fn seeds_from(st: &Static, seeds: &[(Vec<String>, Vec<String>)]) -> Result<Vec<Seed>, String> { seeds.iter().map(|(u, p)| parse_seed(st, u, p)).collect() }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ plan 78.62 stage A
+
+/// One member unit of a frame read at a position: [mover's own (1) or the other's (0), kind index, class, basis, trap word, observed fate within the horizon]. Class: 0 lost for its owner (the other side
+/// forces its taking), 1 safe, 2 both, 3 unread, 4 threat, 5 conditional, 6 contested. Basis (of a lost, safe or both class): 0 forced, 1 pruned, 2 estimate, 3 bound; 255 none. Trap: the index of the trap word
+/// (free, trapped, immobile, not_quiet, ended, unread), 255 when not asked. Fate: 0 not taken, 1 taken for nothing, 2 taken after taking, 255 not known.
+type StateRec = [u8; 6];
+
+struct StateRow { game: usize, ply: usize, mover: u8, board: Vec<(u8, u8, u16)>, units: Vec<StateRec>, questions: u64, unread: u64, frames: u32 }
+
+#[allow(clippy::too_many_arguments)]
+fn state_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wanted: &[usize], want: &FxHashMap<u64, u32>, p: &MeasureParams, horizon: usize, gid: usize, out: &mut Vec<StateRow>) -> Result<(), String> {
+    let g = match &game.0 { Some(text) => KernelGame::from_fen(variant, text)?, None => KernelGame::new(variant, 518)? };
+    let mut s = g.initial();
+    let n = game.1.len();
+    let (mut plies, mut states) = (vec![], vec![]);
+    for ply in 0..=n {
+        let mut cells = g.cells(&s);
+        cells.sort();
+        plies.push(cells);
+        states.push(s.clone());
+        if ply < n {
+            let mv = g.find_move(&s, &game.1[ply]).ok_or_else(|| format!("ply {ply}: {} is not a legal move", game.1[ply]))?;
+            s = g.apply(&s, &mv);
+        }
+    }
+    let tr = fates::track(&plies);
+    let levels: Vec<u8> = (0..patterns::LEVELS).collect();
+    for &t in wanted {
+        if t >= states.len() { continue; }
+        let s = &states[t];
+        let Some(mover) = g.mover(s) else { continue };
+        let part = st.position(&g, s);
+        let b = Board::new(st, &part, goal);
+        let seeds: Vec<Seed> = cs_tactics::sheet::frames::seeds_of_board(&b, &part, p.max_size, &levels, want).into_iter().map(|x| x.1).collect();
+        let mut row = StateRow { game: gid, ply: t, mover: mover as u8, board: plies[t].iter().map(|c| (c.0 as u8, c.1 as u8, c.2 as u16)).collect(), units: vec![], questions: 0, unread: 0, frames: 0 };
+        if !seeds.is_empty() {
+            let built = q::build_frames_cap(st, &g, s, &seeds, p.rules.root_cap);
+            let mut row_q = 0u64;
+            for f in &built.frames {
+                if row_q >= p.row_fuse { continue; }
+                let rep = q::claims_q_rules(&g, st, f, s, p.conditional, p.fuse, p.kv.clone().map(std::rc::Rc::new), p.rules, p.bands.clone().map(std::rc::Rc::new));
+                row_q += rep.stats.questions;
+                row.questions += rep.stats.questions;
+                row.unread += rep.stats.unread;
+                row.frames += 1;
+                let status_of = |id: usize, reading: usize, kinds: &[ClaimKind]| -> (Status, q::Fl) {
+                    let mine: Vec<&q::QClaim> = rep.claims.iter().filter(|c| c.reading == reading && c.unit as usize == id && kinds.contains(&c.kind)).collect();
+                    let best = mine.iter().map(|c| c.status).fold(Status::Not, rank);
+                    (best, mine.iter().filter(|c| c.status == best).fold(0xFFFFu16, |a, c| a & c.flags))
+                };
+                for (id, c) in f.members.iter().enumerate() {
+                    let owner = c.0.min(1);
+                    let (free, ffl) = status_of(id, 1 - owner, &[ClaimKind::TakeFree]);
+                    let (safe, sfl) = status_of(id, owner, &[ClaimKind::Safe]);
+                    let class: u8 = if free == Status::Forced && safe == Status::Forced { 2 } else if free == Status::Forced { 0 } else if safe == Status::Forced { 1 }
+                        else if rep.stats.unread > 0 { 3 } else if matches!(free, Status::Threat | Status::Waiting) { 4 } else if free == Status::Conditional { 5 } else { 6 };
+                    let basis: u8 = match class { 0 => q::basis_rank(ffl), 1 => q::basis_rank(sfl), 2 => q::basis_rank(ffl).max(q::basis_rank(sfl)), _ => 255 };
+                    let trap: u8 = if p.trap_fuse > 0 {
+                        match q::trap(&g, st, s, *c, p.trap_fuse).word { q::TrapWord::Free => 0, q::TrapWord::Trapped => 1, q::TrapWord::Immobile => 2, q::TrapWord::NotQuiet => 3, q::TrapWord::Ended => 4, q::TrapWord::Unread => 5 }
+                    } else { 255 };
+                    let fate: u8 = match plies[t].binary_search(c) {
+                        Ok(i) => { let h = fates::fate_history(&tr, &plies, t, i, horizon); match h.end { End::NoFate => 255, End::Taken(_) => if h.took.is_empty() { 1 } else { 2 }, _ => 0 } }
+                        Err(_) => 255,
+                    };
+                    row.units.push([(c.0 == mover) as u8, c.1 as u8, class, basis, trap, fate]);
+                }
+            }
+        }
+        out.push(row);
+    }
+    Ok(())
+}
+
+/// questions_state: the member units of every frame read at the wanted plies of each game, one record per unit (see `StateRec`; the dict also names the kinds, roles and places by index; each row also lists every unit on the board as (role, kind, place)), per row also the questions asked, the unread lines and the frames read.
+#[allow(clippy::too_many_arguments)]
+pub fn questions_state(py: Python<'_>, variant: &str, st: &Static, goal: Option<u8>, games: Vec<GameWire>, rows: Vec<Vec<usize>>, keys: Vec<u64>, params: MeasureParams, horizon: usize, threads: usize) -> PyResult<PyObject> {
+    let want: FxHashMap<u64, u32> = keys.iter().enumerate().map(|(i, k)| (*k, i as u32)).collect();
+    let st2 = st.clone();
+    let variant = variant.to_string();
+    let accs = py.allow_threads(|| run_acc(games.len(), threads, Vec::<StateRow>::new, |i, acc| state_game(&variant, &st2, goal, &games[i], &rows[i], &want, &params, horizon, i, acc))).map_err(bad)?;
+    let mut all: Vec<StateRow> = accs.into_iter().flatten().collect();
+    all.sort_by_key(|r| (r.game, r.ply));
+    let list = pyo3::types::PyList::empty(py);
+    for r in all {
+        let d = PyDict::new(py);
+        d.set_item("game", r.game)?; d.set_item("ply", r.ply)?; d.set_item("mover", r.mover)?; d.set_item("board", r.board.iter().map(|b| vec![b.0 as u16, b.1 as u16, b.2]).collect::<Vec<_>>())?;
+        d.set_item("questions", r.questions)?; d.set_item("unread", r.unread)?; d.set_item("frames", r.frames)?;
+        d.set_item("units", r.units.iter().map(|u| u.iter().map(|x| *x as u16).collect::<Vec<u16>>()).collect::<Vec<_>>())?;
+        list.append(d)?;
+    }
+    let out = PyDict::new(py);
+    out.set_item("kinds", st.names.kinds.clone())?; out.set_item("roles", st.names.roles.clone())?; out.set_item("places", st.names.places.clone())?;
+    out.set_item("rows", list)?;
+    out.into_py_any(py)
+}
