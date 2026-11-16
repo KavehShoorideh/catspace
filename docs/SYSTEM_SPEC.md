@@ -257,6 +257,21 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
    the subgoal.
 7. Give the reasons for the move as a chain of claims, each line with the reason it ended.
 
+**The rule for choosing a move** (DECIDED 2026-11-16). "Evaluate the threats of the opponent. Whenever there is no
+threat, we advance towards our sub goal. Whenever there is a threat, we defend the threat and advance towards our
+sub goal." So every move begins from the opponent's rows of the threat list below.
+- No threat of theirs stands: the move is the one that brings our subgoal nearest.
+- A threat of theirs stands: the move must answer it, and among the answers the one that also brings the subgoal
+  nearest is chosen. A threat that already has a response in the list needs no new move; the response is carried.
+
+PROPOSED (mine, three cases his sentence leaves open, for him to accept or strike):
+- Our own threats are read first too. If we can win something by force, that is the move, and winning it may be
+  the subgoal of the moment.
+- An answer need not be a defence. A threat of ours with a larger stake than theirs is also an answer, which is
+  how a master meets a threat with a counter-threat. It is allowed only when the reasoning shows it concretely.
+- A threat whose stake is below the spread of the two readings may be left unanswered when the subgoal is worth
+  more; the choice is stated in the reasons for the move.
+
 **The threat list: what any position must be able to answer** (DECIDED 2026-11-16). "In any given position, I want
 us to be able to answer what are the threats and what is the stake there." A threat that wins in one frame and is
 answered when the frame is widened is "a threat with a response". "The analysis should list out threats with their
@@ -462,6 +477,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 |---|---|---|
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
 | The overall goal: reason like a human, concrete tactical steps then an evaluation at their end; what the builder knows shapes the procedure, never the knowledge; the second half: hold subgoals and navigate toward them over several moves | 2026-11-16 | 1, 7 |
+| The rule for choosing a move: read their threats; none, advance the subgoal; one, answer it and advance the subgoal | 2026-11-16 | 8 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
 | Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the three reasons for a sacrifice; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
