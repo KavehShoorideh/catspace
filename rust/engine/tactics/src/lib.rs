@@ -5,6 +5,7 @@
 //! side the fewest replies (the forcing ones) -- an order, never a verdict.
 pub mod census;
 pub mod ledger;
+pub mod lines;
 pub mod operators;
 pub mod reason;
 pub mod scenario;

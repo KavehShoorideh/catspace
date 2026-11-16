@@ -179,7 +179,7 @@ def band_of(row: dict, spread: "float | None", rank_high: "bool | None", way: st
         if rank_high is None:
             return None
         high = rank_high
-    resp = bool(row["response"])
+    resp = bool(row["response"]) or bool(row.get("deferred")) or (row.get("verdict") == "UNREAD" and bool(row.get("response_ix")))         # (plan 78.72: a threat in two moves has its answer after the taker's first move, the owner needs no move now; a row left UNREAD is banded by what the frame read named, unverified)
     return (2 if resp else 1) if high else (4 if resp else 3)
 
 
