@@ -213,6 +213,13 @@ When it may be read (section 4 gives the list of how a line ends; these are the 
   that nothing stands to be lost comes first; a difference can be lasting compensation that no reasoning resolves,
   so one that persists across settled positions is accepted as the estimate; and whether the difference foretells
   events is measured before it is relied on (plan 78.69).
+  MEASURED 2026-11-16 (plan 78.69, one run, a direction): with the present heads the size of the difference did
+  NOT mark positions where something happens soon. Most large differences lasted to the next settled position.
+  What did go with events soon was the frame read's own open claims (a unit standing lost). So for now the frame
+  read's open claims are the working signal of sharpness, and the rule of two readings stays his design, NOT YET
+  SHOWN. The test was weak in a way that matters: the head on kinds alone is barely better than no head, so the
+  "material reading" hardly exists yet and the difference is mostly the other reading by itself. It is measured
+  again when the kinds reading is stronger.
 - **Open tactics are checked before the estimate is trusted.** "If there are open tactics with a high stake,
   basically larger than the variation between the two readings ... one is saying +1, the other is saying +2, and
   then we have like a rook under attack ... before I trust the +1 or the +2, I should check my rook ... if I can
@@ -313,6 +320,9 @@ stake and the response", ordered so:
 PROPOSED: the line between high and low is not a number put in. A stake is high when it is above the spread of the
 two readings of section 6 at that position, the same line that decides whether an open tactic must be checked
 before the estimate is trusted. "Big" and "small" in the rule for choosing a move are these bands.
+MEASURED (plan 78.69): comparing the stake with the spread added little beyond the claim being present, with the
+present heads. So plan 78.70 prints the bands two ways, by this line and by the stake ranked within the position,
+and the one that separates what is then lost is kept.
 
 Each row names the frame it was read in, the stake in the one unit of section 4, the response with its reason, and
 how the line ended. The list is made for both sides (their threats against us, ours against them). It is the same
@@ -451,7 +461,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.70 in docs/ANALYST_PLAN.md
 | The player reading a head as tie-break among moves the search holds equal | Built as a measurement (plan 78.67); the cheap arrival number is level with the frame heads and far cheaper; not switched on |
 | The sleep loop with a chooser | Built; lost twice to a fixed schedule on a menu of one kind; parked until the menu of section 9 exists |
 | The menu, the ladder, the list of surprises and the score of a rule, heads fitted on our own deeper reading | Written (plan 78.68), not built |
-| Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Written as a measurement (plan 78.69), not run |
+| Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying measured by a proxy only, the true test is owed |
 | The threat list (threats with stake and response, in four bands) | Written (plan 78.70), not built; the frame read's classes are its raw form |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
