@@ -58,6 +58,13 @@ approach and never reaches into a component directly.
     what is proved (mirror it, with a test against it); prove a new one before relying on it; rebuild the index
     (`... lean_index build`) after adding theorems (Kaveh 2026-10-10).
 
+12. **Build to the spec.** `docs/SYSTEM_SPEC.md` is the design of the analyst engine. Before building anything in
+    `catspace/incubator/analyst` or `rust/engine`, read its sections 1, 11, 12, 14, 15 and the section the work serves; name
+    that section and piece in the plan note, the commit and the report. Write the interface of a new part (what it takes, what
+    it returns, who calls it) before its body; pieces talk only through such interfaces, and nothing duplicates a piece that
+    exists. If a plan and the spec disagree, or the spec is silent on a choice that shapes an interface, stop and say so; never
+    diverge silently. A design decision goes into the spec the same turn it is made (Kaveh 2026-11-16).
+
 ## Commands
 
 ```bash

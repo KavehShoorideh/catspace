@@ -3,6 +3,25 @@
 Every agent launched on this repo is pointed at this file. Its task prompt adds only the plan section and the stage list. The rules here are the
 owner's standing rules; the speed rules were added on 2026-10-28 because agents spent most of their wall time verifying, not thinking.
 
+## 0. Build to the spec (Kaveh 2026-11-16)
+"The system is so big that agents keep forgetting what the big picture is, and they build in a way that diverges from the overall picture. So we
+want it to be modular with clean interfaces and according to the overall high-level spec."
+
+`docs/SYSTEM_SPEC.md` is the design. Your plan section is one step toward it, never a replacement for it.
+- BEFORE ANY CODE, read spec sections 1 (the system in one paragraph), 11 (engineering rules), 12 (what exists), 14 (what was replaced), 15
+  (standing limits), and the section your plan serves. The index in section 16 tells you where a decision is written.
+- NAME THE PIECE. Your first commit message and your report state which spec section and which piece the build serves (graph, frames, tactical
+  reasoning, value, estimator, opportunity policy, wake, sleep). A build that serves no piece is not built: stop and report.
+- INTERFACE FIRST. Before the body, write down the interface of what you add: what it takes, what it returns, who calls it. Put it in the
+  module's doc comment and in the report. One piece talks to another only through such an interface; never reach into another piece's internals,
+  never copy its code, never add a second way to do what a piece in section 12 already does (search the code and the git history first).
+- ONE PIECE PER MODULE. A module that needs to know how another piece works inside is a sign the interface is wrong: say so in the report, do
+  not patch around it.
+- WHEN THE PLAN AND THE SPEC DISAGREE, or the spec is silent on a choice that shapes an interface, stop and report the disagreement. Do not pick
+  silently. A choice you had to make to keep moving is listed in the report under "choices not in the spec".
+- THE REPORT ENDS WITH A SPEC CHECK: the section served, the interface added or changed, every place the build departs from the spec (or "none"),
+  and what in section 12 should now read differently. You do not edit the spec; the parent does.
+
 ## 1. Where you work
 - Your own git worktree on your own branch, forked from main. Nothing else runs on the machine while you work unless the parent says so.
 - Setup (uncommitted; never commit any of it): `ln -s <main>/.venv .venv`; `ln -s <main>/lean/ideas/.lake lean/ideas/.lake`;

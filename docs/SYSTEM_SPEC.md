@@ -362,6 +362,13 @@ Kaveh: "the most complex piece".
 - **New Rust dependencies are allowed if they are well maintained** (2026-11-16). The crate, its version and the
   reason are stated in the plan note.
 - **The work is pushed to GitHub** (2026-11-16), with no AI trailer in any commit message.
+- **Every build is checked against this spec** (2026-11-16). "The system is so big that agents keep forgetting what
+  the big picture is, and they build in a way that diverges from the overall picture. So we want it to be modular
+  with clean interfaces and according to the overall high-level spec." Each piece of this document is a module.
+  A plan names the section and piece it serves and the interface it adds: what it takes, what it returns, who calls
+  it. Pieces talk only through such interfaces. A build that departs from the spec is not merged quietly: it is
+  fixed, or the departure is brought to Kaveh. The rule for builders is `AGENTS.md` rule 12 and
+  `docs/AGENT_BRIEF.md` section 0.
 
 ## 12. What exists
 
@@ -446,6 +453,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
+| Every build checked against the spec; modules with stated interfaces; no quiet departure | 2026-11-16 | 11 |
 | What exists and the state of the build | 2026-11-16 | 12 |
 | Open questions | 2026-11-16 | 13 |
 | What was replaced | 2026-11-16 | 14 |
