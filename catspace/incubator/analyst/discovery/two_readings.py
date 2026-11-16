@@ -389,10 +389,10 @@ def stage_c(d: dict, R: Readings, say) -> None:
             g = rows["g"][te][sel]
             ones = np.ones(int(sel.sum()))
             sb = GameBoot(g)
-            p1, d1 = sb.ratio(stays.astype(float), ones, np.zeros(len(ones), np.int64), 1)
-            lo1, hi1 = band(p1[0], d1[:, 0])
-            p2, d2 = sb.ratio((stays & same_sign).astype(float), ones, np.zeros(len(ones), np.int64), 1)
-            lo2, hi2 = band(p2[0], d2[:, 0])
+            p1, dra = sb.ratio(stays.astype(float), ones, np.zeros(len(ones), np.int64), 1)
+            lo1, hi1 = band(p1[0], dra[:, 0])
+            p2, drb = sb.ratio((stays & same_sign).astype(float), ones, np.zeros(len(ones), np.int64), 1)
+            lo2, hi2 = band(p2[0], drb[:, 0])
             # control: the partner is a random row of the same ply quintile
             rnd = np.empty(len(nx), np.int64)
             for s in np.unique(ply_band):
@@ -400,8 +400,8 @@ def stage_c(d: dict, R: Readings, say) -> None:
                 m = ply_band[np.flatnonzero(sel)] == s
                 rnd[m] = rng.choice(pool, int(m.sum()))
             ctrl = a[rnd] > thr
-            p3, d3 = sb.ratio(ctrl.astype(float), ones, np.zeros(len(ones), np.int64), 1)
-            lo3, hi3 = band(p3[0], d3[:, 0])
+            p3, drc = sb.ratio(ctrl.astype(float), ones, np.zeros(len(ones), np.int64), 1)
+            lo3, hi3 = band(p3[0], drc[:, 0])
             n3 = next_rows(d, te, 3)[sel]
             stays3 = (n3 >= 0)
             allthree = stays3 & (a[np.where(stays3, n3, 0)] > thr)
@@ -481,13 +481,13 @@ def stage_e(d: dict, R: Readings, say) -> None:
             fired_own = has[:, 1][:, in_head].any(axis=1) & (mx_own > delta)
             fired_their = has[:, 0][:, in_head].any(axis=1) & (mx_their > delta)
             q = np.percentile(mx[anyc], [10, 50, 90]) if anyc.any() else [0, 0, 0]
-            say(f"E1 [{dlabel}] [{cname}]: rows with an open claim that has a stake {int(anyc.sum())} ({100.0 * anyc.mean():.2f} pct); stake of the largest claim, quantiles 10/50/90: {q[0]:.4f} / {q[1]:.4f} / {q[2]:.4f}; spread |delta| of those rows, median {np.median(delta[anyc]) if anyc.any() else 0:.4f}")
+            say(f"E(1) [{dlabel}] [{cname}]: rows with an open claim that has a stake {int(anyc.sum())} ({100.0 * anyc.mean():.2f} pct); stake of the largest claim, quantiles 10/50/90: {q[0]:.4f} / {q[1]:.4f} / {q[2]:.4f}; spread |delta| of those rows, median {np.median(delta[anyc]) if anyc.any() else 0:.4f}")
             zero = np.zeros(len(te), np.int64)
-            a1, d1 = boot.ratio(fired.astype(float), np.ones(len(te)), zero, 1)
-            lo, hi = band(a1[0], d1[:, 0])
-            a2, d2 = boot.ratio(fired.astype(float), anyc.astype(float), zero, 1)
-            lo2, hi2 = band(a2[0], d2[:, 0])
-            say(f"E1 [{dlabel}] [{cname}]: rows with an open claim whose stake is above the spread: {int(fired.sum())} = {100.0 * a1[0]:.2f} pct of all held-out rows [{100.0 * lo:.2f}, {100.0 * hi:.2f}], {100.0 * a2[0]:.2f} pct of the rows with an open claim [{100.0 * lo2:.2f}, {100.0 * hi2:.2f}]; the claim is on the mover's unit in {int(fired_own.sum())} rows, on the other side's in {int(fired_their.sum())}")
+            pa, dra = boot.ratio(fired.astype(float), np.ones(len(te)), zero, 1)
+            lo, hi = band(pa[0], dra[:, 0])
+            pb, drb = boot.ratio(fired.astype(float), anyc.astype(float), zero, 1)
+            lo2, hi2 = band(pb[0], drb[:, 0])
+            say(f"E(1) [{dlabel}] [{cname}]: rows with an open claim whose stake is above the spread: {int(fired.sum())} = {100.0 * pa[0]:.2f} pct of all held-out rows [{100.0 * lo:.2f}, {100.0 * hi:.2f}], {100.0 * pb[0]:.2f} pct of the rows with an open claim [{100.0 * lo2:.2f}, {100.0 * hi2:.2f}]; the claim is on the mover's unit in {int(fired_own.sum())} rows, on the other side's in {int(fired_their.sum())}")
             thr = float(np.quantile(delta, DEFINE_AGREE))
             agree = delta <= thr
             grp = np.where(~(n_claims > 0), 0, np.where(fired, 2, 1))          # 0: no open claim; 1: open claim, stake not above the spread; 2: above
@@ -502,7 +502,7 @@ def stage_e(d: dict, R: Readings, say) -> None:
                     parts.append(f"{lab[b]} ({int((grp[m] == b).sum())} rows): {100 * pt[b]:.3f} [{lo:.3f}, {hi:.3f}]")
                 rr = dr[:, 2] / np.maximum(dr[:, 0], 1e-12)
                 lo, hi = band(0, rr)
-                say(f"E2 [{dlabel}] [{cname}] {kind_label}: AMONG ROWS WHERE THE READINGS AGREE (|delta| at or under the {DEFINE_AGREE:.2f} quantile = {thr:.4f}; {len(m)} rows) rate per 100 plies: " + "; ".join(parts) + f"; above-spread over no-claim {pt[2] / max(pt[0], 1e-12):.3f} [{lo:.3f}, {hi:.3f}]")
+                say(f"E(2) [{dlabel}] [{cname}] {kind_label}: AMONG ROWS WHERE THE READINGS AGREE (|delta| at or under the {DEFINE_AGREE:.2f} quantile = {thr:.4f}; {len(m)} rows) rate per 100 plies: " + "; ".join(parts) + f"; above-spread over no-claim {pt[2] / max(pt[0], 1e-12):.3f} [{lo:.3f}, {hi:.3f}]")
                 ctl = []
                 for slabel, strat in (("ply", ply_band), ("units left", men_band)):
                     pm, dm = stratified_ratio(gb, obs[m], expo[m], grp[m], strat[m], BANDS)
@@ -510,8 +510,8 @@ def stage_e(d: dict, R: Readings, say) -> None:
                     lo, hi = band(pm, dm)
                     lo2, hi2 = band(ps, ds)
                     ctl.append(f"{slabel} held fixed {pm:.3f} [{lo:.3f}, {hi:.3f}], and with the labels shuffled inside each quintile of {slabel} {ps:.3f} [{lo2:.3f}, {hi2:.3f}]")
-                say(f"E2 [{dlabel}] [{cname}] {kind_label}: CONTROLS, above-spread over no-claim with " + "; ".join(ctl))
-        # E3: carrying; the claim's identity is (owner, kind): the stored rows keep no place and no read set
+                say(f"E(2) [{dlabel}] [{cname}] {kind_label}: CONTROLS, above-spread over no-claim with " + "; ".join(ctl))
+        # E(3): carrying; the claim's identity is (owner, kind): the stored rows keep no place and no read set
         key = {(int(g), int(p)): j for j, (g, p) in enumerate(zip(rows["g"][te], rows["ply"][te]))}
         pair = np.array([key.get((int(g), int(p) + 2), -1) for g, p in zip(rows["g"][te], rows["ply"][te])], np.int64)
         ok = pair >= 0
@@ -525,17 +525,17 @@ def stage_e(d: dict, R: Readings, say) -> None:
         tot2 = n2.sum(axis=(1, 2)).astype(float)
         gb = GameBoot(rows["g"][te][ok])
         z = np.zeros(int(ok.sum()), np.int64)
-        say(f"E3 CARRYING [{dlabel}] (the stored rows keep no place and no read set: a claim is an (owner, kind) count, and 'nothing changed' is read as no event of the rules at the two steps between; the true read-set test is NOT made): {int(ok.sum())} of {len(te)} held-out rows have a row two plies later in the same game with the same side to move; {int((tot0 > 0).sum())} of those hold an open claim")
+        say(f"E(3) CARRYING [{dlabel}] (the stored rows keep no place and no read set: a claim is an (owner, kind) count, and 'nothing changed' is read as no event of the rules at the two steps between; the true read-set test is NOT made): {int(ok.sum())} of {len(te)} held-out rows have a row two plies later in the same game with the same side to move; {int((tot0 > 0).sum())} of those hold an open claim")
         for label, mk in (("all such pairs", np.ones(len(z), bool)), ("pairs with no event of the rules between", quiet2), ("pairs with an event of the rules between", ~quiet2)):
             pt, dr = gb.ratio(held * mk, tot0 * mk, z, 1)
             lo, hi = band(pt[0], dr[:, 0])
             pn, dn = gb.ratio(new * mk, tot2 * mk, z, 1)
             lo2, hi2 = band(pn[0], dn[:, 0])
-            say(f"E3 [{dlabel}] {label}: claims at ply n held again at n+2: {100.0 * pt[0]:.2f} pct [{100.0 * lo:.2f}, {100.0 * hi:.2f}] of {int((tot0 * mk).sum())} claims; claims at n+2 not held at n (FIRST SEEN at n+2): {100.0 * pn[0]:.2f} pct [{100.0 * lo2:.2f}, {100.0 * hi2:.2f}] of {int((tot2 * mk).sum())}")
+            say(f"E(3) [{dlabel}] {label}: claims at ply n held again at n+2: {100.0 * pt[0]:.2f} pct [{100.0 * lo:.2f}, {100.0 * hi:.2f}] of {int((tot0 * mk).sum())} claims; claims at n+2 not held at n (FIRST SEEN at n+2): {100.0 * pn[0]:.2f} pct [{100.0 * lo2:.2f}, {100.0 * hi2:.2f}] of {int((tot2 * mk).sum())}")
         nm = new * quiet2
         pt, dr = gb.ratio(nm * unread0, nm, z, 1)
         lo, hi = band(pt[0], dr[:, 0])
-        say(f"E3 [{dlabel}] of the claims first seen at n+2 in pairs with no event between ({int(nm.sum())}), the share whose row at n had lines the read left unread (a miss of the read's budget that carrying would meet at the next move): {100.0 * pt[0]:.2f} pct [{100.0 * lo:.2f}, {100.0 * hi:.2f}]; the others could still have been true at n (an upper bound: the truth at n is not stored)")
+        say(f"E(3) [{dlabel}] of the claims first seen at n+2 in pairs with no event between ({int(nm.sum())}), the share whose row at n had lines the read left unread (a miss of the read's budget that carrying would meet at the next move): {100.0 * pt[0]:.2f} pct [{100.0 * lo:.2f}, {100.0 * hi:.2f}]; the others could still have been true at n (an upper bound: the truth at n is not stored)")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ the commands
@@ -645,11 +645,11 @@ def matches(a) -> int:
                     continue
                 gb = GameBoot(game[m])
                 z = np.zeros(len(m), np.int64)
-                p1, d1 = gb.ratio((v[m] <= ta).astype(float), np.ones(len(m)), z, 1)
-                p2, d2 = gb.ratio((v[m] > tl).astype(float), np.ones(len(m)), z, 1)
-                l1, h1 = band(p1[0], d1[:, 0])
-                l2, h2 = band(p2[0], d2[:, 0])
-                say(f"D [{cname}] {label}, {who}: {len(m)} quiet positions: the readings AGREE in {100.0 * p1[0]:.2f} pct [{100.0 * l1:.2f}, {100.0 * h1:.2f}], differ LARGELY in {100.0 * p2[0]:.2f} pct [{100.0 * l2:.2f}, {100.0 * h2:.2f}]; mean |delta| {v[m].mean():.4f}")
+                p1, dra = gb.ratio((v[m] <= ta).astype(float), np.ones(len(m)), z, 1)
+                p2, drb = gb.ratio((v[m] > tl).astype(float), np.ones(len(m)), z, 1)
+                l1, hia = band(p1[0], dra[:, 0])
+                l2, hib = band(p2[0], drb[:, 0])
+                say(f"D [{cname}] {label}, {who}: {len(m)} quiet positions: the readings AGREE in {100.0 * p1[0]:.2f} pct [{100.0 * l1:.2f}, {100.0 * hia:.2f}], differ LARGELY in {100.0 * p2[0]:.2f} pct [{100.0 * l2:.2f}, {100.0 * hib:.2f}]; mean |delta| {v[m].mean():.4f}")
         ref = thr[cname]["by_ply"]
         mm = np.flatnonzero(quiet)
         say(f"D [{cname}] REFERENCE: on the held-out human rows (by definition {100.0 * DEFINE_AGREE:.0f} pct agree) the share that agrees by ply: " + "; ".join(f"ply {k}-: {100.0 * v_:.1f} pct" for k, v_ in ref.items()) + "; in the match positions by ply: " + "; ".join(
