@@ -9765,3 +9765,147 @@ OBS endgame check: pieces<=2 (units other than pawns and the two goal units): po
 OBS endgame check: no_piece: positions 10975 (1.37 pct), games reaching it 638 (5.3 pct)
 OBS endgame check: how games end: decisive and stopped before mate 7180 (59.8 pct), mate on the board 4243 (35.4 pct), drawn and stopped 307 (2.6 pct), stalemate or dead draw 270 (2.2 pct)
 Read: endings are not rare in this source at these ratings, and the records hold over a million qualifying games per eight shards, so the count can be raised a hundredfold by sampling more. Not checked, and the real risk: WHICH endings (a given small set of units may still be rare), and their quality (endings between weak players). A resigned game still has its result, so the result head needs no completion; what resignation removes is the PLAY of the ending, which matters for following unit fates and the tactical state to the end. Standing rule from now: every plan that samples human games prints this table for its sample, per set of units for the small sets, and where a set is too thin it is filled by generated games (self-play or playouts from sampled positions), never by an engine evaluation.
+
+78.61 BUILT (2026-11-15, builder agent, branch worktree-agent-a9ac3c2f8116ed62a; stages are committed one at a time and this note is appended one stage at a time; numbers only from OBS lines a program printed; one run each, directions only). The extension was rebuilt from this worktree (`CARGO_PROFILE_RELEASE_STRIP=none maturin develop --release --offline` in rust/engine/py), which re-points the shared editable install to this worktree; the parent rebuilds main after the merge. Outputs under artifacts/experiments/odds_78_61/ (untracked).
+STAGE A (the judge and the measure). `cs_tactics::ledger::Nothing` (rust/engine/tactics/src/ledger.rs), beside Count and Worth: no capture adds anything for either side, a change of kind adds nothing, so the search's value differs only where a line ends the game. Selected from Python by the new LAST keyword `judge="nothing"` of `cs_engine.solve_batch` (default None: the judge is chosen exactly as before; any other name is an error). Count, Worth and every default are unchanged (tests/golden_78_51_default_path.json and tests/test_plan78_51_root_order.py run). The measure: catspace/incubator/analyst/discovery/odds_measure.py; tests: rust/engine/tactics/tests/nothing.rs, tests/test_plan78_61_odds.py (in scripts/gate.py).
+HOW GENERATION ZERO DECIDES. The ledger search with the judge that counts nothing, within the clock, deepened as in the wake; the root moves are handed to it in a RANDOM ORDER (78.51 strict mode, a new order each move), so the move it keeps is the first, in that order, of those whose value at the finished depth is the best: with no forced end in sight every move that does not lose by force ties and one is picked uniformly at random; with a forced end in sight a move of it is played. No store, no lemma, no claim: `store` is not given. UNFINISHED GAMES (the ply cap, or a mover with no move and no outcome) count as DRAWS in every table and every score, and are counted and printed apart.
+THE PLAYERS. nothing = generation zero; worth = the Worth judge fed from `gen<g-1>/record.json` (`kind_values` of the head `odds_effect`, integers, as measured, no clamp, no rule for the goal unit: a kind absent from the table is worth 0), `ours_first` false; generation 1 plays with the record of generation 0, generation 2 with the record of generation 1 (each generation's own odds games make its own record); count = the plain search with every unit counted as one and NO store (the "player of today" without the store, which this sandbox may not read); random = a uniformly random legal move.
+THE ODDS STARTS. The units are read from the layer-1 graph of the ordinary start (`graph_layer1`; this reads the game's description and the graph vocabulary file of rules/learned, the rules' description and not a valuation or any learned fact; no other file of the store is read). The kinds the rules let be removed are those for which the game accepts the start without a unit of the kind and it is not over: the others (here one) are listed as refused and are the goal unit. For every (side, kind): up to 2 distinct units sampled by seed (one short), and for kinds with two or more units up to 2 sampled pairs (two short), each side in turn as the one short; the even start is the control. A start is made by editing the board field of the position text the game gives for the ordinary start (the one function that knows the text's grid: `board_without`), and the two rights fields of EVERY start, the even control included, are set neutral so a taken-away rook leaves no right over a unit that is gone. Every start is checked legal (the game accepts it, not over) and that it differs from the even start by exactly the units named (tests). Each game starts from the start text after FOUR random plies (as 78.50), seeded by (start, game number), the same openings in every generation.
+THE EFFECT. Per kind the log odds of white wins against white losses (a half added to each count, draws and unfinished the reference), the control's less the short side's, from the short side's view, per unit lacking, averaged over the two sides; band: 5th to 95th percentile of 1000 bootstrap draws, resampling games within each start (the control within its cell). Two kinds are ORDERED when one is above the other in at least 95 pct of the draws; else NOT ORDERED. Two short is the effect per unit lacking (the effect of two divided by two), beside one short.
+STATED BEFORE THE RUN (the odds games and matches). Seconds per move 0.05 (both sides); ply cap 120; workers 8 of 11 cores (the clock is the search's; with all cores the clocks would measure contention); games per start G = 60 for every odds start and 3 x G for the even control, the SAME number in every generation, fixed in advance, no sequential stop; three rounds of odds games (generations 0, 1, 2), then stop. Matches: 50 opening pairs (random four-ply openings from the ordinary start, seeds 9100 up, colours alternated), 0.05 s a move, ply cap 120, 8 workers, bands by bootstrap over opening pairs, nine pairings (g1 v g0, g2 v g1, g2 v g0, each v random, each v count); the load average and the cores busy at the instant of the start are printed per match (the machine carries other users' work of about two or three cores; I started nothing else). Short runs first (tag short: G 3 and 2, 2 opening pairs): the whole path ran; its lines are not used.
+CUT TO FIT the two hours: G = 60 and 50 pairs (the plan names no size); the two-short starts sample 2 pairs of a kind; one run of each, no repeat.
+
+STAGES B AND C, GENERATION 0 (one run, G 60, 0.05 s a move, ply cap 120, 8 workers; the 28 per-start lines are in artifacts/experiments/odds_78_61/full/obs.txt; record gen0/record.json holds the head and the table of starts and results). Directions only. Reading: the games are not too noisy to order everything: the queen stands above the rest in the bands, rook one short has a point estimate near zero while rook two short per unit is positive (the sampled starts differ: the band of one short says it is not ordered from knight), and the record feeds generation 1 with the rook worth negative as measured (no clamp).
+OBS odds gen 0: load 6.78 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 0: players: {"kind": "nothing"}; 1860 games
+OBS odds gen 0: 1860 games in 1201 s wall; unfinished 1002 (53.9 pct, counted as draws); mean plies 102.4
+OBS odds gen 0: even start (white's view): W 35 D 112 L 33 of 180, unfinished 112
+OBS odds gen 0: kind queen: one short +1.588 [+1.106, +2.499]
+OBS odds gen 0: kind bishop: one short +0.496 [+0.156, +0.854]; two short (per unit) +0.230 [+0.016, +0.479]; two less one -0.266 [-0.665, +0.170]
+OBS odds gen 0: kind pawn: one short +0.437 [+0.118, +0.786]; two short (per unit) +0.034 [-0.124, +0.188]; two less one -0.403 [-0.791, -0.043]
+OBS odds gen 0: kind knight: one short +0.312 [+0.011, +0.662]; two short (per unit) +0.310 [+0.111, +0.531]; two less one -0.001 [-0.412, +0.395]
+OBS odds gen 0: kind rook: one short -0.025 [-0.340, +0.272]; two short (per unit) +0.457 [+0.240, +0.734]; two less one +0.482 [+0.112, +0.925]
+OBS odds gen 0: order (highest effect first) ['queen', 'bishop', 'pawn', 'knight', 'rook']; pairs not ordered at 95 pct: [['bishop', 'pawn'], ['bishop', 'knight'], ['pawn', 'knight'], ['knight', 'rook']]
+OBS odds gen 0: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen0/record.json; kind values {'queen': 1588, 'bishop': 496, 'pawn': 437, 'knight': 312, 'rook': -25}
+OBS odds movement: kind bishop: gen 0 +0.496
+OBS odds movement: kind knight: gen 0 +0.312
+OBS odds movement: kind pawn: gen 0 +0.437
+OBS odds movement: kind queen: gen 0 +1.588
+OBS odds movement: kind rook: gen 0 -0.025
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+
+STAGE D, GENERATION 1 (plays with the Worth judge fed from the record of generation 0; same settings, same openings; per-start lines in obs.txt). Directions only.
+OBS odds gen 1: load 6.63 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 1: players: {"kind": "worth", "worth": {"queen": 1588, "bishop": 496, "pawn": 437, "knight": 312, "rook": -25}}; 1860 games
+OBS odds gen 1: 1860 games in 750 s wall; unfinished 2 (0.1 pct, counted as draws); mean plies 67.5
+OBS odds gen 1: even start (white's view): W 99 D 49 L 32 of 180, unfinished 0
+OBS odds gen 1: kind queen: one short +1.255 [+0.723, +2.015]
+OBS odds gen 1: kind pawn: one short +0.640 [+0.331, +0.983]; two short (per unit) +0.534 [+0.393, +0.705]; two less one -0.106 [-0.466, +0.234]
+OBS odds gen 1: kind bishop: one short +0.467 [+0.169, +0.801]; two short (per unit) +0.273 [+0.081, +0.502]; two less one -0.194 [-0.552, +0.157]
+OBS odds gen 1: kind rook: one short +0.365 [+0.056, +0.680]; two short (per unit) +0.214 [+0.004, +0.445]; two less one -0.151 [-0.555, +0.236]
+OBS odds gen 1: kind knight: one short -0.075 [-0.380, +0.223]; two short (per unit) -0.139 [-0.377, +0.066]; two less one -0.064 [-0.455, +0.296]
+OBS odds gen 1: order (highest effect first) ['queen', 'pawn', 'bishop', 'rook', 'knight']; pairs not ordered at 95 pct: [['queen', 'pawn'], ['pawn', 'bishop'], ['pawn', 'rook'], ['bishop', 'rook']]
+OBS odds gen 1: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen1/record.json; kind values {'queen': 1255, 'pawn': 640, 'bishop': 467, 'rook': 365, 'knight': -75}
+OBS odds movement: kind bishop: gen 0 +0.496; gen 1 +0.467
+OBS odds movement: kind knight: gen 0 +0.312; gen 1 -0.075
+OBS odds movement: kind pawn: gen 0 +0.437; gen 1 +0.640
+OBS odds movement: kind queen: gen 0 +1.588; gen 1 +1.255
+OBS odds movement: kind rook: gen 0 -0.025; gen 1 +0.365
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+OBS odds movement: gen 1 order ['queen', 'pawn', 'bishop', 'rook', 'knight']
+OBS odds movement: order of gen 0 the same as gen 1: False
+
+STAGE D FAILURE, FOUND AFTER THE FIRST gen 1 AND gen 2 RUNS (above): the Worth table was handed to the engine keyed by the graph's kind WORDS, but the engine's ledger names a captured unit by its own symbol (`Game::captured`), so every kind was worth 0 to it and "generation 1" and "generation 2" played as a zero-worth judge in the engine's default root order (deterministic, no random order). Found because 91 pct of the gen 2 games (1698 of 1860) had the same plies and outcome as gen 1 although the tables differ, and a probe of 60 positions gave the same move for the table and for an all-zero table in 60 of 60 (script lines printed by the check, not kept). The two OBS blocks above for generations 1 and 2 (and their record files, kept apart as gen1_invalid_keys and gen2_invalid_keys) are VOID: nothing of them is used below. Generation 0 never touched this path (judge "nothing") and stands. FIX: `players_of` maps the record's kinds through the game's position codec (`kernel_names`: graph word -> the engine's symbol, read from the ordinary start) and refuses a kind it cannot map; test added (a table keyed by the graph's words picks as a zero table does, a mapped one takes the loose unit). With the fix a probe of 60 positions: a mapped table and an all-zero table choose the same move in 28 of 60 (the plain count in 28 of 60). Time cost: two reruns of about 13 minutes each.
+
+STAGE D, GENERATION 1, RERUN AFTER THE FIX (plays with the Worth judge fed from the record of generation 0, kinds mapped to the engine's symbols; same settings and openings; per-start lines in obs.txt). THIS replaces the void block. Directions only; the queen's band is narrow because the short side almost never scores (the half added to each count saturates the log odds).
+OBS odds gen 1: load 4.60 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 1: players: {"kind": "worth", "worth": {"q": 1588, "b": 496, "p": 437, "n": 312, "r": -25}, "record_kinds": {"queen": 1588, "bishop": 496, "pawn": 437, "knight": 312, "rook": -25}}; 1860 games
+OBS odds gen 1: 1860 games in 952 s wall; unfinished 71 (3.8 pct, counted as draws); mean plies 84.0
+OBS odds gen 1: even start (white's view): W 56 D 88 L 36 of 180, unfinished 8
+OBS odds gen 1: kind queen: one short +4.625 [+4.554, +4.691]
+OBS odds gen 1: kind bishop: one short +1.370 [+1.069, +1.764]; two short (per unit) +1.584 [+1.429, +1.819]; two less one +0.214 [-0.178, +0.591]
+OBS odds gen 1: kind rook: one short +1.110 [+0.785, +1.507]; two short (per unit) +0.909 [+0.676, +1.263]; two less one -0.201 [-0.624, +0.285]
+OBS odds gen 1: kind knight: one short +0.638 [+0.325, +0.969]; two short (per unit) +0.838 [+0.619, +1.172]; two less one +0.201 [-0.192, +0.651]
+OBS odds gen 1: kind pawn: one short +0.480 [+0.155, +0.802]; two short (per unit) +0.481 [+0.328, +0.650]; two less one +0.001 [-0.362, +0.360]
+OBS odds gen 1: order (highest effect first) ['queen', 'bishop', 'rook', 'knight', 'pawn']; pairs not ordered at 95 pct: [['bishop', 'rook'], ['rook', 'knight'], ['knight', 'pawn']]
+OBS odds gen 1: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen1/record.json; kind values {'queen': 4625, 'bishop': 1370, 'rook': 1110, 'knight': 638, 'pawn': 480}
+OBS odds movement: kind bishop: gen 0 +0.496; gen 1 +1.370
+OBS odds movement: kind knight: gen 0 +0.312; gen 1 +0.638
+OBS odds movement: kind pawn: gen 0 +0.437; gen 1 +0.480
+OBS odds movement: kind queen: gen 0 +1.588; gen 1 +4.625
+OBS odds movement: kind rook: gen 0 -0.025; gen 1 +1.110
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+OBS odds movement: gen 1 order ['queen', 'bishop', 'rook', 'knight', 'pawn']
+OBS odds movement: order of gen 0 the same as gen 1: False
+
+STAGE D, GENERATION 2 (after the fix; plays with the Worth judge fed from the record of the corrected generation 1; per-start lines in obs.txt; the load average at its start, 13.95, includes the end of the previous run and work of others on the machine: the clocks of this block were measured under that). Directions only. Reading: from generation 0 to 1 and 1 to 2 the order changed; no generation reproduced the order of the one before; the effects per unit grew from generation to generation for the kinds below the queen (the control got drawish at generation 2: 145 of 180 draws), a trend with the players' own play (a draw-heavy control raises every effect), not read as the worth of a unit coming nearer a true value.
+OBS odds gen 2: load 13.95 at start; starts 29 (even control 180 games, others 60 each; kinds not removable: {'king': 'the game refuses the start without one, or it is over'}); seconds per move 0.05, ply cap 120, workers 8
+OBS odds gen 2: players: {"kind": "worth", "worth": {"q": 4625, "b": 1370, "r": 1110, "n": 638, "p": 480}, "record_kinds": {"queen": 4625, "bishop": 1370, "rook": 1110, "knight": 638, "pawn": 480}}; 1860 games
+OBS odds gen 2: 1860 games in 963 s wall; unfinished 135 (7.3 pct, counted as draws); mean plies 83.6
+OBS odds gen 2: even start (white's view): W 18 D 145 L 17 of 180, unfinished 24
+OBS odds gen 2: start bishop:0:1:c1: white W 4 D 42 L 14 of 60, unfinished 7
+OBS odds gen 2: start bishop:0:1:f1: white W 1 D 32 L 27 of 60, unfinished 4
+OBS odds gen 2: start bishop:0:2:c1+f1: white W 0 D 24 L 36 of 60, unfinished 0
+OBS odds gen 2: start bishop:1:1:c8: white W 11 D 46 L 3 of 60, unfinished 6
+OBS odds gen 2: start bishop:1:1:f8: white W 14 D 45 L 1 of 60, unfinished 7
+OBS odds gen 2: start bishop:1:2:c8+f8: white W 28 D 32 L 0 of 60, unfinished 2
+OBS odds gen 2: start knight:0:1:b1: white W 1 D 46 L 13 of 60, unfinished 2
+OBS odds gen 2: start knight:0:1:g1: white W 3 D 40 L 17 of 60, unfinished 5
+OBS odds gen 2: start knight:0:2:b1+g1: white W 3 D 40 L 17 of 60, unfinished 3
+OBS odds gen 2: start knight:1:1:b8: white W 9 D 50 L 1 of 60, unfinished 6
+OBS odds gen 2: start knight:1:1:g8: white W 13 D 43 L 4 of 60, unfinished 4
+OBS odds gen 2: start knight:1:2:b8+g8: white W 12 D 44 L 4 of 60, unfinished 0
+OBS odds gen 2: start pawn:0:1:f2: white W 5 D 46 L 9 of 60, unfinished 7
+OBS odds gen 2: start pawn:0:1:h2: white W 6 D 43 L 11 of 60, unfinished 3
+OBS odds gen 2: start pawn:0:2:a2+e2: white W 7 D 44 L 9 of 60, unfinished 9
+OBS odds gen 2: start pawn:0:2:d2+f2: white W 5 D 46 L 9 of 60, unfinished 5
+OBS odds gen 2: start pawn:1:1:d7: white W 17 D 40 L 3 of 60, unfinished 3
+OBS odds gen 2: start pawn:1:1:e7: white W 12 D 45 L 3 of 60, unfinished 6
+OBS odds gen 2: start pawn:1:2:a7+b7: white W 21 D 34 L 5 of 60, unfinished 5
+OBS odds gen 2: start pawn:1:2:a7+f7: white W 14 D 42 L 4 of 60, unfinished 2
+OBS odds gen 2: start queen:0:1:d1: white W 0 D 15 L 45 of 60, unfinished 1
+OBS odds gen 2: start queen:1:1:d8: white W 32 D 28 L 0 of 60, unfinished 2
+OBS odds gen 2: start rook:0:1:a1: white W 2 D 42 L 16 of 60, unfinished 6
+OBS odds gen 2: start rook:0:1:h1: white W 4 D 37 L 19 of 60, unfinished 6
+OBS odds gen 2: start rook:0:2:a1+h1: white W 0 D 26 L 34 of 60, unfinished 2
+OBS odds gen 2: start rook:1:1:a8: white W 11 D 46 L 3 of 60, unfinished 2
+OBS odds gen 2: start rook:1:1:h8: white W 18 D 39 L 3 of 60, unfinished 6
+OBS odds gen 2: start rook:1:2:a8+h8: white W 37 D 22 L 1 of 60, unfinished 0
+OBS odds gen 2: kind queen: one short +4.343 [+4.210, +4.451]
+OBS odds gen 2: kind bishop: one short +1.878 [+1.403, +2.614]; two short (per unit) +2.083 [+2.001, +2.150]; two less one +0.206 [-0.518, +0.674]
+OBS odds gen 2: kind knight: one short +1.661 [+1.193, +2.449]; two short (per unit) +0.658 [+0.368, +1.115]; two less one -1.003 [-1.833, -0.377]
+OBS odds gen 2: kind rook: one short +1.605 [+1.181, +2.251]; two short (per unit) +1.863 [+1.662, +2.184]; two less one +0.258 [-0.361, +0.860]
+OBS odds gen 2: kind pawn: one short +1.045 [+0.589, +1.606]; two short (per unit) +0.428 [+0.227, +0.643]; two less one -0.618 [-1.242, -0.105]
+OBS odds gen 2: order (highest effect first) ['queen', 'bishop', 'knight', 'rook', 'pawn']; pairs not ordered at 95 pct: [['bishop', 'knight'], ['bishop', 'rook'], ['knight', 'rook'], ['knight', 'pawn'], ['rook', 'pawn']]
+OBS odds gen 2: record written /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-a9ac3c2f8116ed62a/artifacts/experiments/odds_78_61/full/gen2/record.json; kind values {'queen': 4343, 'bishop': 1878, 'knight': 1661, 'rook': 1605, 'pawn': 1045}
+OBS odds movement: kind bishop: gen 0 +0.496; gen 1 +1.370; gen 2 +1.878
+OBS odds movement: kind knight: gen 0 +0.312; gen 1 +0.638; gen 2 +1.661
+OBS odds movement: kind pawn: gen 0 +0.437; gen 1 +0.480; gen 2 +1.045
+OBS odds movement: kind queen: gen 0 +1.588; gen 1 +4.625; gen 2 +4.343
+OBS odds movement: kind rook: gen 0 -0.025; gen 1 +1.110; gen 2 +1.605
+OBS odds movement: gen 0 order ['queen', 'bishop', 'pawn', 'knight', 'rook']
+OBS odds movement: gen 1 order ['queen', 'bishop', 'rook', 'knight', 'pawn']
+OBS odds movement: gen 2 order ['queen', 'bishop', 'knight', 'rook', 'pawn']
+OBS odds movement: order of gen 0 the same as gen 1: False
+OBS odds movement: order of gen 1 the same as gen 2: False
+
+STAGE E, THE MATCHES (50 opening pairs of four random plies from the ordinary start, colours alternated, 0.05 s a move, ply cap 120, 8 workers; players: g0 = counts nothing, g1 = Worth fed from the corrected record of generation 0, g2 = Worth fed from the corrected record of generation 1, count = every unit one, no store, random = a random legal move). The load average at each start carries the earlier work of this script; the cores busy at the instant of start (two to four) are the machine's other users (a game and a browser among them), not started by me. Directions only: one run per match, 50 pairs, a deterministic player repeats itself over openings.
+OBS odds match g1 v g0: games 100 (50 opening pairs, colours alternated): g1 W 100 D 0 L 0; score 1.0000 [1.0000, 1.0000] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g1 5.74, g0 5.95; load average (1 min, includes this script's own earlier work) at start 7.31, cores busy at the instant of start 4.06; wall 28 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g2 v g1: games 100 (50 opening pairs, colours alternated): g2 W 69 D 30 L 1; score 0.8400 [0.8000, 0.8800] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g2 6.17, g1 6.00; load average (1 min, includes this script's own earlier work) at start 10.00, cores busy at the instant of start 2.41; wall 48 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g2 v g0: games 100 (50 opening pairs, colours alternated): g2 W 100 D 0 L 0; score 1.0000 [1.0000, 1.0000] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g2 6.05, g0 5.84; load average (1 min, includes this script's own earlier work) at start 11.11, cores busy at the instant of start 2.30; wall 26 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g0 v random: games 100 (50 opening pairs, colours alternated): g0 W 47 D 53 L 0; score 0.7350 [0.7000, 0.7750] 90 pct band by bootstrap over opening pairs; unfinished 53 (53.0 pct, counted as draws); mean ledger depth g0 5.46, random nan; load average (1 min, includes this script's own earlier work) at start 11.40, cores busy at the instant of start 2.34; wall 33 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g1 v random: games 100 (50 opening pairs, colours alternated): g1 W 99 D 1 L 0; score 0.9950 [0.9850, 1.0000] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g1 5.82, random nan; load average (1 min, includes this script's own earlier work) at start 12.04, cores busy at the instant of start 2.54; wall 12 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g2 v random: games 100 (50 opening pairs, colours alternated): g2 W 100 D 0 L 0; score 1.0000 [1.0000, 1.0000] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g2 6.07, random nan; load average (1 min, includes this script's own earlier work) at start 12.43, cores busy at the instant of start 2.40; wall 11 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g0 v count: games 100 (50 opening pairs, colours alternated): g0 W 0 D 8 L 92; score 0.0400 [0.0200, 0.0600] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g0 6.09, count 5.36; load average (1 min, includes this script's own earlier work) at start 13.07, cores busy at the instant of start 2.47; wall 31 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g1 v count: games 100 (50 opening pairs, colours alternated): g1 W 18 D 65 L 17; score 0.5050 [0.4550, 0.5550] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g1 5.99, count 5.70; load average (1 min, includes this script's own earlier work) at start 12.97, cores busy at the instant of start 2.52; wall 41 s; seconds per move 0.05, ply cap 120, workers 8
+OBS odds match g2 v count: games 100 (50 opening pairs, colours alternated): g2 W 54 D 44 L 2; score 0.7600 [0.7150, 0.8050] 90 pct band by bootstrap over opening pairs; unfinished 0 (0.0 pct, counted as draws); mean ledger depth g2 5.92, count 5.30; load average (1 min, includes this script's own earlier work) at start 12.50, cores busy at the instant of start 2.44; wall 39 s; seconds per move 0.05, ply cap 120, workers 8
+
+STAGE F, FOR READING ONLY (printed by the compare stage; the earlier files are read for these lines and enter no player and no fit; the 78.59 record's own file holds the human order under kind_baseline_human).
+OBS odds compare: this plan, generation 0: queen +1.588; bishop +0.496; pawn +0.437; knight +0.312; rook -0.025
+OBS odds compare: this plan, generation 1: queen +4.625; bishop +1.370; rook +1.110; knight +0.638; pawn +0.480
+OBS odds compare: this plan, generation 2: queen +4.343; bishop +1.878; knight +1.661; rook +1.605; pawn +1.045
+OBS odds compare: 78.58 self-play fit (players counting one a unit): pawn +0.590; knight +1.506; bishop +1.793; rook +3.163; queen +6.631
+OBS odds compare: 78.59 human games: pawn +0.475; knight +1.216; bishop +1.301; rook +1.945; queen +3.583
+
+78.61 LIMITS (builder): generations 1 and 2 are played by deterministic players (the engine's own root order, openings of four random plies only), so repeated games from one start differ only by opening; their games are shorter and more decisive than generation 0's, and the control became drawish at generation 2, which raises every per-unit effect read against it (effects are not comparable across generations in size, only in order). Generation 0's rook one short is near zero while rook two short per unit is positive (sampled starts: two units, two pairs): the data of generation 0 do not order rook, knight and pawn. The worths of generation 1 are fed as measured, with a negative worth (rook -25) at generation 1 of the first (void) run; in the valid run no worth is negative. Graph vocabulary: reading the layer-1 graph opens rules/learned/<game>/graph_vocabulary.json (the description of the rules; no valuation, lemma, claim or store snapshot of the store was read by the measure), and the kind mapping uses the game's position codec; the board text editing in  duplicates what curriculum.py's codec  does (the codec was found after the starts were made and is not used for them). Test run: tests/test_plan78.py passes but test_78_4 (absent data, a worktree matter), tests/test_plan78_50 and _51 pass with LCP_DATA pointing at the main checkout's data (they read that store as guards; the measure never does), cargo test -p cs_tactics -p cs_decision pass.
+78.61 LIMITS, CORRECTION (two slips in the limits note above): the words dropped from it are `board_without` (the text editing of the odds starts) and `keep` (the curriculum codec's method that does the same); and the sentence on a negative worth is wrong: the VALID generation 1 player was fed the corrected generation 0 record, which has the rook at -25 (printed in its players line), i.e. generation 1 played with a negative worth for the rook as measured; generation 2's table has no negative worth.
