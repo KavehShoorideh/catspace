@@ -10201,3 +10201,17 @@ OBS tactical next: [them] test log loss, present state alone: 0.67522 [0.66915, 
 OBS tactical next: [them] test log loss gain of adding the present state to C: +0.01182 [+0.00833, +0.01518] (positive: with it is better)
 
 78.62 LIMITS AND CUTS (builder agent). (1) THIN ENDINGS NOT FILLED: the sample has 215 distinct small sets of units and none with 30 games; the playouts from sampled positions that would fill them were not built; the heads and the sequence read are those of the middle game. (2) A frame read holds only the units that the 12 seed concepts of 78.55 bring into a frame; a unit no frame holds has no record (not read). (3) Stage D reads concepts only. (4) The forcing read was used where kept (the 800 arrival games, all plies); it enters stage B only. (5) The sequence model has one step of state; the longer model was not built. (6) One run each; nothing is a verdict.
+
+
+78.62 READ (2026-11-15, by the main agent, merged as d8311147; tests test_plan78, test_plan78_62_state, _61, _60, _57 pass on main after the rebuild; outputs in artifacts/experiments/tactical_78_62; numbers are the builder's OBS lines above, one run each, directions only).
+What holds:
+1. THE TACTICAL STATE IS NOW A ROW PER PLY of a human game, from the frame read with the settled end, with what then became of each unit. The sequence can be described with no model.
+2. A STANDING LOSS IS MOSTLY REAL IN THESE GAMES: when one appears, a unit of that side is taken within the horizon in about three cases of four, and far less often when its owner is to move than when not. So the read's "lost by estimate" carries over from the 500 self-play games to human games.
+3. A standing loss is SHORT (it is gone at the next ply or the one after, by being taken or parried), and quiet stretches by the frame read are short too; by the rules' forcing read they are several times longer. The two reads do not mean the same by "quiet".
+What does not hold:
+4. THE TWO CHANCE HEADS ARE WEAK. As built, the target ("a unit stands lost within 8 plies") comes true about half the time for either side at this level of play, and the inputs barely move it. The arrival head of 78.59, refit on the same rows, ranks clearly better. So the leaf reading spec 15 asks for is not delivered by this target; the confirmed-arrival target remains the better one, and a chance target should count what is WON (taken for nothing, kept), not what stands attacked for a ply.
+5. The smallest-frame rule was applied only to concept columns of a weak head: most weighted concepts were replaced by a part with one relation less. The method runs; the finding rests on a head too weak to lean on.
+6. The sacrifice reading selects its two groups by the game's result, which the inputs also see. Not evidence yet.
+7. The present tactical state adds a little to the next-step prediction; a linear one-step head, not a sequence model.
+8. ENDGAME RULE NOT MET: the small sets of units are thin in this sample (no set with thirty games) and the builder did not generate games to fill them. Everything above reads the middle game. Owed.
+Next, owed by this read: a chance target of units actually won within the horizon, per side; the fill of thin endings with generated games; then the leaf reading tried inside the frame read.
