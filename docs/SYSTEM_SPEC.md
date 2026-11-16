@@ -280,6 +280,16 @@ not a separate duty beside the subgoal. It is a subgoal, and it competes with th
   one made on the estimate alone is the least wanted and becomes a surprise for sleep.
 - Big and small are the bands of the threat list: the stake against the spread of the two readings.
 
+How firmly to hold this rule (Kaveh, same day): "I'm not saying like this is how it should really go, but because
+at every point something is threatened. It might not be immediately apparent now what it is, and so that's when we
+use statistics. When it is immediately apparent what the threat is, then we think through the response." So the
+rule above is a guide to the shape of the thinking, not a fixed procedure. What he holds to is the split beneath it:
+- A threat that is apparent is met by concrete reasoning (section 4).
+- A threat that is not yet apparent is met by statistics (section 6): there is never "no threat", only a threat
+  not yet seen. READING (mine): the event heads are this reading. Each gives the chance that a named event, such
+  as a unit being taken, happens to a side, with no line shown. "No threat stands" in the rule above therefore
+  means "none apparent", and the move is then chosen with the statistics in hand, not with the board assumed safe.
+
 **The threat list: what any position must be able to answer** (DECIDED 2026-11-16). "In any given position, I want
 us to be able to answer what are the threats and what is the stake there." A threat that wins in one frame and is
 answered when the frame is widened is "a threat with a response". "The analysis should list out threats with their
@@ -485,7 +495,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 |---|---|---|
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
 | The overall goal: reason like a human, concrete tactical steps then an evaluation at their end; what the builder knows shapes the procedure, never the knowledge; the second half: hold subgoals and navigate toward them over several moves | 2026-11-16 | 1, 7 |
-| The rule for choosing a move: read their threats; none, advance the subgoal; one, answer it and advance the subgoal; refuting a big threat is itself the subgoal, a small one may be left for an attack | 2026-11-16 | 8 |
+| The rule for choosing a move: read their threats; none, advance the subgoal; one, answer it and advance the subgoal; refuting a big threat is itself the subgoal, a small one may be left for an attack; a guide, not a fixed procedure; an apparent threat is reasoned, one not yet apparent is read by statistics | 2026-11-16 | 8 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
 | Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the three reasons for a sacrifice; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
