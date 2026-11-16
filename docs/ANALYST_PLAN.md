@@ -10706,3 +10706,244 @@ OBS hazard: WHO FIRST taken | rook: 74313 test rows where the class occurred bef
 OBS hazard: WHO FIRST taken | rook: calibration (predicted>observed, ten equal-count bins) 0.331>0.268 0.437>0.411 0.468>0.442 0.484>0.456 0.496>0.487 0.507>0.514 0.519>0.544 0.534>0.570 0.562>0.596 0.668>0.733
 OBS hazard: WHO FIRST went false | castling_right: 38695 test rows where the class occurred before the record ended (the mover first in 0.5482); accuracy head 0.7850 [0.7763, 0.7922], base hazard 0.5482 [0.5458, 0.5506]; log loss gain of the head over the base hazard's chance +0.25217 [+0.24208, +0.26129]
 OBS hazard: WHO FIRST went false | castling_right: calibration (predicted>observed, ten equal-count bins) 0.071>0.023 0.162>0.112 0.277>0.273 0.397>0.415 0.510>0.519 0.619>0.616 0.728>0.726 0.827>0.852 0.903>0.955 0.959>0.990
+
+
+78.64 BUILT, stage E, THE ENDGAME COVERAGE AND THE FILL (builder agent, 2026-11-16; one run each, directions only; numbers only from the printed OBS lines; files in artifacts/experiments/events_78_64/: sample/coverage_obs.txt (800 games), full12000/coverage_obs.txt, fill/generate_obs.txt, fill/compare_obs.txt). NO RUST CHANGE; the extension was NOT rebuilt. Small changes elsewhere: odds_measure.play_game also returns the moves of the game; human_heads_data reads the start text of a game when one is given (position table and statements); both unchanged for the games without one.
+WHAT: catspace/incubator/analyst/discovery/events_fill.py, three commands. `coverage` prints, for a human sample, the share of positions and of games by units left, the small sets of units (at most 6 units, the goal units not counted, either order of the sides) with positions and games, the thin ones (under 30 games), and how the games ended. `generate` samples thin sets from the FIT games (a hash order, 600 of the thin sets, up to 2 positions from different fit games, the first position of the game in the set), and plays two games from each position with the player of generation 2 of 78.61 (its judge fed from its odds record, a record of results of games; two random plies, 0.05 s a move, ply cap 120, 8 workers). `compare` fits the classes of taking on the input set K+S+E (the fill games have no ratings and no meaningful ply) on the human fit rows and on those with the fill rows added (a fill game is a fit game only, never a test row), read on all human test rows and on the test rows with at most 8 units on the board; a curve over the share of the fill games used (none, half, all); the penalty is chosen once on all the fit rows with the whole fill and kept for the smaller shares. Run: `python -m catspace.incubator.analyst.discovery.events_fill coverage --sample-dir D` / `generate --sample-dir D --out-dir O` (220 s for 1942 games) / `compare --sample-dir D --fill-dir O` (177 s). Tests: tests/test_plan78_64_fill.py (2) and the no-event-word scan covers events_fill.py (in scripts/gate.py).
+CAUTIONS: the fill is games of an engine player from human positions, not human games; the start positions have at most 6 units besides the goal units, so every fill row has at most 8 units on the board; a head that learns the fill's way of playing and is read on human endings can gain from it (an engine's endings resemble humans' only as far as the inputs say) or lose on the middle game, and the second is what the lines show for the all-rows reading; the 600 sets are a sample of the 631 thin sets of the fit games.
+COVERAGE OF THE 800 GAMES (the sample of 78.62):
+OBS endgame: coverage [fit games]: games 553, positions 36535
+OBS endgame: coverage [fit games]: units left <= 24: positions 17962 (49.16 pct), games reaching it 489 (88.4 pct)
+OBS endgame: coverage [fit games]: units left <= 16: positions 7869 (21.54 pct), games reaching it 270 (48.8 pct)
+OBS endgame: coverage [fit games]: units left <= 12: positions 4657 (12.75 pct), games reaching it 160 (28.9 pct)
+OBS endgame: coverage [fit games]: units left <= 8: positions 2218 (6.07 pct), games reaching it 84 (15.2 pct)
+OBS endgame: coverage [fit games]: units left <= 6: positions 1276 (3.49 pct), games reaching it 55 (9.9 pct)
+OBS endgame: coverage [fit games]: units left <= 4: positions 527 (1.44 pct), games reaching it 27 (4.9 pct)
+OBS endgame: coverage [fit games]: small sets (at most 6 units, the goal units not counted, the two sides in either order): 174 distinct, 0 in 30 games or more, 174 thin (under 30 games), 160 in under 5 games; positions in them 2218 (6.07 pct of all), in the thin ones 2218
+OBS endgame: coverage [fit games]: how the games ended: decisive, the rules' end on the board 201 (36.3 pct), decisive, stopped before it 321 (58.0 pct), drawn, the rules' end on the board 12 (2.2 pct), drawn, stopped before it 19 (3.4 pct)
+OBS endgame: coverage [test games]: games 247, positions 16880
+OBS endgame: coverage [test games]: units left <= 24: positions 8287 (49.09 pct), games reaching it 223 (90.3 pct)
+OBS endgame: coverage [test games]: units left <= 16: positions 3745 (22.19 pct), games reaching it 123 (49.8 pct)
+OBS endgame: coverage [test games]: units left <= 12: positions 2150 (12.74 pct), games reaching it 74 (30.0 pct)
+OBS endgame: coverage [test games]: units left <= 8: positions 947 (5.61 pct), games reaching it 39 (15.8 pct)
+OBS endgame: coverage [test games]: units left <= 6: positions 575 (3.41 pct), games reaching it 24 (9.7 pct)
+OBS endgame: coverage [test games]: units left <= 4: positions 248 (1.47 pct), games reaching it 13 (5.3 pct)
+OBS endgame: coverage [test games]: small sets (at most 6 units, the goal units not counted, the two sides in either order): 111 distinct, 0 in 30 games or more, 111 thin (under 30 games), 110 in under 5 games; positions in them 947 (5.61 pct of all), in the thin ones 947
+OBS endgame: coverage [test games]: how the games ended: decisive, the rules' end on the board 81 (32.8 pct), decisive, stopped before it 153 (61.9 pct), drawn, the rules' end on the board 7 (2.8 pct), drawn, stopped before it 6 (2.4 pct)
+COVERAGE OF THE 12000 GAMES:
+OBS endgame: coverage [fit games]: games 8345, positions 565355
+OBS endgame: coverage [fit games]: units left <= 24: positions 280696 (49.65 pct), games reaching it 7517 (90.1 pct)
+OBS endgame: coverage [fit games]: units left <= 16: positions 124119 (21.95 pct), games reaching it 4263 (51.1 pct)
+OBS endgame: coverage [fit games]: units left <= 12: positions 70594 (12.49 pct), games reaching it 2490 (29.8 pct)
+OBS endgame: coverage [fit games]: units left <= 8: positions 32105 (5.68 pct), games reaching it 1264 (15.1 pct)
+OBS endgame: coverage [fit games]: units left <= 6: positions 18216 (3.22 pct), games reaching it 821 (9.8 pct)
+OBS endgame: coverage [fit games]: units left <= 4: positions 7332 (1.30 pct), games reaching it 422 (5.1 pct)
+OBS endgame: coverage [fit games]: small sets (at most 6 units, the goal units not counted, the two sides in either order): 673 distinct, 42 in 30 games or more, 631 thin (under 30 games), 440 in under 5 games; positions in them 32105 (5.68 pct of all), in the thin ones 16985
+OBS endgame: coverage [fit games]: how the games ended: decisive, the rules' end on the board 2914 (34.9 pct), decisive, stopped before it 5015 (60.1 pct), drawn, the rules' end on the board 197 (2.4 pct), drawn, stopped before it 219 (2.6 pct)
+OBS endgame: coverage [test games]: games 3655, positions 246286
+OBS endgame: coverage [test games]: units left <= 24: positions 121531 (49.35 pct), games reaching it 3290 (90.0 pct)
+OBS endgame: coverage [test games]: units left <= 16: positions 53870 (21.87 pct), games reaching it 1820 (49.8 pct)
+OBS endgame: coverage [test games]: units left <= 12: positions 30294 (12.30 pct), games reaching it 1075 (29.4 pct)
+OBS endgame: coverage [test games]: units left <= 8: positions 13517 (5.49 pct), games reaching it 547 (15.0 pct)
+OBS endgame: coverage [test games]: units left <= 6: positions 7600 (3.09 pct), games reaching it 335 (9.2 pct)
+OBS endgame: coverage [test games]: units left <= 4: positions 3271 (1.33 pct), games reaching it 181 (5.0 pct)
+OBS endgame: coverage [test games]: small sets (at most 6 units, the goal units not counted, the two sides in either order): 485 distinct, 10 in 30 games or more, 475 thin (under 30 games), 365 in under 5 games; positions in them 13517 (5.49 pct of all), in the thin ones 10587
+OBS endgame: coverage [test games]: how the games ended: decisive, the rules' end on the board 1329 (36.4 pct), decisive, stopped before it 2165 (59.2 pct), drawn, the rules' end on the board 75 (2.1 pct), drawn, stopped before it 86 (2.4 pct)
+THE FILL (generation):
+OBS endgame: fill: thin sets in the fit games (under 30 games, at most 6 units): 631 of 673; sampling 600 of them in a hash order, up to 2 positions each from different fit games
+OBS endgame: fill: the player of generation 2 of 78.61 (judge fed from its odds record, results of games): {'queen': 4343, 'bishop': 1878, 'knight': 1661, 'rook': 1605, 'pawn': 1045}; 971 start positions, 2 games each after 2 random plies (different seeds), 0.05 s a move, ply cap 120, 8 workers; machine load 2.56
+OBS endgame: OBS progress fill: 50 of 1942 games, 7 s, about 267 s left
+OBS endgame: OBS progress fill: 100 of 1942 games, 13 s, about 246 s left
+OBS endgame: OBS progress fill: 150 of 1942 games, 19 s, about 225 s left
+OBS endgame: OBS progress fill: 200 of 1942 games, 26 s, about 226 s left
+OBS endgame: OBS progress fill: 250 of 1942 games, 31 s, about 212 s left
+OBS endgame: OBS progress fill: 300 of 1942 games, 37 s, about 205 s left
+OBS endgame: OBS progress fill: 350 of 1942 games, 41 s, about 187 s left
+OBS endgame: OBS progress fill: 400 of 1942 games, 46 s, about 178 s left
+OBS endgame: OBS progress fill: 450 of 1942 games, 52 s, about 173 s left
+OBS endgame: OBS progress fill: 500 of 1942 games, 57 s, about 163 s left
+OBS endgame: OBS progress fill: 550 of 1942 games, 62 s, about 156 s left
+OBS endgame: OBS progress fill: 600 of 1942 games, 67 s, about 150 s left
+OBS endgame: OBS progress fill: 650 of 1942 games, 72 s, about 144 s left
+OBS endgame: OBS progress fill: 700 of 1942 games, 79 s, about 140 s left
+OBS endgame: OBS progress fill: 750 of 1942 games, 85 s, about 134 s left
+OBS endgame: OBS progress fill: 800 of 1942 games, 90 s, about 129 s left
+OBS endgame: OBS progress fill: 850 of 1942 games, 95 s, about 122 s left
+OBS endgame: OBS progress fill: 900 of 1942 games, 100 s, about 116 s left
+OBS endgame: OBS progress fill: 950 of 1942 games, 107 s, about 111 s left
+OBS endgame: OBS progress fill: 1000 of 1942 games, 112 s, about 106 s left
+OBS endgame: OBS progress fill: 1050 of 1942 games, 117 s, about 100 s left
+OBS endgame: OBS progress fill: 1100 of 1942 games, 122 s, about 94 s left
+OBS endgame: OBS progress fill: 1150 of 1942 games, 129 s, about 89 s left
+OBS endgame: OBS progress fill: 1200 of 1942 games, 135 s, about 83 s left
+OBS endgame: OBS progress fill: 1250 of 1942 games, 139 s, about 77 s left
+OBS endgame: OBS progress fill: 1300 of 1942 games, 144 s, about 71 s left
+OBS endgame: OBS progress fill: 1350 of 1942 games, 151 s, about 66 s left
+OBS endgame: OBS progress fill: 1400 of 1942 games, 157 s, about 61 s left
+OBS endgame: OBS progress fill: 1450 of 1942 games, 163 s, about 55 s left
+OBS endgame: OBS progress fill: 1500 of 1942 games, 168 s, about 50 s left
+OBS endgame: OBS progress fill: 1550 of 1942 games, 173 s, about 44 s left
+OBS endgame: OBS progress fill: 1600 of 1942 games, 177 s, about 38 s left
+OBS endgame: OBS progress fill: 1650 of 1942 games, 182 s, about 32 s left
+OBS endgame: OBS progress fill: 1700 of 1942 games, 187 s, about 27 s left
+OBS endgame: OBS progress fill: 1750 of 1942 games, 191 s, about 21 s left
+OBS endgame: OBS progress fill: 1800 of 1942 games, 198 s, about 16 s left
+OBS endgame: OBS progress fill: 1850 of 1942 games, 203 s, about 10 s left
+OBS endgame: OBS progress fill: 1900 of 1942 games, 208 s, about 5 s left
+OBS endgame: OBS progress fill: 1942 of 1942 games, 213 s, about 0 s left
+OBS endgame: fill: 1942 games, plies 41430; ended: {'draw': 803, 'first mover loses': 818, 'first mover wins': 321}; wall 219.5 s
+THE COMPARISON, with and without the fill (the lines of the file, the classes of taking; WITHOUT less WITH is positive when the fill helps; the lines beside it give the gain over each fit's own base hazard):
+OBS endgame: B quiet rows from ply 2 on: 27826 of 1942 games; fit 27826, test 0; result of the side to move over the rows: win 0.2511, draw 0.5263, loss 0.2226
+OBS endgame: rows: human 396085 (fit 276611, test 119474), fill 27826 from 1942 games; test rows with at most 8 units on the board: 8933 of 119474; fill rows with at most 8 units: 27826
+OBS endgame: comparison heads (every class of taken and the reading keeps of any): keeps, taken, taken | bishop, taken | knight, taken | pawn, taken | queen, taken | rook
+OBS endgame: HEAD keeps [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00041 [-0.00062, -0.00025] (positive: the fill helps)
+OBS endgame: HEAD keeps [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00047 [-0.00067, -0.00030] (positive: the fill helps)
+OBS endgame: HEAD taken [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00124 [-0.00170, -0.00078] (positive: the fill helps)
+OBS endgame: HEAD taken [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00136 [-0.00187, -0.00086] (positive: the fill helps)
+OBS endgame: HEAD taken | bishop [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00004 [-0.00010, +0.00000] (positive: the fill helps)
+OBS endgame: HEAD taken | bishop [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00003 [-0.00009, +0.00002] (positive: the fill helps)
+OBS endgame: HEAD taken | knight [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00009 [-0.00016, -0.00003] (positive: the fill helps)
+OBS endgame: HEAD taken | knight [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00011 [-0.00018, -0.00005] (positive: the fill helps)
+OBS endgame: HEAD taken | pawn [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00033 [-0.00046, -0.00020] (positive: the fill helps)
+OBS endgame: HEAD taken | pawn [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00030 [-0.00044, -0.00016] (positive: the fill helps)
+OBS endgame: HEAD taken | queen [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00001 [-0.00003, +0.00000] (positive: the fill helps)
+OBS endgame: HEAD taken | queen [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00001 [-0.00003, +0.00001] (positive: the fill helps)
+OBS endgame: HEAD taken | rook [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00000 [-0.00003, +0.00003] (positive: the fill helps)
+OBS endgame: HEAD taken | rook [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00001 [-0.00003, +0.00003] (positive: the fill helps)
+OBS endgame: HEAD keeps [us] on all human test rows (119474 rows, 92360 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.39039; gain over its base hazard +0.00107 [+0.00089, +0.00125]
+OBS endgame: HEAD keeps [us] on test rows with at most 8 units (8933 rows, 2516 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.20917; gain over its base hazard +0.00021 [-0.00044, +0.00095]
+OBS endgame: HEAD keeps [us] on all human test rows (119474 rows, 92360 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.38998; gain over its base hazard +0.00109 [+0.00090, +0.00126]
+OBS endgame: HEAD keeps [us] on test rows with at most 8 units (8933 rows, 2516 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.21678; gain over its base hazard +0.00002 [-0.00055, +0.00071]
+OBS endgame: HEAD keeps [us] on all human test rows (119474 rows, 92360 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.39009; gain over its base hazard +0.00108 [+0.00090, +0.00126]
+OBS endgame: HEAD keeps [us] on test rows with at most 8 units (8933 rows, 2516 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.21276; gain over its base hazard +0.00011 [-0.00054, +0.00082]
+OBS endgame: HEAD keeps [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00041 [-0.00062, -0.00025] (positive: the fill helps)
+OBS endgame: HEAD keeps [us] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00762 [+0.00735, +0.00787] (positive: the fill helps)
+OBS endgame: HEAD keeps [them] on all human test rows (119474 rows, 92035 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.41585; gain over its base hazard +0.00101 [+0.00084, +0.00120]
+OBS endgame: HEAD keeps [them] on test rows with at most 8 units (8933 rows, 2417 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.21741; gain over its base hazard +0.00179 [+0.00107, +0.00271]
+OBS endgame: HEAD keeps [them] on all human test rows (119474 rows, 92035 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.41538; gain over its base hazard +0.00106 [+0.00089, +0.00122]
+OBS endgame: HEAD keeps [them] on test rows with at most 8 units (8933 rows, 2417 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.22566; gain over its base hazard +0.00183 [+0.00112, +0.00261]
+OBS endgame: HEAD keeps [them] on all human test rows (119474 rows, 92035 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.41551; gain over its base hazard +0.00104 [+0.00087, +0.00121]
+OBS endgame: HEAD keeps [them] on test rows with at most 8 units (8933 rows, 2417 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.22128; gain over its base hazard +0.00182 [+0.00114, +0.00268]
+OBS endgame: HEAD keeps [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00047 [-0.00067, -0.00030] (positive: the fill helps)
+OBS endgame: HEAD keeps [them] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00825 [+0.00798, +0.00852] (positive: the fill helps)
+OBS endgame: HEAD taken [us] on all human test rows (119474 rows, 104892 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.51037; gain over its base hazard +0.00104 [+0.00091, +0.00118]
+OBS endgame: HEAD taken [us] on test rows with at most 8 units (8933 rows, 3419 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.29077; gain over its base hazard +0.00041 [-0.00016, +0.00105]
+OBS endgame: HEAD taken [us] on all human test rows (119474 rows, 104892 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.50913; gain over its base hazard +0.00106 [+0.00091, +0.00121]
+OBS endgame: HEAD taken [us] on test rows with at most 8 units (8933 rows, 3419 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.31010; gain over its base hazard +0.00014 [-0.00047, +0.00080]
+OBS endgame: HEAD taken [us] on all human test rows (119474 rows, 104892 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.50945; gain over its base hazard +0.00105 [+0.00092, +0.00119]
+OBS endgame: HEAD taken [us] on test rows with at most 8 units (8933 rows, 3419 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.29958; gain over its base hazard +0.00032 [-0.00027, +0.00099]
+OBS endgame: HEAD taken [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00124 [-0.00170, -0.00078] (positive: the fill helps)
+OBS endgame: HEAD taken [us] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.01933 [+0.01870, +0.01996] (positive: the fill helps)
+OBS endgame: HEAD taken [them] on all human test rows (119474 rows, 104364 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.54153; gain over its base hazard +0.00136 [+0.00118, +0.00154]
+OBS endgame: HEAD taken [them] on test rows with at most 8 units (8933 rows, 3334 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.30308; gain over its base hazard +0.00223 [+0.00130, +0.00327]
+OBS endgame: HEAD taken [them] on all human test rows (119474 rows, 104364 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.54018; gain over its base hazard +0.00138 [+0.00121, +0.00154]
+OBS endgame: HEAD taken [them] on test rows with at most 8 units (8933 rows, 3334 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.32357; gain over its base hazard +0.00241 [+0.00162, +0.00345]
+OBS endgame: HEAD taken [them] on all human test rows (119474 rows, 104364 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.54051; gain over its base hazard +0.00137 [+0.00120, +0.00154]
+OBS endgame: HEAD taken [them] on test rows with at most 8 units (8933 rows, 3334 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.31247; gain over its base hazard +0.00230 [+0.00139, +0.00334]
+OBS endgame: HEAD taken [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00136 [-0.00187, -0.00086] (positive: the fill helps)
+OBS endgame: HEAD taken [them] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.02050 [+0.01989, +0.02115] (positive: the fill helps)
+OBS endgame: HEAD taken | bishop [us] on all human test rows (119474 rows, 60817 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.17995; gain over its base hazard +0.00300 [+0.00278, +0.00323]
+OBS endgame: HEAD taken | bishop [us] on test rows with at most 8 units (8933 rows, 273 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.05333; gain over its base hazard +0.00168 [+0.00119, +0.00222]
+OBS endgame: HEAD taken | bishop [us] on all human test rows (119474 rows, 60817 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.17991; gain over its base hazard +0.00300 [+0.00278, +0.00322]
+OBS endgame: HEAD taken | bishop [us] on test rows with at most 8 units (8933 rows, 273 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.05605; gain over its base hazard +0.00158 [+0.00111, +0.00212]
+OBS endgame: HEAD taken | bishop [us] on all human test rows (119474 rows, 60817 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.17991; gain over its base hazard +0.00300 [+0.00278, +0.00323]
+OBS endgame: HEAD taken | bishop [us] on test rows with at most 8 units (8933 rows, 273 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.05464; gain over its base hazard +0.00164 [+0.00115, +0.00218]
+OBS endgame: HEAD taken | bishop [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00004 [-0.00010, +0.00000] (positive: the fill helps)
+OBS endgame: HEAD taken | bishop [us] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00272 [+0.00262, +0.00281] (positive: the fill helps)
+OBS endgame: HEAD taken | bishop [them] on all human test rows (119474 rows, 60202 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.18477; gain over its base hazard +0.00288 [+0.00268, +0.00313]
+OBS endgame: HEAD taken | bishop [them] on test rows with at most 8 units (8933 rows, 272 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.05589; gain over its base hazard +0.00144 [+0.00103, +0.00195]
+OBS endgame: HEAD taken | bishop [them] on all human test rows (119474 rows, 60202 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.18474; gain over its base hazard +0.00288 [+0.00268, +0.00313]
+OBS endgame: HEAD taken | bishop [them] on test rows with at most 8 units (8933 rows, 272 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.05869; gain over its base hazard +0.00135 [+0.00095, +0.00187]
+OBS endgame: HEAD taken | bishop [them] on all human test rows (119474 rows, 60202 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.18473; gain over its base hazard +0.00288 [+0.00268, +0.00313]
+OBS endgame: HEAD taken | bishop [them] on test rows with at most 8 units (8933 rows, 272 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.05724; gain over its base hazard +0.00140 [+0.00100, +0.00192]
+OBS endgame: HEAD taken | bishop [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00003 [-0.00009, +0.00002] (positive: the fill helps)
+OBS endgame: HEAD taken | bishop [them] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00280 [+0.00269, +0.00290] (positive: the fill helps)
+OBS endgame: HEAD taken | knight [us] on all human test rows (119474 rows, 62469 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.18829; gain over its base hazard +0.00359 [+0.00333, +0.00384]
+OBS endgame: HEAD taken | knight [us] on test rows with at most 8 units (8933 rows, 316 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.05698; gain over its base hazard +0.00183 [+0.00130, +0.00239]
+OBS endgame: HEAD taken | knight [us] on all human test rows (119474 rows, 62469 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.18820; gain over its base hazard +0.00358 [+0.00333, +0.00383]
+OBS endgame: HEAD taken | knight [us] on test rows with at most 8 units (8933 rows, 316 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.05988; gain over its base hazard +0.00176 [+0.00122, +0.00231]
+OBS endgame: HEAD taken | knight [us] on all human test rows (119474 rows, 62469 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.18823; gain over its base hazard +0.00359 [+0.00333, +0.00384]
+OBS endgame: HEAD taken | knight [us] on test rows with at most 8 units (8933 rows, 316 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.05832; gain over its base hazard +0.00179 [+0.00126, +0.00235]
+OBS endgame: HEAD taken | knight [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00009 [-0.00016, -0.00003] (positive: the fill helps)
+OBS endgame: HEAD taken | knight [us] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00290 [+0.00281, +0.00301] (positive: the fill helps)
+OBS endgame: HEAD taken | knight [them] on all human test rows (119474 rows, 62085 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.19350; gain over its base hazard +0.00347 [+0.00320, +0.00375]
+OBS endgame: HEAD taken | knight [them] on test rows with at most 8 units (8933 rows, 322 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.05944; gain over its base hazard +0.00192 [+0.00134, +0.00257]
+OBS endgame: HEAD taken | knight [them] on all human test rows (119474 rows, 62085 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.19340; gain over its base hazard +0.00346 [+0.00319, +0.00373]
+OBS endgame: HEAD taken | knight [them] on test rows with at most 8 units (8933 rows, 322 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.06242; gain over its base hazard +0.00183 [+0.00125, +0.00247]
+OBS endgame: HEAD taken | knight [them] on all human test rows (119474 rows, 62085 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.19343; gain over its base hazard +0.00347 [+0.00320, +0.00374]
+OBS endgame: HEAD taken | knight [them] on test rows with at most 8 units (8933 rows, 322 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.06082; gain over its base hazard +0.00187 [+0.00130, +0.00252]
+OBS endgame: HEAD taken | knight [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00011 [-0.00018, -0.00005] (positive: the fill helps)
+OBS endgame: HEAD taken | knight [them] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00298 [+0.00288, +0.00310] (positive: the fill helps)
+OBS endgame: HEAD taken | pawn [us] on all human test rows (119474 rows, 91150 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.33906; gain over its base hazard +0.00190 [+0.00165, +0.00210]
+OBS endgame: HEAD taken | pawn [us] on test rows with at most 8 units (8933 rows, 2254 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.17884; gain over its base hazard +0.00124 [+0.00021, +0.00227]
+OBS endgame: HEAD taken | pawn [us] on all human test rows (119474 rows, 91150 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.33873; gain over its base hazard +0.00193 [+0.00166, +0.00213]
+OBS endgame: HEAD taken | pawn [us] on test rows with at most 8 units (8933 rows, 2254 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.18443; gain over its base hazard +0.00077 [-0.00025, +0.00184]
+OBS endgame: HEAD taken | pawn [us] on all human test rows (119474 rows, 91150 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.33882; gain over its base hazard +0.00192 [+0.00166, +0.00213]
+OBS endgame: HEAD taken | pawn [us] on test rows with at most 8 units (8933 rows, 2254 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.18151; gain over its base hazard +0.00100 [-0.00004, +0.00203]
+OBS endgame: HEAD taken | pawn [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00033 [-0.00046, -0.00020] (positive: the fill helps)
+OBS endgame: HEAD taken | pawn [us] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00559 [+0.00532, +0.00582] (positive: the fill helps)
+OBS endgame: HEAD taken | pawn [them] on all human test rows (119474 rows, 89966 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.34707; gain over its base hazard +0.00166 [+0.00141, +0.00185]
+OBS endgame: HEAD taken | pawn [them] on test rows with at most 8 units (8933 rows, 2103 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.17831; gain over its base hazard +0.00314 [+0.00222, +0.00411]
+OBS endgame: HEAD taken | pawn [them] on all human test rows (119474 rows, 89966 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.34678; gain over its base hazard +0.00166 [+0.00144, +0.00185]
+OBS endgame: HEAD taken | pawn [them] on test rows with at most 8 units (8933 rows, 2103 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.18382; gain over its base hazard +0.00300 [+0.00210, +0.00390]
+OBS endgame: HEAD taken | pawn [them] on all human test rows (119474 rows, 89966 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.34686; gain over its base hazard +0.00166 [+0.00143, +0.00185]
+OBS endgame: HEAD taken | pawn [them] on test rows with at most 8 units (8933 rows, 2103 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.18093; gain over its base hazard +0.00307 [+0.00216, +0.00399]
+OBS endgame: HEAD taken | pawn [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00030 [-0.00044, -0.00016] (positive: the fill helps)
+OBS endgame: HEAD taken | pawn [them] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00551 [+0.00525, +0.00574] (positive: the fill helps)
+OBS endgame: HEAD taken | queen [us] on all human test rows (119474 rows, 40853 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.11023; gain over its base hazard +0.00020 [+0.00015, +0.00025]
+OBS endgame: HEAD taken | queen [us] on test rows with at most 8 units (8933 rows, 592 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.04778; gain over its base hazard +0.00041 [+0.00020, +0.00063]
+OBS endgame: HEAD taken | queen [us] on all human test rows (119474 rows, 40853 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.11022; gain over its base hazard +0.00020 [+0.00015, +0.00025]
+OBS endgame: HEAD taken | queen [us] on test rows with at most 8 units (8933 rows, 592 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.04826; gain over its base hazard +0.00036 [+0.00015, +0.00058]
+OBS endgame: HEAD taken | queen [us] on all human test rows (119474 rows, 40853 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.11023; gain over its base hazard +0.00020 [+0.00015, +0.00025]
+OBS endgame: HEAD taken | queen [us] on test rows with at most 8 units (8933 rows, 592 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.04801; gain over its base hazard +0.00038 [+0.00017, +0.00060]
+OBS endgame: HEAD taken | queen [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00001 [-0.00003, +0.00000] (positive: the fill helps)
+OBS endgame: HEAD taken | queen [us] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00048 [+0.00043, +0.00053] (positive: the fill helps)
+OBS endgame: HEAD taken | queen [them] on all human test rows (119474 rows, 40686 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.11342; gain over its base hazard +0.00021 [+0.00016, +0.00026]
+OBS endgame: HEAD taken | queen [them] on test rows with at most 8 units (8933 rows, 596 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.05072; gain over its base hazard +0.00051 [+0.00029, +0.00073]
+OBS endgame: HEAD taken | queen [them] on all human test rows (119474 rows, 40686 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.11341; gain over its base hazard +0.00021 [+0.00016, +0.00026]
+OBS endgame: HEAD taken | queen [them] on test rows with at most 8 units (8933 rows, 596 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.05131; gain over its base hazard +0.00037 [+0.00015, +0.00060]
+OBS endgame: HEAD taken | queen [them] on all human test rows (119474 rows, 40686 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.11341; gain over its base hazard +0.00021 [+0.00016, +0.00026]
+OBS endgame: HEAD taken | queen [them] on test rows with at most 8 units (8933 rows, 596 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.05099; gain over its base hazard +0.00045 [+0.00023, +0.00068]
+OBS endgame: HEAD taken | queen [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00001 [-0.00003, +0.00001] (positive: the fill helps)
+OBS endgame: HEAD taken | queen [them] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00059 [+0.00053, +0.00066] (positive: the fill helps)
+OBS endgame: HEAD taken | rook [us] on all human test rows (119474 rows, 61287 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.16664; gain over its base hazard +0.00057 [+0.00044, +0.00068]
+OBS endgame: HEAD taken | rook [us] on test rows with at most 8 units (8933 rows, 953 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.07444; gain over its base hazard +0.00084 [+0.00029, +0.00143]
+OBS endgame: HEAD taken | rook [us] on all human test rows (119474 rows, 61287 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.16664; gain over its base hazard +0.00057 [+0.00044, +0.00068]
+OBS endgame: HEAD taken | rook [us] on test rows with at most 8 units (8933 rows, 953 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.07550; gain over its base hazard +0.00069 [+0.00013, +0.00128]
+OBS endgame: HEAD taken | rook [us] on all human test rows (119474 rows, 61287 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.16663; gain over its base hazard +0.00057 [+0.00044, +0.00068]
+OBS endgame: HEAD taken | rook [us] on test rows with at most 8 units (8933 rows, 953 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.07495; gain over its base hazard +0.00078 [+0.00023, +0.00137]
+OBS endgame: HEAD taken | rook [us] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00000 [-0.00003, +0.00003] (positive: the fill helps)
+OBS endgame: HEAD taken | rook [us] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00105 [+0.00095, +0.00114] (positive: the fill helps)
+OBS endgame: HEAD taken | rook [them] on all human test rows (119474 rows, 61313 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.17267; gain over its base hazard +0.00067 [+0.00053, +0.00079]
+OBS endgame: HEAD taken | rook [them] on test rows with at most 8 units (8933 rows, 972 events): fill share 1.0 (1870 fill games, 304437 fit rows): log loss per step 0.07898; gain over its base hazard +0.00121 [+0.00056, +0.00187]
+OBS endgame: HEAD taken | rook [them] on all human test rows (119474 rows, 61313 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.17266; gain over its base hazard +0.00067 [+0.00053, +0.00079]
+OBS endgame: HEAD taken | rook [them] on test rows with at most 8 units (8933 rows, 972 events): fill share 0.0 (0 fill games, 276611 fit rows): log loss per step 0.07990; gain over its base hazard +0.00121 [+0.00057, +0.00185]
+OBS endgame: HEAD taken | rook [them] on all human test rows (119474 rows, 61313 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.17266; gain over its base hazard +0.00067 [+0.00053, +0.00079]
+OBS endgame: HEAD taken | rook [them] on test rows with at most 8 units (8933 rows, 972 events): fill share 0.5 (935 fill games, 290499 fit rows): log loss per step 0.07946; gain over its base hazard +0.00117 [+0.00053, +0.00183]
+OBS endgame: HEAD taken | rook [them] on all human test rows: log loss per step WITHOUT the fill less WITH all of it -0.00001 [-0.00003, +0.00003] (positive: the fill helps)
+OBS endgame: HEAD taken | rook [them] on test rows with at most 8 units: log loss per step WITHOUT the fill less WITH all of it +0.00092 [+0.00083, +0.00101] (positive: the fill helps)
+
+
+78.64 BUILT, stage F, BESIDE THE OLD TARGETS (builder agent, 2026-11-16; one run each, directions only; numbers only from printed OBS lines). The old targets (78.62: "a unit stands LOST by the estimate within 8 plies", per side; and the arrival head of 78.59) were rerun on the same 800 games by `python -m catspace.incubator.analyst.discovery.tactical_chances --out-dir artifacts/experiments/events_78_64/old_targets` (77 s; the OLD targets, a fixed window of 8 plies, labelled so). They are NOT the same event as the new classes (a unit standing lost by the estimate is not a unit taken), so no line compares the two heads' losses; what is comparable is stated in the following. The new heads' own chance of the class within 8 plies is read off the hazard (one minus the product of the steps' survivals) and printed as DERIVED CHANCE WITHIN 8 PLIES, labelled as the old window and for comparison only.
+THE OLD TARGETS (800 games):
+OBS tactical chances: target US (a unit of theirs stands lost by the estimate with us to move within 8 plies): fit rate 0.4823, test rate 0.4987
+OBS tactical chances: target THEM (a unit of ours stands lost by the estimate with them to move within 8 plies): fit rate 0.4655, test rate 0.4678
+OBS tactical chances: [us] test log loss, base rate: 0.69368
+OBS tactical chances: [us] test log loss, K+S+E+R: 0.68704 [0.68222, 0.69101]; gain over the base rate +0.00664 [+0.00294, +0.01112]; penalty C 0.03, columns kept 23 of 40
+OBS tactical chances: [us] rank correlation of the target with the arrival difference h=8 of 78.59 over the 7452 test rows that have both: +0.0365; of the head K+S+E+R: +0.1512
+OBS tactical chances: [them] test log loss, base rate: 0.69108
+OBS tactical chances: [them] test log loss, K+S+E+R: 0.68069 [0.67417, 0.68631]; gain over the base rate +0.01039 [+0.00555, +0.01541]; penalty C 0.03, columns kept 23 of 40
+OBS tactical chances: [them] rank correlation of the target with the arrival difference h=8 of 78.59 over the 7452 test rows that have both: -0.0576; of the head K+S+E+R: -0.1806
+OBS tactical chances: the arrival head h=8 of 78.59 refit on these rows, inputs K+S: rank correlation +0.2702 [+0.2222, +0.3187] (300 draws)
+OBS tactical chances: the arrival head h=8 of 78.59 refit on these rows, inputs K+S+E: rank correlation +0.2662 [+0.2149, +0.3147] (300 draws)
+THE NEW HEADS, their chance within 8 plies derived, on the 800 games:
+OBS hazard: HEAD taken [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 7492 test rows, observed rate 0.6301, fit rate 0.6362): log loss gain over the plain rate +0.02659 [+0.01333, +0.03961]; over the base hazard's own chance +0.02661 [+0.01335, +0.03966]
+OBS hazard: HEAD taken [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 7492 test rows, observed rate 0.6676, fit rate 0.6775): log loss gain over the plain rate +0.02976 [+0.01372, +0.04452]; over the base hazard's own chance +0.02977 [+0.01374, +0.04457]
+OBS hazard: HEAD keeps [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 7243 test rows, observed rate 0.4618, fit rate 0.4525): log loss gain over the plain rate +0.01462 [+0.00719, +0.02167]; over the base hazard's own chance +0.01714 [+0.01112, +0.02302]
+OBS hazard: HEAD keeps [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 7229 test rows, observed rate 0.4979, fit rate 0.5029): log loss gain over the plain rate +0.01806 [+0.00891, +0.02668]; over the base hazard's own chance +0.01917 [+0.01186, +0.02637]
+THE NEW HEADS, their chance within 8 plies derived, on the 12000 games:
+OBS hazard: HEAD taken [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 107582 test rows, observed rate 0.6324, fit rate 0.6364): log loss gain over the plain rate +0.02315 [+0.01972, +0.02672]; over the base hazard's own chance +0.02317 [+0.01974, +0.02673]
+OBS hazard: HEAD taken [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 107582 test rows, observed rate 0.6724, fit rate 0.6769): log loss gain over the plain rate +0.02887 [+0.02526, +0.03279]; over the base hazard's own chance +0.02888 [+0.02526, +0.03280]
+OBS hazard: HEAD keeps [us]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 101903 test rows, observed rate 0.4574, fit rate 0.4559): log loss gain over the plain rate +0.01532 [+0.01323, +0.01715]; over the base hazard's own chance +0.01624 [+0.01422, +0.01801]
+OBS hazard: HEAD keeps [them]: DERIVED CHANCE OF THE CLASS WITHIN 8 PLIES (the old window, for comparison only; 101758 test rows, observed rate 0.5024, fit rate 0.5026): log loss gain over the plain rate +0.01788 [+0.01595, +0.02042]; over the base hazard's own chance +0.01884 [+0.01693, +0.02105]
+Reading is in the report: the sacrifice reading of 78.62 was NOT redone: the gains of the heads over the base hazard are small beside the base loss (a few hundredths of a nat per step against about 0.5 for the class of any taking), so "clearly beats the base" was not met.

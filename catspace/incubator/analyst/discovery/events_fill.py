@@ -282,7 +282,7 @@ def cmd_compare(a) -> int:
     for core in cores:
         for rel in ("us", "them"):
             hd = EH.Head(core, rel, *EH.targets(core, rel, roles, rows, res))
-            hd.activate(np.flatnonzero(rows["fit"]))
+            hd.activate(rows["fit"])
             name = f"{' | '.join(core)} [{rel}]"
             if int((hd.has & rows["fit"] & ~is_fill).sum()) < ER.MIN_EVENTS:
                 continue
