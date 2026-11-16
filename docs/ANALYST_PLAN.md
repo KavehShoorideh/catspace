@@ -10226,3 +10226,16 @@ OBS chance curve [them]: fit games 138, fit rows 3831: test log loss 0.68330, ga
 OBS chance curve [them]: fit games 276, fit rows 7521: test log loss 0.68051, gain over base +0.01058, rank corr +0.1220
 OBS chance curve [them]: fit games 553, fit rows 15538: test log loss 0.68070, gain over base +0.01038, rank corr +0.1217
 Read: for THIS head (a linear fit on these inputs) the curve is flat over the last doubling, so more games of the same kind would not lift it. That says nothing about a richer head (the concept columns had few rows and are starved) or about a better target; both remain to try before more data is the answer.
+
+
+PLAN 78.64: THE CHANCE HEADS WITH NO FIXED HORIZON, AND A TARGET OF WHAT IS WON (the 78.62 read, points 4 and 8, and its learning curve; Kaveh 2026-11-15 night: "why do we have 8 plies hard-coded? If you have a better alternative, go with that"; SYSTEM_SPEC 15). Written 2026-11-15 by the main agent. Python over the installed extension and the 78.62 state rows; human games; no engine evaluation; a sandbox.
+WHY NO HORIZON. The 8 plies came from plan 78.49 and was carried along; nothing derives it. The games already mark their own ends: a position SETTLES (78.60), a unit is taken and kept, the game ends. So the target is an EVENT and the time to it, not a window.
+A. THE EVENT. From a quiet row, per side: the next time that side WINS a unit, meaning a unit of the other side is taken and at the next settled position the taker's side has given nothing back that the fitted order of kinds (the human record of 78.59, stated) puts at or above it. Each row then has, per side, either the count of plies to its event or "none before the game ended" (cut off, not a zero). The first of the two sides' events is the race.
+B. THE HEAD. A chance per ply (a hazard) for each side as a function of the inputs, fitted on every ply from the row until the first event or the cut. From it, with no number put in: who wins a unit first, and the chance of an event within any count of plies. Reported: log loss per ply against the base hazard with bands over games; "who first" accuracy and calibration; the curve of how far ahead the inputs still tell anything (the gain by distance from the row), which is the horizon the data gives.
+C. INPUTS in steps, a learning curve at every step (fit on an eighth, a quarter, a half, all): ratings and ply; kinds; the 26 statements; the present tactical state; concepts, on a sample large enough that each column has rows (state how many).
+D. THE SAMPLE raised from 800 games toward 8000 if the state rows can be made in the time (0.02 s a row measured in 78.62), with the short run first.
+E. THE ENDGAME FILL, owed since 78.62: print coverage per small set of units; for sets under a stated count, generate games by playouts between the 78.61 generation players from sampled positions of those sets; fit with and without them and print both.
+F. BESIDE IT, for comparison only: the 8-ply targets of 78.62 and the arrival head of 78.59 on the same rows.
+The sacrifice reading of 78.62 is redone on B's head only if B clearly beats the base.
+
+STATUS: written; to a builder after 78.63 reports.
