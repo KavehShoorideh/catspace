@@ -245,8 +245,8 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
 - **Two halves at the wake.** Go toward the tactics, then recognise when they are there and use them.
 - **Holding a subgoal and navigating toward it** (DECIDED 2026-11-16, section 1). PROPOSED form, so that it agrees
   with the rest: a subgoal is a condition on the graph, either the condition of a conditional claim (section 2) or
-  an event of the rules (section 6). "Nearer" is not a distance, since he set the quasi-metric aside (below). It is
-  the chance that the condition comes true and the time to it, which is what the event heads predict. Moves that
+  an event of the rules (section 6). "Nearer" follows the two layers of reachable (next item): fewer moves of
+  mine still needed, and a higher chance that the other side cannot stop it. Moves that
   raise that chance are tried first; the chances of section 6 decide among what was reached, so the subgoal still
   never adds to the value. Where subgoals come from is the next item.
 - **Choosing a subgoal, and getting there** (DECIDED 2026-11-16; said in another session and brought over by him).
@@ -274,10 +274,16 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
     does not hold is a problem; the proposer names what stops it and a fix (remove, pin, block or draw away the
     unit that stops it, the far end a variable); the fix is the next subgoal, and so on down to a move. Goals are
     compared by how few facts are unmet and by the chance of each.
-  - *Reachable is a chance, not a distance.* He said "some sort of a quasi-metric type model" here and, the same
-    day, "quasi-metric is not the right way". docs/THESIS.md records why the distance was dropped: reachability
-    against a player who answers is a probability. So "reachable" is the chance the facts come true within the
-    time, given the opponent, which is also what "nearer" means above.
+  - *Reachable has two layers* (DECIDED 2026-11-16, late; asked whether reachable is a chance and not a distance,
+    he said: "Reachable has two layers: me playing only, and including opponent veto").
+    LAYER ONE, me playing only: can my own moves make the facts true if the other side does nothing against it,
+    and in how many of my moves. LAYER TWO, with the opponent's veto: can the other side stop it.
+    READING (mine) of how the two fit the rest: layer one is a count of my own moves over the graph, so here a
+    distance is the right thing, and it is cheap; a goal that fails layer one is dropped without asking layer two.
+    Layer two is first a matter of reasoning: a veto found concretely ends the goal or names the next obstacle
+    (section 4). Where no veto is found and none is ruled out, what is left is a chance, which is where
+    docs/THESIS.md's "reachability against a player who answers is a probability" applies. His "quasi-metric
+    type model" fits layer one; his "quasi-metric is not the right way" (below) was said of the policy's model.
   - *Each subgoal makes four claims, and each is graded:* it is worth having (if the facts held we would be better
     off); the fix is the right one (with the fix alone the goal works, and without it the goal does not); it can be
     reached; it is the best use of the moves. And a pursuit is dropped when the facts still unmet stop falling,
@@ -301,7 +307,7 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   - *Departures of the build from this section, to be mended or decided:* the facts come from a fixed list of five
     relations, not any set of facts of the graph; one edit, taking the unit out, stands for remove, pin, block and
     draw away; reach is a table of how often the facts came true, by cause, because the event heads are too weak
-    to give it.
+    to give it, and it does not yet separate the two layers of reachable.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -538,7 +544,6 @@ State on 2026-11-16, in words only (plans 78.52 to 78.74 in docs/ANALYST_PLAN.md
    pursuit is dropped), and the three departures of the first build listed there.
 5. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
    from what the builder has read, the knowledge of the game may not?
-6. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
@@ -546,7 +551,7 @@ ended, and only orders before that (4, 6); the oracle as a last resort (9); the 
 the ability to go back (9); the policy is modular and models a sequence, not a distance (7); a line may end quiet while budget remains once
 every open tactic is checked (4); a sacrifice needs a reason, and one taken on the estimate alone is a surprise for
 the sleep (3, 9); the overall goal and its two halves (1); the rule for choosing a move, as a guide (8); the threat
-list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8).
+list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8); reachable has two layers, me playing only and with the opponent's veto (7).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -590,7 +595,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
-| The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition, nearer as its chance and time; choosing among goals by the weakness pointed at, goals as facts with no name, the fix of a problem as the subgoal, subgoals graded | 2026-11-14, 16 | 7 |
+| The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition; reachable in two layers, me playing only and with the opponent's veto; choosing among goals by the weakness pointed at, goals as facts with no name, the fix of a problem as the subgoal, subgoals graded | 2026-11-14, 16 | 7 |
 | The wake, step by step; the rule for choosing a move (threats first, answering a big threat is the subgoal, a small one may be left for an attack, the unseen threat read by statistics; a counter-threat is an allowed answer; a guide); the threat list with stake and response, high and low set by the spread; the wall | 2026-11-14, 16 | 8 |
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
