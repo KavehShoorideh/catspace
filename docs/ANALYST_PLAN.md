@@ -12723,3 +12723,41 @@ OBS goals71: C HINDSIGHT 2 plies back, RECALL: of the 2560 events with the earli
 OBS goals71: C HINDSIGHT 4 plies back: events where some testable fact became true in between 5224; of them with the earlier position in the sample 2712; with at least one goal listed 775 (mean goals listed 1.2); a goal about the unit then won was listed in 195 (25.2 pct)
 OBS goals71: C HINDSIGHT 4 plies back, among the proposer's first few (chance of the key times the stake) over those 775 events: first 1 167 (21.5 pct), first 3 195 (25.2 pct); CONTROL goals drawn at random from the same list (exact): first 1 22.1 pct, first 3 25.1 pct; the order by stake alone, first 3: 25.2 pct; the full match (the goal's unmet facts are the ones that became true), proposer first 3: 13.4 pct against random 13.4 pct. Ply is held fixed: the control draws from the list of the same position
 OBS goals71: C HINDSIGHT 4 plies back, RECALL: of the 2712 events with the earlier position in the sample, a goal about the unit then won was listed for 195 (7.2 pct); CONTROL three goals about units of the other side drawn at random (one of 11.3 on average), first 3, over the 775 events with a list: 27.2 pct
+
+
+### 78.71 READ (2026-11-16, main agent, after the merge)
+
+Serves SYSTEM_SPEC 7, the opportunity policy's proposer. Numbers are the builder's OBS lines in
+artifacts/experiments/subgoals_78_71 (one run, directions only). I read positions 6, 7 and 8 of the print against the board.
+
+- THE SHAPE IS THE ONE ASKED FOR. A goal prints as facts with units as variables, each met or unmet, the unit that stops it,
+  and the fix. Position 6, goal 1: the taking is refuted because one unit guards the target and the same unit then takes
+  another of ours; both facts name that unit. That is a diagnosis a player would give.
+- THE DIAGNOSIS IS SPECIFIC. The fix alone made the goal work in about half the goals; the control edit in few.
+- ONE FIX IS OFTEN TOO SMALL: with every named stopper out, most of the remaining failures work.
+- THE PROPOSER POINTS AT TOO LITTLE, AND THIS IS THE MAIN RESULT. Recall of the unit then won is low and BELOW the control of
+  three units of the other side drawn at random. Lists hold little more than one goal, so the order within a list equals
+  chance. The cause: goals come only from rows of the threat list, and most positions have none.
+- WHEN THE FACTS CAME TRUE THE TARGET WAS TAKEN NEXT MOVE about twice as often as the base rate. The facts mean something.
+- THE COARSE RECORD AGAIN: clear gains print as exchanges and become false goals (position 6, goal 2; position 4).
+- WEAK AIMS: goals from a quiet first move are often not aims at all (position 8, goal 1: the target simply steps away).
+- DEPARTURES FROM SPEC 7 (written into the spec as such): a fixed list of five relations; one edit for four kinds of fix;
+  reach by a table, not by the heads.
+- A SLIP OF MINE AT MERGE: I removed all gate_engine logs under artifacts/experiments (174 files), not only the builder's
+  four strays. They were untracked logs of past gate runs; no result file was touched.
+
+### PLAN 78.74: THE PROPOSER LOOKS AT EVERY UNIT (2026-11-16)
+
+Serves SYSTEM_SPEC 7, piece: the opportunity policy's proposer. Interface unchanged: goals(item, side, c, facts, editor) and
+subgoal_claims(goal) of subgoal_goals.py; a goal gains fields only.
+
+A. A GOAL FOR EVERY UNIT OF THE OTHER SIDE, the goal unit included, not only for rows of the threat list. For each: the facts,
+   what stops it. Where nothing of ours bears on it, the goal is two steps: bring a unit to bear (which unit, by which moves
+   of the graph), then the rest. For the goal unit: the places it may move to, which of them we cover, what guards the rest.
+B. THE FIX AS A SET. All stoppers named; the fix is the set, ordered by which single removal brings the goal nearest (fewest
+   facts left unmet). Stage B of 78.71 rerun with sets.
+C. HOW WEAK IS THE TARGET, as his words ask ("this is the material that's the most weak"): goals ranked by the count of unmet
+   facts, then the chance of the facts by the table, then the stake. Graded as in 78.71 C against the same two controls, and
+   now also against the ranking by stake alone and by unmet count alone. Recall of the unit then won is the number to move.
+D. Reprint the twenty positions. Self-check as before.
+Not here: the worth work (the record's coarseness), the pursuit across moves (78.71 E). After this plan: 78.68.

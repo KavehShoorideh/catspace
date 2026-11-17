@@ -287,6 +287,19 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   - *Whether a language model does the pointing* is OPEN (section 13). He said: "I'm not sure if it has to be Gen
     AI or not." The standing limit is no outside model in the learning loop; the first build uses the graph, the
     frame read and the heads.
+- MEASURED (plan 78.71, one run, directions only), and where the first build departs from the form above:
+  - *The diagnosis holds.* With the named stopper alone taken out, the goal worked in about half the cases; with
+    another unit taken out instead, in few. So "is this the right fix" can be refereed by our own reasoning.
+  - *One fix is often too small.* Where several units stop a goal, taking out all of them repairs most failures.
+    The fix must be allowed to be a set, worked on one at a time.
+  - *The proposer points at too little.* It builds goals only from rows of the threat list. Of the units then won
+    in the games, few were among its goals, fewer than among units of the other side drawn at random. Its lists
+    are short, so the order within a list could not be told from chance. A proposer that looks at every unit of
+    the other side, and at the goal unit, is owed (plan 78.74).
+  - *Departures of the build from this section, to be mended or decided:* the facts come from a fixed list of five
+    relations, not any set of facts of the graph; one edit, taking the unit out, stands for remove, pin, block and
+    draw away; reach is a table of how often the facts came true, by cause, because the event heads are too weak
+    to give it.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -490,7 +503,7 @@ The three inventories (the repo against these pieces; the earlier frame and inte
 library against the game-free graph) are in docs/SYSTEM_SPEC_HISTORY.md, sections 9.1, 12.1 and 12.2, as made on
 2026-11-14 and 2026-11-15. One correction to the third: Reach.lean is chess-bound, not generic.
 
-State on 2026-11-16, in words only (plans 78.52 to 78.73 in docs/ANALYST_PLAN.md hold the runs and the plans):
+State on 2026-11-16, in words only (plans 78.52 to 78.74 in docs/ANALYST_PLAN.md hold the runs and the plans):
 
 | Piece | State |
 |---|---|
@@ -506,8 +519,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.73 in docs/ANALYST_PLAN.md
 | The threat list (threats with stake and response, in four bands) | Built concretely (plan 78.72, after a first form in 78.70): each row and each response is a line read to a settled end and judged by the measured worths; exchanges print apart; claims nothing bears on are dropped; the end of the game is a row for either side. Like for like cancels in the verdict and responses carry their own end and are ordered (plan 78.73). Still short of section 8: a clear gain can print as an exchange because the measured worths are coarse, many positions print no row, threats that need a quiet first move are rare, and the top band is not the most dangerous. Carrying by the frame's read set does not hold for a concrete line; the line's own read set is not built. Not wired into play |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
-| The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | Not built; plan 78.71 written (goals as facts, means-ends, the grading of subgoals) |
-| Earlier work on subgoals to be reused, all on older systems | The what-if edits (catspace/incubator/analyst/whatif*.py); the October vocabulary of why a fix fails; the subgoal former and the waypoint decomposer of the summer (docs/SUBGOALFORMER.md, subgoal_cascade), built on a learned embedding; the subgoal fit and play of plans 78.49 and 78.50. Subgoals themselves were never graded |
+| The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | The proposer is built as a measurement (plan 78.71 A to C): goals as facts with the cause and the fix, the fix checked as a what-if edit by our own reasoning, a first grading by hindsight. The diagnosis holds; the coverage is poor (plan 78.74). Not wired. The policy, holding a subgoal across moves and the rule for choosing a move are not built |
+| Earlier work on subgoals to be reused, all on older systems | The what-if edits (catspace/incubator/analyst/whatif*.py); the October vocabulary of why a fix fails; the subgoal former and the waypoint decomposer of the summer (docs/SUBGOALFORMER.md, subgoal_cascade), built on a learned embedding; the October what-if edits were bound to the game and to assumed worths, so only their idea was reused in plan 78.71; the subgoal fit and play of plans 78.49 and 78.50. Subgoals themselves were never graded |
 | The unknown as a condition in the frame read; the sequence model; the endgame fill from human play | Not built |
 
 ## 13. Open questions for Kaveh
@@ -519,7 +532,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.73 in docs/ANALYST_PLAN.md
 4. Where do subgoals come from, and how is one preferred to another (section 7)? Partly answered 2026-11-16:
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
-   pursuit is dropped).
+   pursuit is dropped), and the three departures of the first build listed there.
 5. Is a counter-threat an allowed answer to a threat (section 8)? Proposed: yes, when shown concretely.
 6. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
    from what the builder has read, the knowledge of the game may not?
