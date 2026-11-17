@@ -26,12 +26,13 @@ import cs_engine as CE
 
 from catspace.incubator.analyst.discovery import human_heads_data as HD
 from catspace.incubator.analyst.discovery import subgoal_goals as SG
+from catspace.incubator.analyst.discovery import subgoal_units as SU
 from catspace.incubator.analyst.discovery import threat_concrete as TC
 from catspace.incubator.analyst.discovery import threat_list as TL
 from catspace.incubator.analyst.discovery import threat_print as TP
 from catspace.io import paths
 
-OUT = ("subgoals_78_71",)
+OUT = ("subgoals_78_74",)
 
 
 class GameEditor:
@@ -87,7 +88,9 @@ class GameEditor:
 
 
 def unit_text(u: "tuple | None") -> str:
-    return "?" if u is None else f"{u[0]} {u[1]} {u[2]}"
+    if u is None:
+        return "?"
+    return f"the place {u[2]}" if u[0] == "" else f"{u[0]} {u[1]} {u[2]}"
 
 
 def edit_text(e: tuple) -> str:
@@ -98,10 +101,28 @@ def edit_text(e: tuple) -> str:
     return f"play {e[1]} first"
 
 
+def set_text(g: dict) -> "list[str]":
+    """The fix as a set (plan 78.74 B), ordered by which single removal leaves the fewest facts unmet, and the two steps where nothing bears (A)."""
+    out = []
+    if g["fix_set"]:
+        out.append("      THE FIX AS A SET (ordered: the single removal that leaves the fewest facts unmet first): " + "; ".join(
+            f"{k}. {'bring' if e['kind'] == 'bring' else 'take out'} {unit_text(e['unit'])}" + ("" if e["removable"] else " (the goal kind: cannot be taken out)") + f" -> {e['left']} fact(s) left unmet" + (f", makes met: {', '.join(e['resolves'])}" if e["resolves"] else "")
+            for k, e in enumerate(g["fix_set"], 1)))
+    for st in g["steps"]:
+        mv = "by one move of the rules" if st["moves"] == 1 else ("by two moves of the rules" if st["moves"] == 2 else "within two steps of the place graph (more than two moves of the rules)")
+        out.append(f"      STEP ({st['step']}): {unit_text(st['unit'])}: route {' -> '.join(st['route'])} ({mv}; {st['by']})" + (f"; for the place {st['for']}" if st.get("for") else ""))
+    if g.get("escapes"):
+        out.append("      THE PLACES THE GOAL UNIT MAY MOVE TO: " + "; ".join(f"{e['place']} {'covered by ' + ', '.join(unit_text(u) for u in e['by']) if e['covered'] else 'NOT covered'}" for e in g["escapes"]))
+    return out
+
+
 def render_goal(g: dict, k: int) -> str:
     row = g["row"]
     st = "no stake (goal kind)" if g["stake"] is None else f"stake {g['stake']:+.3f}"
-    head = f"  GOAL {k} [{g['source']}]: win the {unit_text(g['target'])} ({st}); the row: {row.get('verdict')} line {' '.join(g['line']) if g['line'] else '(none)'}"
+    if g["source"] == "goal_unit":
+        head = f"  GOAL {k} [goal_unit]: end the game against the {unit_text(g['target'])} ({st}); the forcing read found no forced end within its reach"
+    else:
+        head = f"  GOAL {k} [{g['source']}]{' (the line read for this unit by plan 78.74)' if g.get('every') else ''}: win the {unit_text(g['target'])} ({st}); the row: {row.get('verdict')} line {' '.join(g['line']) if g['line'] else '(none)'}"
     if row.get("outcome"):
         o = row["outcome"]
         head += f"; the taker takes {','.join(o['taker_won']) or 'nothing'} and loses {','.join(o['taker_lost']) or 'nothing'} (kinds by the line search's letters; net {g['net']}, resolution {row.get('resolution', 0):.0f})"
@@ -113,11 +134,12 @@ def render_goal(g: dict, k: int) -> str:
             c = f["cause"]
             sp = ("; stopped by " + ", ".join(unit_text(u) for u in c["stoppers"])) if c["stoppers"] else ""
             vic = ("; it would uncover/leave loose " + unit_text(c["victim"])) if c["victim"] and c["type"] in ("only_guard", "uncovered_line", "loose", "tied") else ""
-            out.append(f"          cause: {c['type']}: {c['words']}{sp}{vic}")
+            out.append(f"          cause: {c['type']} [{c.get('basis', '-')}]: {c['words']}{sp}{vic}")
             if f["fix"]:
                 out.append(f"          fix: {f['fix']['words']}: " + "; ".join(edit_text(e) for e in f["fix"]["edits"]))
             else:
                 out.append("          fix: none proposed")
+    out.extend(set_text(g))
     return "\n".join(out)
 
 
@@ -138,7 +160,7 @@ def main(argv: "list | None" = None) -> int:
     facts = SG.Facts(HD.VARIANT)
     ed = GameEditor(HD.VARIANT)
     roles = z["names"]["roles"]
-    text = [f"THE GOALS OF PLAN 78.71 A (the same twenty positions as plan 78.73 E): for each position the goals of the side to move and of the other side (its threats after the side to move passes: hypothetical). A GOAL is a threat of ours that does not work yet: "
+    text = [f"THE GOALS OF PLAN 78.74 A to C (the same twenty positions as plan 78.73 E and plan 78.71): for each position the goals of the side to move and of the other side (its threats after the side to move passes: hypothetical). A GOAL is a threat of ours that does not work yet: "
             "the facts that would make it work (units as variables), met or unmet; for each unmet fact what stops it (from the line that was read and the graph) and the proposed fix. Threats that already work are listed apart (not goals). "
             f"The judge of the lines: the measured record {rec.source}; line depth {lines1.depth} plies, node fuse {lines1.fuse}."]
     text.append("THE FOUR CLAIMS each goal makes (spec 7), and the referee of each (our own reasoning and estimate; no oracle): ")
@@ -154,6 +176,9 @@ def main(argv: "list | None" = None) -> int:
         t0 = time.perf_counter()
         c = positions_c([item], lines1)[0]
         t_conc = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        info = SU.every_unit([item], [[mover, 1 - mover]], [c], facts, lines1, [SU.stake_closure(z["stake"][j], z["kind_cols"])])
+        t_every = time.perf_counter() - t0
         both = c["mover"] + c["other"]
         spread = float(z["spread"][j])
         rk = TL.rank_high_of(both)
@@ -172,7 +197,7 @@ def main(argv: "list | None" = None) -> int:
             tally["positions"] += 1
             tally["goals"] += len(gl)
             tally["works"] += len(wk)
-            text.append(f"--- GOALS of {roles[side]} ({label}): {len(gl)} goals, {len(wk)} threats already work; concrete read {t_conc:.2f} s, goals {dt:.2f} s (one thread) ---")
+            text.append(f"--- GOALS of {roles[side]} ({label}): {len(gl)} goals, {len(wk)} threats already work; concrete read {t_conc:.2f} s, the line read of every other unit ({info['units']} units, {info['reads']} line queries, both sides) {t_every:.2f} s, goals {dt:.2f} s (one thread) ---")
             for n, g in enumerate(gl, 1):
                 tally["by_source"][g["source"]] = tally["by_source"].get(g["source"], 0) + 1
                 for f in g["facts"]:
@@ -189,12 +214,12 @@ def main(argv: "list | None" = None) -> int:
         c = None
     ws = sorted(tally["wall"])
     text.append("")
-    text.append(f"OBS goals78_71: positions {len(picked)}, goal lists {tally['positions']} (both sides), goals {tally['goals']}; threats already working (not goals) {tally['works']}")
-    text.append(f"OBS goals78_71: goals by source: " + "; ".join(f"{k} {v}" for k, v in sorted(tally["by_source"].items())))
-    text.append(f"OBS goals78_71: unmet facts by fact and cause: " + "; ".join(f"{k} {v}" for k, v in sorted(tally["unmet"].items())))
-    text.append(f"OBS goals78_71: goals with a fix proposed {tally['with_fix']}, with none {tally['no_fix']}")
-    text.append(f"OBS goals78_71: time of the goals per position and side (one thread, the concrete read apart): median {ws[len(ws) // 2]:.2f} s, mean {sum(ws) / len(ws):.2f} s, slowest {ws[-1]:.2f} s")
-    text.append(f"OBS goals78_71: the edit path: probes and edits applied {ed.count['applied']}, rejected {ed.count['rejected']}")
+    text.append(f"OBS goals78_74: positions {len(picked)}, goal lists {tally['positions']} (both sides), goals {tally['goals']}; threats already working (not goals) {tally['works']}")
+    text.append(f"OBS goals78_74: goals by source: " + "; ".join(f"{k} {v}" for k, v in sorted(tally["by_source"].items())))
+    text.append(f"OBS goals78_74: unmet facts by fact and cause: " + "; ".join(f"{k} {v}" for k, v in sorted(tally["unmet"].items())))
+    text.append(f"OBS goals78_74: goals with a fix proposed {tally['with_fix']}, with none {tally['no_fix']}")
+    text.append(f"OBS goals78_74: time of the goals per position and side (one thread, the concrete read apart): median {ws[len(ws) // 2]:.2f} s, mean {sum(ws) / len(ws):.2f} s, slowest {ws[-1]:.2f} s")
+    text.append(f"OBS goals78_74: the edit path: probes and edits applied {ed.count['applied']}, rejected {ed.count['rejected']}")
     (out / "print.txt").write_text("\n".join(text) + "\n")
     print("\n".join(text))
     return 0

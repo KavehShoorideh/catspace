@@ -44,8 +44,8 @@ from catspace.incubator.analyst.discovery import graph_layer1 as GL
 from catspace.incubator.analyst.discovery import graph_layer2_measure as G2M
 from catspace.incubator.analyst.discovery import threat_concrete as TC
 
-SOURCES = ("refuted", "exchange", "unread", "no_taking_legal", "no_bearer_no_move", "two_move_not_ahead", "two_moves")
-FACT_NAMES = ("bears", "may_take", "unguarded", "cornered", "kept")
+SOURCES = ("refuted", "exchange", "unread", "no_taking_legal", "no_bearer_no_move", "two_move_not_ahead", "two_moves", "goal_unit")
+FACT_NAMES = ("bears", "may_take", "unguarded", "cornered", "kept", "borne_on", "covered", "forced_end")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ the graph as dicts
@@ -252,6 +252,8 @@ def _words(ctype: str) -> str:
         "escapes": "the target itself moves away in the line (nothing of ours covers where it goes)",
         "out_of_budget": "the line was cut by the fuse: what stops it is not known",
         "ends_game": "the line ends with the game lost for the taker",
+        "not_ahead": "the line is read to its end and does not end ahead for the taker (the units of theirs that take in it are named)",
+        "no_forced_end": "the forcing read finds no forced end of the game within its reach",
     }.get(ctype, ctype)
 
 
@@ -259,20 +261,26 @@ def _fix_remove(f: PositionFacts, uid: str, words: str) -> dict:
     return {"edits": [("remove", f.units[uid][2])], "words": words, "units": [f.units[uid]]}
 
 
-def bring_fix(f: PositionFacts, facts: Facts, side: str, t: str, editor) -> "dict | None":
-    """THE MISSING BEARER: a unit of ours brought to bear on the place `t`, the far end (where it comes from) a variable. Candidates: a unit of ours moved to an empty place within two steps of where it stands (or to which the rules let it move now) from which
-    it bears on `t` (asked of the engine on the edited text: the bear relation, not a table of how a kind moves); the nearest by the steps of the place graph, a place the other side does not bear on first."""
+def bring_table(f: PositionFacts, facts: Facts, side: str, editor) -> dict:
+    """PLAN 78.74 A: where each unit of `side` could stand to bear on a place, asked of the engine ONCE per position (the bear relation of the position with that one unit moved: not a table of how a kind moves) and kept on the position's facts:
+    {(unit id, place): {"bears": the places it then bears on, "en_prise": a unit of the other side then bears on that place, "one": the rules let it move there now (the graph's may_move)}}. Places: the empty places the rules let it move to now,
+    and the empty places within two steps of the place graph."""
+    tab = getattr(f, "bring", None)
+    if tab is not None:
+        return tab
+    tab = {}
+    f.bring = tab
     if editor is None:
-        return None
+        return tab
     dist = facts.steps()
-    best = None
-    for uid, (s, k, a) in sorted(f.units.items()):
+    other = next((x for x in {v[0] for v in f.units.values()} if x != side), None)
+    for uid, (s, _k, a) in sorted(f.units.items()):
         if s != side:
             continue
         reach = {q: d for q, d in dist.get(a, {}).items() if 0 < d <= 2}
-        for q in f.may.get(uid, ()):                                # and where the rules let it move to now (a unit that runs far along a line)
+        for q in f.may.get(uid, ()):
             reach.setdefault(q, dist.get(a, {}).get(q, 9))
-        for q, d in sorted(reach.items()):
+        for q in sorted(reach):
             if q in f.at:
                 continue
             text2 = editor.relocate(f.text, a, q)
@@ -280,16 +288,50 @@ def bring_fix(f: PositionFacts, facts: Facts, side: str, t: str, editor) -> "dic
                 continue
             g = facts.of(text2)
             u2 = g.at.get(q)
-            if u2 is None or t not in g.bear.get(u2, ()):
+            if u2 is None:
                 continue
-            en_prise = bool(g.bearers(q, next(x for x in {v[0] for v in g.units.values()} if x != side)))
-            sc = (en_prise, d, k, a, q)
-            if best is None or sc < best[0]:
-                best = (sc, uid, a, q, text2)
+            tab[(uid, q)] = {"bears": frozenset(g.bear.get(u2, ())), "en_prise": bool(g.bearers(q, other)), "one": q in f.may.get(uid, ()), "d": reach[q]}
+    return tab
+
+
+def route_of(f: PositionFacts, facts: Facts, editor, uid: str, q: str) -> "tuple[int | None, list]":
+    """By which moves of the graph a unit comes to a place: (1, [from, to]) when the rules let it move there now; (2, [from, via, to]) when it moves to a place the rules let it reach and from there the rules let it move to the place
+    (the second move asked of the graph of the position with the first move made: the side to move is the same); (None, [from, to]) when neither is so (the place is within two steps of the place graph and more moves are needed)."""
+    a = f.units[uid][2]
+    if q in f.may.get(uid, ()):
+        return 1, [a, q]
+    for q1 in sorted(f.may.get(uid, ())):
+        if q1 in f.at:
+            continue
+        t1 = editor.relocate(f.text, a, q1)
+        if t1 is None:
+            continue
+        g = facts.of(t1)
+        u1 = g.at.get(q1)
+        if u1 is not None and q in g.may.get(u1, ()):
+            return 2, [a, q1, q]
+    return None, [a, q]
+
+
+def bring_fix(f: PositionFacts, facts: Facts, side: str, t: str, editor) -> "dict | None":
+    """THE MISSING BEARER: a unit of ours brought to bear on the place `t`, the far end (where it comes from) a variable. Candidates: a unit of ours moved to an empty place within two steps of where it stands (or to which the rules let it move now) from which
+    it bears on `t` (asked of the engine on the edited text, once per position: `bring_table`); the rules' own move first (one move), then a place the other side does not bear on, then the nearest by the steps of the place graph. PLAN 78.74 A: the fix says by which moves
+    of the graph the unit comes (`moves`: 1, 2 or None, and the `route`)."""
+    if editor is None:
+        return None
+    best = None
+    for (uid, q), e in sorted(bring_table(f, facts, side, editor).items()):
+        if t not in e["bears"]:
+            continue
+        s, k, a = f.units[uid]
+        sc = (not e["one"], e["en_prise"], e["d"], k, a, q)
+        if best is None or sc < best[0]:
+            best = (sc, uid, a, q)
     if best is None:
         return None
-    _sc, uid, a, q, _t2 = best
-    return {"edits": [("relocate", a, q)], "words": "a unit of ours comes to bear (the far end of where it comes from is a variable)", "units": [f.units[uid]]}
+    _sc, uid, a, q = best
+    moves, route = route_of(f, facts, editor, uid, q)
+    return {"edits": [("relocate", a, q)], "words": "a unit of ours comes to bear (the far end of where it comes from is a variable)", "units": [f.units[uid]], "moves": moves, "route": route}
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ the goals
@@ -298,8 +340,54 @@ def _fact(name: str, vars_: dict, status: str, cause: "dict | None" = None, fix:
     return {"name": name, "vars": vars_, "status": status, "cause": cause, "fix": fix}
 
 
+def _cause(ctype: str, stoppers: list, victim, basis: str = "line", victims: "list | None" = None) -> dict:
+    """A cause: the type, ALL the units that stop it (a set, PLAN 78.74 B), the victim, and the basis of the claim: `line` (a line read by the engine said so) or `graph` (a relation of the position: no line was read for it)."""
+    return {"type": ctype, "stoppers": stoppers, "victim": victim, "victims": victims or ([victim] if victim else []), "words": _words(ctype), "basis": basis}
+
+
+def _units_of(f: PositionFacts, uids) -> list:
+    out, seen = [], set()
+    for u in uids:
+        if u in f.units and u not in seen:
+            seen.add(u)
+            out.append(f.units[u])
+    return out
+
+
+def fix_set_of(facts_out: list, goal_kind: "str | None") -> list:
+    """PLAN 78.74 B: THE FIX AS A SET. Every unit that stops a fact (the stoppers of every unmet fact) and every unit to bring, each with the facts that stay unmet if only it is dealt with (a fact stays unmet while any stopper of it is left; a fact that names
+    no stopper stays), ordered by which single removal leaves the fewest facts unmet, then the fewest stoppers left in all. An element: {"unit", "edit", "removable" (a unit of the goal kind cannot be taken out: the rules forbid it), "kind": remove | bring,
+    "resolves": the names of the facts it alone makes met, "left": the count of facts left unmet, "left_stoppers"}."""
+    unmet = [x for x in facts_out if x["status"] in ("unmet", "unread")]
+    sets = []
+    for x in unmet:
+        c = x["cause"] or {}
+        sets.append({u for u in c.get("stoppers", ())})
+    brings = [x for x in unmet if x["fix"] and x["fix"]["edits"] and x["fix"]["edits"][0][0] == "relocate"]
+    elems, seen = [], set()
+    for x in unmet:
+        c = x["cause"] or {}
+        for u in c.get("stoppers", ()):
+            if u in seen:
+                continue
+            seen.add(u)
+            left = [i for i, st in enumerate(sets) if not st or (st - {u})]
+            tot = sum(len(st - {u}) for st in sets)
+            elems.append({"unit": u, "edit": ("remove", u[2]), "kind": "remove", "removable": u[1] != goal_kind,
+                          "resolves": [unmet[i]["name"] for i in range(len(unmet)) if i not in left], "left": len(left), "left_stoppers": tot})
+    for x in brings:
+        ed = x["fix"]["edits"][0]
+        left = [i for i, y in enumerate(unmet) if y is not x]
+        elems.append({"unit": (x["fix"]["units"] or [None])[0], "edit": ed, "kind": "bring", "removable": True, "resolves": [x["name"]], "left": len(left), "left_stoppers": sum(len(st) for st in sets)})
+    elems.sort(key=lambda e: (e["left"], e["left_stoppers"], not e["removable"], str(e["edit"])))
+    return elems
+
+
 def build_goal(item: dict, side: int, row: dict, source: str, facts: Facts, editor, text: str, taker: str, owner: str, names: dict) -> "dict | None":
-    """One goal from one row of the concrete list (see the module doc for the facts and the causes). `text` is the position's text, `taker` and `owner` the roles' names."""
+    """One goal from one row of the concrete list (see the module doc for the facts and the causes). `text` is the position's text, `taker` and `owner` the roles' names.
+    PLAN 78.74 A: a fact is read from the LINE where a line was read (a taking is said to work or fail by the line, never by counting the units that bear: a unit that bears on the place and does not take back in the line is no stopper); where no line was
+    read the fact is a relation of the graph and says so (`basis`). A goal gains fields only: `stoppers` (every unit that stops an unmet fact), `fix_set` (see `fix_set_of`), `set_edits` (the edits of the whole set, units of the goal kind left out),
+    `steps` (where nothing of ours bears: bring a unit to bear, by which moves of the graph, then the rest)."""
     t = row["place"] if isinstance(row["place"], str) else names["places"][row["place_ix"]]
     other = owner
     f = facts.facts_for(text, taker)
@@ -323,6 +411,7 @@ def build_goal(item: dict, side: int, row: dict, source: str, facts: Facts, edit
     bearers = f.bearers(t, taker)
     fixes: list = []
     facts_out: list = []
+    steps: list = []
     if bearers:
         a_uid = story["taker_unit"] if story["taker_unit"] in bearers else bearers[0]
         facts_out.append(_fact("bears", {"A": f.units[a_uid], "T": target}, "met"))
@@ -331,22 +420,27 @@ def build_goal(item: dict, side: int, row: dict, source: str, facts: Facts, edit
         shut = sorted(((len(b), u, b) for (u, p), b in f.shut.items() if p == t and f.units[u][0] == taker and b))
         if two:
             lead = line[0] if line else None
-            cause = {"type": "needs_quiet_move", "stoppers": [], "victim": None, "words": _words("needs_quiet_move")}
-            fix = {"edits": [("move", lead)], "words": "the quiet first move that brings a unit to bear", "units": []}
+            mover_uid = plies[0]["uid"] if plies and plies[0]["side"] == taker else None
+            cause = _cause("needs_quiet_move", [], None)
+            fix = {"edits": [("move", lead)], "words": "the quiet first move that brings a unit to bear", "units": _units_of(f, [mover_uid])}
             facts_out.append(_fact("bears", {"A": f.units.get(a_uid) if a_uid in f.units else None, "T": target}, "unmet", cause, fix))
             fixes.append(fix)
+            if plies and plies[0]["side"] == taker:
+                steps.append({"step": "bring", "unit": f.units.get(mover_uid), "route": [plies[0]["from"], plies[0]["to"]], "moves": 1, "by": "the line read (a quiet first move, then the taking)", "move": lead})
         elif shut:
             n, u, btw = shut[0]
-            cause = {"type": "blocked", "stoppers": [f.units[b] for b in btw], "victim": None, "words": _words("blocked")}
+            cause = _cause("blocked", [f.units[b] for b in btw], None, "graph")
             fix = {"edits": [("remove", f.units[b][2]) for b in btw], "words": "the units between are moved off the line, taken or drawn away (the far end a variable)", "units": [f.units[b] for b in btw]}
             facts_out.append(_fact("bears", {"A": f.units[u], "T": target}, "unmet", cause, fix))
             fixes.append(fix)
+            steps.append({"step": "free the line", "unit": f.units[u], "route": [f.units[u][2], t], "moves": 1, "by": "the graph (the units between are named)"})
         else:
-            cause = {"type": "no_bearer", "stoppers": [], "victim": None, "words": _words("no_bearer")}
+            cause = _cause("no_bearer", [], None, "graph")
             fix = bring_fix(f, facts, taker, t, editor)
             facts_out.append(_fact("bears", {"A": None, "T": target}, "unmet", cause, fix))
             if fix:
                 fixes.append(fix)
+                steps.append({"step": "bring", "unit": fix["units"][0], "route": fix["route"], "moves": fix["moves"], "by": "the graph (the unit's own moves; the bear relation of the position with it moved)"})
     # ---- may_take(A, T)
     if bearers:
         if f.mover != taker:
@@ -357,48 +451,56 @@ def build_goal(item: dict, side: int, row: dict, source: str, facts: Facts, edit
                 facts_out.append(_fact("may_take", {"A": f.units[legal[0]], "T": target}, "met"))
             else:
                 a0 = bearers[0]
-                cause = None
+                tied, victim = [], None
                 for u in bearers:
                     for (x, p), btw in sorted(f.shut.items()):
                         if f.units[x][0] == other and btw == [u] and p in f.at and f.units[f.at[p]][0] == taker:
-                            cause = {"type": "tied", "stoppers": [f.units[x]], "victim": f.units[f.at[p]], "words": _words("tied")}
-                            fix = _fix_remove(f, x, "the unit of theirs that holds the bearer is taken, blocked or drawn away (the far end a variable)")
-                            a0 = u
-                            break
-                    if cause:
-                        break
-                fix = fix if cause else None
-                if cause is None:
+                            tied.append(x)
+                            if victim is None:
+                                victim, a0 = f.units[f.at[p]], u
+                if tied:
+                    cause = _cause("tied", _units_of(f, tied), victim, "graph")
+                    fix = {"edits": [("remove", f.units[x][2]) for x in dict.fromkeys(tied)], "words": "the unit of theirs that holds the bearer is taken, blocked or drawn away (the far end a variable)", "units": _units_of(f, tied)}
+                else:
                     mine = [u for u, (s2, k2, _p2) in sorted(f.units.items()) if s2 == taker and k2 == facts.goal_name]
                     att = sorted({x for u in mine for x in f.bearers(f.units[u][2], other)})
-                    cause = {"type": "goal_unit_attacked", "stoppers": [f.units[x] for x in att], "victim": f.units[mine[0]] if mine else None, "words": _words("goal_unit_attacked")}
-                    fix = _fix_remove(f, att[0], "the unit of theirs that attacks our goal-kind unit is taken, blocked or drawn away (the far end a variable)") if att else None
+                    cause = _cause("goal_unit_attacked", _units_of(f, att), f.units[mine[0]] if mine else None, "graph")
+                    fix = {"edits": [("remove", f.units[x][2]) for x in att], "words": "the unit of theirs that attacks our goal-kind unit is taken, blocked or drawn away (the far end a variable)", "units": _units_of(f, att)} if att else None
                 facts_out.append(_fact("may_take", {"A": f.units[a0], "T": target}, "unmet", cause, fix))
                 if fix:
                     fixes.append(fix)
     else:
         facts_out.append(_fact("may_take", {"A": None, "T": target}, "open"))
-    # ---- unguarded(T)
+    # ---- unguarded(T): by the line where one was read (the unit of theirs that took back at the place of the target); by the graph where none was (the units that bear on the place)
     guards = f.bearers(t, owner)
     first_guard = next((l for l in story["losses"] if l["type"] in ("guard", "arrives") and l["at"] == t), None)
-    if not guards and first_guard is None:
-        facts_out.append(_fact("unguarded", {"T": target}, "met"))
+    if plies:
+        if first_guard is None:
+            facts_out.append(_fact("unguarded", {"T": target}, "met"))                 # the line shows no taking back at the place: the units that bear are no stopper (pinned, or the taking is not what ends the line)
+        else:
+            r_uid = first_guard["stopper"]
+            stoppers = _units_of(f, [r_uid] + [g for g in guards if g != r_uid])
+            if r_uid in f.units:
+                cause = _cause("guard", stoppers, None, "line")
+                fix = _fix_remove(f, r_uid, "the unit that takes back is taken, pinned, blocked or drawn away (the far end a variable)")
+                facts_out.append(_fact("unguarded", {"T": target, "R": f.units[r_uid]}, "unmet", cause, fix))
+                fixes.append(fix)
+    elif guards:
+        cause = _cause("guard", _units_of(f, guards), None, "graph")
+        fix = _fix_remove(f, guards[0], "the unit that bears on the place is taken, pinned, blocked or drawn away (the far end a variable)")
+        facts_out.append(_fact("unguarded", {"T": target, "R": f.units[guards[0]]}, "unmet", cause, fix))
+        fixes.append(fix)
     else:
-        r_uid = first_guard["stopper"] if first_guard else guards[0]
-        if r_uid in f.units:
-            cause = {"type": "guard", "stoppers": [f.units[u] for u in (guards or [r_uid])], "victim": None, "words": _words("guard")}
-            fix = _fix_remove(f, r_uid, "the unit that takes back is taken, pinned, blocked or drawn away (the far end a variable)")
-            facts_out.append(_fact("unguarded", {"T": target, "R": f.units[r_uid]}, "unmet", cause, fix))
-            fixes.append(fix)
+        facts_out.append(_fact("unguarded", {"T": target}, "met"))
     # ---- cornered(T): in a line that begins with a quiet move of ours, the other side's first reply is the target itself moving away
     if (two or source == "two_move_not_ahead") and len(plies) >= 2:
         rep1 = next((p for p in plies[1:] if p["side"] == owner), None)
         if rep1 is not None and rep1["uid"] == tgt_uid and rep1["took"] is None:
-            facts_out.append(_fact("cornered", {"T": target}, "unmet", {"type": "escapes", "stoppers": [], "victim": None, "words": _words("escapes")}, None))
+            facts_out.append(_fact("cornered", {"T": target}, "unmet", _cause("escapes", [], None), None))
     # ---- kept(A)
     elsewhere = [l for l in story["losses"] if l["at"] != t]
     if source == "unread":
-        facts_out.append(_fact("kept", {}, "unread", {"type": "out_of_budget", "stoppers": [], "victim": None, "words": _words("out_of_budget")}, None))
+        facts_out.append(_fact("kept", {}, "unread", _cause("out_of_budget", [], None), None))
     elif not plies:
         facts_out.append(_fact("kept", {}, "open"))
     elif not elsewhere:
@@ -407,29 +509,131 @@ def build_goal(item: dict, side: int, row: dict, source: str, facts: Facts, edit
         l = elsewhere[0]
         x = l["stopper"]
         v = f.units.get(l["victim"]) if l["victim"] else None
+        sts = _units_of(f, [y["stopper"] for y in elsewhere])
+        vics = _units_of(f, [y["victim"] for y in elsewhere if y["victim"]])
         if x in f.units:
-            cause = {"type": l["type"], "stoppers": [f.units[x]], "victim": v, "words": _words(l["type"])}
+            cause = _cause(l["type"], sts, v, "line", vics)
             fix = _fix_remove(f, x, "the unit of theirs that takes is taken, pinned, blocked or drawn away (the far end a variable)")
         else:
-            cause = {"type": l["type"], "stoppers": [], "victim": v, "words": _words(l["type"])}
+            cause = _cause(l["type"], [], v, "line", vics)
             fix = None
         facts_out.append(_fact("kept", {"A": f.units.get(story["taker_unit"]), "V": v, "X": f.units.get(x)}, "unmet", cause, fix))
         if fix:
             fixes.append(fix)
+    if source != "unread" and plies and not any(x["status"] == "unmet" and x["name"] != "bears" for x in facts_out) and row.get("verdict") != "CONFIRMED":
+        # the line did not end ahead but no named fact of the line is unmet (a taking that is not made, or a line that ends level): the line itself ends not ahead for the taker. Say so, and name the units of theirs that take in the line (the stoppers)
+        took_by = [p["uid"] for p in plies if p["side"] == owner and p["took"] is not None and p["uid"] is not None and p["uid"] != tgt_uid]       # the target itself taking is not something to take out: it is the goal
+        sts = _units_of(f, took_by)
+        if story["ends"] and not sts:
+            facts_out.append(_fact("kept", {}, "unmet", _cause("ends_game", [], None, "line"), None))
+        else:
+            fix = {"edits": [("remove", u[2]) for u in sts], "words": "the units of theirs that take in the line are taken, pinned, blocked or drawn away (the far end a variable)", "units": sts} if sts else None
+            facts_out.append(_fact("kept", {"A": f.units.get(story["taker_unit"]), "X": sts[0] if sts else None}, "unmet", _cause("not_ahead", sts, None, "line"), fix))
+            if fix:
+                fixes.append(fix)
     if source != "unread" and not any(x["status"] == "unmet" for x in facts_out) and row.get("verdict") != "CONFIRMED":
-        # the line did not end ahead but no named fact is unmet: the line itself ends against the taker with nothing named (the game's end, or a unit arriving): say so
-        facts_out.append(_fact("kept", {}, "unmet", {"type": "ends_game" if story["ends"] else "arrives", "stoppers": [], "victim": None, "words": _words("ends_game" if story["ends"] else "arrives")}, None))
+        facts_out.append(_fact("kept", {}, "unmet", _cause("ends_game" if story["ends"] else "arrives", [], None), None))       # as in plan 78.71: no line to read and nothing named
+    return _finish(item, source, row, facts, target, facts_out, fixes, steps, line, two, taker, owner, plies)
+
+
+def _finish(item: dict, source: str, row: dict, facts: Facts, target: tuple, facts_out: list, fixes: list, steps: list, line: list, two: bool, taker: str, owner: str, plies: list) -> dict:
+    """The goal dict from its facts: the unmet names, the key, the fixes (as in plan 78.71) and, new in plan 78.74, the stoppers, the fix as a set and its edits."""
     unmet = [x["name"] for x in facts_out if x["status"] in ("unmet", "unread")]
-    key = "|".join(sorted(f"{x['name']}:{x['cause']['type']}" for x in facts_out if x["status"] in ("unmet", "unread") and x["cause"]))
-    # the same unit once among the fixes' edits
+    key = "|".join(sorted(f"{x['name']}:{x['cause']['type']}" + (f"*{min(3, len(x['cause']['stoppers']))}" if len(x["cause"]["stoppers"]) > 1 else "") for x in facts_out if x["status"] in ("unmet", "unread") and x["cause"]))   # PLAN 78.74 C: a fact stopped by two units or more is a different chance from one stopped by one (the table is by this key)
     seen, uniq = set(), []
-    for fx in fixes:
+    for fx in fixes:                                               # the same edit once among the fixes' edits
         for e in fx["edits"]:
             if e not in seen:
                 seen.add(e)
                 uniq.append(e)
+    stoppers = []
+    for x in facts_out:
+        if x["status"] in ("unmet", "unread") and x["cause"]:
+            for u in x["cause"]["stoppers"]:
+                if u not in stoppers:
+                    stoppers.append(u)
+    fset = fix_set_of(facts_out, facts.goal_name)
+    set_edits, used = [], set()
+    for e in fset:                                                 # the set's edits: a unit once, a unit of the goal kind left out (the rules do not let it be taken out), a brought unit not also taken out
+        if not e["removable"]:
+            continue
+        ed = e["edit"]
+        src = ed[1]
+        if src in used:
+            continue
+        used.add(src)
+        set_edits.append(ed)
     return {"target": target, "source": source, "row": row, "facts": facts_out, "unmet": unmet, "fixes": fixes, "edits": uniq, "key": key, "stake": row.get("stake"), "line": line, "two_moves": two,
-            "lead": (line[0] if (two and line) else None), "verdict": row.get("verdict"), "taker": taker, "owner": owner, "net": row.get("net"), "plies": plies}
+            "lead": (line[0] if (two and line) else None), "verdict": row.get("verdict"), "taker": taker, "owner": owner, "net": row.get("net"), "plies": plies,
+            "stoppers": stoppers, "fix_set": fset, "set_edits": set_edits, "steps": steps, "n_unmet": len(unmet), "every": bool(row.get("every"))}
+
+
+def goal_unit_goal(item: dict, side: int, c: dict, facts: Facts, editor, text: str, taker: str, owner: str, names: dict) -> "dict | None":
+    """PLAN 78.74 A: THE GOAL UNIT as a target. It cannot be taken, so the claim is the forced end of the game the forcing read looks for (a row of `c["goal"]` where one is proved or suspected: then the goal works and is no goal). The facts: it is borne on
+    (a unit of ours bears on its place: else what shuts the line or which unit could be brought), and for every place the rules let it move to: that place is covered (a unit of ours bears on it: else what shuts the line, or which unit could be brought,
+    by which moves); and the forced end itself, unmet when the forcing read found none (`unread` when its fuse cut the read). `escapes` lists each place with who covers it; a place the goal unit's own side holds is not an escape (the rules do not let it move there)."""
+    owner_ix = names["roles"].index(owner)
+    if any(r.get("owner") == owner_ix for r in c.get("goal", ())):
+        return None
+    ft = facts.facts_for(text, taker)
+    fo = facts.facts_for(text, owner)
+    if ft is None or fo is None:
+        return None
+    gu = sorted(u for u, (s, k, _p) in fo.units.items() if s == owner and k == facts.goal_name)
+    if not gu:
+        return None
+    uid = gu[0]
+    target = fo.units[uid]
+    t = target[2]
+    tuid = ft.at.get(t)
+    if tuid is None:
+        return None
+    vars_t = {"T": target}
+    facts_out, fixes, steps, escapes = [], [], [], []
+    bears = ft.bearers(t, taker)
+    if bears:
+        facts_out.append(_fact("borne_on", {"A": ft.units[bears[0]], "T": target}, "met"))
+    else:
+        shut = sorted(((len(b), u, b) for (u, p), b in ft.shut.items() if p == t and ft.units[u][0] == taker and b))
+        if shut:
+            _n, u, btw = shut[0]
+            fix = {"edits": [("remove", ft.units[b][2]) for b in btw], "words": "the units between are moved off the line (the far end a variable)", "units": [ft.units[b] for b in btw]}
+            facts_out.append(_fact("borne_on", {"A": ft.units[u], "T": target}, "unmet", _cause("blocked", [ft.units[b] for b in btw], None, "graph"), fix))
+        else:
+            fix = bring_fix(ft, facts, taker, t, editor)
+            facts_out.append(_fact("borne_on", {"A": None, "T": target}, "unmet", _cause("no_bearer", [], None, "graph"), fix))
+            if fix:
+                steps.append({"step": "bring", "unit": fix["units"][0], "route": fix["route"], "moves": fix["moves"], "by": "the graph"})
+        if fix:
+            fixes.append(fix)
+    for p in sorted(fo.may.get(uid, ())):
+        cov = ft.bearers(p, taker)
+        occupant = ft.units[ft.at[p]] if p in ft.at else None
+        place_var = ("", "place", p)
+        if cov:
+            escapes.append({"place": p, "covered": True, "by": [ft.units[u] for u in cov], "occupant": occupant})
+            facts_out.append(_fact("covered", {"T": target, "P": place_var, "A": ft.units[cov[0]]}, "met"))
+            continue
+        shut = sorted(((len(b), u, b) for (u, q), b in ft.shut.items() if q == p and ft.units[u][0] == taker and b))
+        if shut:
+            _n, u, btw = shut[0]
+            fix = {"edits": [("remove", ft.units[b][2]) for b in btw], "words": "the units between are moved off the line (the far end a variable)", "units": [ft.units[b] for b in btw]}
+            cause = _cause("blocked", [ft.units[b] for b in btw], None, "graph")
+            facts_out.append(_fact("covered", {"T": target, "P": place_var, "A": ft.units[u]}, "unmet", cause, fix))
+        else:
+            fix = bring_fix(ft, facts, taker, p, editor)
+            facts_out.append(_fact("covered", {"T": target, "P": place_var}, "unmet", _cause("no_bearer", [], None, "graph"), fix))
+            if fix:
+                steps.append({"step": "bring", "unit": fix["units"][0], "route": fix["route"], "moves": fix["moves"], "by": "the graph", "for": p})
+        if fix:
+            fixes.append(fix)
+        escapes.append({"place": p, "covered": False, "by": [], "occupant": occupant, "fix": fix})
+    gap = any("out of budget" in k for k in c.get("dropped", {}))
+    facts_out.append(_fact("forced_end", vars_t, "unread" if gap else "unmet", _cause("out_of_budget" if gap else "no_forced_end", [], None, "line"), None))
+    row = {"place": t, "stake": None, "verdict": None, "net": None, "two_moves": False}
+    g = _finish(item, "goal_unit", row, facts, target, facts_out, fixes, steps, [], False, taker, owner, [])
+    g["escapes"] = escapes
+    return g
 
 
 def _source_of(row: dict) -> "str | None":
@@ -461,7 +665,8 @@ def rows_for(c: dict, side: int) -> "tuple[list, list]":
 
 
 def goals(item: dict, side: int, c: dict, facts: Facts, editor=None, record=None) -> list:
-    """THE PROPOSER: the goals of `side` at the position of `item` (see the module doc). Ordered by the stake of the target, the largest first (the chance of reaching is applied by the measure's table)."""
+    """THE PROPOSER: the goals of `side` at the position of `item` (see the module doc). PLAN 78.74 A: one goal per unit of the other side whose taking does not work yet (the rows of `c` are the threat list's AND, when subgoal_units.every_unit
+    has been run on `c`, one row for every other unit) and one for the goal unit. Ordered by how weak the target is (PLAN 78.74 C): the fewest unmet facts, then the largest stake (the chance of reaching is applied by the measure's table between the two)."""
     names = item["names"]
     if facts.goal_name is None:
         facts.goal_name = G2M.goal_kind_of(facts.variant)             # the name of the goal kind, as the engine words it
@@ -474,7 +679,10 @@ def goals(item: dict, side: int, c: dict, facts: Facts, editor=None, record=None
         g = build_goal(item, side, row, source, facts, editor, text, taker, owner, names)
         if g is not None:
             out.append(g)
-    out.sort(key=lambda g: (-(g["stake"] if g["stake"] is not None else 9.0), len(g["unmet"]), g["target"][2]))
+    gu = goal_unit_goal(item, side, c, facts, editor, text, taker, owner, names)
+    if gu is not None:
+        out.append(gu)
+    out.sort(key=lambda g: (len(g["unmet"]), -(g["stake"] if g["stake"] is not None else 9.0), g["target"][2]))
     return out
 
 
