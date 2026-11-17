@@ -224,7 +224,7 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
     """The concrete list of every item: {"start", "moves", "raw", "names", "list" (threat_list.threat_rows)} -> see the module doc. Three rounds of Rust calls over all the positions at once."""
     rec = record or lines.record
     games = [(it["start"], list(it["moves"])) for it in items]
-    out = [{"mover": [], "other": [], "exchange": [], "goal": [], "dropped": {}, "resp_read": 0, "resp_dropped": 0, "resp_sweeps": 0, "unread_rows": 0} for _ in items]
+    out = [{"mover": [], "other": [], "exchange": [], "goal": [], "dropped": {}, "dropped_rows": [], "resp_read": 0, "resp_dropped": 0, "resp_sweeps": 0, "unread_rows": 0} for _ in items]
     flat = []                                                    # every row of every list, a copy the reading fills in
     for i, it in enumerate(items):
         for side in ("mover", "other"):
@@ -233,8 +233,10 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
                 row.update(_i=i, _resp=[], _pending=[], verdict=None)
                 flat.append(row)
 
-    def drop(i: int, why: str) -> None:
+    def drop(i: int, why: str, row: "dict | None" = None, code: "str | None" = None) -> None:
         out[i]["dropped"][why] = out[i]["dropped"].get(why, 0) + 1
+        if row is not None:                                      # PLAN 78.71: a dropped claim is kept as a row (with the code of why and the line read, if any): the source of the goals that do not work yet
+            out[i]["dropped_rows"].append(dict({k: v for k, v in row.items() if not k.startswith("_")}, why=code, _i=i))
 
     # ---- round 1: the taking lines of every row and the forced end of the game for each side
     q1, plan1 = [], []
@@ -296,8 +298,12 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
             if best is not None and best["verdict"] in ("CONFIRMED", "UNREAD"):
                 _fill(row, best, True)
             else:
-                drop(row["_i"], "no unit bears on it and no move of the taker makes a taking stand" if not row["by"] else "a unit bears on it but no taking is legal")
+                if best is not None:                             # PLAN 78.71: a quiet move makes a taking stand and the line does not end ahead: the line is kept with the row
+                    _fill(row, best, True)
+                    row["dropped_verdict"] = row["verdict"]
+                code = ("two_move_not_ahead" if best is not None else ("no_bearer_no_move" if not row["by"] else "no_taking_legal"))
                 row["verdict"] = "DROPPED"
+                drop(row["_i"], "no unit bears on it and no move of the taker makes a taking stand" if not row["by"] else "a unit bears on it but no taking is legal", row, code)
         elif kind == "best":
             passed_value[a] = res["reads"][0] if res["ok"] and res["reads"] else None
         elif kind == "resp":
@@ -393,7 +399,7 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
         if v == "EXCHANGE":
             out[i]["exchange"].append(row)
         elif v == "REFUTED":
-            drop(i, "the taker ends behind: the claim is refuted")
+            drop(i, "the taker ends behind: the claim is refuted", row, "refuted")
         else:
             if v == "UNREAD":
                 out[i]["unread_rows"] += 1
