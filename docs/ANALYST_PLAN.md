@@ -12667,3 +12667,22 @@ B. Each kept response carries its own end; order: loses nothing first, then by n
 C. OBS: of the sweep's printed responses (26) 1 first reply changed on a read at depth 6, of all kept (63) 2; 12 of the deeper reads were cut by the fuse. Few change, so the sweep stays at 4 plies; the sweep at 6 plies costs mean 1.96 s per position against 0.61 s (slowest 7.39 s against 1.82 s).
 D. OBS: on the carry sample 167 rows with an unchanged read set and a fresh verdict that differs; the two lines differ only beyond the depth cut (one the start of the other, or the same line) in 30.5 pct; a move inside the lines' reach changed the line in 69.5 pct. Direction: the read set is too narrow for a concrete line, more than the depth cut makes the verdict unstable. Carried verdict equals the fresh one in 37.80 pct of unchanged read sets.
 E. print.txt: the same twenty positions, the 78.72 list beside the 78.73 list; time per position (one thread): median 0.33 s, mean 0.61 s, slowest 1.83 s. Checks by verdict and band, the response played, the puzzles: measure_obs.txt, puzzles_obs.txt. The top band is still not the highest. The move played is one of the kept responses in about 75 pct of rows, at a control rate of about 23 pct per drawn candidate (the control is now larger because more rows keep responses).
+
+
+### 78.73 READ (2026-11-16, main agent, after the merge)
+
+Serves SYSTEM_SPEC 8, the threat list. Numbers are the builder's OBS lines in artifacts/experiments/threats_78_73 (one run,
+directions only). I read position 15 of the new print against the board; the other four are the builder's self-check.
+
+- THE CAUSE OF THE MISSING RETREAT WAS A BUDGET CUT COUNTED AS A DROP. A quiet move prunes nothing, so it costs the most nodes,
+  and the sweep's small fuse cut exactly the plain retreats. Now a cut move is read again and, if still cut, named as not
+  judged. The retreat is first in position 15. General lesson: a fuse cut must never read as a refusal.
+- LIKE FOR LIKE CANCELS: about one exchange row in six changed verdict, most to CONFIRMED.
+- STILL WRONG: (1) position 6 still prints a clear gain as an exchange; the cause is now the record itself (the second kind's
+  worth and its wide interval), not the rule. This waits on the worth work, not on the list. (2) Ties among responses are
+  ordered by name. (3) The first kept response was the move played less often than in 78.72, though the kept set holds the move
+  played about as often. (4) The top band is still not the most dangerous. (5) CARRYING BY READ SET DOES NOT HOLD FOR A CONCRETE
+  LINE: most flips are lines that part inside their reach with the read set unchanged, so the read set of the frame is too
+  narrow for the line. The read set of a concrete line must be the units the line itself touched. Not built.
+- NEXT: plan 78.71 (subgoals). The list is good enough to be read by it. Points (2), (4), (5) and the rows from a quiet first
+  move are taken up by what 78.71 asks of the list.
