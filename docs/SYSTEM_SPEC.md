@@ -138,6 +138,15 @@ builders what is wrong; the mending comes from the graph, the reasoning and the 
 - **The loop while there is budget** (2026-11-16). "Any sort of estimate or hint is basically telling me what order
   to check the questions in. And those orders will kind of create new facts, and the new facts will get me to change
   the order of my questions." Hints and estimates ORDER; they do not conclude.
+- **What asks the questions: no model of its own** (DECIDED 2026-11-16, late; the main agent's recommendation, to
+  which he said "let's go with your rec"). The order of questions comes from reasoning already in the system: the
+  threat list says which questions matter first (section 8); means-ends says what the next one is, since a goal
+  that fails names what stops it and "can that be mended" is the next question (section 7); the four ways a line
+  ends say when to stop. Asking questions inside one move and holding a subgoal across moves are the same
+  mechanism at two scales, so the asking belongs to the opportunity policy and is not a third chooser. What is
+  MEASURED instead: how many questions a decision takes. A learned judge of "is one more question worth its
+  time" is added only if that count stays far above a human's, and then only to divide a fixed budget among
+  questions the reasoning ranks equal. A budget cut must never read as a refusal (plan 78.73).
 - **Chess is concrete** (2026-11-16). Where a concrete answer can be reached it is reached. When concreteness
   costs too much calculation, the finding is compressed in sleep (section 9).
 - **Open tactics are carried forward** (2026-11-16): "a memory of the tactics we have previously found", updated
@@ -237,6 +246,10 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
 
 - **Target.** Where no tactic is available now, the policy steers toward the abundance of high-value tactical
   opportunity. Its target is the chances of section 6.
+- **Two learned choosers in the system, and they are different** (2026-11-16, late). The sleep's chooser picks
+  which tool to run and is paid in surprises resolved per second (section 9). The opportunity policy picks a
+  subgoal and the moves toward it in play and is paid in results. The heads predict and choose nothing
+  (section 6). The asking of questions is part of this policy, not a separate model (section 4).
 - **How it acts, two ways that must not be mixed.** As a BELIEF: the chances are what a leaf is scored by when the
   reasoning has ended (section 6). As a HINT: a subgoal orders which questions and moves are looked at first. A
   subgoal never adds to the value (AGENTS.md rule 7); the chances are not a subgoal bonus, they are the estimate of
@@ -552,10 +565,6 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
    pursuit is dropped), and the three departures of the first build listed there.
-5. How many learned choosers are there, and is the one that orders the questions its own model (sections 4, 7, 9)?
-   As written: the sleep's chooser of actions is one; the opportunity policy is another; the heads are fitted, not
-   choosers; the order of questions in the wake has no model of its own and reads the heads and the held subgoal.
-   Raised by him 2026-11-16 ("I think they're different, right?"); not decided.
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
@@ -563,7 +572,7 @@ ended, and only orders before that (4, 6); the oracle as a last resort (9); the 
 the ability to go back (9); the policy is modular and models a sequence, not a distance (7); a line may end quiet while budget remains once
 every open tactic is checked (4); a sacrifice needs a reason, and one taken on the estimate alone is a surprise for
 the sleep (3, 9); the overall goal and its two halves (1); the rule for choosing a move, as a guide (8); the threat
-list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8); reachable has two layers, me playing only and with the opponent's veto (7); the language model is the judge of whether the engine reasons like a human, outside the engine (1, 11).
+list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8); reachable has two layers, me playing only and with the opponent's veto (7); the language model is the judge of whether the engine reasons like a human, outside the engine (1, 11); the learned choosers are two, the sleep's and the opportunity policy, and the asking of questions has no model of its own (4, 7, 9).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -605,7 +614,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The overall goal: reason like a human, concrete tactical steps then an evaluation at their end; the language model as the judge of the engine's reasoning, outside the engine; the second half: hold subgoals and navigate toward them over several moves | 2026-11-16 | 1, 7 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
 | Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the three reasons for a sacrifice; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
-| Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
+| Reasoning by questions; stake in one unit; hints order and facts reorder; the asking of questions has no model of its own, its count per decision is measured; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
 | The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition; reachable in two layers, me playing only and with the opponent's veto; choosing among goals by the weakness pointed at, goals as facts with no name, the fix of a problem as the subgoal, subgoals graded | 2026-11-14, 16 | 7 |
