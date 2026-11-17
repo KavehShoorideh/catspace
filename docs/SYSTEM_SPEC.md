@@ -329,6 +329,14 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
     relations, not any set of facts of the graph; one edit, taking the unit out, stands for remove, pin, block and
     draw away; reach is a table of how often the facts came true, by cause, because the event heads are too weak
     to give it, and it does not yet separate the two layers of reachable.
+- MEASURED (plan 78.78, one run, directions only): the goals as a hint among the moves the search holds equal,
+  scored on the open surprises of the ladder. Layer one's count is undefined for most goals and the hint is silent
+  in most tie positions. On the count of stoppers an accepted move advances a goal no more often than a move that
+  is not accepted. Read against the board, the accepted quiet moves mostly keep our own units safe, stop a goal
+  of the other side, or walk a unit a long way toward a listed goal.
+  PROPOSED (mine, not decided): the proposer is also run for the other side, and a move of ours that adds a
+  stopper to one of its goals is a defence, the opponent's veto of the two layers read from the other chair; and
+  layer one counts own moves along the graph with no cut at two. Plan 78.79 measures both.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -563,6 +571,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
 | The ladder (rungs 1 to 3) and the list of open surprises with groups | Built as a measurement (plan 78.68, first run). Of the positions tried, our reasoning alone reaches an accepted move in under two in five, nearly a third stay open at the longest clock, and those are mostly quiet moves in full positions the leaf's judge cannot tell apart. The heads as tie-break add nothing over the search's own first move. The groups do not yet separate causes |
 | Heads fitted on our own deeper reading and playouts, read at the leaf; the score of a rule (surprises resolved less created on an unseen part) | Built as a measurement (plan 78.68 stages G and H). One run: no candidate separates from the search's own first move; fitting on our own deeper reading did not change the picks. The weak part is what the leaf's inputs can see, then the coarse worths |
 | The ladder under each measured worth record | Measured (plan 78.76): the odds record, the self-play record and the human-result record give the same division within noise; the worths are not the main cause of the open surprises. Open ones are positions where nothing is taken inside the reading. CORRECTED by plan 78.77: a unit changing kind IS an event of the ledger (since plan 78.5) and only the print left it out; the line read and the search are two readings at different depths, and the printed line now follows the search's move |
+| The goals as a hint among equal moves, scored on the open surprises | Measured (plan 78.78): silent in most tie positions by layer one; no signal above the base rate by stoppers. Missing: goals that stop the other side's goals, and a count for long walks |
 | The menu, compression (rung 4), the chooser | Written, not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying first measured by a proxy, then truly (plans 78.70, 78.72): a claim whose read set did not change is held again only about half the time |
 | The threat list (threats with stake and response, in four bands) | Built concretely (plan 78.72, after a first form in 78.70): each row and each response is a line read to a settled end and judged by the measured worths; exchanges print apart; claims nothing bears on are dropped; the end of the game is a row for either side. Like for like cancels in the verdict and responses carry their own end and are ordered (plan 78.73). Still short of section 8: a clear gain can print as an exchange because the measured worths are coarse, many positions print no row, threats that need a quiet first move are rare, and the top band is not the most dangerous. Carrying by the frame's read set does not hold for a concrete line; the line's own read set is not built. Not wired into play |
@@ -585,6 +594,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
    pursuit is dropped), and the three departures of the first build listed there.
+   Added 2026-11-17: may a goal be "stop one of theirs", made by running the proposer for the other side
+   (PROPOSED in section 7, being measured in plan 78.79)?
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
