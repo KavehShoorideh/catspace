@@ -52,6 +52,24 @@ impl Judge for Nothing {
     fn name(&self) -> String { "nothing (no unit counts: only the end of the game)".into() }
 }
 
+/// PLAN 78.77: a kind-change event of a search's line ("promote <from> to <to>", "-" for a unit that arrived from nothing) as (from kind, to kind); None for any other event.
+pub fn change_event_kinds(text: &str) -> Option<(String, String)> {
+    let rest = text.strip_prefix("promote ")?;
+    let (a, b) = rest.split_once(" to ")?;
+    Some((if a == "-" { String::new() } else { a.to_string() }, b.to_string()))
+}
+
+/// PLAN 78.77 THE ABLATION OF THE KIND-CHANGE EVENT: a judge that reads everything as `J` does except a unit changing kind, which adds nothing (`change` is 0 for both sides). The search and the line read keep
+/// the same moves, captures and order; only the event "a unit changed kind" (`Game::changed`, scored by `Judge::change`) is taken out of the ledger, so its effect can be measured. Game-free.
+#[derive(Clone)]
+pub struct NoChange<J: Judge>(pub J);
+impl<J: Judge> Judge for NoChange<J> {
+    fn delta(&self, me: Role, owner: Role, kind: &str) -> i64 { self.0.delta(me, owner, kind) }
+    fn change(&self, _me: Role, _owner: Role, _from: &str, _to: &str) -> i64 { 0 }
+    fn worth(&self, kind: &str) -> i64 { self.0.worth(kind) }
+    fn name(&self) -> String { format!("{} (a change of kind adds nothing)", self.0.name()) }
+}
+
 /// A VALUATION RECORD plugged in (the store's entry in use: its worths by kind name, `ours_first` -- our losses weighted by LOSS: avoided before any gain).
 #[derive(Clone)]
 pub struct Worth { pub name: String, pub table: HashMap<String, i64>, pub ours_first: bool }

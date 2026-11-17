@@ -706,16 +706,16 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
     (summary, v)
 }
 
-/// solve_equals_batch(positions, seconds=0.2, worth={}, ours_first=False, valuation="", threads=0, store=None, specs={}, record=True, ledger_share=0.8, claims=True)
+/// solve_equals_batch(positions, seconds=0.2, worth={}, ours_first=False, valuation="", threads=0, store=None, specs={}, record=True, ledger_share=0.8, claims=True, ..., kind_change=True) (plan 78.77: `kind_change` False takes the event "a unit changed kind" out of the judge)
 /// -> [(move or None, proved, nodes, seconds, error or None, equal move names, equal move indices, ledger depth, ledger value, equal-reading seconds, legal moves, cut)]. Plan 78.50:
 /// the batch decision (as `solve_batch`: proof, claims, lemma order, the ledger search, the same move) with the root moves the search holds EQUAL to its best handed back. The ledger
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string()))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
-                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String) -> PyResult<Vec<EqualsRow>> {
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool) -> PyResult<Vec<EqualsRow>> {
     let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
     let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
@@ -726,7 +726,12 @@ fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, w
         None => cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &cs_tactics::ledger::Count, seconds, &params, record, store.as_ref(), orders[i].clone())),
         Some((w, of, name)) => {
             let j = cs_tactics::ledger::Worth { name: name.clone(), table: w.clone(), ours_first: *of };
-            cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &j, seconds, &params, record, store.as_ref(), orders[i].clone()))
+            if kind_change {
+                cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &j, seconds, &params, record, store.as_ref(), orders[i].clone()))
+            } else {                       // (plan 78.77: the event "a unit changed kind" taken out of the ledger, the ablation)
+                let off = cs_tactics::ledger::NoChange(j);
+                cs_decision::batch::solve(&positions, threads, "", |i, it| equals_one(i, it, &off, seconds, &params, record, store.as_ref(), orders[i].clone()))
+            }
         }
     });
     Ok(done.into_iter().map(|(s, v)| {

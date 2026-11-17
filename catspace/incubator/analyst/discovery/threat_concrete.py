@@ -92,6 +92,11 @@ class Record:
         half = {words[k]: 500.0 * (head["per_kind"][k]["one"]["hi"] - head["per_kind"][k]["one"]["lo"]) for k in head["kind_values"] if k in head["per_kind"]}
         return cls(worth, half, str(p))
 
+    def change_of(self, kind_from: str, kind_to: str) -> int:
+        """PLAN 78.77, the Python mirror of `Worth::change` (rust/engine/tactics/src/ledger.rs): what one of the mover's own units changing kind adds for the mover: the worth of the new kind less the old
+        one's (a unit that arrives from nothing, `kind_from` empty, is the worth of the new kind). A kind the record does not hold is worth 0, as in the engine."""
+        return self.worth.get(kind_to, 0) - (self.worth.get(kind_from, 0) if kind_from else 0)
+
     def resolution(self, kinds: list) -> float:
         """The least gap the record can tell apart in a ledger of these units: the half widths of their kinds added in quadrature (in the worths' own integers)."""
         return math.sqrt(sum(self.half.get(k, 0.0) ** 2 for k in kinds))
@@ -101,18 +106,20 @@ class Lines:
     """One per process: the Rust line read with the record as judge."""
 
     def __init__(self, record: Record, threads: int = 1, depth: int = DEPTH, fuse: int = FUSE, end_plies: int = END_PLIES, end_fuse: int = END_FUSE, variant: "str | None" = None,
-                 sweep_depth: int = SWEEP_DEPTH, sweep_fuse: int = SWEEP_FUSE):
+                 sweep_depth: int = SWEEP_DEPTH, sweep_fuse: int = SWEEP_FUSE, kind_change: bool = True):
         from catspace.incubator.analyst.discovery import human_heads_data as HD
         self.record, self.threads, self.depth, self.fuse, self.end_plies, self.end_fuse = record, threads, depth, fuse, end_plies, end_fuse
         self.sweep_depth, self.sweep_fuse = sweep_depth, sweep_fuse                          # the horizon and the fuse of the sweep of every legal move (PLAN 78.73 C reads it at the rows' depth)
         self.variant = variant or HD.VARIANT
+        self.kind_change = kind_change                                                          # PLAN 78.77: True (the default) is the ledger as it always was, with the event "a unit changed kind"; False takes it out
         self.cost = {"wall": 0.0, "queries": 0, "calls": 0}
 
     def ask(self, games: list, queries: list, depth: "int | None" = None, fuse: "int | None" = None) -> list:
         if not queries:
             return []
         t0 = time.perf_counter()
-        res = CE.read_lines(self.variant, games, queries, self.record.worth, depth or self.depth, fuse or self.fuse, self.end_plies, self.end_fuse, self.threads)
+        extra = {} if self.kind_change else {"kind_change": False}                              # (the default call is the call of every earlier run)
+        res = CE.read_lines(self.variant, games, queries, self.record.worth, depth or self.depth, fuse or self.fuse, self.end_plies, self.end_fuse, self.threads, **extra)
         self.cost["wall"] += time.perf_counter() - t0
         self.cost["queries"] += len(queries)
         self.cost["calls"] += 1

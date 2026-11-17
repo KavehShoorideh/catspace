@@ -98,7 +98,7 @@ def main(argv: "list | None" = None) -> int:
     if len(a) < 3 or a[0] != "compare":
         print(__doc__)
         return 2
-    root = Path(paths.experiment("ladder_78_76", "compare"))
+    root = Path(paths.experiment("ladder_78_77" if any("@" in n for n in a[1:]) else "ladder_78_76", "compare"))     # (PLAN 78.77: runs named RECORD@on / RECORD@off)
     root.mkdir(parents=True, exist_ok=True)
 
     def say(m: str) -> None:
