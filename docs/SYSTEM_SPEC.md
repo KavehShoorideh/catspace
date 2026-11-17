@@ -470,6 +470,14 @@ Kaveh: "the most complex piece".
   does not. The head then predicts "what I would conclude if I thought longer". It stays tied to the truth by the
   ends of games and by proved lemmas, never by an engine's number. The oracle remains the finder of questions and a
   MEASURE of the heads on held-out positions. If the heads stall, the last resort is taken up with his word.
+  MEASURED 2026-11-16 (plan 78.68 stages G and H, one run on a busy machine, a direction only): heads of the same
+  form were fitted on our own deeper reading and playouts and read at the settled end of each tied move's line.
+  On the part of the ladder's list no fit saw, no candidate separated from the search's own first move, at the
+  root or at the leaf, whatever it was fitted on. The fit lowered the loss a little on playout rows and did not
+  change the picks. READING (mine): the source of the target is not the weak part. The inputs at the leaf, kinds
+  and frames, cannot tell two quiet moves apart, the line's end is mostly two to four plies on, and the line
+  search judges by coarse worths. This is not yet "the heads stall" in the sense of the last resort, since the
+  inputs have not been widened; see section 13 item 3.
 - **When it wakes.** "No more than 5 hours", and "it could be more than 5 actions". One hour at most an action; the
   ceiling stays "unless we see some evidence that that's harming". He left the length to be scaled down ("maybe you need like a 5-minute sleep"); PROPOSED: a test at ten minutes, then
   an hour, the length then read from the printed curve of gain against time.
@@ -550,7 +558,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
 | The player reading a head as tie-break among moves the search holds equal | Built as a measurement (plan 78.67); the cheap arrival number is level with the frame heads and far cheaper; not switched on |
 | The sleep loop with a chooser | Built; lost twice to a fixed schedule on a menu of one kind; parked until the menu of section 9 exists |
 | The ladder (rungs 1 to 3) and the list of open surprises with groups | Built as a measurement (plan 78.68, first run). Of the positions tried, our reasoning alone reaches an accepted move in under two in five, nearly a third stay open at the longest clock, and those are mostly quiet moves in full positions the leaf's judge cannot tell apart. The heads as tie-break add nothing over the search's own first move. The groups do not yet separate causes |
-| The menu, compression (rung 4), the score of a rule, heads fitted on our own deeper reading | Written (plan 78.68 stages G and H next), not built |
+| Heads fitted on our own deeper reading and playouts, read at the leaf; the score of a rule (surprises resolved less created on an unseen part) | Built as a measurement (plan 78.68 stages G and H). One run: no candidate separates from the search's own first move; fitting on our own deeper reading did not change the picks. The weak part is what the leaf's inputs can see, then the coarse worths |
+| The menu, compression (rung 4), the chooser | Written, not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying first measured by a proxy, then truly (plans 78.70, 78.72): a claim whose read set did not change is held again only about half the time |
 | The threat list (threats with stake and response, in four bands) | Built concretely (plan 78.72, after a first form in 78.70): each row and each response is a line read to a settled end and judged by the measured worths; exchanges print apart; claims nothing bears on are dropped; the end of the game is a row for either side. Like for like cancels in the verdict and responses carry their own end and are ordered (plan 78.73). Still short of section 8: a clear gain can print as an exchange because the measured worths are coarse, many positions print no row, threats that need a quiet first move are rare, and the top band is not the most dangerous. Carrying by the frame's read set does not hold for a concrete line; the line's own read set is not built. Not wired into play |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
@@ -565,6 +574,9 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
 2. Is the tactical state Markov enough (section 7)? To be measured, then put to him.
 3. What counts as the heads having stalled, so that the last resort of fitting on the oracle is raised with him
    (section 9)? Proposed: the measure against the oracle's move not rising over three sleeps.
+   Added 2026-11-16 after plan 78.68 G and H: the first heads on our own deeper reading did not move the picks.
+   PROPOSED (mine): this does not count as stalled until the leaf's inputs have been widened and the worths
+   refined, since both are named causes we can still work on without the oracle.
 4. Where do subgoals come from, and how is one preferred to another (section 7)? Partly answered 2026-11-16:
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
