@@ -104,10 +104,19 @@ class RuleReader:
         self.stake = StakeReader()
         self.cost = {"frame": 0.0, "stake": 0.0, "concrete": 0.0, "every": 0.0, "goals": 0.0, "n": 0}
 
-    def read(self, moves: list, steps: tuple, cap: int = TM.PLY_CAP) -> "dict | None":
+    def read(self, moves: list, steps: tuple, cap: int = TM.PLY_CAP, side: "str | None" = None, start: "str | None" = None, ply: "int | None" = None) -> "dict | None":
+        """`side` (PLAN 78.79): None, the goals of the side to move (as always); "other", the goals of the OTHER side at the position, got by running this same reader on the position with the sides exchanged (the position after the game's
+        own pass: the other side is then to move; None when the game refuses the pass). `start` is the text the moves are played from (None: the start of the game); `ply` the ply the position stands at (default: the moves played), which
+        the stake reads the plies left from; the exchanged position keeps the ply of the one it comes from."""
+        if side == "other":
+            p = CE.passed(HD.VARIANT, start, list(moves))
+            if p is None:
+                return None
+            return self.read([], steps, cap, None, p[0], len(moves) if ply is None else ply)
+        ply = len(moves) if ply is None else ply
         t0 = time.perf_counter()
         q0 = self.lines.cost["queries"]
-        res = self.threads.read([(None, list(moves))], [[len(moves)]])
+        res = self.threads.read([(start, list(moves))], [[len(moves)]])
         if not res["rows"]:
             return None
         raw = res["rows"][0]
@@ -118,7 +127,7 @@ class RuleReader:
         for o, k, _p in raw["board"]:
             if names["kinds"][k] in cols:
                 K[0, cols.index(names["kinds"][k])] += 1.0 if o == raw["mover"] else -1.0
-        stake = TMS.stake_of_kinds(self.stake, K, np.array([max(1, cap - len(moves))], np.int64))[0]
+        stake = TMS.stake_of_kinds(self.stake, K, np.array([max(1, cap - ply)], np.int64))[0]
         lst = TL.threat_rows(raw, names, SU.stake_closure(stake, cols))
         mover = raw["mover"]
         rk = TL.rank_high_of(lst["mover"] + lst["other"])
@@ -130,7 +139,7 @@ class RuleReader:
             lst["mover"] = []                                    # goals only: the rows against us are not read
         if not use_goals:
             lst["other"] = []                                    # threats only: the rows against them are not read
-        item = {"start": None, "moves": list(moves), "raw": raw, "names": names, "list": lst}
+        item = {"start": start, "moves": list(moves), "raw": raw, "names": names, "list": lst}
         c = TC.concrete_lists([item], self.lines)[0]
         t3 = time.perf_counter()
         goals: list = []
@@ -144,7 +153,7 @@ class RuleReader:
         self.cost["stake"] += t2 - t1
         self.cost["concrete"] += t3 - t2
         self.cost["n"] += 1
-        pos = MR.Position(self.facts, HD.VARIANT, None, list(moves), names["roles"], mover)
+        pos = MR.Position(self.facts, HD.VARIANT, start, list(moves), names["roles"], mover)
         nodes = sum(r.get("nodes", 0) or 0 for pool in (c["mover"], c["other"], c["exchange"], c["dropped_rows"]) for r in pool)
         return {"lists": c, "goals": goals, "position": pos, "item": item, "queries": self.lines.cost["queries"] - q0, "nodes": nodes}
 
