@@ -354,9 +354,10 @@ Put together:
   among what was reached (section 7). The subgoal does not score the position.
 - **It is a guide to the shape of the thinking, not a fixed procedure.**
 
-PROPOSED (mine, one case his sentences leave open): an answer need not be a defence. A threat of ours with a
-larger stake than theirs is also an answer, the counter-threat. It is allowed only when the reasoning shows it
-concretely, never on the estimate alone.
+**A counter-threat is an allowed answer** (DECIDED 2026-11-16, late; asked "is a counter-threat an allowed answer
+to a threat", he said "Yes"). An answer need not be a defence: a threat of ours with a larger stake than theirs
+is also an answer. PROPOSED (mine, the condition): it is allowed only when the reasoning shows it concretely,
+never on the estimate alone.
 
 **The threat list: what any position must be able to answer** (DECIDED 2026-11-16). "In any given position, I want
 us to be able to answer what are the threats and what is the stake there." A threat that wins in one frame and is
@@ -535,10 +536,9 @@ State on 2026-11-16, in words only (plans 78.52 to 78.74 in docs/ANALYST_PLAN.md
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
    pursuit is dropped), and the three departures of the first build listed there.
-5. Is a counter-threat an allowed answer to a threat (section 8)? Proposed: yes, when shown concretely.
-6. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
+5. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
    from what the builder has read, the knowledge of the game may not?
-7. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
+6. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
@@ -546,7 +546,7 @@ ended, and only orders before that (4, 6); the oracle as a last resort (9); the 
 the ability to go back (9); the policy is modular and models a sequence, not a distance (7); a line may end quiet while budget remains once
 every open tactic is checked (4); a sacrifice needs a reason, and one taken on the estimate alone is a surprise for
 the sleep (3, 9); the overall goal and its two halves (1); the rule for choosing a move, as a guide (8); the threat
-list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15).
+list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -591,7 +591,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | No assumed worth; odds games; the unknown as a condition | 2026-11-15 | 5 |
 | The estimator: a belief; parts as inputs; sources in order of preference; rating; several heads; chances for each side; events from the rules; no horizon; the sequence; the opponent; concrete first; quiet or sharp by two readings; open tactics checked first | 2026-11-14, 15, 16 | 6 |
 | The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition, nearer as its chance and time; choosing among goals by the weakness pointed at, goals as facts with no name, the fix of a problem as the subgoal, subgoals graded | 2026-11-14, 16 | 7 |
-| The wake, step by step; the rule for choosing a move (threats first, answering a big threat is the subgoal, a small one may be left for an attack, the unseen threat read by statistics; a guide); the threat list with stake and response, high and low set by the spread; the wall | 2026-11-14, 16 | 8 |
+| The wake, step by step; the rule for choosing a move (threats first, answering a big threat is the subgoal, a small one may be left for an attack, the unseen threat read by statistics; a counter-threat is an allowed answer; a guide); the threat list with stake and response, high and low set by the spread; the wall | 2026-11-14, 16 | 8 |
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
