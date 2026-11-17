@@ -13,7 +13,7 @@ INTERFACE (what this module takes, what it returns, who calls it).
                    features(position, line)  -> {family: [tokens]}                                                                      what the surprise has in common with others
       limits     {"wake_seconds": the wake's clock (rung 1 and 2), "ladder": the increasing clocks of rung 3, "head": the head that decides rung 2 (default "arrival")}.
       returns    {"rung": 1 | 2 | 3 | 0, "cost": {rung: {"seconds", "nodes", "queries"}}, "chose": {what each rung chose, in moves of OUR tools and the booleans below},
-                  "equals": the size of the wake's equal set, "tie": {"eligible", "random_hit", "hits": {head: bool}, "control_hit"}, "found_at": the clock at which rung 3 picked the move, or None,
+                  "equals": the size of the wake's equal set, "tie": {"eligible", "random_hit", "hits": {head: bool}, "control_hit"}, "first_hit": the search's own first move at the wake's clock is accepted, "found_at": the clock at which rung 3 picked the move, or None,
                   "deep": what the deep reading found (the line of `tools.line` at the last clock reached), "features": the grouping features (rungs 3 and 0 only)}.
       RUNG 1 SHARP: our reasoning alone reaches the move: every move the search holds equal at the wake's clock is accepted, or the forcing read proves a first move that is accepted.
       RUNG 2 NOT SHARP: the search holds several moves equal, the accepted move is among them, and the head named in `limits` picks an accepted one. The other heads and the search's own first move are measured beside it
@@ -59,7 +59,8 @@ def ladder(position: dict, best_move, tools, limits: "dict | None" = None) -> di
     acc = set(best_move)
     cost = {1: _zero(), 2: _zero(), 3: _zero()}
     chose: dict = {}
-    out = {"rung": 0, "cost": cost, "chose": chose, "equals": 0, "tie": {"eligible": False, "random_hit": None, "hits": {}, "control_hit": None}, "found_at": None, "deep": None, "features": None}
+    out = {"rung": 0, "cost": cost, "chose": chose, "equals": 0, "tie": {"eligible": False, "random_hit": None, "hits": {}, "control_hit": None}, "found_at": None, "deep": None, "features": None,
+           "first_hit": None}
 
     def done(rung: int) -> dict:
         out["rung"] = rung
@@ -70,6 +71,7 @@ def ladder(position: dict, best_move, tools, limits: "dict | None" = None) -> di
     eq = list(s["equals"])
     out["equals"] = len(eq)
     chose["1 search"] = {"move": s["move"], "equals": len(eq), "proved": bool(s.get("proved"))}
+    out["first_hit"] = s["move"] in acc                          # PLAN 78.76: the search's own first move at the wake's clock is an accepted move (a measurement; it decides no rung by itself)
     if eq and set(eq) <= acc:
         return done(1)
     f = _timed(cost[1], tools.forced, position)

@@ -4,6 +4,11 @@ INTERFACE. cases(tag, n) takes the run's results, answers and groups under artif
 move our tools chose, the moves the oracle accepts (the answers file, read here for the human reader only), what our deepest reading found, and the group. Called by the command line only.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.ladder_print [--tag full] [--n 20]
+
+PLAN 78.76 `--records NAME NAME ...` (`records_cases`): the same positions side by side under each measured record of the kinds. THE SET IS FIXED BY A RULE BEFORE ANY RESULT IS READ: the first six open surprises of the 78.68 list
+(surprise_list.jsonl of the full run, in file order) and the first six positions, in the order of positions.jsonl, whose rung under some record differs from the first record's. Under each record: the moves the search holds
+equal, its first move, the best line and where it ends (each read at the clock that record's ladder stopped at: the wake's for rungs 1 and 2, the clock it was found at for rung 3, the last for an open one), and the accepted
+moves (the answers file, for the human reader only). Writes ladder_78_76/cases.txt.
 """
 from __future__ import annotations
 
@@ -77,12 +82,88 @@ def deep_cases(tag: str = "full", n: int = 10) -> Path:
     return root / "cases.txt"
 
 
+_CASE_TOOLS: dict = {}
+
+
+def _case_job(job: tuple) -> dict:
+    """One (record, position): the readers of our own reasoning at the clock the record's ladder stopped at."""
+    name, pid, moves, clock = job
+    if name not in _CASE_TOOLS:
+        _CASE_TOOLS[name] = LM.Tools(name)
+    t = _CASE_TOOLS[name]
+    s = t.search({"moves": moves}, clock)
+    ln = t.line({"moves": moves}, clock)
+    return {"name": name, "id": pid, "clock": clock, "search": s, "line": ln}
+
+
+def stop_clock(res: dict) -> float:
+    r = res["result"]
+    if r["found_at"]:
+        return r["found_at"]
+    if r["rung"] in (1, 2):
+        return LD.LIMITS["wake_seconds"]
+    return LD.LIMITS["ladder"][-1]
+
+
+def fixed_cases(names: list, per: int = 6) -> "tuple[list, list]":
+    """The two sets of the rule: the first `per` open surprises of the 78.68 list in file order; the first `per` positions of positions.jsonl whose rung under some record differs from the first record's."""
+    from catspace.incubator.analyst.discovery import ladder_compare as LC
+    src = LM.out_root("full")
+    lst = [json.loads(x)["id"] for x in (src / "surprise_list.jsonl").read_text().splitlines() if x.strip()]
+    runs = {n: LC.load_results(n) for n in names}
+    order = [json.loads(x)["id"] for x in (src / "positions.jsonl").read_text().splitlines() if x.strip()]
+    changed = [i for i in order if all(i in runs[n] for n in names) and len({runs[n][i]["result"]["rung"] for n in names}) > 1]
+    return lst[:per], changed[:per]
+
+
+def records_cases(names: list, per: int = 6, workers: int = 10) -> Path:
+    import multiprocessing
+    from catspace.incubator.analyst.discovery import ladder_compare as LC
+    first, changed = fixed_cases(names, per)
+    runs = {n: LC.load_results(n) for n in names}
+    ans = {d["id"]: d["accepted"] for d in (json.loads(x) for x in (LM.out_root("full") / "answers.jsonl").read_text().splitlines() if x.strip())}
+    pos = {d["id"]: d for d in (json.loads(x) for x in (LM.out_root("full") / "positions.jsonl").read_text().splitlines() if x.strip())}
+    ids = list(dict.fromkeys(first + changed))
+    jobs = [(n, i, pos[i]["moves"], stop_clock(runs[n][i])) for i in ids for n in names if i in runs[n]]
+    jobs.sort(key=lambda j: -j[3])
+    with multiprocessing.get_context("spawn").Pool(workers) as pool:
+        got = {(r["name"], r["id"]): r for r in pool.imap_unordered(_case_job, jobs, chunksize=1)}
+    lines = [f"RECORDS {names}; set A: the first {per} open surprises of the 78.68 list in file order; set B: the first {per} positions whose rung differs between the records", ""]
+    for title, sel in (("A", first), ("B", changed)):
+        for k, pid in enumerate(sel, 1):
+            b = chess.Board()
+            for m in pos[pid]["moves"]:
+                b.push_uci(m)
+
+            def nm(m: str) -> str:
+                return b.san(chess.Move.from_uci(m))
+            lines += [f"=== SET {title} CASE {k}: {pid}  ({'white' if b.turn else 'black'} to move)", str(b), "", f"the accepted moves: {', '.join(nm(m) for m in ans[pid])}"]
+            for n in names:
+                if (n, pid) not in got:
+                    continue
+                g, r = got[(n, pid)], runs[n][pid]["result"]
+                s, ln = g["search"], g["line"]
+                lines += [f"  --- record {n}: rung {r['rung']}" + (f" (found at {r['found_at']:g} s)" if r["found_at"] else "") + f"; read at {g['clock']:g} s",
+                          f"      held equal ({len(s['equals'])}): {', '.join(nm(m) for m in sorted(s['equals']))}",
+                          f"      the search's first move: {nm(s['move'])} ({'accepted' if s['move'] in ans[pid] else 'not accepted'})",
+                          f"      its best line: {san_line(b, ln['names'], 10)}; events {ln['events']}; ended {ln['end']} after {ln['depth']} plies, cut {ln['cut']}"]
+            lines.append("")
+    out = Path(paths.experiment("ladder_78_76", "cases.txt"))
+    out.write_text("\n".join(lines))
+    print(f"OBS ladder print: {len(first)} + {len(changed)} cases under records {names} written to {out}")
+    return out
+
+
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--records", nargs="+", default=None, help="PLAN 78.76: the fixed cases under each named record of the kinds (the first is the control)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
     a = ap.parse_args(argv)
+    if a.records:
+        records_cases(a.records)
+        return 0
     if a.deep:
         deep_cases(a.tag, a.n)
         return 0

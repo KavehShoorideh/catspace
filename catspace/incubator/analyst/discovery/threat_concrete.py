@@ -4,7 +4,7 @@ is written to rules/learned or data/derived. Game-free: a kind, a place or a rol
 model, no assumed worth: the only worths are the MEASURED record of the kinds (the odds games of 78.61, generation 2), and the record is also the judge's own measure of how far apart two ledgers must be to be told apart.
 
 INTERFACE (what this module takes, what it returns, who calls it).
-  Record.load(path)             the measured record of the kinds: its integer worths by the game's word for the kind (the judge of the line search, as 78.61 plays it), and the half width of the record's own confidence
+  Record.load(path, head)       (PLAN 78.76: `path` may name a record made by ladder_records.py; None is the generation-2 record) the measured record of the kinds: its integer worths by the game's word for the kind (the judge of the line search, as 78.61 plays it), and the half width of the record's own confidence
                                 interval of each kind (its RESOLUTION: the least gap between two ledgers that the record can tell apart).
   Lines(record, ...)            one per process: `ask(games, queries)` is the Rust `cs_engine.read_lines` (rust/engine/tactics/src/lines.rs: a line is read to a settled end by the ledger search with the record as judge;
                                 the forced end of the game by the forcing read). It reads nothing else of the engine and keeps the wall time and node counts it spent (`cost`).
@@ -22,7 +22,7 @@ INTERFACE (what this module takes, what it returns, who calls it).
   same_read_set(a, b)           THE LIST CARRIED FROM MOVE TO MOVE (E): the read set of a claim (threat_list.read_set_of) is the same at two positions. A claim whose read set is unchanged at the position two plies on is
                                 kept without being asked again; one whose read set changed is asked again. What carrying saves and how often the carried verdict is the one a fresh read gives are measured in
                                 threat_concrete_measure.py (`carry`); the wake does not call it yet.
-  Called by: threat_concrete_measure.py (the checks and the carry) and threat_print.py (the print) now; the wake's choice of move and the sleep's ladder later. No player calls it.
+  Called by: threat_concrete_measure.py (the tests and the carry) and threat_print.py (the print) now; the wake's choice of move and the sleep's ladder later. No player calls it.
 
 THE LINE OF A CLAIM. The taker is the side that does not own the unit. For a unit of the side to move the taker moves after the side to move passes once (what is threatened if nothing is done: the pass of the game; where the
 game gives none the row is UNREAD with that reason); for a unit of the other side the taker is the side to move. The taking moves are the legal moves of the taker that take a unit on the unit's place. Each is read to a settled end
@@ -49,6 +49,8 @@ from catspace.incubator.analyst.discovery import threat_list as TL
 from catspace.io import paths
 
 RECORD = ("odds_78_61", "full", "gen2", "record.json")           # the measured record of the kinds the lines are judged by (generation 2 of the odds games of 78.61)
+RECORD_DIR = ("ladder_78_76",)                                  # PLAN 78.76: the other measured records, one folder each, made by ladder_records.py from the stored fits (record.json in the layout above)
+DEFAULT_HEAD = "odds_effect"
 DEPTH = 6                                                       # plies after the first move: the horizon of a line (a named fuse of the read; the captures are resolved beyond it)
 FUSE = 40000                                                    # the node fuse of ONE line: a line it cuts is UNREAD
 SWEEP_DEPTH = 4                                                 # the sweep of every legal move reads each at a shorter horizon (and a smaller fuse) than the lines of the rows: its cost is the cost of the list
@@ -59,6 +61,19 @@ VERDICTS = ("CONFIRMED", "EXCHANGE", "REFUTED", "UNREAD")
 WHY = ("a taking", "the unit moves", "a guard is added", "a counter threat", "a unit is put between")
 
 
+def named(path: "str | Path") -> str:
+    """A record by name (a folder of RECORD_DIR holding record.json) or by file path."""
+    p = Path(str(path))
+    if str(path) == "gen2":
+        return str(paths.experiment(*RECORD))
+    if p.is_file():
+        return str(p)
+    q = Path(paths.experiment(*RECORD_DIR, str(path), "record.json"))
+    if not q.is_file():
+        raise FileNotFoundError(f"no record file {path} and no named record {q}")
+    return str(q)
+
+
 class Record:
     """The measured record of the kinds and what it can tell apart."""
 
@@ -66,10 +81,12 @@ class Record:
         self.worth, self.half, self.source = worth, half, source
 
     @classmethod
-    def load(cls, path: "str | Path | None" = None) -> "Record":
-        p = Path(path) if path else Path(paths.experiment(*RECORD))
+    def load(cls, path: "str | Path | None" = None, head: "str | None" = None) -> "Record":
+        """`path` is a file, or the NAME of a record made by ladder_records.py (`named`), or None for the generation-2 record of 78.61 (the default, as before). `head` names the entry of the file's heads the
+        kinds are read from (default the odds games' own)."""
+        p = Path(named(path)) if path else Path(paths.experiment(*RECORD))
         rec = json.loads(p.read_text())
-        head = rec["heads"]["odds_effect"]
+        head = rec["heads"][head or DEFAULT_HEAD]
         words = OM.kernel_names()                                # the record's name of a kind -> the game's word for it
         worth = {words[k]: int(v) for k, v in head["kind_values"].items()}
         half = {words[k]: 500.0 * (head["per_kind"][k]["one"]["hi"] - head["per_kind"][k]["one"]["lo"]) for k in head["kind_values"] if k in head["per_kind"]}

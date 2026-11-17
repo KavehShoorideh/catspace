@@ -11,7 +11,12 @@ INTERFACE (what this module takes, what it returns, who calls it).
   report                the OBS lines. `answer_features` (the oracle's move types, for a diagnostic of the groups only) is a separate file.
 Called by: the command line only.
 
-  .venv/bin/python -m catspace.incubator.analyst.discovery.ladder_measure sample|label|run|report|answer-features  [--n N] [--workers W] [--tag T]
+  .venv/bin/python -m catspace.incubator.analyst.discovery.ladder_measure sample|label|run|report|answer-features  [--n N] [--workers W] [--tag T] [--record NAME] [--limit N]
+
+PLAN 78.76 (SYSTEM_SPEC 5 and 9): THE RECORD IS A PARAMETER. `Tools(record=None)` takes a measured record of the kinds (threat_concrete.Record.load: a name made by ladder_records.py, a file, or None for the generation-2 record of
+78.61, the default as before) and judges EVERY reading the ladder does by it: the search (`solve_equals_batch`'s worth), the forcing read and the best line (`Lines`). `run` and `report` with `--record NAME` read the positions and the
+answers of the 78.68 run and write under artifacts/experiments/ladder_78_76/NAME/ (a short run, `--tag short --limit N`, under NAME/short/). Not read by the record, by design: the heads' own inputs (the 78.62 kind record the
+heads were fitted on, the frame read's stake), which are part of what the heads are. ladder_compare.py prints the extra OBS lines of a record's run and the table of rung changes between records.
 """
 from __future__ import annotations
 
@@ -40,6 +45,7 @@ from catspace.incubator.analyst.discovery import threat_list as TL
 from catspace.io import paths
 
 OUT = ("ladder_78_68",)
+OUT_RECORDS = ("ladder_78_76",)                                       # PLAN 78.76: the ladder under each measured record of the kinds
 BANDS = (("few", 0, 8), ("mid", 9, 16), ("many", 17, 99))          # phase by the count of units (a stated cut of this run)
 QUOTA = {"few": 0.25, "mid": 0.35, "many": 0.40}                      # the share of a source's positions asked of each band
 MIN_PLY = 8                                                           # no position inside the random opening of the match games or the first moves of a game
@@ -48,8 +54,11 @@ SEED = 6868
 LIMITS = dict(LD.LIMITS)
 
 
-def out_root(tag: str = "full") -> Path:
-    return Path(paths.experiment(*OUT, tag))
+def out_root(tag: str = "full", record: "str | None" = None) -> Path:
+    """The run's folder: the 78.68 one, or (a named record) ladder_78_76/<record>/ for the full run and ladder_78_76/<record>/<tag>/ for any other."""
+    if record is None:
+        return Path(paths.experiment(*OUT, tag))
+    return Path(paths.experiment(*OUT_RECORDS, record)) if tag == "full" else Path(paths.experiment(*OUT_RECORDS, record, tag))
 
 
 def band_of(units: int) -> str:
@@ -164,10 +173,10 @@ def label_all(rows: list, workers: int, out_file: Path, say) -> None:
 class Tools:
     """One per process. Every reader is one of our own; the oracle is not here."""
 
-    def __init__(self):
-        base = OM.players_of(TM.WORTH_GEN, OM.out_root() / "full")
-        self.worth = dict(base["worth"])
-        self.lines = TC.Lines(TC.Record.load(), threads=1)
+    def __init__(self, record: "str | None" = None):
+        self.record = TC.Record.load(record)                         # None: the generation-2 record, whose worths are those OM.players_of(WORTH_GEN) reads (a test confirms they are equal)
+        self.worth = dict(self.record.worth)
+        self.lines = TC.Lines(self.record, threads=1)
         self.wake_move = None
         self.last_move = None
         self.clocks = list(LIMITS["ladder"])
@@ -255,9 +264,9 @@ _THREADS = None
 
 def _run_one(job: tuple) -> dict:
     global _TOOLS
+    pid, source, band, units, moves, acc = job[:6]
     if _TOOLS is None:
-        _TOOLS = Tools()
-    pid, source, band, units, moves, acc = job
+        _TOOLS = Tools(job[6] if len(job) > 6 else None)
     t0 = time.perf_counter()
     try:
         r = LD.ladder({"moves": moves}, acc, _TOOLS, LIMITS)
@@ -268,7 +277,7 @@ def _run_one(job: tuple) -> dict:
     return {"id": pid, "source": source, "band": band, "units": units, "moves": moves, "result": r, "error": err, "wall": time.perf_counter() - t0}
 
 
-def run_all(rows: list, answers: dict, workers: int, root: Path, say) -> list:
+def run_all(rows: list, answers: dict, workers: int, root: Path, say, record: "str | None" = None) -> list:
     out_file = root / "results.jsonl"
     done = {}
     if out_file.exists():
@@ -276,7 +285,7 @@ def run_all(rows: list, answers: dict, workers: int, root: Path, say) -> list:
             if ln.strip():
                 d = json.loads(ln)
                 done[d["id"]] = d
-    jobs = [(r["id"], r["source"], r["band"], r["units"], r["moves"], answers[r["id"]]) for r in rows if r["id"] not in done]
+    jobs = [(r["id"], r["source"], r["band"], r["units"], r["moves"], answers[r["id"]], record) for r in rows if r["id"] not in done]
     t0 = time.perf_counter()
     n0 = len(done)
     with open(out_file, "a") as f, multiprocessing.get_context("spawn").Pool(workers) as pool:
@@ -340,38 +349,60 @@ def report(results: list, groups: list, root: Path, say) -> None:
         say(f"GROUP size {g['size']}: key {g['key']}; examples {ex}")
 
 
+def record_line(rec: "TC.Record", say) -> None:
+    """The one OBS line that names the record every reading of the run is judged by."""
+    say(f"RECORD {rec.source}: worths {dict(sorted(rec.worth.items(), key=lambda kv: kv[1]))}; half widths {({k: round(v, 1) for k, v in sorted(rec.half.items())})}; the search, the forcing read and the best line all read this record")
+
+
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("stage", choices=("sample", "label", "run", "report", "answer-features"))
     ap.add_argument("--n", type=int, default=400)
     ap.add_argument("--workers", type=int, default=9)
     ap.add_argument("--tag", default="full")
+    ap.add_argument("--record", default=None, help="PLAN 78.76: a measured record of the kinds (a name of ladder_records, a file, or gen2); outputs go to ladder_78_76/<record>/")
+    ap.add_argument("--limit", type=int, default=0, help="PLAN 78.76: the first N positions only (a short run)")
     a = ap.parse_args(argv)
-    root = out_root(a.tag)
+    root = out_root(a.tag, a.record)
     root.mkdir(parents=True, exist_ok=True)
+    src = out_root("full")                                           # the positions and the answers are those of the 78.68 run, whatever the record
 
     def say(m: str) -> None:
         line = f"OBS ladder {a.stage}: {m}"
         print(line, flush=True)
         with open(root / "obs.txt", "a") as f:
             f.write(line + "\n")
-    pos_file, ans_file = root / "positions.jsonl", root / "answers.jsonl"
+    pos_file, ans_file = src / "positions.jsonl", src / "answers.jsonl"
+    if a.record is not None and a.stage in ("sample", "label"):
+        raise SystemExit("sample and label are the 78.68 run's: no --record")
     if a.stage == "sample":
         rows = sample(a.n, say)
         pos_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
         return 0
     rows = [json.loads(x) for x in pos_file.read_text().splitlines() if x.strip()]
+    if a.limit:
+        rows = rows[:a.limit]
     if a.stage == "label":
         label_all(rows, a.workers, ans_file, say)
         return 0
     answers = {json.loads(x)["id"]: json.loads(x)["accepted"] for x in ans_file.read_text().splitlines() if x.strip()}
     if a.stage == "run":
         say(f"load average {os.getloadavg()[0]:.2f}; clocks: the wake's {LIMITS['wake_seconds']} s, then {LIMITS['ladder']}; {a.workers} workers")
-        res = run_all(rows, answers, a.workers, root, say)
+        if a.record is not None:
+            record_line(TC.Record.load(a.record), say)
+        res = run_all(rows, answers, a.workers, root, say, a.record)
         report(res, write_list(res, root), root, say)
+        if a.record is not None:
+            from catspace.incubator.analyst.discovery import ladder_compare as LC
+            LC.extra_report(res, say)
     elif a.stage == "report":
         res = [json.loads(x) for x in (root / "results.jsonl").read_text().splitlines() if x.strip()]
+        if a.record is not None:
+            record_line(TC.Record.load(a.record), say)
         report(res, write_list(res, root), root, say)
+        if a.record is not None:
+            from catspace.incubator.analyst.discovery import ladder_compare as LC
+            LC.extra_report(res, say)
     else:
         lst = [json.loads(x) for x in (root / "surprise_list.jsonl").read_text().splitlines() if x.strip()]
         out = {}
