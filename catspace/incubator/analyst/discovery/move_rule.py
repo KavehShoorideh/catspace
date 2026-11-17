@@ -148,7 +148,7 @@ def weight_graph(goal: dict, pf) -> int:
     return w
 
 
-def _unit_stepped(step: dict, now, pf) -> bool:
+def unit_stepped(step: dict, now, pf) -> bool:
     """A step's unit left the first place of its route and a unit of its kind and side stands on a later place of the route that was empty."""
     u, route = step.get("unit"), step.get("route") or []
     if not u or len(route) < 2:
@@ -157,6 +157,9 @@ def _unit_stepped(step: dict, now, pf) -> bool:
     if now.at.get(here) is None or now.units[now.at[here]] != (side, kind, here) or (here in pf.at and pf.units[pf.at[here]] == (side, kind, here)):
         return False
     return any(p in pf.at and pf.units[pf.at[p]] == (side, kind, p) and p not in now.at for p in route[1:])
+
+
+_unit_stepped = unit_stepped                                   # the old name (PLAN 78.79 gave it a public one)
 
 
 def advance_of(goal: dict, position: Position, move: str) -> "tuple | None":

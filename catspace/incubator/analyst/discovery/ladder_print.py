@@ -125,6 +125,58 @@ def pick_cases(tag: str = "full", shown: int = 5) -> Path:
     return root / "cases.txt"
 
 
+def pick_cases_79(tag: str = "full", shown: int = 5) -> Path:
+    """PLAN 78.79: the twelve positions of 78.78 again (case_rows.json of subgoal_pick_78_79/<tag> holds the same two sets), each with the board, the moves held equal, our first five goals in words with the long count of the first three
+    before and after each tied move, the OTHER side's first five goals in words, what each tied move costs them (+1 harder for them, -1 easier, the state of the goal), whether the line after the move keeps the unit that moved, the pick of
+    every candidate and the accepted moves (the answers file, for the human reader only). Writes cases.txt beside the preps."""
+    root = Path(paths.experiment("subgoal_pick_78_79", tag))
+    preps = pickle.loads((root / "preps.pkl").read_bytes())
+    cr = json.loads((root / "case_rows.json").read_text())
+    ans = {d["id"]: d["accepted"] for d in (json.loads(x) for x in (LM.out_root("full") / "answers.jsonl").read_text().splitlines() if x.strip())}
+    lines = ["THE SAME TWELVE POSITIONS AS PLAN 78.78 (set A: the first six open surprises of the scored part with an accepted move among the moves held equal; set B: the first six resolved positions the best candidate of 78.78 broke)", ""]
+    for title, key in (("SET A", "A"), ("SET B", "B")):
+        lines += [f"##### {title}", ""]
+        for k, pid in enumerate(cr[key], 1):
+            p = preps[pid]
+            b = chess.Board()
+            for m in cr["moves"][pid]:
+                b.push_uci(m)
+
+            def nm(m: str) -> str:
+                return b.san(chess.Move.from_uci(m))
+            lines += [f"=== SET {key} CASE {k}: {pid}  ({'white' if b.turn else 'black'} to move)", str(b), "",
+                      f"held equal ({len(p['tied'])}), the search's first move first: {', '.join(nm(m) for m in p['tied'])}",
+                      f"the accepted moves: {', '.join(nm(m) for m in ans[pid])}   (accepted among the tied: {', '.join(nm(m) for m in p['tied'] if m in ans[pid]) or 'none'})",
+                      f"OUR goals read: {len(p['goals'])}"]
+            lt = p.get("long")
+            for i, g in enumerate(p["goals"][:shown], 1):
+                lines.append(f"   our goal {i}: {g['words']}; layer one's count {g['own_moves']}; the long count {lt['before'][i - 1] if lt else '-'}")
+            if lt:
+                lines.append(f"   the long count of our first three goals after each tied move (before: {lt['before'][:3]}):")
+                for m in p["tied"]:
+                    lines.append(f"      {'*' if m in ans[pid] else ' '} {nm(m):8s}{lt['after'][m][:3]}")
+            th = p.get("their")
+            lines.append(f"THEIR goals (the same proposer, the sides exchanged): {p.get('their_n', 'not read')}")
+            for i, w in enumerate(p.get("their_words", [])[:shown], 1):
+                lines.append(f"   their goal {i}: {w}")
+            if th:
+                lines.append("   what each tied move costs their first five goals (+1 harder for them, -1 easier; g=gone, w=works, k=kept), the net over all their goals, and whether the line after the move keeps the unit that moved (reply read):")
+                for m in p["tied"]:
+                    row = th["after"][m]
+                    if row is None:
+                        lines.append(f"      {'*' if m in ans[pid] else ' '} {nm(m):8s}(the position after it was not read)")
+                        continue
+                    cs = " ".join(f"{r['cost']:+d}{r['state'][0]}" for r in row[:shown])
+                    rep = p.get("replied_raw", {}).get(m)
+                    lines.append(f"      {'*' if m in ans[pid] else ' '} {nm(m):8s}{cs}   net {sum(r['cost'] for r in row):+d}   unit kept by its line: {'yes' if rep is True else ('NO' if rep is False else 'not read')}")
+            for name, mv in cr["picks"][pid].items():
+                lines.append(f"   pick of {name}: {nm(mv)}" + (" (accepted)" if mv in ans[pid] else ""))
+            lines.append("")
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: subgoal pick 78.79 cases written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 _CASE_TOOLS: dict = {}
 
 
@@ -219,12 +271,16 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--records", nargs="+", default=None, help="PLAN 78.76: the fixed cases under each named record of the kinds (the first is the control)")
     ap.add_argument("--fixed-from", default=None, help="PLAN 78.77: print the positions of this earlier cases file again, then the first six whose rung differs between the named runs (RECORD@on, RECORD@off)")
     ap.add_argument("--pick", default=None, help="PLAN 78.78: the cases of the subgoal rule scored on the open surprises (subgoal_pick_78_78/<tag>)")
+    ap.add_argument("--pick79", default=None, help="PLAN 78.79: the twelve cases of 78.78 again, with the other side's goals and the long count (subgoal_pick_78_79/<tag>)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
     a = ap.parse_args(argv)
     if a.pick:
         pick_cases(a.pick)
+        return 0
+    if a.pick79:
+        pick_cases_79(a.pick79)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
