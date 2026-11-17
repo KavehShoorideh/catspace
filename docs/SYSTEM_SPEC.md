@@ -337,6 +337,11 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   PROPOSED (mine, not decided): the proposer is also run for the other side, and a move of ours that adds a
   stopper to one of its goals is a defence, the opponent's veto of the two layers read from the other chair; and
   layer one counts own moves along the graph with no cut at two. Plan 78.79 measures both.
+  MEASURED (plan 78.79, one run, directions only): the proposer run for the other side lists takings only, and a
+  move of ours costs those goals as often when it is not accepted as when it is; the same for the stoppers with a
+  reply read. The long count is undecided (a gap on one part of the split, none on the other). So the proposal
+  above is not supported as built. The purposes read off the cases are further kinds each time, and listing them
+  by hand is not what this section asks for; the open question is in section 13.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -572,6 +577,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
 | Heads fitted on our own deeper reading and playouts, read at the leaf; the score of a rule (surprises resolved less created on an unseen part) | Built as a measurement (plan 78.68 stages G and H). One run: no candidate separates from the search's own first move; fitting on our own deeper reading did not change the picks. The weak part is what the leaf's inputs can see, then the coarse worths |
 | The ladder under each measured worth record | Measured (plan 78.76): the odds record, the self-play record and the human-result record give the same division within noise; the worths are not the main cause of the open surprises. Open ones are positions where nothing is taken inside the reading. CORRECTED by plan 78.77: a unit changing kind IS an event of the ledger (since plan 78.5) and only the print left it out; the line read and the search are two readings at different depths, and the printed line now follows the search's move |
 | The goals as a hint among equal moves, scored on the open surprises | Measured (plan 78.78): silent in most tie positions by layer one; no signal above the base rate by stoppers. Missing: goals that stop the other side's goals, and a count for long walks |
+| The other side's goals as ours to stop, the long count, the replied stoppers | Measured (plan 78.79): defence and replied stoppers show no gap between accepted and not accepted moves; the long count is undecided |
 | The menu, compression (rung 4), the chooser | Written, not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying first measured by a proxy, then truly (plans 78.70, 78.72): a claim whose read set did not change is held again only about half the time |
 | The threat list (threats with stake and response, in four bands) | Built concretely (plan 78.72, after a first form in 78.70): each row and each response is a line read to a settled end and judged by the measured worths; exchanges print apart; claims nothing bears on are dropped; the end of the game is a row for either side. Like for like cancels in the verdict and responses carry their own end and are ordered (plan 78.73). Still short of section 8: a clear gain can print as an exchange because the measured worths are coarse, many positions print no row, threats that need a quiet first move are rare, and the top band is not the most dangerous. Carrying by the frame's read set does not hold for a concrete line; the line's own read set is not built. Not wired into play |
@@ -596,6 +602,11 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
    pursuit is dropped), and the three departures of the first build listed there.
    Added 2026-11-17: may a goal be "stop one of theirs", made by running the proposer for the other side
    (PROPOSED in section 7, being measured in plan 78.79)?
+5. How is the choice among quiet moves to be learned (section 7)? Five measurements (plans 78.68 G and H, 78.76 to
+   78.79) find no part as built that tells the accepted quiet move from the other equal moves. PROPOSED (mine):
+   the miner finds which changes of graph facts a move makes separate the move played in human games from the
+   other equal moves, so the purposes come out of data and not from a hand list; and the yardstick is widened,
+   since a hundred tie positions cannot show a small gain.
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
