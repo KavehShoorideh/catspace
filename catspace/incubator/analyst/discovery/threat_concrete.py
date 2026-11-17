@@ -220,6 +220,9 @@ def _fill(row: dict, best: dict, two: bool) -> None:
                nodes=best["nodes_all"])
 
 
+fill_row = _fill                                                 # PLAN 78.74: the public name (subgoal_units.py fills the rows it reads the same way)
+
+
 def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) -> list:
     """The concrete list of every item: {"start", "moves", "raw", "names", "list" (threat_list.threat_rows)} -> see the module doc. Three rounds of Rust calls over all the positions at once."""
     rec = record or lines.record
