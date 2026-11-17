@@ -12883,3 +12883,31 @@ THE WALL: the oracle (depth 14, five lines, "several best" within 30 hundredths 
 OBS (artifacts/experiments/ladder_78_68/full/obs.txt; one run of 400 positions, 200 own games of the 78.67 matches, 200 held-out human games, bands by units: few 100, mid 140, many 160; wake clock 0.2 s then 1, 4, 16, 64 s; load average 7 to 12 on 11 cores, a machine not quiet; directions only): rung 1 152, rung 2 81, rung 3 42, rung 0 125. Rung 2: 201 ties; arrival head hit 81, trees 74, linear 72, the search's own first move 81, a random pick 0.318 on average. Rung 3 found at 1 s 17, 4 s 10, 16 s 5, 64 s 10. 167 open surprises in 8 groups. Cost: rung 1 0.13 s a position, rung 2 1.8 s, rung 3 43 s (7159 s in all of 8400 s of work).
 READ: the largest group is simply rung 0 with a quiet position (84 of 167), the next rung 3 with no threat in the frame read (33); the features separate little. The accepted moves of the open surprises are nearly all quiet moves by the move types (taking 29 of 167, an answer to a listed threat 3). The line reader's best line and the search's move at the last clock differ in several cases, so our own readers disagree.
 STILL OPEN: the goal-step feature, the forcing read in rung 1 at a larger fuse, a stricter test of "picks the move" at rung 3 (the search holds only accepted moves), and a quiet machine for the clocks.
+
+
+### 78.68 LADDER READ (2026-11-16, main agent, after the merge)
+
+Serves SYSTEM_SPEC 9, the ladder and the list of surprises. Numbers are the builder's OBS lines in
+artifacts/experiments/ladder_78_68/full (400 positions, one run, a loaded machine; directions only). I read case 9 against the
+board.
+
+- HOW THE POSITIONS DIVIDE: our reasoning alone reaches an accepted move in under two in five; the head as tie-break in one
+  in five; deeper reading in one in ten; nearly a third stay open at the longest clock.
+- THE HEADS ADD NOTHING AT RUNG 2. The arrival head picks an accepted move exactly as often as the search's own first move,
+  both a little above a random pick. Rung 2 as counted is mostly the luck of a tie-break.
+- THE OPEN SURPRISES ARE QUIET MOVES IN FULL POSITIONS. Nearly half the positions with many units stay open; the accepted
+  moves there are almost all quiet; hardly any answers a listed threat. At the longest clock the search still holds many moves
+  equal. The judge at the leaf counts kinds only, so it cannot tell quiet moves apart. This is a weakness of the estimate at
+  the leaf, not of the depth of reading.
+- THE WORTHS, SEEN PLAINLY (case 9, corrected from the builder's reading): the accepted move gives the strongest unit for two
+  units of the second kind, a plain gain to a player. Our reading at the longest clock declines it. The record of generation 2
+  does not price two of the second kind above one of the first.
+- THE GROUPS SAY LITTLE YET: the largest holds half the list and is only "open, with quiet frames". The features do not
+  separate causes. Grouping needs what our deep reading found, which is thin when the reading finds nothing.
+- COST: rung 3 takes most of the time; a position that needs it costs on the order of three quarters of a minute.
+- A choice of the builder I keep: the oracle's move types stay out of the list (they would leak the answer into the groups).
+
+THE DIAGNOSIS, in the ladder's own terms: the weakest part is statistics, the estimate where the reading ends, then the worths.
+Reasoning is not the first bottleneck on these positions. NEXT: 78.68 stage G (heads fitted on our own deeper thinking and
+playouts, read AT THE LEAF and not only as a tie-break) scored by stage H on this list (surprises resolved less created, on a
+part of the list the fit never saw).
