@@ -89,7 +89,8 @@ def _case_job(job: tuple) -> dict:
     """One (record, position): the readers of our own reasoning at the clock the record's ladder stopped at."""
     name, pid, moves, clock = job
     if name not in _CASE_TOOLS:
-        _CASE_TOOLS[name] = LM.Tools(name)
+        rec, kc = LM.split_run(name)
+        _CASE_TOOLS[name] = LM.Tools(rec, kind_change=kc)
     t = _CASE_TOOLS[name]
     s = t.search({"moves": moves}, clock)
     ln = t.line({"moves": moves}, clock)
@@ -116,10 +117,26 @@ def fixed_cases(names: list, per: int = 6) -> "tuple[list, list]":
     return lst[:per], changed[:per]
 
 
-def records_cases(names: list, per: int = 6, workers: int = 10) -> Path:
+def ids_of_cases_file(path: "str | Path") -> list:
+    """The ids of the positions of an earlier cases file (the line `=== SET A CASE 3: <id>  (...)`), in file order, each once."""
+    out = []
+    for ln in Path(path).read_text().splitlines():
+        if ln.startswith("=== SET "):
+            pid = ln.split(": ", 1)[1].split("  (")[0].strip()
+            if pid not in out:
+                out.append(pid)
+    return out
+
+
+def records_cases(names: list, per: int = 6, workers: int = 10, fixed_from: "str | None" = None) -> Path:
+    """`fixed_from` (PLAN 78.77): a cases file of an earlier plan whose positions are printed again (as set A), then the first `per` positions whose rung differs between the runs `names` (set B)."""
     import multiprocessing
     from catspace.incubator.analyst.discovery import ladder_compare as LC
-    first, changed = fixed_cases(names, per)
+    first, changed = fixed_cases(names, 400 if fixed_from else per)
+    if fixed_from:
+        old = ids_of_cases_file(fixed_from)
+        first = old
+        changed = [i for i in changed if i not in old][:per]               # (the first `per` positions whose rung changes that the earlier file did not already print)
     runs = {n: LC.load_results(n) for n in names}
     ans = {d["id"]: d["accepted"] for d in (json.loads(x) for x in (LM.out_root("full") / "answers.jsonl").read_text().splitlines() if x.strip())}
     pos = {d["id"]: d for d in (json.loads(x) for x in (LM.out_root("full") / "positions.jsonl").read_text().splitlines() if x.strip())}
@@ -146,9 +163,9 @@ def records_cases(names: list, per: int = 6, workers: int = 10) -> Path:
                 lines += [f"  --- record {n}: rung {r['rung']}" + (f" (found at {r['found_at']:g} s)" if r["found_at"] else "") + f"; read at {g['clock']:g} s",
                           f"      held equal ({len(s['equals'])}): {', '.join(nm(m) for m in sorted(s['equals']))}",
                           f"      the search's first move: {nm(s['move'])} ({'accepted' if s['move'] in ans[pid] else 'not accepted'})",
-                          f"      its best line: {san_line(b, ln['names'], 10)}; events {ln['events']}; ended {ln['end']} after {ln['depth']} plies, cut {ln['cut']}"]
+                          f"      its best line (after the search's own move): {san_line(b, ln['names'], 10)}; events {ln['events']}; kind changes {ln.get('changes')}; ended {ln['end']} after {ln['depth']} plies, cut {ln['cut']}"]
             lines.append("")
-    out = Path(paths.experiment("ladder_78_76", "cases.txt"))
+    out = Path(paths.experiment("ladder_78_77" if fixed_from else "ladder_78_76", "cases.txt"))
     out.write_text("\n".join(lines))
     print(f"OBS ladder print: {len(first)} + {len(changed)} cases under records {names} written to {out}")
     return out
@@ -157,12 +174,13 @@ def records_cases(names: list, per: int = 6, workers: int = 10) -> Path:
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--records", nargs="+", default=None, help="PLAN 78.76: the fixed cases under each named record of the kinds (the first is the control)")
+    ap.add_argument("--fixed-from", default=None, help="PLAN 78.77: print the positions of this earlier cases file again, then the first six whose rung differs between the named runs (RECORD@on, RECORD@off)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
     a = ap.parse_args(argv)
     if a.records:
-        records_cases(a.records)
+        records_cases(a.records, fixed_from=a.fixed_from)
         return 0
     if a.deep:
         deep_cases(a.tag, a.n)

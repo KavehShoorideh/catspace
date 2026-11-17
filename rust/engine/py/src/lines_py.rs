@@ -4,12 +4,12 @@
 //! other side after the side to move passes once (`passed` = 1; a game that gives no pass answers {"ok": False}). `me_first` = 1: the line is read for the side that makes its first move; 0: for the other side.
 //! Modes: 0 the takings on place `a`; 1 the move from `a` to `b`; 2 every legal move; 3 the quiet moves after which a taking on place `a` stands (the other side passing once); 4 the forced end of the game
 //! for the mover of the position (the forcing read); 5 the moves of the mover after which the other side no longer forces the end. Returns, per query, {"ok", "reads": [...]} or {"ok", "forced": ...} or
-//! {"ok", "answers": [...]}. Modes 6 and 7 (a response, or every legal move, read two ways: the whole-board line and the taking lines of the unit on place  after it): {"afters": [...]}; mode 8: the best line of the mover. The judge of the lines is the caller's `worth` (the measured record of the kinds); mode 4 and 5 read the game's own end only.
+//! {"ok", "answers": [...]}. Mode 9 (plan 78.77): the line that starts with the LAST move of the game's list, read from the position before it for the side that played it (the move's own events, then the best replies); `kind_change` False reads the judge with the event of a unit changing kind taken out. Modes 6 and 7 (a response, or every legal move, read two ways: the whole-board line and the taking lines of the unit on place  after it): {"afters": [...]}; mode 8: the best line of the mover. The judge of the lines is the caller's `worth` (the measured record of the kinds); mode 4 and 5 read the game's own end only.
 use crate::base_graph_py::{bad, run_acc, GameWire};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
 use cs_game::Game;
-use cs_tactics::ledger::Worth;
+use cs_tactics::ledger::{Judge, NoChange, Worth};
 use cs_tactics::lines::{self as L, Forced, LineParams, LineRead};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -20,14 +20,24 @@ type Query = (usize, u8, u8, u8, u16, u16, u16);
 
 enum Res { NoPass, Lines(Vec<LineRead>), Afters(Vec<L::After>), Forced(Forced), Answers(Vec<((u16, u16), String, u8)>) }
 
-fn read_game(variant: &str, game: &GameWire, qs: &[(usize, Query)], judge: &Worth, p: LineParams, end_plies: u32, end_fuse: u64, out: &mut Vec<(usize, Res)>) -> Result<(), String> {
+fn read_game<J: Judge>(variant: &str, game: &GameWire, qs: &[(usize, Query)], judge: &J, p: LineParams, end_plies: u32, end_fuse: u64, out: &mut Vec<(usize, Res)>) -> Result<(), String> {
     let g = match &game.0 { Some(text) => KernelGame::from_fen(variant, text)?, None => KernelGame::new(variant, 518)? };
     let mut s = g.initial();
+    let mut last = None;                                          // (the position before the game's last move, and that move: mode 9 reads the line that starts with it)
     for (ply, name) in game.1.iter().enumerate() {
         let mv = g.find_move(&s, name).ok_or_else(|| format!("ply {ply}: {name} is not a legal move"))?;
-        s = g.apply(&s, &mv);
+        let next = g.apply(&s, &mv);
+        last = Some((s, mv));
+        s = next;
     }
     for (qi, (_gi, mode, passed, me_first, a, b, c)) in qs {
+        if *mode == 9 {
+            match &last {
+                Some((before, mv)) => match g.mover(before) { Some(who) => out.push((*qi, Res::Lines(vec![L::read_line(&g, judge, before, mv, who, p)]))), None => out.push((*qi, Res::NoPass)) },
+                None => out.push((*qi, Res::NoPass)),
+            }
+            continue;
+        }
         let p0 = if *passed == 1 { match g.pass(&s) { Some(x) => x, None => { out.push((*qi, Res::NoPass)); continue; } } } else { s.clone() };
         let Some(mover) = g.mover(&p0) else { out.push((*qi, Res::NoPass)); continue };
         let me = if *me_first == 1 { mover } else { g.other(mover) };
@@ -55,6 +65,7 @@ fn read_dict<'py>(py: Python<'py>, r: &LineRead) -> PyResult<Bound<'py, PyDict>>
     d.set_item("first", (r.first.0, r.first.1))?;
     d.set_item("names", r.names.clone())?;
     d.set_item("events", r.events.clone())?;
+    d.set_item("changes", r.changes.clone())?;
     d.set_item("value", r.value)?;
     d.set_item("end", r.end)?;
     d.set_item("depth", r.depth)?;
@@ -65,9 +76,9 @@ fn read_dict<'py>(py: Python<'py>, r: &LineRead) -> PyResult<Bound<'py, PyDict>>
 }
 
 #[pyfunction]
-#[pyo3(signature = (variant, games, queries, worth, depth=6, fuse=40000, end_plies=7, end_fuse=1500000, threads=0))]
+#[pyo3(signature = (variant, games, queries, worth, depth=6, fuse=40000, end_plies=7, end_fuse=1500000, threads=0, kind_change=true))]
 #[allow(clippy::too_many_arguments)]
-pub fn read_lines(py: Python<'_>, variant: &str, games: Vec<GameWire>, queries: Vec<Query>, worth: HashMap<String, i64>, depth: i32, fuse: u64, end_plies: u32, end_fuse: u64, threads: usize) -> PyResult<PyObject> {
+pub fn read_lines(py: Python<'_>, variant: &str, games: Vec<GameWire>, queries: Vec<Query>, worth: HashMap<String, i64>, depth: i32, fuse: u64, end_plies: u32, end_fuse: u64, threads: usize, kind_change: bool) -> PyResult<PyObject> {
     let _ = pad_probe();
     let judge = Worth { name: "record".into(), table: worth, ours_first: false };
     let p = LineParams { depth, fuse };
@@ -78,7 +89,13 @@ pub fn read_lines(py: Python<'_>, variant: &str, games: Vec<GameWire>, queries: 
     }
     let variant = variant.to_string();
     let threads = if threads == 0 { std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) } else { threads };
-    let accs = py.allow_threads(|| run_acc(games.len(), threads, Vec::<(usize, Res)>::new, |i, acc| read_game(&variant, &games[i], &by_game[i], &judge, p, end_plies, end_fuse, acc))).map_err(bad)?;
+    // PLAN 78.77: `kind_change` False takes the event "a unit changed kind" out of the ledger (the ablation); True (the default) is the ledger as it always was
+    let off = NoChange(judge.clone());
+    let accs = py.allow_threads(|| if kind_change {
+        run_acc(games.len(), threads, Vec::<(usize, Res)>::new, |i, acc| read_game(&variant, &games[i], &by_game[i], &judge, p, end_plies, end_fuse, acc))
+    } else {
+        run_acc(games.len(), threads, Vec::<(usize, Res)>::new, |i, acc| read_game(&variant, &games[i], &by_game[i], &off, p, end_plies, end_fuse, acc))
+    }).map_err(bad)?;
     let mut all: Vec<(usize, Res)> = accs.into_iter().flatten().collect();
     all.sort_by_key(|x| x.0);
     let out = PyList::empty(py);

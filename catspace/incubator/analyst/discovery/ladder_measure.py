@@ -46,6 +46,7 @@ from catspace.io import paths
 
 OUT = ("ladder_78_68",)
 OUT_RECORDS = ("ladder_78_76",)                                       # PLAN 78.76: the ladder under each measured record of the kinds
+OUT_EVENT = ("ladder_78_77",)                                         # PLAN 78.77: the ladder under a record with the event "a unit changed kind" on or off
 BANDS = (("few", 0, 8), ("mid", 9, 16), ("many", 17, 99))          # phase by the count of units (a stated cut of this run)
 QUOTA = {"few": 0.25, "mid": 0.35, "many": 0.40}                      # the share of a source's positions asked of each band
 MIN_PLY = 8                                                           # no position inside the random opening of the match games or the first moves of a game
@@ -54,10 +55,26 @@ SEED = 6868
 LIMITS = dict(LD.LIMITS)
 
 
+def split_run(name: "str | None") -> tuple:
+    """PLAN 78.77: a run's name is a record's name (as before) or `RECORD@on` / `RECORD@off`: the record and whether the event "a unit changed kind" is in the judge (True, the default of every run before 78.77) or taken out.
+    Returns (the record's name or None, kind_change)."""
+    if name is None or "@" not in name:
+        return name, True
+    rec, ev = name.split("@", 1)
+    if ev not in ("on", "off"):
+        raise ValueError(f"run name {name}: the event is on or off")
+    return rec, ev == "on"
+
+
 def out_root(tag: str = "full", record: "str | None" = None) -> Path:
-    """The run's folder: the 78.68 one, or (a named record) ladder_78_76/<record>/ for the full run and ladder_78_76/<record>/<tag>/ for any other."""
+    """The run's folder: the 78.68 one, or (a named record) ladder_78_76/<record>/ for the full run and ladder_78_76/<record>/<tag>/ for any other; a run named RECORD@on or RECORD@off (78.77) is under
+    ladder_78_77/RECORD_on/ (or _off), with <tag>/ below it for a short run."""
     if record is None:
         return Path(paths.experiment(*OUT, tag))
+    if "@" in record:
+        rec, kc = split_run(record)
+        name = f"{rec}_{'on' if kc else 'off'}"
+        return Path(paths.experiment(*OUT_EVENT, name)) if tag == "full" else Path(paths.experiment(*OUT_EVENT, name, tag))
     return Path(paths.experiment(*OUT_RECORDS, record)) if tag == "full" else Path(paths.experiment(*OUT_RECORDS, record, tag))
 
 
@@ -173,18 +190,22 @@ def label_all(rows: list, workers: int, out_file: Path, say) -> None:
 class Tools:
     """One per process. Every reader is one of our own; the oracle is not here."""
 
-    def __init__(self, record: "str | None" = None):
+    def __init__(self, record: "str | None" = None, kind_change: bool = True, line_from: str = "search"):
+        """PLAN 78.77: `kind_change` False takes the event "a unit changed kind" out of the judge of the search and of the line read (the ablation; True, the default, is the ledger as it always was); `line_from` "search" (the
+        default) prints the best line that follows the move the search chose at the clock just read, "root" the best line of the position read on its own (mode 8, as before 78.77)."""
         self.record = TC.Record.load(record)                         # None: the generation-2 record, whose worths are those OM.players_of(WORTH_GEN) reads (a test confirms they are equal)
         self.worth = dict(self.record.worth)
-        self.lines = TC.Lines(self.record, threads=1)
+        self.kind_change, self.line_from = kind_change, line_from
+        self.lines = TC.Lines(self.record, threads=1, kind_change=kind_change)
         self.wake_move = None
         self.last_move = None
         self.clocks = list(LIMITS["ladder"])
 
     def search(self, position: dict, seconds: float) -> dict:
         moves = list(position["moves"])
+        extra = {} if self.kind_change else {"kind_change": False}
         row = PM.equal_set(CE.solve_equals_batch([(OM.VARIANT, None, moves)], seconds, worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1,
-                                                 ledger_share=TM.LEDGER_SHARE)[0])
+                                                 ledger_share=TM.LEDGER_SHARE, **extra)[0])
         if seconds == LIMITS["wake_seconds"]:
             self.wake_move = row["move"]
         self.last_move = row["move"]
@@ -210,9 +231,15 @@ class Tools:
 
     def line(self, position: dict, scale: float) -> dict:
         i = self.clocks.index(scale) if scale in self.clocks else 0
-        r = self.lines.ask([(None, list(position["moves"]))], [(0, 8, 0, 1, 0, 0, 0)], TC.DEPTH + 2 * i, TC.FUSE * 4 ** i)[0]
+        moves = list(position["moves"])
+        if self.line_from == "search" and self.last_move is not None:
+            # PLAN 78.77 (b): the line that follows the move the search chose (mode 9: the last move of the game list, then the best replies of both sides), one ply deeper after it as mode 8 is
+            r = self.lines.ask([(None, moves + [self.last_move])], [(0, 9, 0, 1, 0, 0, 0)], TC.DEPTH + 2 * i + 1, TC.FUSE * 4 ** i)[0]
+        else:
+            r = self.lines.ask([(None, moves)], [(0, 8, 0, 1, 0, 0, 0)], TC.DEPTH + 2 * i, TC.FUSE * 4 ** i)[0]
         rd = (r.get("reads") or [{}])[0] if r.get("ok") else {}
-        return {"names": rd.get("names", []), "events": rd.get("events", []), "end": rd.get("end"), "depth": rd.get("depth"), "cut": rd.get("cut"), "nodes": rd.get("nodes", 0)}
+        return {"names": rd.get("names", []), "events": rd.get("events", []), "end": rd.get("end"), "depth": rd.get("depth"), "cut": rd.get("cut"), "nodes": rd.get("nodes", 0),
+                "changes": rd.get("changes", [])}
 
     def features(self, position: dict, deep: dict) -> dict:
         moves = list(position["moves"])
@@ -266,7 +293,8 @@ def _run_one(job: tuple) -> dict:
     global _TOOLS
     pid, source, band, units, moves, acc = job[:6]
     if _TOOLS is None:
-        _TOOLS = Tools(job[6] if len(job) > 6 else None)
+        rec, kc = split_run(job[6] if len(job) > 6 else None)
+        _TOOLS = Tools(rec, kind_change=kc)
     t0 = time.perf_counter()
     try:
         r = LD.ladder({"moves": moves}, acc, _TOOLS, LIMITS)
@@ -349,8 +377,9 @@ def report(results: list, groups: list, root: Path, say) -> None:
         say(f"GROUP size {g['size']}: key {g['key']}; examples {ex}")
 
 
-def record_line(rec: "TC.Record", say) -> None:
-    """The one OBS line that names the record every reading of the run is judged by."""
+def record_line(rec: "TC.Record", say, kind_change: bool = True) -> None:
+    """The one OBS line that names the record every reading of the run is judged by (and, since 78.77, whether the event of a unit changing kind is in the judge)."""
+    say(f"EVENT a unit changing kind is {'in' if kind_change else 'OUT OF'} the judge of the search, the forcing read and the best line")
     say(f"RECORD {rec.source}: worths {dict(sorted(rec.worth.items(), key=lambda kv: kv[1]))}; half widths {({k: round(v, 1) for k, v in sorted(rec.half.items())})}; the search, the forcing read and the best line all read this record")
 
 
@@ -389,7 +418,7 @@ def main(argv: "list | None" = None) -> int:
     if a.stage == "run":
         say(f"load average {os.getloadavg()[0]:.2f}; clocks: the wake's {LIMITS['wake_seconds']} s, then {LIMITS['ladder']}; {a.workers} workers")
         if a.record is not None:
-            record_line(TC.Record.load(a.record), say)
+            record_line(TC.Record.load(split_run(a.record)[0]), say, split_run(a.record)[1])
         res = run_all(rows, answers, a.workers, root, say, a.record)
         report(res, write_list(res, root), root, say)
         if a.record is not None:
@@ -398,7 +427,7 @@ def main(argv: "list | None" = None) -> int:
     elif a.stage == "report":
         res = [json.loads(x) for x in (root / "results.jsonl").read_text().splitlines() if x.strip()]
         if a.record is not None:
-            record_line(TC.Record.load(a.record), say)
+            record_line(TC.Record.load(split_run(a.record)[0]), say, split_run(a.record)[1])
         report(res, write_list(res, root), root, say)
         if a.record is not None:
             from catspace.incubator.analyst.discovery import ladder_compare as LC

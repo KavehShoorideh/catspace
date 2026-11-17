@@ -38,6 +38,8 @@ pub struct LineRead {
     pub names: Vec<String>,
     /// the ledger: every unit taken along the line, as (was it `me`'s, its kind as the game words it)
     pub events: Vec<(bool, String)>,
+    /// PLAN 78.77: the kind changes along the line (the other event of the ledger, `Game::changed`): (was it `me`'s, the kind left -- "" when the unit arrived from nothing --, the kind arrived)
+    pub changes: Vec<(bool, String, String)>,
     /// the judge's sum for `me` along the line with the best replies (WIN-sized where the game ends)
     pub value: i64,
     pub end: u8,
@@ -61,10 +63,22 @@ fn settled_len<G: Game>(g: &G, s: &G::State, names: &[String]) -> usize {
 
 fn lost_kind(text: &str) -> Option<&str> { text.strip_prefix("lose ") }
 
+/// The kind changes of one move, for `me`.
+fn changes_of<G: Game>(g: &G, s: &G::State, m: &G::Move, me: Role) -> Vec<(bool, String, String)> {
+    let mover = g.mover(s).unwrap_or(me);
+    g.changed(s, m).into_iter().map(|(a, b)| (mover == me, a, b)).collect()
+}
+
+/// The kind changes in a search's line events.
+fn changes_in(lost: &[(Role, String)], me: Role) -> Vec<(bool, String, String)> {
+    lost.iter().filter_map(|(o, e)| crate::ledger::change_event_kinds(e).map(|(a, b)| (*o == me, a, b))).collect()
+}
+
 pub fn read_line<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: &G::Move, me: Role, p: LineParams) -> LineRead {
     let mut sr = Search::with_fuse(g, judge, me, p.fuse);
     let d0 = sr.gain(s, m);
     let mut events: Vec<(bool, String)> = g.captured(s, m).into_iter().map(|(o, k)| (o == me, k)).collect();
+    let mut changes = changes_of(g, s, m, me);
     let mut names = vec![g.move_name(s, m)];
     let q = g.apply(s, m);
     let first = g.move_ends(s, m);
@@ -79,11 +93,12 @@ pub fn read_line<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: 
         depth = line.depth;
         cut = sr.cut() && line.depth < p.depth;
         names.extend(line.line);
+        changes.extend(changes_in(&line.lost, me));
         for (o, e) in line.lost { if let Some(k) = lost_kind(&e) { events.push((o == me, k.to_string())); } }
     }
     let end = if value >= WIN - 1000 { END_WON } else if value <= -WIN + 1000 { END_LOST } else { END_QUIET };
     let settled = settled_len(g, s, &names);
-    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, value, end, depth, nodes: sr.nodes, cut, settled }
+    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, changes, value, end, depth, nodes: sr.nodes, cut, settled }
 }
 
 pub fn takings_on<G: Game + Placed>(g: &G, s: &G::State, place: Place) -> Vec<G::Move> {
@@ -115,6 +130,7 @@ pub fn read_after<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m:
     // the move's own taking counts in every taking line after it: the lines are read from the position after the move, so its gain and its ledger are added to each
     let d0 = Search::with_fuse(g, judge, me, 1).gain(s, m);
     let ev0: Vec<(bool, String)> = g.captured(s, m).into_iter().map(|(o, k)| (o == me, k)).collect();
+    let ch0 = changes_of(g, s, m, me);
     let name0 = g.move_name(s, m);
     let takes = if g.outcome(&c).is_some() { vec![] } else {
         read_takings(g, judge, &c, now, me, p).into_iter().map(|mut r| {
@@ -122,6 +138,9 @@ pub fn read_after<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m:
             let mut ev = ev0.clone();
             ev.extend(r.events);
             r.events = ev;
+            let mut ch = ch0.clone();
+            ch.extend(std::mem::take(&mut r.changes));
+            r.changes = ch;
             r.names.insert(0, name0.clone());
             r.settled += 1;
             r
@@ -136,9 +155,10 @@ pub fn read_best<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me:
     let line = sr.run(s, p.depth + 1);
     let first = line.first_index.and_then(|i| g.moves(s).get(i).map(|m| g.move_ends(s, m))).unwrap_or((0, 0));
     let events = line.lost.iter().filter_map(|(o, e)| lost_kind(e).map(|k| (*o == me, k.to_string()))).collect();
+    let changes = changes_in(&line.lost, me);
     let end = if line.value >= WIN - 1000 { END_WON } else if line.value <= -WIN + 1000 { END_LOST } else { END_QUIET };
     let settled = settled_len(g, s, &line.line);
-    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names: line.line, events, value: line.value, end, depth: line.depth, nodes: sr.nodes, cut: sr.cut() && line.depth < p.depth, settled }
+    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names: line.line, events, changes, value: line.value, end, depth: line.depth, nodes: sr.nodes, cut: sr.cut() && line.depth < p.depth, settled }
 }
 
 /// The quiet moves of the mover of `s` that MAKE a threat on `place`: after the move and one pass of the other side a taking on `place` stands (the threat as the pass reads it). Each is then read as a whole-board
