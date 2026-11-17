@@ -12842,3 +12842,33 @@ READING (directions): the rule did not score above the search's own choice nor a
 COST per decision with two or more equal moves (OBS lines): the rule's reading was 556.5 ms (search 116.3) in rule v control, 603.5 ms for goals only, 247.3 ms for threats only. Share of decisions with two or more equal moves: 75.7 pct (rule v control), 79.1 pct (threats), 75.6 pct (goals). Counts per decision (counts/obs.txt, 15 pairs run afterwards because the 60-pair games did not keep them; the goals-only match kept them too): all branches, 1072 decisions: line queries median 21, mean 20.1, slowest 46; nodes read median 86858, mean 142918, slowest 1271480 (nodes of the rows' own lines and their responses; the rows' sum, not the engine's total); by branch in the file. The same two counts are printed under each decision of trace.txt.
 D (rule v control, 60 pairs; branches in full/obs.txt, held against not held in full/stage_d): steps that fired, in pct of ties: step 1 0.6 + 0.1 (with the held goal), step 2 held goal 14.8, held had no step 34.8, no goal held and first-ranked 7.8, no goal held and a later goal 31.7, step 3 0.7, step 4 9.4. Subgoals were held for 3511 spells of mean 1.17 decisions (median 1, longest 8; 3107 of one decision): a held goal is seldom kept to the next move, because the target moves or leaves, the stoppers rise by the line read, or no tied move is a step. Goals held, facts the graph can tell all true within 2 / 4 / 6 plies: 62.6 / 64.0 / 64.8 pct, against 3.9 / 9.0 / 13.0 pct for the other goals of those decisions; a unit of the target's kind then lost by its side within 2 / 4 / 6 plies: 8.3 / 22.0 / 28.0 pct against 4.5 / 11.2 / 17.7 pct. CAUTION: the held goal is the one a chosen move advances, so its facts coming true is partly by construction; the unit lost is not told from a trade, and the held goals are chosen by the move.
 SELF-CHECK against the board (five of the twenty): see the report; what is wrong: (1) position 13, the search's own Bxd7+ (a trade of the threatened unit with check) is not among the kept responses, the rule replaces it by a retreat; (2) position 18, a unit about to be made a new one stands one step from the last row and the threat list has no row for it (it reads takings only), the rule goes for a pawn; (3) goals like "win the rook behind two pawns" are ranked ahead of near ones and are not goals a player names, and a move that merely stands on a line with one unit between is described as taking a stopper out of the way; (4) an exchange is called winning a unit.
+
+
+### 78.75 READ (2026-11-16, main agent, after the merge)
+
+Serves SYSTEM_SPEC 8 (the rule for choosing a move) and 7 (holding a subgoal). Numbers are the builder's OBS lines in
+artifacts/experiments/move_rule_78_75 (one run, 120 games a match, reading not charged, machine not fully quiet, many games
+unfinished and counted as draws; directions only). I read the trace of position 18 against the board.
+
+- THE RULE DID NOT HELP IN PLAY. Against the search's own choice, a random tie-break and the arrival number of 78.67 its score
+  is at or under half; against the first and the third the interval lies under half. It costs half a second a decision. The
+  arrival number, which costs milliseconds, was above half against the same control in 78.67.
+- THE THREAT HALF WAS NOT TESTED BY THIS HARNESS. A threat was the deciding branch in under one tie in a hundred: where a
+  threat is real the search already holds one move best, so no tie is left. As a tie-break the threat list is redundant with
+  the search. Its use, by spec 8, is to say where the time goes and what is carried, and that is a test of cost at equal
+  strength, not of a tie-break. Owed.
+- THE GOAL HALF CHANGED THE MOVE IN MOST TIES AND DID NOT GAIN. The aims are not yet a player's (ranking by stoppers still
+  puts far units behind several units first), and a goal is held for one decision on the mean, so nothing is pursued.
+- QUESTIONS A DECISION (the count spec 4 now asks for): about twenty line queries and on the order of a hundred thousand nodes
+  a decision. A human asks a handful. This is the number to bring down.
+- JUDGED AGAINST THE BOARD: a taking with tempo that also answers a threat is not among the kept responses (position 13), so
+  the read is too strict about trades. The list has no row for a unit about to change kind on the last rank (position 18):
+  it reads takings only, though spec 6 names the events of the rules. A CORRECTION OF THE BUILDER'S SELF-CHECK: in position 18
+  it called the rule's move plainly wrong for leaving the file; the move stays on the file and holds the far place, so the
+  move is sound. The missing row is the fault, not the move.
+- THE MATCH IS A BLUNT TOOL HERE: at this clock a quarter to two thirds of games do not finish.
+
+WHAT THIS SAYS ABOUT THE ORDER OF WORK. Five builds on the list and the proposer ended in a player no better than a random
+tie-break. Three causes recur under all of them and none is in the list or the proposer: the measured worths are coarse, the
+heads are weak (the stake ranks worse than chance), and nothing learned tells a good aim from a far one. All three are the
+sleep's work. NEXT: plan 78.68, as ordered. The move rule stays as the sandbox the sleep's products are tested in.
