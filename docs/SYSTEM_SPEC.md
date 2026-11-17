@@ -284,9 +284,11 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
     when its chance falls, when our own estimate falls, or when another subgoal is better by a margin.
   - *Who referees.* In play, only our own reasoning and our own estimate (the wall of section 8). As a MEASURE of
     the proposer, outside play, the oracle may referee (section 9: a measure is not a fit).
-  - *Whether a language model does the pointing* is OPEN (section 13). He said: "I'm not sure if it has to be Gen
-    AI or not." The standing limit is no outside model in the learning loop; the first build uses the graph, the
-    frame read and the heads.
+  - *The pointing is done from the graph only* (DECIDED 2026-11-16, late). Asked whether a language model may
+    point at the weakness, he said: "Graph only. Language is the last step to convert to human friendly if
+    needed." So the proposer, the diagnosis and the choice of subgoal use the graph, the frame read and the heads.
+    A language model may only turn a finished result into words for a reader; nothing it writes is read back by
+    the wake or the sleep.
 - MEASURED (plan 78.71, one run, directions only), and where the first build departs from the form above:
   - *The diagnosis holds.* With the named stopper alone taken out, the goal worked in about half the cases; with
     another unit taken out instead, in few. So "is this the right fix" can be refereed by our own reasoning.
@@ -465,7 +467,7 @@ Kaveh: "the most complex piece".
   first guard, and going back is the last. Between them, this candidate: proved lemmas cannot be broken by later
   ones; fitted things are rechecked only where the dependency memory says the new item reaches; each explained
   surprise stays on the list as a standing test case.
-- **No outside language model inside the learning loop.** Statements come from the miner, proofs from the prover.
+- **No outside language model inside the learning loop or the decision.** Language is only the last step, to put a finished result into words for a reader (2026-11-16). Statements come from the miner, proofs from the prover.
 
 ## 10. Data rules (DECIDED 2026-11-15)
 
@@ -536,9 +538,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.74 in docs/ANALYST_PLAN.md
 5. Is a counter-threat an allowed answer to a threat (section 8)? Proposed: yes, when shown concretely.
 6. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
    from what the builder has read, the knowledge of the game may not?
-7. May a language model do the pointing at a weakness (section 7)? He is unsure. It would need the limit of
-   section 15 lifted for that use.
-8. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
+7. "Quasi-metric" for what is reachable: section 7 reads it as a chance and not a distance. Is that what he means?
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
@@ -546,7 +546,7 @@ ended, and only orders before that (4, 6); the oracle as a last resort (9); the 
 the ability to go back (9); the policy is modular and models a sequence, not a distance (7); a line may end quiet while budget remains once
 every open tactic is checked (4); a sacrifice needs a reason, and one taken on the estimate alone is a surprise for
 the sleep (3, 9); the overall goal and its two halves (1); the rule for choosing a move, as a guide (8); the threat
-list (8); every build checked against the spec (11).
+list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -572,7 +572,8 @@ list (8); every build checked against the spec (11).
 ## 15. Standing limits that apply to every plan
 
 No number of the oracle in a fit or in the wake, unless the last resort of section 9 is taken on his word. No
-outside language model in the learning loop. No assumed worth. Names are supplied, never knowledge of the game.
+outside language model in the learning loop or in any decision; language only puts a finished result into words.
+No assumed worth. Names are supplied, never knowledge of the game.
 A subgoal orders and never adds to the value. In play a subgoal is refereed by our own reasoning and estimate only.
 No game object named in a layer. No player id written. Lean before a lemma is relied on. The real store only on his
 word. Endgame coverage printed for every human sample. Numbers only where a program printed them. Every line of
@@ -595,6 +596,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
 | Every build checked against the spec; modules with stated interfaces; no quiet departure | 2026-11-16 | 11 |
+| The pointing at a weakness and the choice of subgoal are from the graph only; language is the last step, for a reader | 2026-11-16 | 7, 11, 15 |
 | What exists and the state of the build | 2026-11-16 | 12 |
 | Open questions | 2026-11-16 | 13 |
 | What was replaced | 2026-11-16 | 14 |
