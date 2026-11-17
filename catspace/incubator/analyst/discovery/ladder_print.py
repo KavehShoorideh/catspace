@@ -9,11 +9,17 @@ PLAN 78.76 `--records NAME NAME ...` (`records_cases`): the same positions side 
 (surprise_list.jsonl of the full run, in file order) and the first six positions, in the order of positions.jsonl, whose rung under some record differs from the first record's. Under each record: the moves the search holds
 equal, its first move, the best line and where it ends (each read at the clock that record's ladder stopped at: the wake's for rungs 1 and 2, the clock it was found at for rung 3, the last for an open one), and the accepted
 moves (the answers file, for the human reader only). Writes ladder_78_76/cases.txt.
+
+PLAN 78.78 `--pick TAG` (`pick_cases`): THE CASES OF THE SUBGOAL RULE scored on the open surprises (subgoal_pick_measure.py). THE TWELVE ARE FIXED BY RULE BEFORE THE CASES WERE READ (the measure writes them): the first six open
+surprises of the scored part whose accepted move is among the moves the search holds equal (set A) and the first six resolved positions the best candidate breaks (set B). Each: the board, the moves held equal, the first five goals
+in words, the count of each of them before and after each tied move (own = layer one's count of our own moves, None where it is not defined; w = the stoppers still in the way), the pick of every candidate and the accepted moves
+(the answers file, for the human reader only). Reads artifacts/experiments/subgoal_pick_78_78/<tag>/ (preps.pkl, case_rows.json); writes cases.txt beside them.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import pickle
 from pathlib import Path
 
 import chess
@@ -79,6 +85,43 @@ def deep_cases(tag: str = "full", n: int = 10) -> Path:
             lines.append("")
     (root / "cases.txt").write_text("\n".join(lines))
     print(f"OBS ladder print: deep cases written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
+def pick_cases(tag: str = "full", shown: int = 5) -> Path:
+    root = Path(paths.experiment("subgoal_pick_78_78", tag))
+    preps = pickle.loads((root / "preps.pkl").read_bytes())
+    cr = json.loads((root / "case_rows.json").read_text())
+    ans = {d["id"]: d["accepted"] for d in (json.loads(x) for x in (LM.out_root("full") / "answers.jsonl").read_text().splitlines() if x.strip())}
+    lines = [f"THE BEST CANDIDATE (by net, chosen before the cases were read): {cr['best']}", ""]
+    for title, key in (("SET A: OPEN SURPRISES WHOSE ACCEPTED MOVE IS AMONG THE MOVES HELD EQUAL", "A"), ("SET B: RESOLVED POSITIONS THE BEST CANDIDATE BREAKS", "B")):
+        lines += [f"##### {title}", ""]
+        for k, pid in enumerate(cr[key], 1):
+            p = preps[pid]
+            b = chess.Board()
+            for m in cr["moves"][pid]:
+                b.push_uci(m)
+
+            def nm(m: str) -> str:
+                return b.san(chess.Move.from_uci(m))
+            lines += [f"=== SET {key} CASE {k}: {pid}  ({'white' if b.turn else 'black'} to move)", str(b), "",
+                      f"held equal ({len(p['tied'])}), the search's first move first: {', '.join(nm(m) for m in p['tied'])}",
+                      f"the accepted moves: {', '.join(nm(m) for m in ans[pid])}   (accepted among the tied: {', '.join(nm(m) for m in p['tied'] if m in ans[pid]) or 'none'})",
+                      f"goals read: {len(p['goals'])}; threats against us (rule step 1): {p.get('threats')}; the rule fired branch {p['branch_rule']}"]
+            for i, g in enumerate(p["goals"][:shown], 1):
+                st = "; ".join(f"{x['step']}: {x['unit'][1] if x['unit'] else '?'} on {x['route'][0] if x['route'] else '?'} by {x['moves']} move(s)" for x in g["steps"]) or "no step"
+                lines.append(f"   goal {i}: {g['words']}; source {g['source']}; own count {g['own_moves']}; steps: {st}; stoppers {[f'{u[0]} {u[1]} {u[2]}' for u in g['stoppers']]}")
+            t = p["table"]
+            lines.append("   the counts after each tied move, own/w per goal (before: " + " ".join(f"{x['own']}/{x['w']}" for x in t["before"][:shown]) + ")")
+            for m in p["tied"]:
+                mark = "*" if m in ans[pid] else " "
+                near = sum(x["w"] for x in t["before"]) - sum(x["w"] for x in t["after"][m])
+                lines.append(f"    {mark} {nm(m):8s}" + " ".join(f"{x['own']}/{x['w']}" for x in t["after"][m][:shown]) + f"   (the stoppers of all goals summed: {near:+d} nearer)")
+            for name, mv in cr["picks"][pid].items():
+                lines.append(f"   pick of {name}: {nm(mv)}" + (" (accepted)" if mv in ans[pid] else ""))
+            lines += [f"   the rule's reason: {p['reason_rule']}", ""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: subgoal pick cases written to {root / 'cases.txt'}")
     return root / "cases.txt"
 
 
@@ -175,10 +218,14 @@ def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--records", nargs="+", default=None, help="PLAN 78.76: the fixed cases under each named record of the kinds (the first is the control)")
     ap.add_argument("--fixed-from", default=None, help="PLAN 78.77: print the positions of this earlier cases file again, then the first six whose rung differs between the named runs (RECORD@on, RECORD@off)")
+    ap.add_argument("--pick", default=None, help="PLAN 78.78: the cases of the subgoal rule scored on the open surprises (subgoal_pick_78_78/<tag>)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
     a = ap.parse_args(argv)
+    if a.pick:
+        pick_cases(a.pick)
+        return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
         return 0
