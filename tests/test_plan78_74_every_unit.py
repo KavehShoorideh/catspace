@@ -179,3 +179,12 @@ def test_the_game_free_files_of_plan_78_74_name_no_game_object():
         text = (base / f).read_text()
         hits = [(i + 1, m.group(0)) for i, line in enumerate(text.splitlines()) for m in re.finditer(CHESS_WORDS, line, re.IGNORECASE)]
         assert not hits, (f, hits[:5])
+
+
+def test_reachable_layer_one_counts_our_own_moves_with_the_other_side_passing():
+    assert SG.layer_one([("bears", "met", None)], []) == 0
+    assert SG.layer_one([("bears", "unmet", "no_bearer")], [("bring", 1)]) == 1
+    assert SG.layer_one([("bears", "unmet", "no_bearer")], [("bring", 2)]) == 2
+    assert SG.layer_one([("bears", "unmet", "no_bearer")], [("bring", None)]) is None
+    assert SG.layer_one([("bears", "unmet", "no_bearer"), ("covered", "unmet", "no_bearer")], [("bring", 2), ("bring", 1)]) is None      # above the limit of two
+    assert SG.layer_one([("unguarded", "unmet", "guard")], []) is None                                                                   # a unit of theirs that takes back is not removed by our moves alone

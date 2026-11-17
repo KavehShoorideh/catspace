@@ -4,6 +4,11 @@ reading of 78.70 are used as they are), one run each, directions only; no player
 knows the game's own text is the edit path built by the printing script, handed in as `editor`. No oracle, no engine evaluation, no external model, no assumed worth (the judge is the measured record, as in threat_concrete).
 Human games are read only through the existing row builders; no player id is written. Puzzles are not used.
 
+PLAN 78.74 (the same script, now run into subgoals_78_74): read also reads, per game, the line for every unit of the other side the threat list had no row for (subgoal_units.every_unit) before the goals are built; B reads the fix as a SET (variants: the old fix, the set, the first of the
+set alone, the last alone, the control, no edit); `--b-games N` reads B on the first N games only (the cost of a goal for every unit: about 1 s per position for A and C, about 1.4 s more for B); C ranks by the fewest unmet facts, then the chance of the key
+(table cross-fitted by game parity), then the stake, and grades the recall of the unit then won at first 1 and first 3 against: goals drawn at random from the same list, three units of the other side drawn at random, the stake alone, the unmet count alone (ties in
+random order, exact: top_hit). Outputs: goals.pkl, read_obs.txt, measure_obs.txt ("OBS goals74" lines).
+
 INTERFACE (what this module takes, what it returns, who calls it).
   read(a)     for the first `--games` held-out games: for every settled row (a position) of the game, the goals of the side to move (subgoal_goals.goals), the fix of each applied alone as a what-if edit and the claim read
               again (B), and, from the game as it was played, whether and when the facts of each goal came true and what the side then took (C), and every event where a side takes a unit and keeps it. Saves a pickle of
@@ -527,6 +532,18 @@ def cmd_grade(a) -> int:
     for k in LATER:
         have = [g for _gi, _p, g in goals if not g["untested"] and g["reach"].get(k) is not None]
         say(f"C REACH by {k} plies on (cumulative share of goals, the unit still standing then): {sum(1 for g in have if g['reach'][k])} of {len(have)} ({pct(sum(1 for g in have if g['reach'][k]) / max(1, len(have)))} pct)")
+    for _gi, _p, g in goals:
+        g.setdefault("own_moves", SG.layer_one(g["facts_c"], g["steps_c"]))                 # layer one from the compact record (the same function the goal's field is made with)
+    for lab, sel_f in (("0 moves", lambda x: x == 0), ("1 move", lambda x: x == 1), ("2 moves", lambda x: x == 2), ("not reachable by our moves alone (None)", lambda x: x is None)):
+        grp = [g for _gi, _p, g in goals if sel_f(g["own_moves"])]
+        wv = {}
+        for g in grp:
+            wv[g.get("verdict")] = wv.get(g.get("verdict"), 0) + 1
+        parts = []
+        for k in LATER:
+            have = [g for g in grp if not g["untested"] and g["reach"].get(k) is not None]
+            parts.append(f"by {k} plies {sum(1 for g in have if g['reach'][k])} of {len(have)} ({pct(sum(1 for g in have if g['reach'][k]) / max(1, len(have)))} pct)")
+        say(f"C REACH SPLIT BY LAYER ONE (our own moves needed, the other side passing: {lab}): {len(grp)} goals; the facts came true in the game as played: " + "; ".join(parts) + "; layer two (the line read with the other side's replies, the row's verdict): " + "; ".join(f"{k}: {v}" for k, v in sorted(wv.items(), key=lambda x: str(x[0]))))
     say("C THE TABLE of the chance of reaching within four plies, fitted on the other half of the games by the key of the goal (smoothed; tabled keys with at least 20 goals): " + "; ".join(f"{k or '-'}: {v[1]}/{v[0]}" for k, v in sorted(tabs[0][0].items(), key=lambda x: -x[1][0])[:8] if v[0] >= 20))
     edges = [0.0, 0.1, 0.2, 0.35, 0.5, 0.7, 1.01]
     for lo, hi in zip(edges, edges[1:]):

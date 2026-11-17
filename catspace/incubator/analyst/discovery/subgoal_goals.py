@@ -23,6 +23,13 @@ INTERFACE (what this module takes, what it returns, who calls it).
                                  goal of the position has more chance times stake). In play only our own reasoning and our own estimate referee; the oracle is not read anywhere in this plan.
   Called by: subgoal_measure.py (the checks B and C) and subgoal_print.py (the print) now; the wake's choice of move and the sleep's ladder later. Nothing calls it in play.
 
+PLAN 78.74 A to C (SYSTEM_SPEC 7, the proposer; the interface above is UNCHANGED, a goal only gains fields): a goal for EVERY unit of the other side (subgoal_units.every_unit adds to `c` a row, read by the existing line reader, for each unit the threat
+list had none for; goals() then builds from the rows as before) and for the GOAL UNIT (goal_unit_goal: source "goal_unit"; its facts borne_on, covered(place) for each place the rules let it move to, forced_end). A fact is read from the LINE where one was
+read (a taking works or fails by the line, never by counting the units that bear) and says so in cause["basis"] ("line", or "graph" where no line was read). Fields added to a goal: `stoppers` (every unit that stops an unmet fact: a set), `fix_set` (each stopper or
+brought unit with `left` = the facts still unmet if only it is dealt with, ordered by the fewest left; `removable` False for a unit of the goal kind, which the rules do not let be taken out), `set_edits` (the edits of the whole set), `steps` (where nothing
+of ours bears: the unit brought to bear, its route and by how many moves of the graph, 1, 2 or None, then the rest), `n_unmet`, `every` (the row was not in the threat list), and for the goal unit `escapes`. The key names a fact stopped by two units or more with a
+suffix (the table of chances is by the key). The default order of goals() is the weakest target first: the fewest unmet facts, then the larger stake; the measure puts the chance of the key between the two.
+
 THE FACTS OF A GOAL (the same four for every threat of ours; units are variables A, T, R, V, B, X):
   bears(A, T)        a unit of ours bears on the target (the graph's `bear`). Unmet: the line to it is shut by units between (named: they are the stoppers; the graph's `shut`), or no unit of ours has a line to it.
   may_take(A, T)     a bearer may take (the graph's `may_move`). Unmet: the bearer is tied (it stands alone between one of their units and one of ours: its leaving uncovers a line onto a unit of ours, the
@@ -536,6 +543,22 @@ def build_goal(item: dict, side: int, row: dict, source: str, facts: Facts, edit
     return _finish(item, source, row, facts, target, facts_out, fixes, steps, line, two, taker, owner, plies)
 
 
+def layer_one(facts_c: list, steps_c: list, limit: int = 2) -> "int | None":
+    """PLAN 78.74 (spec 7, reachable, layer one: OUR OWN MOVES ONLY, the other side passing): the number of our moves that make the unmet facts true, or None. Computed from the unmet facts and the steps (tuples (name, status, cause type) and (step, moves)):
+    no unmet fact: 0; a fact of bearing (bears, borne_on, covered) that needs our unit brought or a line freed counts the moves of its step (1 or 2, by the rules' own moves of the graph; a step with no known count: None); any other unmet fact (a unit of theirs
+    that takes back or takes elsewhere, a line that ends level, the forced end) cannot be made true by our moves alone with the other side passing, as far as this build computes it: None. A total above `limit` moves: None."""
+    unmet = [f for f in facts_c if f[1] in ("unmet", "unread")]
+    if not unmet:
+        return 0
+    if any(f[0] not in ("bears", "borne_on", "covered") or f[2] not in ("no_bearer", "blocked", "needs_quiet_move") for f in unmet):
+        return None
+    mv = [m for _s, m in steps_c]
+    if len(mv) < len(unmet) or any(m is None for m in mv):
+        return None
+    tot = sum(mv)
+    return tot if tot <= limit else None
+
+
 def _finish(item: dict, source: str, row: dict, facts: Facts, target: tuple, facts_out: list, fixes: list, steps: list, line: list, two: bool, taker: str, owner: str, plies: list) -> dict:
     """The goal dict from its facts: the unmet names, the key, the fixes (as in plan 78.71) and, new in plan 78.74, the stoppers, the fix as a set and its edits."""
     unmet = [x["name"] for x in facts_out if x["status"] in ("unmet", "unread")]
@@ -565,7 +588,9 @@ def _finish(item: dict, source: str, row: dict, facts: Facts, target: tuple, fac
         set_edits.append(ed)
     return {"target": target, "source": source, "row": row, "facts": facts_out, "unmet": unmet, "fixes": fixes, "edits": uniq, "key": key, "stake": row.get("stake"), "line": line, "two_moves": two,
             "lead": (line[0] if (two and line) else None), "verdict": row.get("verdict"), "taker": taker, "owner": owner, "net": row.get("net"), "plies": plies,
-            "stoppers": stoppers, "fix_set": fset, "set_edits": set_edits, "steps": steps, "n_unmet": len(unmet), "every": bool(row.get("every"))}
+            "stoppers": stoppers, "fix_set": fset, "set_edits": set_edits, "steps": steps, "n_unmet": len(unmet), "every": bool(row.get("every")),
+            "own_moves": layer_one([(x["name"], x["status"], x["cause"]["type"] if x["cause"] else None) for x in facts_out], [(s["step"], s["moves"]) for s in steps]),     # layer one of reachable: our moves only, the other side passing
+            "with_replies": row.get("verdict")}                                                                                                            # layer two: the read with the other side's replies (the line's verdict; None for the goal unit)
 
 
 def goal_unit_goal(item: dict, side: int, c: dict, facts: Facts, editor, text: str, taker: str, owner: str, names: dict) -> "dict | None":
