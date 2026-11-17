@@ -12768,3 +12768,60 @@ SPEC CHECK: serves SYSTEM_SPEC 7 "Choosing a subgoal, and getting there", piece:
 SAMPLE (reduced for cost, as the brief allowed): A and C on the first 600 of the 1000 held-out games (19910 positions), B on the first 60 of them; the full 1000 would have cost about 1.3 s per position of one thread, over 70 minutes on ten processes. The 600-game run took 2706 s.
 READING (directions): see the OBS in full600/measure_obs.txt and short50/. The proposer now lists a goal about the unit then won in about 96-99 pct of the events (78.71: 13.4 and 7.2 pct); the recall at first 1 / first 3, 2 plies back, is 20.9 / 47.0 against 10.9 / 31.7 for goals drawn at random from the list, 10.8 / 31.9 for units drawn at random, 8.6 / 25.6 for stake alone and 15.4 / 39.4 for unmet count alone; 4 plies back 15.2 / 38.9 against 10.5 / 30.9. The fix as a set works in more goals than the one-stopper fix (4411 of 14260 against 3406 of 14999 where legal), the control in 391 of 14999; the order inside a set is told from its reverse only weakly (326 against 258). The goal unit's set almost never makes a forced end. CAUTION: the events are chosen by the graph facts that became true, and the proposer's key uses the same kind of facts, so part of the gain may be the measure's own shape.
 WHAT IS STILL WRONG: (1) the count of unmet facts ranks a line shut by two or three units as one problem (position 15 goals 1, 2, 4 are lines through four units); the key now carries a stopper-count suffix so the table separates them, but the default order of goals() does not. (2) layer one of reachable counts a freed line as one move whatever the number of blockers, and no goal came out needing two moves; the unmet facts of their units (a guard, a retaker) are never reachable by our moves alone in this computation. (3) A goal for a two-move quiet line often has the only unmet fact "bears: needs a quiet move" and a not_ahead line without a stopper. (4) The coarse record still prices exchanges. (5) 12948 goals have no fix, 44735 have a set with nothing that can be taken out or brought (goal-kind stoppers).
+
+
+### 78.74 READ (2026-11-16, main agent, after the merge)
+
+Serves SYSTEM_SPEC 7, the proposer. Numbers are the builder's OBS lines in artifacts/experiments/subgoals_78_74 (600 games for
+A and C, 60 for B; one run, directions only; the 78.71 numbers are on another set of goals, so not like for like). I read the
+first goals of position 15 against the board; the rest of the reading is the builder's self-check, which I take as stated.
+
+- COVERAGE IS MENDED. A goal exists for nearly every unit then won. The proposer's first three hold the unit then won clearly
+  more often than every control (random from the list, random units, stake alone, unmet count alone), two and four plies back.
+  The builder's caution stands: the events are chosen by graph facts that came true and the ranking key uses facts of the same
+  kind, so part of the gain may be the shape of the measure.
+- STAKE ALONE RANKS WORSE THAN CHANCE. The stake from the kinds head is not a guide to what is won next.
+- THE PRINTED ORDER IS NOT A PLAYER'S. Judged against the board: goals whose one unmet fact is "bears" through two to four
+  units between rank first (position 15: the strongest unit against a unit in the corner through two units; another through
+  four). A fact with four stoppers is not one problem. The count of unmet facts must count stoppers, as the measured key does.
+- THE FIX AS A SET repairs more than one fix; the order within the set is weak.
+- REACH IN TWO LAYERS is carried as two fields. Layer one is crude: a freed line counts as one move whatever stands between,
+  and no goal needed two moves. Few goals' facts come true in the game as played.
+- GOAL-UNIT GOALS almost never give a forced end after the fix. Not useful yet.
+- COST: about a second and a third per position on one thread, most of it the line read of every unit.
+
+DECISION (main agent): no further round on the list or the proposer by themselves. Three rounds on the list and two on the
+proposer each moved their number, and all of it is measured on human games only. The next step is the first test in play.
+
+### PLAN 78.75: THE RULE FOR CHOOSING A MOVE, IN A SANDBOX (2026-11-16)
+
+Serves SYSTEM_SPEC 8 ("the rule for choosing a move", the wake's steps) and 7 (holding a subgoal), under rule 7: a subgoal
+orders and never adds to the value. A sandbox; the shipped player is not changed.
+
+PIECE AND INTERFACE. choose(position, tied, lists, goals, held) -> (move, reason, held'). `tied` is the set of moves the search
+holds equal (the 78.50 form, solve_equals_batch, as plan 78.67 used it); `lists` the concrete threat list of both sides
+(threat_concrete); `goals` the ranked goals (subgoal_goals, subgoal_units); `held` the subgoal carried from the last move or
+none. It returns one move of `tied`, the reason in words of the graph (which threat, which answer, which goal, which fact),
+and the subgoal now held. It never returns a move outside `tied`: the search's value decides, the rule only orders. Called by
+the match harness of 78.67 (tiebreak_measure.py) as one more tie-break.
+
+THE RULE, his guide of spec 8 made exact:
+1. THREATS FIRST. If a CONFIRMED row against us exists: a move of `tied` that is a kept response to the row of the highest
+   stake is preferred; among several, one that is also a step of the held goal. A counter-threat counts as an answer only when
+   it is a kept response of the concrete read (decided 2026-11-16).
+2. NO THREAT, OR THE THREAT ALREADY ANSWERED BY EVERY TIED MOVE: advance the subgoal. A move advances a goal when it is the
+   first move of the goal's line, a step that brings a unit to bear, or makes one of its unmet facts true (asked of the graph
+   after the move). The held goal is kept while its unmet facts do not rise; else the first-ranked goal is taken up.
+3. A BIG THREAT WITH NO KEPT RESPONSE IN `tied`: refuting it becomes the held subgoal; the reason says so.
+4. NOTHING APPLIES: the search's own choice.
+The ranking of goals counts stoppers, not facts (the 78.74 read).
+
+A. choose() and its tests on built positions, one per branch of the rule.
+B. THE TRACE. For the twenty positions: the decision printed as a line of thought (this threat, that answer, so this; or no
+   threat, this goal, this fact, so this move). The builder judges five against the board; the main agent judges them again.
+C. MATCHES in the 78.67 harness, same sides and openings: the rule against (1) the search's own choice, (2) a random
+   tie-break, (3) the arrival number of 78.67. Also the rule with step 2 off (threats only) and with step 1 off (goals only),
+   so each half is priced. Cost per move printed. Short match first. Timed matches need a quiet machine.
+D. HOW OFTEN each branch fired, how long a goal was held, how often a held goal's facts came true, how often the unit was
+   then won, against goals not held.
+Not here: sacrifices for an attack when the threat is small; the sleep. After this plan: 78.68.
