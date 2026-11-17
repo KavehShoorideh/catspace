@@ -38,7 +38,8 @@ from catspace.incubator.analyst.discovery import threat_measure as TM
 from catspace.incubator.analyst.discovery import two_readings as TR
 from catspace.io import paths
 
-OUT = ("threats_78_72",)
+OUT = ("threats_78_73",)
+OLD = ("threats_78_72",)                                            # the outputs of plan 78.72 (read only: the old verdicts and the old print)
 SRC = ("threats_78_70",)                                             # the frame-read rows of plan 78.70 (the same held-out games)
 CHUNK = 400
 SEED = 7272
@@ -55,7 +56,7 @@ def make_say(out: Path, name: str):
     lines: list = []
 
     def say(m: str) -> None:
-        lines.append(f"OBS threats72: {m}")
+        lines.append(f"OBS threats73: {m}")
         print(lines[-1], flush=True)
         (out / name).write_text("\n".join(lines) + "\n")
     return say
@@ -68,12 +69,13 @@ def src_dir() -> Path:
 # ------------------------------------------------------------------------------------------------------------------------------ reduction
 
 KEEP = ("side", "owner", "kind", "place", "place_ix", "class", "stake", "verdict", "net", "resolution", "line", "outcome", "lead", "two_moves", "deferred", "goal", "ended", "reason", "read_set", "resp_read",
-        "resp_unread", "nodes", "pv_disagrees", "depth", "first", "by", "response_ix")
+        "resp_unread", "nodes", "pv_disagrees", "depth", "first", "by", "response_ix", "resp_unread_moves", "resp_states")
 
 
 def reduce_row(r: dict) -> dict:
     out = {k: r.get(k) for k in KEEP}
-    out["response"] = [{"first": x["first"], "names": x["names"][:2], "net": x["net"], "how": x["how"], "source": x["source"], "state": x["state"]} for x in r.get("response", [])]
+    out["response"] = [{"first": x["first"], "names": x["names"][:2], "net": x["net"], "how": x["how"], "source": x["source"], "state": x["state"], "loses_nothing": x.get("loses_nothing"), "taker_lost": x.get("taker_lost"),
+                        "taker_won": x.get("taker_won"), "resp_loses": x.get("resp_loses")} for x in r.get("response", [])]
     return out
 
 
@@ -105,7 +107,7 @@ def cmd_read(a) -> int:
     idx = [j for j in range(len(lists)) if int(z["g"][j]) in keep_games]
     rec = TC.Record.load()
     lines = TC.Lines(rec, threads=a.threads)
-    say(f"read: the {len(keep_games)} first held-out games of the 78.70 sample, {len(idx)} settled rows; the judge: the measured record {rec.source}; line depth {lines.depth} plies, node fuse {lines.fuse} per line; sweep of every legal move at {TC.SWEEP_DEPTH} plies, fuse {TC.SWEEP_FUSE}; the end of the game within {lines.end_plies} plies, fuse {lines.end_fuse}; {a.threads} threads")
+    say(f"read: the {len(keep_games)} first held-out games of the 78.70 sample, {len(idx)} settled rows; the judge: the measured record {rec.source}; line depth {lines.depth} plies, node fuse {lines.fuse} per line; sweep of every legal move at {lines.sweep_depth} plies, fuse {lines.sweep_fuse} (a move it cuts is read again with fuse {lines.fuse}); the end of the game within {lines.end_plies} plies, fuse {lines.end_fuse}; {a.threads} threads")
     nchunk = (len(idx) + CHUNK - 1) // CHUNK
     parts = []
     t1 = time.perf_counter()
@@ -333,6 +335,8 @@ def cmd_carry(a) -> int:
             m[(r["owner"], r["kind"], r["place_ix"])] = r
         return m
     st = collections.Counter()
+    diff_cat: collections.Counter = collections.Counter()
+    diff_pair: collections.Counter = collections.Counter()
     per_game: dict = collections.defaultdict(collections.Counter)
     saved_nodes = 0
     fresh_nodes = 0
@@ -367,6 +371,21 @@ def cmd_carry(a) -> int:
             per_game[g][tag + " held again"] += int(held)
             if same:
                 saved_nodes += int(fresh["nodes"] or 0) if fresh is not None else 0
+                if fresh is not None and fresh["verdict"] != row["verdict"]:                      # PLAN 78.73 D: the two lines of a row whose read set is unchanged and whose verdicts differ
+                    l1, l2 = list(row["line"] or []), list(fresh["line"] or [])
+                    k = 0
+                    while k < min(len(l1), len(l2)) and l1[k] == l2[k]:
+                        k += 1
+                    if l1 == l2:
+                        cat = "same line, another verdict"
+                    elif k == min(len(l1), len(l2)):
+                        cat = "one line is the start of the other (they differ only beyond where the shorter one ends)"
+                    elif k == 0:
+                        cat = "the first move differs"
+                    else:
+                        cat = "the lines part inside both"
+                    diff_cat[cat] += 1
+                    diff_pair[(row["verdict"], fresh["verdict"])] += 1
         fresh_nodes += sum(int(x["nodes"] or 0) for x in v2.values())
         carried = [k for k in v2 if k in v1 and unchanged({"read_set": v1[k]["read_set"], "members": v1[k]["read_set"][1]}, mem2.get(k))]
         st["rows at n+2"] += len(v2)
@@ -382,6 +401,10 @@ def cmd_carry(a) -> int:
         de = np.array([sum(per_game[x][k] for k in den_keys) for x in gl], float)
         p, dr = gb.ratio(nu, de, z1, 1)
         return TM.band_txt(p[0], dr[:, 0], 100.0, "{:.2f}")
+    nd = sum(diff_cat.values())
+    say(f"D STABILITY: rows with an unchanged read set and a row again at n+2 whose fresh verdict differs from the carried one: {nd}; by verdict pair " + "; ".join(f"{a_} -> {b_}: {v}" for (a_, b_), v in sorted(diff_pair.items())))
+    say("D STABILITY: how the two lines (the one read at n, the fresh one at n+2) differ: " + "; ".join(f"{k_}: {v} ({100 * v / max(1, nd):.1f} pct)" for k_, v in sorted(diff_cat.items(), key=lambda kv: -kv[1])))
+    say(f"D STABILITY: the share that differs only beyond the depth cut (one line the start of the other, or the same line): {100 * (diff_cat['one line is the start of the other (they differ only beyond where the shorter one ends)'] + diff_cat['same line, another verdict']) / max(1, nd):.1f} pct; the share where a move inside the lines' reach, with the read set unchanged, changed the line (the lines part, or the first move differs): {100 * (diff_cat['the lines part inside both'] + diff_cat['the first move differs']) / max(1, nd):.1f} pct")
     say(f"E CARRYING of the concrete list: claims read at ply n (a row of any verdict) with the same side to move two plies on: read set UNCHANGED {st['unchanged']}, CHANGED {st['changed']}")
     say(f"E: of the claims with the read set UNCHANGED, the unit has a row again at n+2 in {share(('unchanged held again',), ('unchanged',))} pct, and the CARRIED verdict (the one read at n) is the verdict a fresh read gives at n+2 in {share(('unchanged verdict agrees',), ('unchanged',))} pct")
     say(f"E: of the claims with the read set CHANGED (asked again), the verdict read at n is the fresh verdict at n+2 in {share(('changed verdict agrees',), ('changed',))} pct; the unit has a row again in {share(('changed held again',), ('changed',))} pct")
@@ -444,18 +467,119 @@ def cmd_puzzles(a) -> int:
     return 0
 
 
+
+# ------------------------------------------------------------------------------------------------------------------------------ plan 78.73 A: the verdicts against those of 78.72
+
+def cmd_verdicts(a) -> int:
+    """A: the rows of the held-out games read now (conc.pkl of this plan) against the same rows of 78.72 (the old pickle; a row is the position, the owner, the kind and the place): how many EXCHANGE rows of 78.72 change verdict
+    once like for like cancels, and every other change of verdict. A row absent from the lists now was REFUTED (counted as dropped)."""
+    out = out_dir(a.out_dir)
+    say = make_say(out, "verdicts_obs.txt")
+    old = pickle.loads((Path(paths.experiment(*OLD)) / "conc.pkl").read_bytes())
+    new = pickle.loads((out / "conc.pkl").read_bytes())
+    assert old["j"] == new["j"], "the two reads are not of the same positions"
+
+    def vmap(p: dict) -> dict:
+        m = {}
+        for side in ("mover", "other"):
+            for r in p[side]:
+                if not r.get("goal"):
+                    m[(r["owner"], r["kind"], r["place_ix"], bool(r.get("two_moves")))] = r["verdict"]
+        for r in p["exchange"]:
+            m[(r["owner"], r["kind"], r["place_ix"], bool(r.get("two_moves")))] = "EXCHANGE"
+        return m
+    tr = collections.Counter()
+    for po, pn in zip(old["pos"], new["pos"]):
+        vo, vn = vmap(po), vmap(pn)
+        for k, v in vo.items():
+            tr[(v, vn.get(k, "REFUTED (dropped)"))] += 1
+        for k, v in vn.items():
+            if k not in vo:
+                tr[("REFUTED (dropped)", v)] += 1
+    n_old_ex = sum(v for (o, _n), v in tr.items() if o == "EXCHANGE")
+    ch = sum(v for (o, nw), v in tr.items() if o == "EXCHANGE" and nw != "EXCHANGE")
+    say(f"A: the {len(old['pos'])} positions of the 1000 held-out games; EXCHANGE rows of 78.72: {n_old_ex}; of them the verdict CHANGES for {ch} ({100 * ch / max(1, n_old_ex):.2f} pct)")
+    say("A: every transition of verdict, 78.72 -> 78.73: " + "; ".join(f"{o} -> {nw}: {v}" for (o, nw), v in sorted(tr.items())))
+    pvd = sum(1 for p in new["pos"] for side in ("mover", "other") for r in p[side] if r.get("pv_disagrees")) + sum(1 for p in new["pos"] for r in p["exchange"] if r.get("pv_disagrees"))
+    say(f"A: rows whose ledger (after like for like) differs from the search's value: {pvd}")
+    return 0
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ plan 78.73 C: the sweep's replies against a read at the rows' depth
+
+def cmd_replies(a) -> int:
+    """C: the twenty printed positions. Every response of a CONFIRMED row that the sweep found (the frame read's answers are read at the rows' depth already) is read again at the rows' depth (6 plies after the first move,
+    the sweep read 4): how many first replies change (the second move of the line), for the printed ones (the first three kept of each row) and for all kept. Then the whole list is made with the sweep at the rows' depth and
+    its fuse, and the time of the two is printed."""
+    from catspace.incubator.analyst.discovery import threat_print as TP
+    out = out_dir(a.out_dir)
+    say = make_say(out, "replies_obs.txt")
+    z, lists, allg, picked, _n = TP.load_twenty()
+    rec = TC.Record.load()
+    l4 = TC.Lines(rec, threads=1)
+    l6 = TC.Lines(rec, threads=1, sweep_depth=TC.DEPTH, sweep_fuse=TC.FUSE)
+    st = collections.Counter()
+    t4, t6 = [], []
+    for k, (_ph, j) in enumerate(picked, 1):
+        gid = z["sample_ids"][z["games"].index(int(z["g"][j]))]
+        moves = allg[gid]["moves"][:int(z["ply"][j])]
+        item = {"start": None, "moves": moves, "raw": z["rows"][j], "names": z["names"], "list": lists[j]}
+        t0 = time.perf_counter()
+        res_short = TC.concrete_lists([item], l4)[0]
+        t4.append(time.perf_counter() - t0)
+        t0 = time.perf_counter()
+        res_deep = TC.concrete_lists([item], l6)[0]
+        t6.append(time.perf_counter() - t0)
+        games = [(None, moves)]
+        for side in ("mover", "other"):
+            for row in res_short[side]:
+                if row.get("goal") or row["verdict"] != "CONFIRMED" or row.get("deferred"):
+                    continue
+                for rank, x in enumerate(row["response"]):
+                    if x["source"] != "the sweep" or len(x["names"]) < 2:
+                        continue
+                    ro = row["_ro"]
+                    deep = l4.ask(games, [(0, 6, ro["owner_p"], 0, x["first"][0], x["first"][1], row["place_ix"])])[0]
+                    mine = [af for af in (deep["afters"] if deep["ok"] else []) if af["whole"]["names"][0] == x["names"][0]]
+                    st["responses all"] += 1
+                    st["responses printed"] += int(rank < 3)
+                    if not mine:
+                        st["not read again"] += 1
+                        continue
+                    w = mine[0]["whole"]
+                    if w["cut"] or len(w["names"]) < 2:
+                        st["read again but cut or one move"] += 1
+                        continue
+                    diff = w["names"][1] != x["names"][1]
+                    st["first reply changed all"] += int(diff)
+                    if rank < 3:
+                        st["first reply changed printed"] += int(diff)
+        sets = []
+        for c in (res_short, res_deep):
+            sets.append({(r["owner"], r["place_ix"], tuple(x["first"])) for side in ("mover", "other") for r in c[side] if not r.get("goal") for x in r.get("response", [])})
+        st["kept responses (row, move) with the sweep at 4 plies"] += len(sets[0])
+        st["kept responses (row, move) with the sweep at 6 plies"] += len(sets[1])
+        st["of them in both"] += len(sets[0] & sets[1])
+    say(f"C: {len(picked)} positions; sweep responses of CONFIRMED rows read again at {l4.depth} plies after the first move (the sweep: {l4.sweep_depth}): printed (first three kept of a row) {st['responses printed']}, all kept {st['responses all']}")
+    say(f"C: FIRST REPLIES CHANGED: printed {st['first reply changed printed']} of {st['responses printed']}; all kept {st['first reply changed all']} of {st['responses all']}; not read again {st['not read again']}; read again but cut or a one-move line {st['read again but cut or one move']}")
+    say(f"C: the lists with the sweep at {l6.sweep_depth} plies: kept (row, move) pairs {st['kept responses (row, move) with the sweep at 6 plies']} against {st['kept responses (row, move) with the sweep at 4 plies']} at 4, in both {st['of them in both']}")
+    f = lambda t: f"median {sorted(t)[len(t) // 2]:.2f} s, mean {sum(t) / len(t):.2f} s, slowest {max(t):.2f} s, total {sum(t):.1f} s"
+    say(f"C: TIME of the concrete read per position (one thread): sweep at 4 plies (fuse {l4.sweep_fuse}, then {l4.fuse} for a cut move): {f(t4)}; sweep at {l6.sweep_depth} plies (fuse {l6.sweep_fuse}): {f(t6)}")
+    return 0
+
+
 # ------------------------------------------------------------------------------------------------------------------------------ the commands
 
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("read", "measure", "carry", "puzzles"):
+    for name in ("read", "measure", "carry", "puzzles", "verdicts", "replies"):
         s = sub.add_parser(name)
         s.add_argument("--out-dir", default=None)
         s.add_argument("--games", type=int, default=1000 if name == "read" else 150)
         s.add_argument("--threads", type=int, default=10)
     a = ap.parse_args(argv)
-    return {"read": cmd_read, "measure": cmd_measure, "carry": cmd_carry, "puzzles": cmd_puzzles}[a.cmd](a)
+    return {"read": cmd_read, "measure": cmd_measure, "carry": cmd_carry, "puzzles": cmd_puzzles, "verdicts": cmd_verdicts, "replies": cmd_replies}[a.cmd](a)
 
 
 if __name__ == "__main__":

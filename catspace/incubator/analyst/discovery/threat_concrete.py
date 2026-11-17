@@ -83,9 +83,11 @@ class Record:
 class Lines:
     """One per process: the Rust line read with the record as judge."""
 
-    def __init__(self, record: Record, threads: int = 1, depth: int = DEPTH, fuse: int = FUSE, end_plies: int = END_PLIES, end_fuse: int = END_FUSE, variant: "str | None" = None):
+    def __init__(self, record: Record, threads: int = 1, depth: int = DEPTH, fuse: int = FUSE, end_plies: int = END_PLIES, end_fuse: int = END_FUSE, variant: "str | None" = None,
+                 sweep_depth: int = SWEEP_DEPTH, sweep_fuse: int = SWEEP_FUSE):
         from catspace.incubator.analyst.discovery import human_heads_data as HD
         self.record, self.threads, self.depth, self.fuse, self.end_plies, self.end_fuse = record, threads, depth, fuse, end_plies, end_fuse
+        self.sweep_depth, self.sweep_fuse = sweep_depth, sweep_fuse                          # the horizon and the fuse of the sweep of every legal move (PLAN 78.73 C reads it at the rows' depth)
         self.variant = variant or HD.VARIANT
         self.cost = {"wall": 0.0, "queries": 0, "calls": 0}
 
@@ -109,28 +111,43 @@ def ledger_of(read: dict) -> "tuple[list, list]":
     return lost, won
 
 
+def cancel_like(lost: list, won: list) -> "tuple[list, list, int]":
+    """PLAN 78.73 A: units of the same kind taken and lost cancel EXACTLY (a unit lost against a unit of the same kind taken is no gain to either side, whatever the record says of the kind): returns (the kinds the taker
+    is left having lost, the kinds it is left having taken, the number of pairs cancelled)."""
+    left_won = list(won)
+    left_lost = []
+    pairs = 0
+    for k in lost:
+        if k in left_won:
+            left_won.remove(k)
+            pairs += 1
+        else:
+            left_lost.append(k)
+    return left_lost, left_won, pairs
+
+
 def verdict_of(read: dict, record: Record) -> dict:
     """The verdict of one line read for the side that takes (the line was read with that side as `me`): see the module doc."""
     lost, won = ledger_of(read)
-    net = int(read["value"])
-    res = record.resolution(lost + won)
-    base = {"names": read["names"][:read["settled"]], "full_names": read["names"], "taker_lost": lost, "taker_won": won, "net": net, "resolution": res, "depth": read["depth"], "end": read["end"], "nodes": read["nodes"],
-            "pv_disagrees": False}
+    net_search = int(read["value"])
+    left_lost, left_won, pairs = cancel_like(lost, won)
+    net = sum(record.worth.get(k, 0) for k in left_won) - sum(record.worth.get(k, 0) for k in left_lost)      # PLAN 78.73 A: the net of the kinds LEFT after like for like cancels
+    res = record.resolution(left_lost + left_won)                                                           # and the resolution is built only from them (none left: nothing to tell apart)
+    base = {"names": read["names"][:read["settled"]], "full_names": read["names"], "taker_lost": lost, "taker_won": won, "left_lost": left_lost, "left_won": left_won, "cancelled": pairs, "net": net,
+            "net_search": net_search, "resolution": res, "depth": read["depth"], "end": read["end"], "nodes": read["nodes"], "pv_disagrees": net != net_search}
     if read["cut"]:
         return dict(base, verdict="UNREAD", ended=TL.ENDED[3], reason="out of budget: the fuse cut the line; no forced claim is made from it")
     if read["end"] == 1:
         return dict(base, verdict="CONFIRMED", ended=TL.ENDED[0], reason="the end of the game, won by the taker, decides it")
     if read["end"] == 2:
         return dict(base, verdict="REFUTED", ended=TL.ENDED[0], reason="the end of the game, lost by the taker, decides it")
-    net_pv = sum(record.worth.get(k, 0) for k in won) - sum(record.worth.get(k, 0) for k in lost)
-    base["pv_disagrees"] = net_pv != net
-    why = f"the settled end: no capture is left to either side after {read['depth']} plies"
+    why = f"the settled end: no capture is left to either side after {read['depth']} plies" + (f"; {pairs} like for like cancelled" if pairs else "")
     if net > res:
         v = "CONFIRMED"
     elif net < -res:
         v = "REFUTED"
     else:
-        v = "EXCHANGE" if (lost and won) else ("CONFIRMED" if won else "REFUTED")
+        v = "EXCHANGE" if ((lost and won) or (left_lost and left_won)) else ("CONFIRMED" if left_won else "REFUTED")
     return dict(base, verdict=v, ended=TL.ENDED[1], reason=why)
 
 
@@ -172,28 +189,34 @@ def _kept(v: dict) -> bool:
     return v["state"] == "KEPT"
 
 
-def response_of(after: dict, passed: "dict | None", record: Record, how: str, source: str) -> dict:
+def response_of(after: dict, passed: "dict | None", record: Record, how: str, source: str, row_net: "int | None" = None) -> dict:
     """One candidate response read two ways (rust `read_after`): the taking lines of the unit AFTER it (is the unit still won?) and the whole-board line of the move (what each side is left with). KEPT only if
     after it the taker's best taking of the unit is no longer CONFIRMED (or none is legal) AND nothing larger is lost by it: the taker's whole-board line is not better for it than what it could count on if the owner
-    passed (`passed`, the best line of the taker at the position after a pass). STILL WON: the unit is still taken ahead. WORSE THAN PASSING: it saves the unit and loses more elsewhere. UNREAD: a fuse cut a line."""
+    passed (`passed`, the best line of the taker at the position after a pass) NOR than what it takes by the unit (PLAN 78.73 B, `row_net`: the response may not lose more than the threat would take). STILL WON: the
+    unit is still taken ahead. WORSE THAN PASSING / COSTS MORE THAN THE THREAT: it saves the unit and loses more elsewhere. UNREAD: a fuse cut a line.
+    PLAN 78.73 B: the response carries ITS OWN END, what the responder takes and loses in its line after like for like cancels (`resp_takes`, `resp_loses`; `loses_nothing`): the nets are the ledger's, in the record's worths."""
     whole = after["whole"]
     wv = verdict_of(whole, record)
     tk = best_taking(after["takes"], record) if after["takes"] else None
+    pnet = verdict_of(passed, record)["net"] if passed is not None else None
     if whole["cut"] or (tk is not None and tk["verdict"] == "UNREAD") or passed is None or passed["cut"]:
         state, why = "UNREAD", "a fuse cut a line: the response is not judged"
     elif whole["end"] == 1 or (tk is not None and tk["verdict"] == "CONFIRMED"):
         state, why = "STILL WON", "after it the taker still ends ahead by taking the unit" if tk is not None else "after it the game is lost"
-    elif whole["end"] != 2 and whole["value"] > passed["value"]:
+    elif whole["end"] != 2 and wv["net"] > pnet:
         state, why = "WORSE THAN PASSING", "it saves the unit and the taker ends further ahead elsewhere than if the owner had passed"
+    elif whole["end"] != 2 and row_net is not None and wv["net"] > row_net:
+        state, why = "COSTS MORE THAN THE THREAT", "it saves the unit and loses more than the taking of the unit would have cost"
     else:
         state, why = "KEPT", ("no taking of the unit is legal after it" if tk is None else "the taking of the unit is " + tk["verdict"])
-    return {"first": whole["first"], "names": whole["names"], "net": int(whole["value"]), "taker_lost": wv["taker_lost"], "taker_won": wv["taker_won"], "ended": wv["ended"], "end_reason": wv["reason"], "depth": whole["depth"],
+    return {"first": whole["first"], "names": whole["names"], "net": wv["net"], "taker_lost": wv["taker_lost"], "taker_won": wv["taker_won"], "resp_takes": wv["left_lost"], "resp_loses": wv["left_won"], "cancelled": wv["cancelled"],
+            "loses_nothing": not wv["left_won"], "ended": wv["ended"], "end_reason": wv["reason"], "depth": whole["depth"], "settled": whole["settled"], "end": whole["end"],
             "nodes": whole["nodes"] + sum(x["nodes"] for x in after["takes"]), "state": state, "why": why, "how": how, "source": source, "after": (None if tk is None else {"verdict": tk["verdict"], "names": tk["names"], "net": tk["net"]})}
 
 
 def _fill(row: dict, best: dict, two: bool) -> None:
     row.update(verdict=best["verdict"], ended=best["ended"], reason=best["reason"], net=best["net"], line=(best["prefix"] + best["names"]) if two else best["names"], lead=best["lead"] if two else None,
-               outcome={"taker_lost": best["taker_lost"], "taker_won": best["taker_won"]}, resolution=best["resolution"], depth=best["depth"], first=best["first"], pv_disagrees=best["pv_disagrees"], two_moves=two,
+               outcome={"taker_lost": best["taker_lost"], "taker_won": best["taker_won"], "left_lost": best["left_lost"], "left_won": best["left_won"], "cancelled": best["cancelled"]}, resolution=best["resolution"], depth=best["depth"], first=best["first"], pv_disagrees=best["pv_disagrees"], two_moves=two,
                nodes=best["nodes_all"])
 
 
@@ -286,7 +309,7 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
     for row in flat:
         for how, res in row.pop("_pending", []):
             for af in (res["afters"] if res["ok"] else []):
-                row["_resp"].append(response_of(af, passed_value.get((row["_i"], row["_ro"]["taker_p"])), rec, WHY[how], "the frame read's answer"))
+                row["_resp"].append(response_of(af, passed_value.get((row["_i"], row["_ro"]["taker_p"])), rec, WHY[how], "the frame read's answer", row["net"]))
     # ---- round 3: the sweep of every legal move for every CONFIRMED row that owes a response (the frame read stops at its first sound answers, so its list of answers is not complete)
     q3, plan3, sweep_at, base3 = [], [], {}, {}
     for row in flat:
@@ -301,13 +324,34 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
             base3[bk] = len(q3)
             q3.append((row["_i"], 8, row["_ro"]["taker_p"], 1, 0, 0, 0))
         plan3.append((row, sweep_at[key], base3[bk]))
-    r3 = lines.ask(games, q3, SWEEP_DEPTH, SWEEP_FUSE)
+    r3 = lines.ask(games, q3, lines.sweep_depth, lines.sweep_fuse)
     for row, qi, bi in plan3:
         res = r3[qi]
         base = r3[bi]["reads"][0] if r3[bi]["ok"] and r3[bi]["reads"] else None
         out[row["_i"]]["resp_sweeps"] += 1
         for af in (res["afters"] if res["ok"] else []):
-            row["_resp"].append(response_of(af, base, rec, f"found by the sweep of every legal move (read to {SWEEP_DEPTH} plies)", "the sweep"))
+            row["_resp"].append(response_of(af, base, rec, f"found by the sweep of every legal move (read to {lines.sweep_depth} plies)", "the sweep", row["net"]))
+    # ---- round 4 (PLAN 78.73 B): a move the sweep's small fuse cut is read again with the fuse of a line (a quiet move costs the most nodes: the plain retreat of the attacked unit was the move cut and dropped in 78.72); one
+    # still cut is NOT dropped silently: it stays UNREAD and is listed by name
+    q4, plan4, at4 = [], [], {}
+    for row, qi, bi in plan3:
+        for k, x in enumerate(row["_resp"]):
+            if x["source"] == "the sweep" and x["state"] == "UNREAD":
+                key = (row["_i"], row["_ro"]["owner_p"], x["first"], row["place_ix"])
+                if key not in at4:
+                    at4[key] = len(q4)
+                    q4.append((row["_i"], 6, row["_ro"]["owner_p"], 0, x["first"][0], x["first"][1], row["place_ix"]))
+                plan4.append((row, k, at4[key], bi))
+    r4 = lines.ask(games, q4, lines.sweep_depth, lines.fuse)
+    for row, k, qi, bi in plan4:
+        res = r4[qi]
+        base = r3[bi]["reads"][0] if r3[bi]["ok"] and r3[bi]["reads"] else None
+        old = row["_resp"][k]
+        again = [response_of(af, base, rec, old["how"] + f"; read again with the fuse of a line ({lines.fuse})", "the sweep", row["net"]) for af in (res["afters"] if res["ok"] else [])]
+        again = [a for a in again if a["names"][0] == old["names"][0]]
+        if again:
+            row["_resp"][k] = again[0]
+        out[row["_i"]]["resp_reread"] = out[row["_i"]].get("resp_reread", 0) + 1
     # ---- the nodes each row cost: its taking lines, the responses read for it, and its share of a sweep (a sweep is shared by the rows that asked for the same one)
     shared = {}
     for row, qi, bi in plan3:
@@ -337,9 +381,11 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
                     seen.add(x["first"])
                     if _kept(x):
                         ks.append(x)
-            ks.sort(key=lambda x: (x["net"], x["names"]))        # what the taker is left with, the least first
+            ks.sort(key=lambda x: (not x["loses_nothing"], x["net"], x["names"]))     # PLAN 78.73 B: the responses that lose nothing first, then by what the taker is left with, the least first
             row["response"], row["resp_read"] = ks, len(firsts)
             row["resp_unread"] = len({x["first"] for x in read if x["state"] == "UNREAD"})
+            row["resp_unread_moves"] = sorted({x["names"][0] for x in read if x["state"] == "UNREAD"})
+            row["resp_states"] = {st: len({x["first"] for x in read if x["state"] == st}) for st in {x["state"] for x in read}}
             out[i]["resp_read"] += len(firsts)
             out[i]["resp_dropped"] += len(firsts) - len(ks)
         else:

@@ -58,8 +58,8 @@ def test_the_end_of_the_game_decides_a_line_concretely():
     assert TC.verdict_of(_line([(False, "p")], 1045), REC)["ended"] == TL.ENDED[1]          # the settled end
 
 
-def _after(whole_value, takes, cut=False):
-    return {"whole": dict(_line([], whole_value), cut=cut), "takes": takes}
+def _after(whole_value, takes, cut=False, events=()):
+    return {"whole": dict(_line(list(events), whole_value), cut=cut), "takes": takes}
 
 
 def test_a_response_is_kept_only_if_the_taker_is_no_longer_ahead_and_nothing_larger_is_lost():
@@ -68,7 +68,7 @@ def test_a_response_is_kept_only_if_the_taker_is_no_longer_ahead_and_nothing_lar
     assert saves["state"] == "KEPT"
     still = TC.response_of(_after(1045, [_line([(False, "p")], 1045)]), passed, REC, "a guard is added", "t")
     assert still["state"] == "STILL WON"
-    loses_more = TC.response_of(_after(4343, []), passed, REC, "a counter threat", "t")
+    loses_more = TC.response_of(_after(4343, [], events=[(False, "q")]), passed, REC, "a counter threat", "t")
     assert loses_more["state"] == "WORSE THAN PASSING"
     cut = TC.response_of(_after(0, [], cut=True), passed, REC, "the unit moves", "t")
     assert cut["state"] == "UNREAD"

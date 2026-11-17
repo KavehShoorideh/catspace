@@ -121,7 +121,12 @@ def ledger_text(row: dict, nm: dict) -> str:
         return "no ledger"
     lost = ", ".join(nm.get(k, k) for k in o["taker_lost"]) or "nothing"
     won = ", ".join(nm.get(k, k) for k in o["taker_won"]) or "nothing"
-    return f"the taker takes {won} and loses {lost}"
+    left = ""
+    if o.get("cancelled"):                                  # PLAN 78.73 A: like for like cancels before the net and the resolution
+        ll = ", ".join(nm.get(k, k) for k in o["left_lost"]) or "nothing"
+        lw = ", ".join(nm.get(k, k) for k in o["left_won"]) or "nothing"
+        left = f" ({o['cancelled']} like for like cancel; left: takes {lw}, loses {ll})"
+    return f"the taker takes {won} and loses {lost}{left}"
 
 
 def line_text(names: list) -> str:
@@ -135,7 +140,7 @@ def concrete_row_text(r: dict, nm: dict) -> str:
         return f"THE GAME ITSELF: a forced end of the game for the taker, {r['verdict']}: {line_text(r['line'])}; stake: the highest; {resp} ({r['resp_read']} read, {r['resp_unread']} unread); the line ended: {r['ended']} ({r['reason']})"
     st = "no stake (goal kind)" if r["stake"] is None else f"stake {r['stake']:+.3f}"
     two = f" THREAT IN TWO MOVES, made by the move {r['line'][0]} (the other side's best replies are read, the taker still ends ahead);" if r.get("two_moves") else ""
-    head = f"{r['verdict']}: {r['kind']} {r['place']} [{r['class']}], {st};{two} line: {line_text(r['line'])}; {ledger_text(r, nm)} (net for the taker {r['net']} in the record's worths, resolution {r.get('resolution', 0):.0f}); the line ended: {r['ended']} ({r['reason']})"
+    head = f"{r['verdict']}: {r['kind']} {r['place']} [{r['class']}], {st};{two} line: {line_text(r['line'])}; {ledger_text(r, nm)} (net for the taker {r['net']} in the record's worths after like for like cancels, resolution {r.get('resolution', 0):.0f}); the line ended: {r['ended']} ({r['reason']})"
     if r.get("deferred"):
         return head + "; response: none needed yet (the answer comes after the taker's first move)"
     if r["verdict"] == "UNREAD":
@@ -145,12 +150,15 @@ def concrete_row_text(r: dict, nm: dict) -> str:
         if rs:
             parts = []
             for x in rs[:3]:
-                lost = ", ".join(nm.get(k, k) for k in x["taker_lost"]) or "nothing"
-                won = ", ".join(nm.get(k, k) for k in x["taker_won"]) or "nothing"
-                parts.append(f"{x['names'][0]} ({x['how']}; {x['why']}; the line {line_text(x['names'])}: the taker takes {won}, loses {lost})")
+                takes = ", ".join(nm.get(k, k) for k in x["taker_lost"]) or "nothing"
+                loses = ", ".join(nm.get(k, k) for k in x["taker_won"]) or "nothing"
+                left = ", ".join(nm.get(k, k) for k in x["resp_loses"]) or "nothing"
+                parts.append(f"{x['names'][0]} ({x['how']}; {x['why']}; the line {line_text(x['names'])}: the responder takes {takes}, loses {loses}; after like for like it loses {left}, net for the taker {x['net']})")
             more = f" and {len(rs) - 3} more" if len(rs) > 3 else ""
-            return head + f"; responses ({r['resp_read']} read, {r['resp_read'] - len(rs)} dropped, {r['resp_unread']} unread): " + "; ".join(parts) + more
-        return head + f"; response: none found ({r['resp_read']} read, all dropped, {r['resp_unread']} unread)"
+            nj = f"; not judged, the fuse cut the line: {', '.join(r['resp_unread_moves'])}" if r.get("resp_unread_moves") else ""
+            return head + f"; responses ({r['resp_read']} read, {r['resp_read'] - len(rs)} dropped, {r['resp_unread']} unread): " + "; ".join(parts) + more + nj
+        nj = f"; not judged, the fuse cut the line: {', '.join(r['resp_unread_moves'])}" if r.get("resp_unread_moves") else ""
+        return head + f"; response: none found ({r['resp_read']} read, all dropped, {r['resp_unread']} unread)" + nj
     return head
 
 
@@ -182,24 +190,51 @@ def paths_dir_78_70() -> Path:
     return Path(paths.experiment("threats_78_70"))
 
 
+def load_twenty() -> tuple:
+    """(the 78.70 pickle, its lists, the games, the ten positions of 78.70 + the ten new ones, how many are the first ten): the SAME twenty positions of every print since 78.72."""
+    z = pickle.loads((paths_dir_78_70() / "raw.pkl").read_bytes())
+    lists = TM.build_lists(z)
+    d = TR.load(lambda m: None)
+    first = choose(z, lists)
+    used = {int(z["g"][j]) for _p, j in first}
+    second = choose(z, lists, used)
+    return z, lists, d["allg"], first + second, len(first)
+
+
+def old_lists(path: Path) -> dict:
+    """The NEW lists of the 78.72 print (position number -> its text), to print beside the list of this plan."""
+    out: dict = {}
+    k, take, buf = None, False, []
+    for line in path.read_text().splitlines():
+        if line.startswith("=== POSITION "):
+            if k is not None and buf:
+                out[k] = "\n".join(buf)
+            k, take, buf = int(line.split()[2]), False, []
+        elif line.startswith("--- NEW LIST"):
+            take = True
+            buf = [line.replace("NEW LIST", "78.72 LIST")]
+        elif line.startswith("OBS print72"):
+            take = False
+        elif take:
+            buf.append(line)
+    if k is not None and buf:
+        out[k] = "\n".join(buf)
+    return out
+
+
 def main72(a) -> int:
     import time
 
     from catspace.incubator.analyst.discovery import threat_concrete as TC
-    out = TM.out_dir(a.out_dir or paths.experiment("threats_78_72"))
-    z = pickle.loads((paths_dir_78_70() / "raw.pkl").read_bytes())
-    lists = TM.build_lists(z)
-    d = TR.load(lambda m: None)
-    allg = d["allg"]
-    first = choose(z, lists)
-    used = {int(z["g"][j]) for _p, j in first}
-    second = choose(z, lists, used)
-    picked = first + second
+    out = TM.out_dir(a.out_dir or paths.experiment("threats_78_73"))
+    z, lists, allg, picked, n_first = load_twenty()
+    first = picked[:n_first]
+    old = old_lists(Path(paths.experiment("threats_78_72", "print.txt")))
     rec = TC.Record.load()
     lines1 = TC.Lines(rec, threads=1)
     nm = letter_names()
     reader = TL.ThreatReader(1)
-    text = [f"THE POSITIONS OF PLAN 78.72 F: positions 1 to {len(first)} are the SAME ten as in artifacts/experiments/threats_78_70/print.txt (the games and plies of the rule in threat_print.py); positions {len(first) + 1} to {len(picked)} are ten new ones by the same rule in the games the first ten did not use. Each position: the board, the OLD list (plan 78.70, the frame read's classes) and the NEW list (plan 78.72, every row a line read to a settled end).",
+    text = [f"THE POSITIONS OF PLAN 78.73 E (the same twenty as plan 78.72 F): positions 1 to {len(first)} are the SAME ten as in artifacts/experiments/threats_78_70/print.txt (the games and plies of the rule in threat_print.py); positions {len(first) + 1} to {len(picked)} are ten new ones by the same rule in the games the first ten did not use. Each position: the board, the 78.72 list (as printed then) and the 78.73 list (like for like cancelled before the net and the resolution; each response with its own end, the ones that lose nothing first; a response that loses more than the threat would take is dropped).",
             "How to read a NEW row: VERDICT: unit [the frame read's class], stake (the change in the owner's chance of the result by the kinds reading); line: the moves read (the taker's first); the ledger of the line (what the taker takes and loses, in the measured record's worths: net, and the resolution: the gap the record can tell apart); how the line ended in the words of spec 4; the responses (each a line read the same way, kept only if after it the taker no longer ends ahead; the count read and dropped). CONFIRMED: the taker ends ahead; EXCHANGE: units are traded, neither ends ahead (printed apart); UNREAD: a fuse cut the line (suspected only); a REFUTED claim is dropped and counted.",
             f"the judge: the measured record {rec.source}; line depth {lines1.depth} plies after the first move, node fuse {lines1.fuse} per line; the forcing read for the goal: {lines1.end_plies} moves of the side, node fuse {lines1.end_fuse}"]
     times = []
@@ -224,14 +259,13 @@ def main72(a) -> int:
         text.append("")
         text.append(f"=== POSITION {k} of {len(picked)} ({phase} play){' [same as position ' + str(k) + ' of the 78.70 print]' if k <= len(first) else ' [new]'} ===")
         text.append(render(z, j, gid, moves))
-        text.append("--- OLD LIST (plan 78.70) ---")
-        text.append(render_list(lists[j], spread, z["names"]["roles"], z["rows"][j]["mover"]))
-        text.append(f"--- NEW LIST (plan 78.72); the spread of the two readings at the position: {spread:.4f}; time: the frame read {t_frame:.2f} s, the concrete read {t_conc:.2f} s, one thread ---")
+        text.append(old.get(k, "--- 78.72 LIST: not found ---"))
+        text.append(f"--- 78.73 LIST; the spread of the two readings at the position: {spread:.4f}; time: the frame read {t_frame:.2f} s, the concrete read {t_conc:.2f} s, one thread ---")
         text.append(render_concrete(c, spread, z["names"]["roles"], z["rows"][j]["mover"], nm))
     ft = [x[0] for x in times]
     ct = [x[1] for x in times]
     text.append("")
-    text.append(f"OBS print72: time per position over the {len(times)} printed (one thread each): the frame read median {sorted(ft)[len(ft) // 2]:.2f} s, the concrete read median {sorted(ct)[len(ct) // 2]:.2f} s, slowest {max(ct):.2f} s, mean {sum(ct) / len(ct):.2f} s")
+    text.append(f"OBS print73: time per position over the {len(times)} printed (one thread each): the frame read median {sorted(ft)[len(ft) // 2]:.2f} s, the concrete read median {sorted(ct)[len(ct) // 2]:.2f} s, slowest {max(ct):.2f} s, mean {sum(ct) / len(ct):.2f} s")
     (out / "print.txt").write_text("\n".join(text) + "\n")
     print("\n".join(text))
     return 0
