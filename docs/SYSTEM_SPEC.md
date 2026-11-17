@@ -42,11 +42,15 @@ several moves and not only the next one. Section 7 is the piece that serves this
 means; section 8 has the rule for the move. It is not built (section 12). PROPOSED: the subgoal is held across
 moves the same way open tactics are carried (section 4).
 
-He added: "you already know how to reason like a human being because you've read a lot of chess books." READING
-(mine, for him to correct): what the builder has read may shape the procedure, meaning the order of the steps, what
-is asked at each and when the thinking stops. It may not enter as knowledge of the game: no worth, rule of thumb
-or pattern is put in by hand (sections 5 and 15), and no model is called inside the learning loop (section 15).
-Those are derived in sleep and stored.
+He added: "you already know how to reason like a human being because you've read a lot of chess books." What he
+means by it (2026-11-16, late, correcting the main agent's first reading): "I mean like you, the LLM, can judge
+whether or not the engine is actually doing its job ... because you, the LLM, knows how humans reason." So the
+language model is the JUDGE of the engine's reasoning, at build time and outside the engine. For every piece that
+reasons, the building agent reads what the engine printed against the position and says whether a strong human
+would reason so: is this a threat a player would name, is this the answer, is this a sensible aim. That reading
+is part of the check of a build (section 11). The judge stays outside: it puts nothing into the engine, no worth,
+rule of thumb or pattern (sections 5 and 15), and nothing it says is read by the wake or the sleep. It tells the
+builders what is wrong; the mending comes from the graph, the reasoning and the sleep.
 
 ## 2. The graph (DECIDED 2026-11-14, 2026-11-15)
 
@@ -506,6 +510,11 @@ Kaveh: "the most complex piece".
   fixed, or the departure is brought to Kaveh. The rule for builders is `AGENTS.md` rule 12 and
   `docs/AGENT_BRIEF.md` section 0.
 
+- **Every piece that reasons is judged against the board by the building agent** (2026-11-16, section 1). A build
+  that prints reasoning (threats, answers, goals, a line of thought) prints it for a fixed set of positions; the
+  builder reads some of them against the board and says what a strong player would not agree with, and the main
+  agent reads them again before the merge. A piece is not called done on its numbers alone. The judgement is
+  written in the plan note as words, never as a number, and never enters the engine.
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -542,8 +551,6 @@ State on 2026-11-16, in words only (plans 78.52 to 78.74 in docs/ANALYST_PLAN.md
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
    pursuit is dropped), and the three departures of the first build listed there.
-5. Is the reading of "you already know how to reason like a human" in section 1 right: the procedure may come
-   from what the builder has read, the knowledge of the game may not?
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
@@ -551,7 +558,7 @@ ended, and only orders before that (4, 6); the oracle as a last resort (9); the 
 the ability to go back (9); the policy is modular and models a sequence, not a distance (7); a line may end quiet while budget remains once
 every open tactic is checked (4); a sacrifice needs a reason, and one taken on the estimate alone is a surprise for
 the sleep (3, 9); the overall goal and its two halves (1); the rule for choosing a move, as a guide (8); the threat
-list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8); reachable has two layers, me playing only and with the opponent's veto (7).
+list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8); reachable has two layers, me playing only and with the opponent's veto (7); the language model is the judge of whether the engine reasons like a human, outside the engine (1, 11).
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -572,6 +579,7 @@ list (8); every build checked against the spec (11); the pointing at a weakness 
 | "The edges will also be graph nodes" read as every relation being a node | He meant the board's edge. Decided separately: only relations something must point at are nodes | 2026-11-15 |
 | A menu of odds games and fits only | The menu of section 9 | 2026-11-16 |
 | The opportunity policy as a quasi-metric (floated) | "Quasi-metric is not the right way. Like it's a distance. What I want is ... something to model a sequence" | 2026-11-16 |
+| "You already know how to reason like a human" read as: what the builder has read may shape the procedure (the main agent's reading) | He meant: the language model can judge whether the engine is doing its job, because it knows how humans reason | 2026-11-16 |
 | No head is ever fitted to the oracle (the main agent's proposed boundary) | Allowed as a last resort; preferred: predict our own deeper reasoning and our playouts | 2026-11-16 |
 
 ## 15. Standing limits that apply to every plan
@@ -589,7 +597,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Decision or direction | Date | Section |
 |---|---|---|
 | The pieces of the system; the immediate use | 2026-11-14 | 1 |
-| The overall goal: reason like a human, concrete tactical steps then an evaluation at their end; what the builder knows shapes the procedure, never the knowledge; the second half: hold subgoals and navigate toward them over several moves | 2026-11-16 | 1, 7 |
+| The overall goal: reason like a human, concrete tactical steps then an evaluation at their end; the language model as the judge of the engine's reasoning, outside the engine; the second half: hold subgoals and navigate toward them over several moves | 2026-11-16 | 1, 7 |
 | One graph; three layers; dc names and the mapping file; which relations are nodes | 2026-11-14, 15 | 2 |
 | Frames: units as variables, bound to units, few questions, the cut and the sacrifice through another frame, the intermezzo, the smallest frame, from human games, the chase work reused; the three reasons for a sacrifice; the frame's interface, the far end as a variable, exact on the smaller stake, two frames at once | 2026-11-15, 16 | 3 |
 | Reasoning by questions; stake in one unit; hints order and facts reorder; open tactics carried forward; the four ways a line ends; chess is concrete; damaged structure as a subgoal | 2026-11-14, 15, 16 | 4 |

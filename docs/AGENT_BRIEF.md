@@ -19,6 +19,7 @@ want it to be modular with clean interfaces and according to the overall high-le
   not patch around it.
 - WHEN THE PLAN AND THE SPEC DISAGREE, or the spec is silent on a choice that shapes an interface, stop and report the disagreement. Do not pick
   silently. A choice you had to make to keep moving is listed in the report under "choices not in the spec".
+- JUDGE THE REASONING AGAINST THE BOARD (Kaveh 2026-11-16, SYSTEM_SPEC 1 and 11): a build that prints reasoning (threats, answers, goals, a line of thought) prints it for a fixed set of positions, and you read at least five of them against the position and say what a strong human player would not agree with. You are the judge because you know how humans reason; the judgement goes in the report as words and never into the engine (no worth, rule of thumb or pattern put in by hand).
 - THE REPORT ENDS WITH A SPEC CHECK: the section served, the interface added or changed, every place the build departs from the spec (or "none"),
   and what in section 12 should now read differently. You do not edit the spec; the parent does.
 
