@@ -88,10 +88,13 @@ def main(argv: "list | None" = None) -> int:
         item = {"start": None, "moves": moves, "raw": z["rows"][j], "names": z["names"], "list": lists[j]}
         mover = z["rows"][j]["mover"]
         t0 = time.perf_counter()
+        q0 = lines1.cost["queries"]
         c = TC.concrete_lists([item], lines1)[0]
         SU.every_unit([item], [[mover]], [c], facts, lines1, [SU.stake_closure(z["stake"][j], z["kind_cols"])])
         goals = SG.goals(item, mover, c, facts, ed)
         t_read = time.perf_counter() - t0
+        n_q = lines1.cost["queries"] - q0
+        n_nodes = sum(r.get("nodes", 0) or 0 for pool in (c["mover"], c["other"], c["exchange"], c["dropped_rows"]) for r in pool)
         rk = TL.rank_high_of([r for r in c["mover"] + c["other"] if not r.get("goal")])
         for r in c["mover"] + c["other"]:
             r["big"] = bool(rk.get(id(r), False))
@@ -119,6 +122,7 @@ def main(argv: "list | None" = None) -> int:
         tally["changed"] += pick != tied[0]
         tally["branch"][reason.branch] = tally["branch"].get(reason.branch, 0) + 1
         tally["wall"].append(t_read)
+        text.append(f"COST OF THIS DECISION: {n_q} line queries (the threat list and the line read of every unit of theirs), {n_nodes} nodes read; {t_read:.2f} s")
         text.append(f"THE RULE'S LINE OF THOUGHT [step {reason.branch}]: " + spell(str(reason), board))
         text.append(f"  the move: {board.san(chess.Move.from_uci(pick))} ({'the search\'s own move' if pick == tied[0] else 'not the search\'s own move ' + board.san(chess.Move.from_uci(tied[0]))}); subgoal held after it: "
                     + ("none" if held is None else (f"refute the threat on our {held['target'][1]} {held['target'][2]}" if held["origin"] == "refute" else f"win the {held['target'][0]} {held['target'][1]} on {held['target'][2]}")))

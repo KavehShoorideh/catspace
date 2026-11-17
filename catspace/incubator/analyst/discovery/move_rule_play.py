@@ -106,6 +106,7 @@ class RuleReader:
 
     def read(self, moves: list, steps: tuple, cap: int = TM.PLY_CAP) -> "dict | None":
         t0 = time.perf_counter()
+        q0 = self.lines.cost["queries"]
         res = self.threads.read([(None, list(moves))], [[len(moves)]])
         if not res["rows"]:
             return None
@@ -144,7 +145,8 @@ class RuleReader:
         self.cost["concrete"] += t3 - t2
         self.cost["n"] += 1
         pos = MR.Position(self.facts, HD.VARIANT, None, list(moves), names["roles"], mover)
-        return {"lists": c, "goals": goals, "position": pos, "item": item}
+        nodes = sum(r.get("nodes", 0) or 0 for pool in (c["mover"], c["other"], c["exchange"], c["dropped_rows"]) for r in pool)
+        return {"lists": c, "goals": goals, "position": pos, "item": item, "queries": self.lines.cost["queries"] - q0, "nodes": nodes}
 
 
 def reader75() -> RuleReader:
@@ -191,7 +193,7 @@ class Mover75(TM.Mover67):
                 ranked = MR.rank_goals(rd["goals"])
                 self.rlog.append({"ply": len(moves), "n_tied": len(tied), "branch": reason.branch, "pick": pick, "changed": int(pick != mv), "reason": str(reason)[:400],
                                   "held": (None if held is None else {k: (list(v) if isinstance(v, tuple) else v) for k, v in held.items()}),
-                                  "threats": len(MR.threat_rows(rd["lists"])), "goals": [MR.compact(g) for g in ranked[:10]]})
+                                  "threats": len(MR.threat_rows(rd["lists"])), "queries": rd["queries"], "nodes": rd["nodes"], "goals": [MR.compact(g) for g in ranked[:10]]})
             st["changed"] += pick != mv
             self.costs.append(time.perf_counter() - t1)
         st["log"].append((len(moves), len(eq), int(pick != mv)))
@@ -266,7 +268,7 @@ def lines_of(a: str, b: str, set_name: str, games: list, load: float, busy: floa
 def branch_lines(a: str, b: str, set_name: str, games: list) -> list:
     """How often each branch fired in the games of the rule's side, the share of the ties where it had a choice, and how long a goal was held."""
     names = {"1": "step 1: a kept answer to the highest threat", "1+held": "step 1: a kept answer that is also a step of the held goal", "2 held": "step 2: a step of the held goal",
-             "2 other": "step 2: the held goal had no step, another goal's step", "2 first": "step 2: no goal held, the first-ranked goal's step", "3": "step 3: a big threat with no kept answer, refuting it held",
+             "2 other": "step 2: the held goal had no step, another goal's step", "2 first": "step 2: no goal held, the first-ranked goal's step", "2 next": "step 2: no goal held, a goal ranked after the first (those before it had no step among the tied moves)", "3": "step 3: a big threat with no kept answer, refuting it held",
              "4": "step 4: nothing applies, the search's own move"}
     tot = {k: 0 for k in names}
     n_ties = n_dec = changed = 0
@@ -303,6 +305,27 @@ def branch_lines(a: str, b: str, set_name: str, games: list) -> list:
     else:
         out.append(f"OBS move_rule branches {tag}: no subgoal was held")
     return out
+
+
+def cost_lines(a: str, b: str, set_name: str, games: list) -> list:
+    """Per decision of the rule: the line queries asked (the threat list and the line read of every unit) and the nodes read (the nodes of the rows' lines and their responses), median, mean, slowest, by the branch that fired."""
+    by: dict = {}
+    for g in games:
+        for who, nm in ((0, a), (1, b)):
+            if nm not in ("rule", "threats", "goals"):
+                continue
+            seat = g["colour"] if who == 0 else 1 - g["colour"]
+            for e in g["stats"][seat].get("rlog", []):
+                if "queries" in e:
+                    by.setdefault(e["branch"], []).append((e["queries"], e["nodes"]))
+    tag = f"{a} v {b} [set {set_name}]"
+    out = []
+    for br, v in sorted(by.items()) + [("all branches", [x for _k, vv in sorted(by.items()) for x in vv])]:
+        if not v:
+            continue
+        q, n = np.array([x[0] for x in v]), np.array([x[1] for x in v])
+        out.append(f"OBS move_rule cost {tag}: branch {br}: {len(v)} decisions; line queries median {np.median(q):.0f}, mean {q.mean():.1f}, slowest {q.max()}; nodes read median {np.median(n):.0f}, mean {n.mean():.0f}, slowest {n.max()}")
+    return out or [f"OBS move_rule cost {tag}: the counts were not kept in these games"]
 
 
 def goal_state(g: dict) -> dict:
@@ -408,10 +431,10 @@ def main(argv: "list | None" = None) -> int:
         t0 = time.perf_counter()
         games = run_games(match_specs(a.a, a.b, a.set, a.pairs, a.seconds, root / "scratch", a.charge), a.workers, games_file(a.tag, a.a, a.b, a.set), lambda s: emit([s], obs))
         emit(lines_of(a.a, a.b, a.set, games, load, busy, time.perf_counter() - t0, a.seconds, a.workers, a.charge), obs)
-        emit(branch_lines(a.a, a.b, a.set, games), obs)
+        emit(branch_lines(a.a, a.b, a.set, games) + cost_lines(a.a, a.b, a.set, games), obs)
     elif a.stage == "stage-d":
         games = TM.read_games(games_file(a.tag, a.a, a.b, a.set))
-        emit(held_vs_not_lines(a.a, a.b, a.set, games), obs)
+        emit(cost_lines(a.a, a.b, a.set, games) + held_vs_not_lines(a.a, a.b, a.set, games), obs)
     else:
         for p in sorted((root / "matches").glob("*.jsonl")):
             x, rest = p.stem.split("_v_")
