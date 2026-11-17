@@ -552,6 +552,10 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
    something points at the weakness for a reason, goals are facts with no name needed, the fix of a problem is
    the subgoal. Still open: the proposed form in section 7 (means-ends over facts, the four graded claims, when a
    pursuit is dropped), and the three departures of the first build listed there.
+5. How many learned choosers are there, and is the one that orders the questions its own model (sections 4, 7, 9)?
+   As written: the sleep's chooser of actions is one; the opportunity policy is another; the heads are fitted, not
+   choosers; the order of questions in the wake has no model of its own and reads the heads and the held subgoal.
+   Raised by him 2026-11-16 ("I think they're different, right?"); not decided.
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
