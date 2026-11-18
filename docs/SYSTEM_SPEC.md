@@ -410,6 +410,7 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
     to predict the tactical situations present in the openings guided by the oracle or querying human moves and learning probabilistic outcomes
     of frames as opposed to the best-play outcomes. This could probably be applied to the rest of the game too." READING (main agent): what is
     learned is the chance of each frame's outcomes as they happen in play, which is what the event heads of section 6 are for, counted per frame.
+    SETTLED 2026-11-19 (section 9): in sleep the oracle may label the positions and frames the prior is trained on. As first written:
     CONFLICT TO SETTLE, not resolved here: "guided by the oracle" meets the standing rule of section 9 that no oracle number enters a fit except
     as the last resort with his word. Until he says this is that word, the prior is fitted on human moves and results only. See section 13.
   - HOW IT IS BUILT, three steps (direction given by Kaveh 2026-11-19, later still): "first we need to train some sort of legal future judge off of
@@ -424,6 +425,7 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
     (2) The points worth reaching are found in human games: positions where a goal as defined above holds (two threats no one reply meets) and
         what followed, as chances, not best play.
     (3) From the present position, the judge of (1) is asked for the goals of (2); the answer orders the equal moves.
+    SETTLED 2026-11-19 (section 9): step two's winning and losing points are labelled with the oracle in sleep. As first written:
     CONFLICT TO SETTLE: "per the oracle" in step two. Under section 9 the oracle may give the best move in sleep and may be a measure; its number
     may not enter a fit except as the last resort with his word. Until he says so in those words, step two labels a winning point by the
     reasoner's own confirmed line reading and the game's result, and the oracle only measures how right those labels are. See section 13 item 12.
@@ -519,6 +521,8 @@ them that do not work yet, each with the fact that stops it, are the first sourc
 
 **The wall.** No number of the oracle is read by the wake or by anything the wake reads. The one exception is the
 last resort of section 9, which needs his word and has not been taken.
+Since 2026-11-19 (section 9): a prior trained in sleep on frames the oracle helped to label is read by the wake; the oracle's own numbers
+still are not.
 
 ## 9. Sleep (DECIDED 2026-11-14 to 2026-11-16)
 
@@ -568,6 +572,15 @@ Kaveh: "the most complex piece".
   reasoning, we should be able to predict the rest of the reasoning trace and see where it goes"; or "do like a
   Monte Carlo and then predict the Monte Carlo output." His ground for it: "Nobody actually knows. So Monte Carlo
   is the best bet, I guess."
+- **The oracle labels positions and frames in sleep, for the prior** (DECIDED by Kaveh 2026-11-19). "The oracle is stockfish and in sleep cycles
+  it is available for any questions you may want. During sleep, you may ask the oracle to help you identify winning positions and losing
+  positions and the frames, then you want to use the frames to train your prior."
+  What this changes: in sleep the oracle may be asked anything, and its answers (which positions are winning or losing, which frames are there)
+  may make the labels the PRIOR is trained on. This settles section 13 item 12.
+  What it does not change, READING (main agent) kept until he says otherwise: the wake never calls the oracle and reads none of its numbers,
+  only a prior trained in sleep; the value (the estimate at a leaf) is still fitted on results and not on the oracle (his decision of
+  2026-11-15, and the last resort above stands for the heads of the value); the prior only orders and chooses among equal moves, it never
+  scores (AGENTS.md rule 7); what is learned is the frame in graph facts, so that every label can be read and checked against the board.
 - **So the heads learn from our own deeper thinking** (PROPOSED form of the above). In sleep there is time to read
   far deeper than the wake can. From a leaf where the wake's reading stops, the target is what the deep reading
   concludes where it reaches a settled, concrete end, and the statistics of playouts by our own player where it
@@ -723,7 +736,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     silent on, made by the builder and kept until you say otherwise: a chosen move that fails its verification is replaced by the first move
     of the search's own equal reading that holds, else kept; the verification's time comes from the equal reading's slot of the clock;
     the reference for a fault is the same search without the prunings, deepened step by step with a node limit and a fresh table.
-12. (Raised twice on 2026-11-19: the opening prior, and "winning situations per the oracle" in the three steps of the imagination layer.)
+12. ANSWERED 2026-11-19 (section 9: yes, in sleep, for the prior). (Raised twice on 2026-11-19: the opening prior, and "winning situations per the oracle" in the three steps of the imagination layer.)
     From his words of 2026-11-19 on the opening prior (section 7): is "guided by the oracle" the word that takes the last resort of section 9,
     so that an oracle's move may enter the fit of the prior? Until answered: human moves and results only.
 13. Not understood when asked on 2026-11-19 and asked again in plain words: whether the careful form of the equal reading stays off in play
@@ -761,9 +774,11 @@ list (8); every build checked against the spec (11); the pointing at a weakness 
 
 - REPLACED 2026-11-19: "the hint among equal moves is the pattern reasons" (plans 78.80 to 78.91) as the intended chooser. The chooser among equal moves is progress toward the goals of the future imagination layer (section 7); the reasons are kept as a fallback (PROPOSED) and as a measured baseline.
 
+- REPLACED 2026-11-19: "in sleep the oracle gives the best move only, and no oracle number enters any fit". In sleep the oracle may be asked anything and may label winning and losing positions and frames, and the prior is trained on those frames (section 9). The wall around the wake and the rule for the value stand.
+
 ## 15. Standing limits that apply to every plan
 
-No number of the oracle in a fit or in the wake, unless the last resort of section 9 is taken on his word. No
+No number of the oracle in the wake, and none in a fit of the value unless the last resort of section 9 is taken on his word; in sleep the oracle may label winning and losing positions and frames for the training of the prior (2026-11-19). No
 outside language model in the learning loop or in any decision; language only puts a finished result into words.
 No assumed worth. Names are supplied, never knowledge of the game.
 A subgoal orders and never adds to the value. In play a subgoal is refereed by our own reasoning and estimate only.
@@ -787,6 +802,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | PROPOSED (main agent): the chosen move has a verified form (verify_choice), off in play until a second run and Kaveh's word | 2026-11-19 | 5 |
 | A goal is two threats made at once that no one reply meets; the stake orders goals; not the length; the budget is N questions, past N only inside a frame still making progress; ruled out means too far, break it down; their goals imagined too; among equal moves choose by progress toward the goals | 2026-11-19 | 7 |
+| In sleep the oracle (Stockfish) may be asked anything and may label winning and losing positions and frames; the prior is trained on those frames | 2026-11-19 | 9 |
 | The imagination layer is built in three steps: a learned future judge from human trajectories, the winning points found in human games, then the prediction from here to those points (direction; the oracle's part is the open conflict of section 13 item 12) | 2026-11-19 | 7 |
 | The prior learns the tactical situations of the opening and the chances of frame outcomes as played, not best play (direction; the oracle's part is an open conflict with section 9) | 2026-11-19 | 7 |
 | A future imagination layer for positions with no concrete tactic: imagine a future, read its threat landscape, ask what I change and whether they have time to change it back (direction; the reading of how it sits on the two layers is PROPOSED) | 2026-11-19 | 7 |
