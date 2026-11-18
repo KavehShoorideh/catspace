@@ -14,6 +14,10 @@ PLAN 78.78 `--pick TAG` (`pick_cases`): THE CASES OF THE SUBGOAL RULE scored on 
 surprises of the scored part whose accepted move is among the moves the search holds equal (set A) and the first six resolved positions the best candidate breaks (set B). Each: the board, the moves held equal, the first five goals
 in words, the count of each of them before and after each tied move (own = layer one's count of our own moves, None where it is not defined; w = the stoppers still in the way), the pick of every candidate and the accepted moves
 (the answers file, for the human reader only). Reads artifacts/experiments/subgoal_pick_78_78/<tag>/ (preps.pkl, case_rows.json); writes cases.txt beside them.
+
+PLAN 78.80 `--symbols TAG` (`symbols_cases`): THE SYMBOLS AS READABLE CASES. Part A: the twelve positions of 78.78 with, per tied move, the passing events (patterns made true or false, for each side) it carries, in words; part B: the ten
+strongest passing patterns (a rule fixed in the function's doc) each drawn on three positions where the move played carries the event, the units of one instance in brackets. Reads artifacts/experiments/symbols_78_80/<tag>/ and writes
+cases.txt there. The only place of the symbols' files where the game's renderer and names appear.
 """
 from __future__ import annotations
 
@@ -177,6 +181,153 @@ def pick_cases_79(tag: str = "full", shown: int = 5) -> Path:
     return root / "cases.txt"
 
 
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.80: the symbols as readable cases
+
+def _words(words: str, side: str) -> str:
+    """The pattern's words with `mine` and `theirs` said for the event's side: the event of the mover counts the instances whose `mine` units are the mover's; the event of the other side, the other side's."""
+    a, b = ("the mover's", "the other side's") if side == "mover" else ("the other side's", "the mover's")
+    return words.replace("(mine", "(@A").replace("(theirs", "(@B").replace("@A", a).replace("@B", b)
+
+
+def _board_marked(b: chess.Board, marks: set) -> str:
+    rows = []
+    for r in range(7, -1, -1):
+        cells = []
+        for f in range(8):
+            sq = chess.square(f, r)
+            p = b.piece_at(sq)
+            ch = p.symbol() if p else "."
+            cells.append(f"[{ch}]" if sq in marks else f" {ch} ")
+        rows.append(f"{r + 1} " + "".join(cells))
+    rows.append("   " + "".join(f" {c} " for c in "abcdefgh"))
+    return "\n".join(rows)
+
+
+def _instances(model, static, goal, pat, kinds, b: chess.Board) -> "tuple[list, list]":
+    """The instances (sets of unit ids, by the unit variables) of a pattern on a board: (read for the side to move, read for the other side)."""
+    from catspace.incubator.analyst.discovery import graph_layer1 as GL
+    from catspace.incubator.analyst.discovery import graph_layer2_match as GM
+    items, units = GM.graph_items(GL.graph(model, b.fen(), static), goal)
+    s0, s1 = GM.match_binds(items, units, pat, kinds)
+    return [t for found in s0 for t in found], [t for found in s1 for t in found]
+
+
+def _sq(unit_id: str) -> int:
+    return chess.parse_square(unit_id.rsplit(":", 1)[1])
+
+
+def symbols_cases(tag: str = "full", shown: int = 8) -> Path:
+    """PLAN 78.80: THE SYMBOLS AS READABLE CASES (symbols_measure.py; passing.json, keys.json, sample.jsonl, events.npz under symbols_78_80/<tag>/). Part A: the twelve positions of plan 78.78 (the first six open surprises of the
+    scored part with an accepted move among the moves held equal and the first six resolved positions its best candidate broke; subgoal_pick_78_78 case_rows.json), each with the board, the moves held equal and, per tied move, the passing
+    events it carries in words (the strongest `shown` by weight) and the sum the pick reads; the accepted moves are the answers file, for the human reader only. Part B: THE TEN STRONGEST PASSING PATTERNS, fixed by this rule before the
+    cases were read: the largest |z| of the confirm log ratio (the confirm interval's half width over 1.645), a pattern whose confirm counts equal those of a stronger one is its twin and is skipped (the twins are counted);
+    each drawn on the first three positions, in the confirm part's file order, where the move played carries the event: for an event made true the board after the move with the units of one new instance in brackets, for an
+    event made false the board before with the units of one lost instance in brackets."""
+    import numpy as np
+    from scipy import sparse
+    from catspace.incubator.analyst.discovery import graph_layer1 as GL
+    from catspace.incubator.analyst.discovery import graph_layer2 as L2
+    from catspace.incubator.analyst.discovery import graph_layer2_measure as G2M
+    from catspace.incubator.analyst.discovery import human_heads_data as HD
+    from catspace.incubator.analyst.discovery import symbols as SY
+    from catspace.incubator.analyst.discovery import symbols_measure as SM
+    root = Path(paths.experiment("symbols_78_80", tag))
+    keys = json.loads((root / "keys.json").read_text())
+    passing = json.loads((root / "passing.json").read_text())
+    sample = [json.loads(x) for x in (root / "sample.jsonl").read_text().splitlines() if x.strip()]
+    model = GL.model(HD.GAME, HD.VARIANT)
+    static = model.static_part()
+    kinds = [n[len("kind:"):] for ty, n in static["nodes"] if ty == "kind"]
+    goal = G2M.goal_kind_of(HD.VARIANT)
+    counter = SY.Counter(model, [int(k["key"]) for k in keys], goal, 2, (0, 1, 2, 3), 1)
+    n_cols = len(keys)
+    pass_by = {(d["column"], d["side"], d["dir"]): d for d in passing}
+    lines = [f"THE SYMBOLS (plan 78.80): {len(passing)} passing events of {len({d['column'] for d in passing})} patterns; the weights are the find part's log ratios", ""]
+    # ---- Part A
+    prepsr = Path(paths.experiment("subgoal_pick_78_79", "full"))
+    preps = pickle.loads((prepsr / "preps.pkl").read_bytes())
+    cr = json.loads((prepsr / "case_rows.json").read_text())
+    ans = {d["id"]: d["accepted"] for d in (json.loads(x) for x in (LM.out_root("full") / "answers.jsonl").read_text().splitlines() if x.strip())}
+    lines += ["##### PART A: THE TWELVE POSITIONS OF PLAN 78.78", ""]
+    for key in ("A", "B"):
+        for k, pid in enumerate(cr[key], 1):
+            moves = cr["moves"][pid]
+            p = preps[pid]
+            b = chess.Board()
+            for m in moves:
+                b.push_uci(m)
+
+            def nm(m: str, b=b) -> str:
+                return b.san(chess.Move.from_uci(m))
+            tied = p["tied"]
+            ev = SY.deltas_of({"moves": moves}, tied, counter)
+            lines += [f"=== SET {key} CASE {k}: {pid}  ({'white' if b.turn else 'black'} to move)", str(b), "",
+                      f"held equal ({len(tied)}), the search's first move first: {', '.join(nm(m) for m in tied)}",
+                      f"the accepted moves: {', '.join(nm(m) for m in ans[pid])}   (accepted among the tied: {', '.join(nm(m) for m in tied if m in ans[pid]) or 'none'})"]
+            w = {e: pass_by[e]["weight"] for e in pass_by}
+            for m in tied:
+                carried = sorted((e for e in ev[m] if e in pass_by), key=lambda e: -abs(w[e]))
+                score = sum(w[e] for e in carried)
+                lines.append(f"  {'*' if m in ans[pid] else ' '} {nm(m)}: {len(carried)} passing events, sum of weights {score:+.2f}")
+                for e in carried[:shown]:
+                    col, side, d = e
+                    lines.append(f"        {'made TRUE' if d == 'up' else 'made FALSE'} for {side} (weight {w[e]:+.2f}, pattern {keys[col]['id'][:8]}): {_words(keys[col]['words'], side)}")
+            pick = SY.symbol_pick({"moves": moves}, tied, [{"column": c, "side": s, "dir": d, "weight": w[(c, s, d)]} for c, s, d in w], None, ev)
+            lines += [f"  the symbol pick: {nm(pick)}" + (" (accepted)" if pick in ans[pid] else ""), ""]
+    # ---- Part B
+    lines += ["##### PART B: THE TEN STRONGEST PASSING PATTERNS, EACH ON THREE POSITIONS WHERE THE MOVE PLAYED MAKES IT TRUE OR FALSE", ""]
+    chosen, twins = SM.strongest(passing)
+    M = sparse.load_npz(root / "events.npz").tocsc()
+    sizes = np.array([len(r["tied"]) for r in sample])
+    start = np.concatenate([[0], np.cumsum(sizes)])
+    for rank, d in enumerate(chosen, 1):
+        col, side, dr = d["column"], d["side"], d["dir"]
+        pat = L2.decode(bytes.fromhex(keys[col]["bytes"]))
+        idx = SY.event_index(col, side, dr, n_cols)
+        hit = set(M.indices[M.indptr[idx]:M.indptr[idx + 1]].tolist())
+        lines += [f"=== PATTERN {rank}: {keys[col]['id'][:8]} (size {keys[col]['size']}, level {keys[col]['level']}), event: {'made TRUE' if dr == 'up' else 'made FALSE'} for {side}; twins skipped: {twins.get(rank - 1, 0)}",
+                  f"    {_words(keys[col]['words'], side)}",
+                  f"    CONFIRM: played moves {d['c_kp']:.0f} (share {d['c_sp']:.3f}) against other tied moves {d['c_ko']:.0f} (share {d['c_so']:.3f}); log ratio {d['c_lr']:+.2f} [{d['c_lo']:+.2f}, {d['c_hi']:+.2f}]; "
+                  f"test one term {d['c_term']:+.3f} [{d['c_tlo']:+.3f}, {d['c_thi']:+.3f}]", ""]
+        shown_n = 0
+        for i, r in enumerate(sample):
+            if r["part"] != "confirm" or shown_n >= 3:
+                continue
+            j = r["tied"].index(r["played"])
+            if start[i] + j not in hit:
+                continue
+            shown_n += 1
+            b0 = chess.Board()
+            for m in r["moves"]:
+                b0.push_uci(m)
+            mv = chess.Move.from_uci(r["played"])
+            san = b0.san(mv)
+            b1 = b0.copy()
+            b1.push(mv)
+            before0, before1 = _instances(model, static, goal, pat, kinds, b0)
+            after0, after1 = _instances(model, static, goal, pat, kinds, b1)
+            own_before = before0 if side == "mover" else before1                   # before the move the mover is the side to move (side 0), after it the mover is the other side (side 1)
+            own_after = after1 if side == "mover" else after0
+            frm, to = chess.square_name(mv.from_square), chess.square_name(mv.to_square)
+
+            def remap(t: tuple, frm=frm, to=to) -> tuple:
+                return tuple(u.rsplit(":", 1)[0] + ":" + to if u.endswith(":" + frm) else u for u in t)
+            old = {remap(t) for t in own_before}
+            if dr == "up":
+                new = [t for t in own_after if t not in old]
+                inst, board, label = (new[0] if new else (own_after[0] if own_after else ())), b1, "after the move"
+            else:
+                now = set(own_after)
+                lost = [t for t in own_before if remap(t) not in now]
+                inst, board, label = (lost[0] if lost else (own_before[0] if own_before else ())), b0, "before the move"
+            marks = {_sq(u) for u in inst}
+            lines += [f"  --- position {r['id']} ({'white' if b0.turn else 'black'} plays {san}); counts of the pattern for {side}: before {len(own_before)}, after {len(own_after)}; the board {label}, the units of one instance in brackets",
+                      _board_marked(board, marks), ""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: symbols cases written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 _CASE_TOOLS: dict = {}
 
 
@@ -272,6 +423,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--fixed-from", default=None, help="PLAN 78.77: print the positions of this earlier cases file again, then the first six whose rung differs between the named runs (RECORD@on, RECORD@off)")
     ap.add_argument("--pick", default=None, help="PLAN 78.78: the cases of the subgoal rule scored on the open surprises (subgoal_pick_78_78/<tag>)")
     ap.add_argument("--pick79", default=None, help="PLAN 78.79: the twelve cases of 78.78 again, with the other side's goals and the long count (subgoal_pick_78_79/<tag>)")
+    ap.add_argument("--symbols", default=None, help="PLAN 78.80: the symbols as readable cases (symbols_78_80/<tag>)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
@@ -281,6 +433,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.pick79:
         pick_cases_79(a.pick79)
+        return 0
+    if a.symbols:
+        symbols_cases(a.symbols)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
