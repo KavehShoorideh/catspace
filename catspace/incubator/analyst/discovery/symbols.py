@@ -30,8 +30,41 @@ THE TWO TESTS (stated before they were run; SYSTEM_SPEC 7).
   THE RULE (fixed before the run): an event is PICKED on the find part when (i) it occurs on at least FLOOR_MOVES tied moves of which at least FLOOR_EACH are played moves and at least FLOOR_EACH are other moves, and its
   pattern occurs on at least FLOOR_ROWS head rows; (ii) the interval of test two excludes equality; (iii) test one's band for the side excludes zero; (iv) the signs agree: sign(term) x direction (+1 up, -1 down)
   equals the sign of the log ratio. It PASSES when, read once on the confirm part, (ii) and (iii) hold with the signs the find part had. Its weight is the find part's log ratio.
+
+PLAN 78.81 (SYSTEM_SPEC 7 "subgoals as symbols" and "reachable has two layers", 10 the endings risk, 9 the score): FEWER, CLEANER REASONS, THEN A FIRST READING OF LAYER ONE. INTERFACE, written before the bodies.
+  Choice(E, C, control_names, pos, played, game, part, source)
+      The rows of a choice fit: one row per tied move, positions contiguous (`pos` the position of the row, `played` True on its one played move), E the events (0/1, rows x events), C the controls (rows x control
+      names, floats), `game` the cluster of each row, `part` "find" or "confirm", `source` "human" or "generated". Built by symbols_reasons_measure; read by fit_choice, drop_duplicates and score_choice.
+  require_find(rows)
+      Raises ValueError unless every row is of the FIND part and of a human game: the fit and the duplicate drop read no CONFIRM row and no generated row (the mover of a generated game is our own player).
+      Called first by both.
+  drop_duplicates(rows, order, threshold) -> (kept columns, info)
+      Events whose carrier sets (the tied-move rows that carry them) equal another's, or are near it (Jaccard of the two sets at or above `threshold`), are dropped, the one with the smaller pattern kept:
+      `order[j]` is the sort key of column j (size, level, key), the smaller kept; an event with no carrier is dropped. info: {"in", "empty", "exact", "near", "kept"}. Reads rows.E and the part and source of the rows only.
+  fit_choice(rows, controls=(), events=None, folds=FOLDS, seed=0) -> fit
+      A CONDITIONAL CHOICE MODEL: a softmax over the tied moves of one position, the played move the one chosen. The score of a tied move is the sum of the weights of the events it carries plus the weights of the
+      controls named in `controls` (columns of rows.C); `events` the event columns used (None: all of rows.E; []: none). The events' weights carry an L1 penalty (sparsity), the controls a small ridge only. The penalty
+      is chosen on FIND alone: the games are cut into `folds` parts, the path of penalties is fitted on all but one part and read on that one, and the largest penalty whose held-out log likelihood is within one
+      standard error of the best is kept; the final fit is on all the rows. torch (a standard framework, already in the environment) does the arithmetic: FISTA, a proximal gradient with momentum, a small body tested
+      against planted weights (no library in the environment fits a conditional logit with an L1 penalty).
+      -> {"lambda", "events" (the columns with a nonzero weight), "weights" (for those), "controls" (name -> weight), "cv" [(lambda, mean held-out log likelihood a position, standard error)], "n_events", "positions"}.
+  score_choice(rows, fit, controls=False) -> per position the index (inside the position) of the tied move with the highest score, the first on a tie: a hint that orders moves in the tie set, never a value.
+  Reach(model, variant, goal_kind, kinds)   what ahead() reads: the engine's graph model of the game and its variant (the legal moves come from the engine's own state), the goal kind and the kind words.
+  reach_rows(env, positions, counter) -> per position: the legal moves and, per key of the counter, the moves that make the event "mover up" true there.
+  one_short(items, units, pattern, kinds, side) -> (short, full)   the keys (atom number, the units of that atom's unit variables) of the instances of a pattern of size 2 that are ONE FACT SHORT (one of the two atoms
+      holds on these units and no second atom completes the pattern on them) and of those that are complete. Read for the side `side` (0: the side to move, 1: the other side).
+  nearer(env, text, move, pattern) -> bool   the move makes some instance one fact short that was not one before (the units followed through the move), for the mover.
+  ahead(position, reason, limit, env) -> count or None
+      `position` {"moves": the game up to the move that makes the reason true}; `reason` {"key", "side", "dir", "bytes"}. Walks back along the same game to the mover's own earlier positions (k = 1, 2, ... own moves
+      earlier, at most `limit`, while the position is in the record) and returns the length of the unbroken run of earlier own positions at which the pattern was reachable in exactly one own move (some legal move makes
+      it true); 0 when it was not at k = 1; None for a reason this layer does not read (a "down" reason or the other side's: no walk back is defined for them) or when the record has no earlier own position.
+      `limit` is a cost guard: a count equal to it may be longer (symbols_reasons_measure prints how often it is hit). Called by symbols_reasons_measure (stage ahead) and the tests.
+  Called by: symbols_reasons_measure.py; ladder_print.py reads its outputs for the cases.
 """
 from __future__ import annotations
+
+import os
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -208,45 +241,63 @@ def rate_table(E, game: np.ndarray, played: np.ndarray) -> dict:
 
 # ------------------------------------------------------------------------------------------------------------------------------ test one
 
-def _fit_addon(off: np.ndarray, y: np.ndarray, f: np.ndarray, w: np.ndarray, iters: int = 8) -> np.ndarray:
+def _fit_addon(off: np.ndarray, y: np.ndarray, f: np.ndarray, w: np.ndarray, iters: int = 8, free: "np.ndarray | None" = None) -> np.ndarray:
     """The added terms on rows with weights `w`: for the win and the loss class (the draw class is the reference) a shift of its score and a term per side's count, theta = [win: shift, mover's count, other's count,
     loss: shift, mover's count, other's count], by Newton steps on the log likelihood of the softmax of (the head's scores `off` + the added terms) at the observed class; a ridge on the count terms only (the shifts are
-    free, so the head's calibration on these rows does not leak into a term). `off` rows x 3 (win, draw, loss), `f` rows x 2 the counts."""
-    X = np.column_stack([np.ones(len(f)), f])
-    th = np.zeros(6)
+    free, so the head's calibration on these rows does not leak into a term). `off` rows x 3 (win, draw, loss), `f` rows x 2 the counts. PLAN 78.81: `free` (rows x e) are further columns with their own free coefficients in
+    each class (a shift for the generated rows, whose head scores are not those of human games), laid out after the three; the step is damped (halved until the objective does not fall), as an undamped Newton step
+    diverged on rows whose head scores are far from their results."""
+    X = np.column_stack([np.ones(len(f)), f] + ([] if free is None else [free]))
+    k0 = X.shape[1]
+    th = np.zeros(2 * k0)
     ks = (0, 2)
     ind = np.stack([(y == 0), (y == 2)], axis=1).astype(float)
-    ridge = np.array([1e-6, RIDGE, RIDGE] * 2)
+    ridge = np.array(([1e-6, RIDGE, RIDGE] + [1e-6] * (k0 - 3)) * 2)
     for _ in range(iters):
         z = off.copy()
         for a, k in enumerate(ks):
-            z[:, k] += X @ th[3 * a:3 * a + 3]
+            z[:, k] += X @ th[k0 * a:k0 * (a + 1)]
         z -= z.max(axis=1, keepdims=True)
         p = np.exp(z)
         p /= p.sum(axis=1, keepdims=True)
-        grad = np.zeros(6)
-        H = np.zeros((6, 6))
+        grad = np.zeros(2 * k0)
+        H = np.zeros((2 * k0, 2 * k0))
         for a, k in enumerate(ks):
-            grad[3 * a:3 * a + 3] = ((ind[:, a] - p[:, k]) * w) @ X
+            grad[k0 * a:k0 * (a + 1)] = ((ind[:, a] - p[:, k]) * w) @ X
             for b, k2 in enumerate(ks):
                 wk = w * p[:, k] * ((1.0 if k == k2 else 0.0) - p[:, k2])
-                H[3 * a:3 * a + 3, 3 * b:3 * b + 3] = -(X * wk[:, None]).T @ X
+                H[k0 * a:k0 * (a + 1), k0 * b:k0 * (b + 1)] = -(X * wk[:, None]).T @ X
         grad -= ridge * th
         H -= np.diag(ridge)
         try:
             step = np.linalg.solve(H, grad)
         except np.linalg.LinAlgError:
             break
-        th = th - step
-        if np.max(np.abs(step)) < 1e-6:
+        cur = _addon_objective(th, off, ind, X, w, ridge, ks, k0)
+        scale = 1.0
+        while scale > 1e-4 and _addon_objective(th - scale * step, off, ind, X, w, ridge, ks, k0) < cur - 1e-12:
+            scale /= 2.0
+        th = th - scale * step
+        if np.max(np.abs(scale * step)) < 1e-6:
             break
     return th
 
 
-def term_table(off: np.ndarray, y: np.ndarray, game: np.ndarray, us, them, columns: list, draws: int, seed: int) -> dict:
+def _addon_objective(th: np.ndarray, off: np.ndarray, ind: np.ndarray, X: np.ndarray, w: np.ndarray, ridge: np.ndarray, ks: tuple, k0: int) -> float:
+    """The weighted log likelihood of the added terms less the ridge (what _fit_addon climbs)."""
+    z = off.copy()
+    for a, k in enumerate(ks):
+        z[:, k] += X @ th[k0 * a:k0 * (a + 1)]
+    m = z.max(axis=1, keepdims=True)
+    lse = (m[:, 0] + np.log(np.exp(z - m).sum(axis=1)))
+    at = z[:, 0] * ind[:, 0] + z[:, 2] * ind[:, 1] + z[:, 1] * (1 - ind[:, 0] - ind[:, 1])
+    return float(((at - lse) * w).sum() - 0.5 * (ridge * th * th).sum())
+
+
+def term_table(off: np.ndarray, y: np.ndarray, game: np.ndarray, us, them, columns: list, draws: int, seed: int, free: "np.ndarray | None" = None) -> dict:
     """TEST ONE for the pattern columns `columns` (indices into the sparse matrices `us` and `them`, head rows x patterns; `us` the count of the side to move, `them` of the other). `off` the held head's scores for the rows
     (rows x 3), `y` the result of the side to move (0 win, 1 draw, 2 loss), `game` the game of each row. -> {column: {"term": [mover's, other's], "lo": [..], "hi": [..], "rows": rows with the pattern}}, the
-    term of a side the log-odds of a win against a loss per extra instance (win class less loss class), the band 90 pct over `draws` resamples of the games."""
+    term of a side the log-odds of a win against a loss per extra instance (win class less loss class), the band 90 pct over `draws` resamples of the games. `free`: see _fit_addon."""
     us, them = us.tocsc(), them.tocsc()
     _u, g = np.unique(game, return_inverse=True)
     G = len(_u)
@@ -261,10 +312,11 @@ def term_table(off: np.ndarray, y: np.ndarray, game: np.ndarray, us, them, colum
             out[c] = dict(res, term=[0.0, 0.0], lo=[0.0, 0.0], hi=[0.0, 0.0])
             continue
         f = np.stack([u, v], axis=1).astype(float)
-        th = _fit_addon(off, y, f, np.ones(len(y)))
-        t = np.array([th[1] - th[4], th[2] - th[5]])
-        bs = np.array([_fit_addon(off, y, f, mult[d][g]) for d in range(draws)])
-        tb = np.stack([bs[:, 1] - bs[:, 4], bs[:, 2] - bs[:, 5]], axis=1)
+        k0 = 3 + (0 if free is None else free.shape[1])
+        th = _fit_addon(off, y, f, np.ones(len(y)), free=free)
+        t = np.array([th[1] - th[k0 + 1], th[2] - th[k0 + 2]])
+        bs = np.array([_fit_addon(off, y, f, mult[d][g], free=free) for d in range(draws)])
+        tb = np.stack([bs[:, 1] - bs[:, k0 + 1], bs[:, 2] - bs[:, k0 + 2]], axis=1)
         lo, hi = np.percentile(tb, [5, 95], axis=0)
         out[c] = dict(res, term=[float(t[0]), float(t[1])], lo=[float(lo[0]), float(lo[1])], hi=[float(hi[0]), float(hi[1])])
     return out
@@ -322,3 +374,388 @@ def confirm(picked: list, two: dict, one: dict) -> list:
         out.append(dict(p, c_lr=float(two["lr"][j]), c_lo=float(two["lo"][j]), c_hi=float(two["hi"][j]), c_kp=float(two["kp"][j]), c_ko=float(two["ko"][j]), c_sp=float(two["sp"][j]), c_so=float(two["so"][j]),
                         c_term=float(t["term"][s]), c_tlo=float(t["lo"][s]), c_thi=float(t["hi"][s]), c_rows=int(t["rows"]), passes=bool(ok2 and ok1)))
     return out
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.81: one weight per reason
+
+FOLDS = 5                              # the parts of the games inside FIND the penalty is chosen on
+DUP_THRESHOLD = 0.9                    # two events whose carrier sets have a Jaccard index at or above this are duplicates (stated before the run)
+LAMBDA_STEPS = 10                      # the path of penalties: from the smallest that gives no event weight down to a thousandth of it
+RIDGE_CONTROLS = 1e-3                  # the controls' ridge (on the mean log likelihood a position)
+
+
+@dataclass
+class Choice:
+    """The rows of a choice fit (see the module doc)."""
+    E: object
+    C: np.ndarray
+    control_names: list
+    pos: np.ndarray
+    played: np.ndarray
+    game: np.ndarray
+    part: np.ndarray
+    source: np.ndarray
+
+    def n_positions(self) -> int:
+        return int(self.pos[-1]) + 1 if len(self.pos) else 0
+
+    def subset(self, positions: np.ndarray) -> "Choice":
+        """The rows of the positions in `positions` (a boolean over positions or indices), renumbered from zero."""
+        positions = np.asarray(positions)
+        keep = positions if positions.dtype == bool else np.isin(np.arange(self.n_positions()), positions)
+        rows = keep[self.pos]
+        new = np.cumsum(keep) - 1
+        return Choice(self.E.tocsr()[rows], self.C[rows], self.control_names, new[self.pos[rows]], self.played[rows], self.game[rows], self.part[rows], self.source[rows])
+
+
+def require_find(rows: Choice) -> None:
+    """See the module doc: the fit reads FIND rows of human games only."""
+    if len(rows.part) and not bool(np.all(np.asarray(rows.part) == "find")):
+        raise ValueError("a row that is not of the FIND part was offered to the fit")
+    if len(rows.source) and not bool(np.all(np.asarray(rows.source) == "human")):
+        raise ValueError("a row of a generated game was offered to the fit")
+
+
+def drop_duplicates(rows: Choice, order: list, threshold: float = DUP_THRESHOLD) -> "tuple[list, dict]":
+    """See the module doc. Greedy over the columns in the order of `order` (the smaller pattern first): a column is kept when its carrier set's Jaccard index with every kept column is below `threshold`."""
+    require_find(rows)
+    E = rows.E.tocsc().astype(np.float64)
+    n = E.shape[1]
+    carriers = np.asarray(E.sum(axis=0)).ravel()
+    G = (E.T @ E).tocsr()
+    kept: list = []
+    seen: set = set()
+    info = {"in": n, "empty": int((carriers == 0).sum()), "exact": 0, "near": 0}
+    for j in sorted(range(n), key=lambda j: order[j]):
+        if carriers[j] == 0:
+            continue
+        row = G.getrow(j)
+        dup = 0
+        for i, g in zip(row.indices, row.data):
+            if i in seen and i != j:
+                jac = g / (carriers[i] + carriers[j] - g)
+                if jac >= threshold:
+                    dup = 2 if (g == carriers[i] and g == carriers[j]) else 1
+                    break
+        if dup == 2:
+            info["exact"] += 1
+        elif dup == 1:
+            info["near"] += 1
+        else:
+            kept.append(j)
+            seen.add(j)
+    info["kept"] = len(kept)
+    return sorted(kept), info
+
+
+def _groups(pos: np.ndarray, played: np.ndarray) -> "tuple[np.ndarray, np.ndarray, np.ndarray]":
+    """(row index [P, T] padded with 0, mask [P, T], the place of the played move inside its position [P]) for contiguous positions."""
+    P = int(pos[-1]) + 1
+    sizes = np.bincount(pos, minlength=P)
+    start = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+    T = int(sizes.max())
+    idx = np.zeros((P, T), np.int64)
+    mask = np.zeros((P, T), bool)
+    for t in range(T):
+        has = sizes > t
+        idx[has, t] = start[has] + t
+        mask[has, t] = True
+    tgt = np.zeros(P, np.int64)
+    pr = np.flatnonzero(played)
+    tgt[pos[pr]] = pr - start[pos[pr]]
+    return idx, mask, tgt
+
+
+class _Problem:
+    """One conditional logit problem on dense float32 features, the arithmetic in torch."""
+
+    def __init__(self, X: np.ndarray, pos: np.ndarray, played: np.ndarray):
+        import torch
+        self.torch = torch
+        self.X = torch.from_numpy(np.ascontiguousarray(X, np.float32))
+        idx, mask, tgt = _groups(pos, played)
+        self.idx, self.mask, self.tgt = torch.from_numpy(idx), torch.from_numpy(mask), torch.from_numpy(tgt)
+        self.P = len(tgt)
+
+    def scores(self, w):
+        s = self.X @ w
+        sg = s[self.idx]
+        return sg.masked_fill(~self.mask, float("-inf"))
+
+    def nll(self, w):
+        sg = self.scores(w)
+        lse = self.torch.logsumexp(sg, dim=1)
+        return (lse - sg.gather(1, self.tgt[:, None])[:, 0]).mean()
+
+    def loglik(self, w) -> float:
+        with self.torch.no_grad():
+            return -float(self.nll(w))
+
+    def grad(self, w):
+        w = w.detach().requires_grad_(True)
+        v = self.nll(w)
+        (g,) = self.torch.autograd.grad(v, w)
+        return g
+
+    def lipschitz(self) -> float:
+        torch = self.torch
+        v = torch.randn(self.X.shape[1], generator=torch.Generator().manual_seed(0))
+        for _ in range(40):
+            v = self.X.T @ (self.X @ v)
+            v = v / (v.norm() + 1e-12)
+        sigma2 = float((self.X @ v).norm() ** 2)
+        return 0.5 * sigma2 / max(self.P, 1) + 1e-9                  # diag(p) - p p^T has no eigenvalue above 1/2
+
+    def fit(self, lam: float, pen, w0, ridge: float, lip: float, iters: int = 1500, tol: float = 1e-5):
+        """FISTA (with the gradient restart) on mean negative log likelihood + lam |w_pen|_1 + ridge/2 |w_rest|^2. `pen` a 0/1 float vector (1: L1-penalised). Stops when the proximal gradient mapping
+        (the step's move over the step size) is below `tol` in every coordinate."""
+        torch = self.torch
+        w, y, t = w0.clone(), w0.clone(), 1.0
+        step = 1.0 / (lip + ridge)
+        for _ in range(iters):
+            g = self.grad(y) + ridge * y * (1 - pen)
+            z = y - step * g
+            z = torch.where(pen > 0, torch.sign(z) * torch.clamp(z.abs() - step * lam, min=0.0), z)
+            if float((y - z).abs().max()) / step < tol:
+                w = z
+                break
+            if float(((y - z) * (z - w)).sum()) > 0:                                  # the momentum points back uphill: restart it
+                t = 1.0
+            t2 = (1 + (1 + 4 * t * t) ** 0.5) / 2
+            y = z + ((t - 1) / t2) * (z - w)
+            w, t = z, t2
+        return w
+
+
+def _features(rows: Choice, controls: tuple, events: "list | None") -> "tuple[np.ndarray, np.ndarray, list, list]":
+    cols = list(range(rows.E.shape[1])) if events is None else [int(c) for c in events]
+    parts = []
+    if cols:
+        parts.append(rows.E.tocsc()[:, cols].toarray().astype(np.float32))
+    cidx = [rows.control_names.index(c) for c in controls]
+    if cidx:
+        parts.append(rows.C[:, cidx].astype(np.float32))
+    X = np.hstack(parts) if parts else np.zeros((len(rows.pos), 0), np.float32)
+    pen = np.concatenate([np.ones(len(cols)), np.zeros(len(cidx))]).astype(np.float32)
+    return X, pen, cols, list(controls)
+
+
+def fit_choice(rows: Choice, controls: tuple = (), events: "list | None" = None, folds: int = FOLDS, seed: int = 0) -> dict:
+    """See the module doc."""
+    require_find(rows)
+    import torch
+    torch.set_num_threads(max(1, (os.cpu_count() or 2) - 2))
+    X, pen_np, cols, cnames = _features(rows, tuple(controls), events)
+    P = rows.n_positions()
+    out = {"lambda": 0.0, "events": [], "weights": [], "controls": {}, "cv": [], "n_events": len(cols), "positions": P}
+    if X.shape[1] == 0:
+        return dict(out, loglik_uniform=True)
+    pen = torch.from_numpy(pen_np)
+    prob = _Problem(X, rows.pos, rows.played)
+    lip = prob.lipschitz()
+    w0 = torch.zeros(X.shape[1])
+    if len(cols) == 0:                                                       # controls alone: no penalty, one fit
+        w = prob.fit(0.0, pen, w0, RIDGE_CONTROLS, lip)
+        return dict(out, controls={c: float(w[i]) for i, c in enumerate(cnames)}, loglik=prob.loglik(w))
+    base = w0
+    if cnames:                                                               # the controls alone first, so no event enters the starting point
+        pc = _Problem(X[:, len(cols):], rows.pos, rows.played)
+        wc = pc.fit(0.0, torch.zeros(len(cnames)), torch.zeros(len(cnames)), RIDGE_CONTROLS, pc.lipschitz())
+        base = torch.cat([torch.zeros(len(cols)), wc])
+    g0 = prob.grad(base)
+    lam_max = float((g0.abs() * pen).max()) + 1e-12
+    grid = [lam_max * 10.0 ** (-3.0 * i / (LAMBDA_STEPS - 1)) for i in range(LAMBDA_STEPS)]
+    # the penalty by folds of games inside the rows
+    games = np.unique(rows.game)
+    rng = np.random.default_rng(seed)
+    fold_of_game = dict(zip(games.tolist(), rng.permutation(len(games)) % folds))
+    fold_pos = np.zeros(P, int)
+    fold_pos[rows.pos] = [fold_of_game[int(g)] for g in rows.game]
+    held = np.zeros((folds, len(grid)))
+    n_held = np.zeros(folds)
+    for k in range(folds):
+        tr = fold_pos != k
+        te = ~tr
+        if te.sum() == 0 or tr.sum() == 0:
+            held[k] = np.nan
+            continue
+        a, b = rows.subset(tr), rows.subset(te)
+        Xa, _p, _c, _n = _features(a, tuple(controls), events)
+        Xb, _p2, _c2, _n2 = _features(b, tuple(controls), events)
+        pa, pb = _Problem(Xa, a.pos, a.played), _Problem(Xb, b.pos, b.played)
+        la = pa.lipschitz()
+        w = base.clone()
+        for i, lam in enumerate(grid):
+            w = pa.fit(lam, pen, w, RIDGE_CONTROLS, la)
+            held[k, i] = pb.loglik(w)
+        n_held[k] = te.sum()
+    mean = np.nanmean(held, axis=0)
+    se = np.nanstd(held, axis=0, ddof=1) / np.sqrt(max(1, np.sum(~np.isnan(held[:, 0])))) if folds > 1 else np.zeros(len(grid))
+    best = int(np.nanargmax(mean))
+    ok = [i for i in range(len(grid)) if mean[i] >= mean[best] - se[best]]
+    pick = min(ok)                                                           # the largest penalty (the grid falls) within one standard error of the best
+    w = base.clone()
+    for i in range(pick + 1):
+        w = prob.fit(grid[i], pen, w, RIDGE_CONTROLS, lip)
+    wn = w.numpy()
+    nz = [i for i in range(len(cols)) if wn[i] != 0.0]
+    return dict(out, **{"lambda": float(grid[pick]), "events": [cols[i] for i in nz], "weights": [float(wn[i]) for i in nz],
+                        "controls": {c: float(wn[len(cols) + j]) for j, c in enumerate(cnames)},
+                        "cv": [(float(grid[i]), float(mean[i]), float(se[i])) for i in range(len(grid))], "best": best, "pick": pick, "loglik": prob.loglik(w)})
+
+
+def choice_scores(rows: Choice, fit: dict, controls: bool = False) -> np.ndarray:
+    """The score of every row: the sum of the weights of the events the move carries (plus the controls' weights when asked)."""
+    s = np.zeros(len(rows.pos))
+    if fit["events"]:
+        s += rows.E.tocsc()[:, fit["events"]] @ np.asarray(fit["weights"], float)
+    if controls:
+        for name, w in fit["controls"].items():
+            s += rows.C[:, rows.control_names.index(name)] * w
+    return s
+
+
+def score_choice(rows: Choice, fit: dict, controls: bool = False) -> np.ndarray:
+    """See the module doc: per position the index inside the position of the highest-scoring tied move; the first one on a tie (the search's first move), so silence is the search's own move."""
+    s = choice_scores(rows, fit, controls)
+    P = rows.n_positions()
+    sizes = np.bincount(rows.pos, minlength=P)
+    start = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+    out = np.zeros(P, int)
+    for p in range(P):
+        seg = s[start[p]:start[p] + sizes[p]]
+        out[p] = int(np.argmax(seg)) if seg.max() > seg[0] else 0
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.81: layer one, a first reading
+
+class Reach:
+    """What ahead() reads: the graph model of a game and its variant, the goal kind and the kind words (all handed in)."""
+
+    def __init__(self, model, variant: str, goal_kind, kinds: list, facts=None):
+        self.model, self.variant, self.goal_kind, self.kinds = model, variant, goal_kind, list(kinds)
+        self.static = model.static_part()
+        self.facts = facts
+
+    def legal(self, moves: list) -> list:
+        import cs_engine as CE
+        st = CE.state(self.variant, None, list(moves))
+        return list(st[2]) if st[1] is not None and st[3] is None else []
+
+    def text(self, moves: list) -> str:
+        import cs_engine as CE
+        return CE.state(self.variant, None, list(moves))[0]
+
+    def items(self, text: str):
+        from catspace.incubator.analyst.discovery import graph_layer1 as GL
+        from catspace.incubator.analyst.discovery import graph_layer2_match as GM
+        return GM.graph_items(GL.graph(self.model, text, self.static), self.goal_kind)
+
+
+def reach_rows(env: Reach, positions: list, counter: Counter) -> list:
+    """See the module doc: [{"legal": [moves], "makes": {key: [moves whose event "mover up" holds]}}] per position, the keys of the counter."""
+    legal = [env.legal(p["moves"]) for p in positions]
+    M = deltas_matrix(positions, legal, counter).tocsc()
+    n = len(counter.keys)
+    out, r = [], 0
+    for lg in legal:
+        up = M[r:r + len(lg), :n].tocsr() if lg else None                  # the first block: mover up
+        makes = {}
+        for j, key in enumerate(counter.keys):
+            col = up[:, j].toarray().ravel() if up is not None else np.zeros(0)
+            makes[key] = [lg[i] for i in np.flatnonzero(col > 0)]
+        out.append({"legal": lg, "makes": makes})
+        r += len(lg)
+    return out
+
+
+def _unit_ok(un: dict, u: int, p: L2.Pattern, kinds: list, side: int) -> bool:
+    mine = un["mine"] if side == 0 else not un["mine"]
+    return not (mine != p.sides[u] or (p.level >= 1 and un["goal"] != p.goal[u]) or (p.level == 2 and un["edge"] != p.edge[u]) or (p.level == 3 and kinds[p.kind[u]] != un["kind"]))
+
+
+def one_short(items: list, units: dict, p: L2.Pattern, kinds: list, side: int) -> "tuple[set, set]":
+    """See the module doc. For a pattern of size 2 with atoms (A, B): an item that matches atom A, with the unit variables of A bound to units that meet the pattern's attributes, is a PARTIAL instance (key: the atom number
+    and the units of that atom's unit variables); it is COMPLETE when some other item matches the other atom so that the two bind consistently (the same objects for the shared variables, injectively) and every unit meets
+    its attributes, and ONE FACT SHORT when no such item exists."""
+    from catspace.incubator.analyst.discovery import graph_layer2_match as GM
+    if p.size != 2:
+        return set(), set()
+    seen, full = set(), set()
+    for a in (0, 1):
+        atom_a = p.atoms[a]
+        uvars = sorted({v for v in (atom_a[1], atom_a[3] if atom_a[2] == "u" else None, atom_a[5]) if v is not None})
+        for it in items:
+            bound = GM._bind([atom_a], (it,))
+            if not bound:
+                continue
+            ub = {v[1]: o for v, o in bound.items() if v[0] == "u"}
+            if not all(_unit_ok(units[ub[u]], u, p, kinds, side) for u in uvars if u in ub):
+                continue
+            key = (a, tuple((u, ub[u]) for u in uvars))
+            done = False
+            for jt in items:
+                if jt is it:
+                    continue
+                order = (it, jt) if a == 0 else (jt, it)
+                bd = GM._bind(p.atoms, order)
+                if not bd:
+                    continue
+                uv = {v[1]: o for v, o in bd.items() if v[0] == "u"}
+                if all(u in uv and _unit_ok(units[uv[u]], u, p, kinds, side) for u in range(p.n_units())):
+                    done = True
+                    break
+            seen.add(key)
+            if done:
+                full.add(key)
+    return seen - full, full
+
+
+def _follow(keys: set, frm: str, to: str) -> set:
+    """The keys with the unit that stood on `frm` now standing on `to`."""
+    def f(uid: str) -> str:
+        return uid.rsplit(":", 1)[0] + ":" + to if uid.endswith(":" + frm) else uid
+    return {(a, tuple((u, f(o)) for u, o in us)) for a, us in keys}
+
+
+def nearer(env: Reach, text: str, move: str, pattern: L2.Pattern, before: "tuple | None" = None) -> "bool | None":
+    """See the module doc. `before` = the (short, full) keys at `text` for the side to move when already read (the same position, many moves). None where the move's units cannot be followed."""
+    import cs_engine as CE
+    if env.facts is None:
+        return None
+    if before is None:
+        items, units = env.items(text)
+        before = one_short(items, units, pattern, env.kinds, 0)
+    pl = env.facts.replay(text, [move])
+    if not pl or not pl[0]["from"] or not pl[0]["to"]:
+        return None
+    after_text = CE.state(env.variant, text, [move])[0]
+    items2, units2 = env.items(after_text)
+    short2, full2 = one_short(items2, units2, pattern, env.kinds, 1)         # after the move the mover is the other side of the position
+    old = _follow(before[0] | before[1], pl[0]["from"], pl[0]["to"])
+    return bool(short2 - old)
+
+
+def ahead(position: dict, reason: dict, limit: int, env: Reach, rows: "list | None" = None) -> "int | None":
+    """See the module doc. `rows` (optional) = reach_rows' results for the earlier positions already read, by k (1-based), so a batch need not ask again."""
+    if reason.get("side") != "mover" or reason.get("dir") != "up":
+        return None
+    moves = list(position["moves"])
+    n = len(moves)
+    if n - 2 < 0:
+        return None
+    run = 0
+    for k in range(1, limit + 1):
+        at = n - 2 * k
+        if at < 0:
+            return run if run else None
+        if rows is not None:
+            makes = rows[k - 1]["makes"].get(reason["key"], [])
+        else:
+            counter = Counter(env.model, [reason["key"]], env.goal_kind, 2, (0, 1, 2, 3), 1)
+            makes = reach_rows(env, [{"moves": moves[:at]}], counter)[0]["makes"].get(reason["key"], [])
+        if not makes:
+            break
+        run += 1
+    return run

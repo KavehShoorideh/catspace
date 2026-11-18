@@ -311,16 +311,30 @@ def head_inputs(head: dict, fit: np.ndarray) -> "tuple[np.ndarray, dict]":
     return x, {"centre": c, "scale": s}
 
 
+def head_fit(head: dict, find: np.ndarray, say) -> "tuple[object, dict]":
+    """The held head R+K fitted on the FIND head rows (the penalty by 5-fold cross-validation grouped by game, 78.59's grid): (the model, the inputs' centre and scale). PLAN 78.81 reads it for rows the head was not built on."""
+    x, tf = head_inputs(head, find)
+    c, sc = EF.choose_c(x[find], head["y"][find].astype(int), head["game"][find])
+    m = EF.fit_lr(x[find], head["y"][find].astype(int), c)
+    say(f"HEAD R+K fitted on {int(find.sum())} FIND head rows: penalty C {c}")
+    return m, tf
+
+
+def head_scores(m, x: np.ndarray) -> np.ndarray:
+    """The head's scores (win, draw, loss) for the input rows `x` (a class the fit never saw gets -30)."""
+    z = np.asarray(m.intercept_)[None, :] + x @ np.asarray(m.coef_).T
+    full = np.full((len(x), 3), -30.0)
+    for j, k in enumerate(list(m.classes_)):
+        full[:, k] = z[:, j]
+    return full
+
+
 def head_offsets(head: dict, find: np.ndarray, say) -> np.ndarray:
     """Fit the held head R+K on the FIND head rows (the penalty by 5-fold cross-validation grouped by game, 78.59's grid) and return its scores (win, draw, loss) for every head row."""
     x, _tf = head_inputs(head, find)
     c, sc = EF.choose_c(x[find], head["y"][find].astype(int), head["game"][find])
     m = EF.fit_lr(x[find], head["y"][find].astype(int), c)
-    z = np.asarray(m.intercept_)[None, :] + x @ np.asarray(m.coef_).T
-    cl = list(m.classes_)
-    full = np.full((len(x), 3), -30.0)
-    for j, k in enumerate(cl):
-        full[:, k] = z[:, j]
+    full = head_scores(m, x)
     pf = np.exp(full - full.max(axis=1, keepdims=True))
     pf /= pf.sum(axis=1, keepdims=True)
     y = head["y"].astype(int)
