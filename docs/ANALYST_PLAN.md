@@ -13722,3 +13722,19 @@ STILL WRONG. (a) One run each; the 0.2 s sets C and D were played with other wor
 
 DEVIATIONS. (1) The mode is the string `choice_mode` ("slot" | "main") of the two entries, not a boolean. (2) The Rust test of item (6) is not possible in Rust (the fault is in py/src/lib.rs); a Python test that fails before and passes after is the test. (3) Mover67 counts the nodes of every decision (`note_choice`) so that the hint's matches print them; this changes no decision. (4) A scratch file scratchpad_edit.py in the worktree root (untracked, not committed).
 TESTS (one file a call, gate.py engine --only; the extension built in the worktree into a scratch folder first on the path; LCP_DATA to main's data): test_plan78_93_choice 7, test_plan78_92_choice 12, test_plan78_85_debts 9, test_plan78_50_subgoal_play 15, test_plan78 17, test_plan78_67_tiebreak 8 passed; test_plan78_82_play 11 passed and 1 failed (a data file of main, symbols_78_80/full/sample.jsonl, is not in the worktree; the plan does not touch it). cargo test --release --offline -p cs_tactics -p cs_decision passed (choice_mode.rs 3, choice_mode_default.rs 1). No full gate.
+
+
+### 78.93 READ (main agent, 2026-11-19; directions; numbers from artifacts/experiments/reasoner_choice_78_93/full/obs.txt)
+
+MERGED. Rust tests of cs_tactics and cs_decision passed, the extension in main was rebuilt, seven touched Python test files passed (test_plan78_93_choice 7, test_plan78_92_choice 12, test_plan78_85_debts 9, test_plan78_50_subgoal_play 15, test_plan78_67_tiebreak 9, test_plan78_82_play 12, test_plan78 17). The append conflict in this file (the builder's BUILT block against my plans written meanwhile) was resolved by keeping both.
+THE VERIFIED CHOICE REPEATS. On two new opening sets, disjoint from the first two, and at five times the clock, the player that asks its chosen move again without the prunings scored above the player that does not, every time, with the pooled bands clear of a half at both clocks. With 78.92 that is four opening sets at the play clock and two at the longer one, all the same way. This is no longer one run.
+A CAVEAT ON ALL OF IT. The machine was busy while these matches ran (I read a load of six to eleven during them; the builder waited for under four only at each start). Both sides of a match share the load, so the sign is believable, the sizes less so.
+NOT EXPLAINED: the verification replaces only about one choice in forty and still moves the score this much. Either those few choices are worth a great deal, or the time it takes from the equal reading's slot changes play in another way. To be looked at before it is called understood.
+THE LATE REDUCTION is level with its absence again, on four sets at the play clock and at the longer clock, while reading about two plies deeper. Two more plies that buy nothing is a finding about the search or the judge at the leaf, and is open.
+THE VARIANT (the verification's time from the main search's clock) is worse than the first form at both clocks. The first form stays.
+THE HINT of 78.82 is worth the same against the control when both sides verify.
+THE LATENT FAULT of 78.92 is closed: best_move reaches the search with verify_ties; the builder saw its test fail before the fix.
+THE CRASH Kaveh saw at about 12:45 was not one of these matches: none was running then and every match has its whole count of games. Its cause is not known; no crash report was written.
+DECISION FOR KAVEH (section 13 item 13): turn the verified choice on in play. Everything measured says yes; it stays off until he says so.
+DEVIATIONS accepted: the mode as a word; the fix's test in Python because the fault is in the binding; node counts for every mover.
+NEXT: plan 78.94 as revised and amended (the future judge), which is Kaveh's direction of 2026-11-19. The two open questions of this plan (why so few replacements move the score; why two plies buy nothing) are written into section 12 as owed.
