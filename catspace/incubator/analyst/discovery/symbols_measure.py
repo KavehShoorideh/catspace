@@ -14,6 +14,8 @@ INTERFACE (what each stage takes and writes; who calls it). Each stage is a comm
   report          what the passing events are, and whether they only stand for taking a unit (a confound, measured: the pick on the positions where no tied move takes a unit).
   score      (f)  the pick (symbols.symbol_pick) scored on the CONFIRM part against the move played (against the search's first move and a random pick), by deep_heads.score on the ladder's scored part and by hit_rate.
   all        the stages in order.
+  PLAN 78.89 (the stratified mode of the sample, SYSTEM_SPEC 10): plies_stratified(ordinal, counts, bins, per_bin, last) -> {bin index: [ply, ...]}: the plies of one game drawn evenly over bins of unit count (symbols_sample_measure
+             `sample` calls it); the stages above are unchanged.
 Called by: the command line only; ladder_print.py reads passing.json, keys.json and the sample for the cases.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.symbols_measure sample|deltas|test1|test2|rule|score|all --tag short --limit 200 | --tag full
@@ -121,6 +123,22 @@ def plies_of(ordinal: int, n: int) -> list:
     rng = random.Random(SEED * 100003 + ordinal)
     cuts = [lo + (hi - lo + 1) * i // k for i in range(k + 1)]
     return [rng.randrange(cuts[i], cuts[i + 1]) for i in range(k)]
+
+
+def plies_stratified(ordinal: int, counts: list, bins: tuple, per_bin: int, last: int) -> dict:
+    """PLAN 78.89 (the stratified mode of the sample, SYSTEM_SPEC 10): the plies of one game the sample tries, evenly over BINS OF UNIT COUNT instead of at most PER_GAME spread over the game. `counts[p]` the units on the board at
+    ply p (ladder_measure.unit_counts), `bins` ((low, high), ...) inclusive, `last` the last ply at which a move is played. For each bin the game's plies from MIN_PLY to `last` whose count lies in it, cut in `per_bin` equal
+    stretches (fewer when fewer plies), one ply drawn in each (a seeded draw of the game's ordinal and the bin). -> {bin index: [ply, ...]}; a bin the game never reaches is absent."""
+    out: dict = {}
+    for bi, (lo, hi) in enumerate(bins):
+        ps = [p for p in range(MIN_PLY, last + 1) if lo <= counts[p] <= hi]
+        if not ps:
+            continue
+        k = min(per_bin, len(ps))
+        rng = random.Random(SEED * 100003 + ordinal * 31 + bi)
+        cuts = [len(ps) * i // k for i in range(k + 1)]
+        out[bi] = [ps[rng.randrange(cuts[i], cuts[i + 1])] for i in range(k)]
+    return out
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ (a) the sample
