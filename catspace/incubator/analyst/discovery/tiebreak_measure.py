@@ -40,10 +40,11 @@ SECONDS = 0.2                       # a move for every player (78.61 used 0.05; 
 LEDGER_SHARE = PM.LEDGER_SHARE      # of the clock for the ledger's deepening; the equal reading takes the rest (as 78.50)
 PLY_CAP = 120                       # the ply cap of 78.61
 WORTH_GEN = 3                       # `OM.players_of(3)` plays the Worth judge fed from gen2/record.json, the generation-2 record
-FIRST_SEEDS = {"A": OM.MATCH_FIRST_SEED, "B": 41000}
+FIRST_SEEDS = {"A": OM.MATCH_FIRST_SEED, "B": 41000, "C": 73000, "D": 105000}      # (plan 78.93: C and D, the rule of B with other seeds)
 PLAYERS = ("control", "random", "trees", "linear", "arrival")
 KIND = {p: f"tb_{p}" for p in PLAYERS}
 ARRIVAL_WEIGHTS = "subgoal_play_78_50/full/weights_horizon8.json"
+VC_KEYS = ("vc_asked", "vc_held", "vc_replaced", "vc_failed", "vc_cut", "vc_nodes", "vc_seconds")
 REG: list = []                      # the movers made in this process for the game being played
 _READER = None
 _SHEET = None
@@ -58,6 +59,8 @@ def out_root(tag: str = "full") -> Path:
 
 def openings(set_name: str, pairs: int) -> list:
     """[(seed, opening moves)] of one set. Set A is the seeds of the 78.61 matches. Set B starts far from them and skips any seed whose opening is one of set A's (or already in B): the sets share no opening."""
+    if set_name in ("C", "D"):
+        return later_set(set_name, pairs)
     first = FIRST_SEEDS["A"]
     a = [(first + k, tuple(OM.random_opening(None, first + k))) for k in range(pairs)]
     if set_name == "A":
@@ -70,6 +73,39 @@ def openings(set_name: str, pairs: int) -> list:
             taken.add(o)
             out.append((seed, list(o)))
         seed += 1
+    return out
+
+
+SET_PAIRS = 100                     # the size of a full set: the sets C and D are made against the full A and B whatever number of pairs a run plays
+
+
+def later_set(set_name: str, pairs: int) -> list:
+    """PLAN 78.93: the sets C and D, made by the rule of set B with other seeds (the first seed in FIRST_SEEDS, one seed after the other, a seed skipped when its opening is one the full sets before it, or the set itself so far,
+    already hold). C skips the openings of the full A and B (100 pairs each); D those of A, B and the full C. The first `pairs` of the set are returned, so a run of 40 pairs plays the first 40 of the 100."""
+    taken = {tuple(o) for name in ("A", "B") for _s, o in openings(name, SET_PAIRS)}
+    if set_name == "D":
+        taken |= {tuple(o) for _s, o in later_set("C", SET_PAIRS)}
+    out, seed = [], FIRST_SEEDS[set_name]
+    while len(out) < SET_PAIRS:
+        o = tuple(OM.random_opening(None, seed))
+        if o not in taken:
+            taken.add(o)
+            out.append((seed, list(o)))
+        seed += 1
+    return out[:pairs]
+
+
+def overlap_lines(pairs: int = SET_PAIRS) -> list:
+    """The overlap of every two sets, in openings the two share (must be none) and in seeds."""
+    sets = {n: openings(n, pairs) for n in ("A", "B", "C", "D")}
+    out = []
+    names = sorted(sets)
+    for i, x in enumerate(names):
+        for y in names[i + 1:]:
+            ox, oy = {tuple(o) for _s, o in sets[x]}, {tuple(o) for _s, o in sets[y]}
+            sx, sy = {s for s, _o in sets[x]}, {s for s, _o in sets[y]}
+            out.append(f"OBS opening sets overlap {x} and {y}: openings in both {len(ox & oy)} (of {len(ox)} and {len(oy)} distinct), seeds in both {len(sx & sy)}")
+    out += [f"OBS opening set {n}: {len(v)} pairs, {len({tuple(o) for _s, o in v})} distinct openings, first seed {v[0][0]}, last seed {v[-1][0]}" for n, v in sorted(sets.items())]
     return out
 
 
@@ -118,8 +154,27 @@ class Mover67(OM.Mover):
         super().__init__(spec, seconds, seed, trace)
         self.charge = bool(spec.get("charge", False))
         self.costs: list = []
+        self.verify_choice = bool(spec.get("verify_choice", False))                 # plan 78.92 / 78.93: the verification of the choice, off unless the spec asks
+        self.choice_mode = str(spec.get("choice_mode", "slot"))
         self.stats = {"decisions": 0, "ties": 0, "changed": 0, "wall": 0.0, "read": 0.0, "search": 0.0, "quiet": 0, "children": 0, "log": []}
         REG.append(self)
+
+    def choice_kw(self) -> dict:
+        """The keywords of `solve_equals_batch` for the verification of the choice (empty when it is off: the call is exactly what it was)."""
+        return {"verify_choice": True, "choice_mode": self.choice_mode} if self.verify_choice else {}
+
+    def note_choice(self, raw: list) -> None:
+        """Count what the verification of the choice did in one decision (row 12 the state: 1 held, 2 replaced, 3 failed and kept, 4 cut; 13 its nodes; 14 its seconds)."""
+        st = self.stats
+        st["nodes"] = st.get("nodes", 0) + int(raw[2] or 0)                         # (the nodes the decision spent, for the mean a decision)
+        if not self.verify_choice or not raw[12]:
+            return
+        for k in VC_KEYS:
+            st.setdefault(k, 0)
+        st["vc_asked"] += 1
+        st[("vc_held", "vc_replaced", "vc_failed", "vc_cut")[raw[12] - 1]] += 1
+        st["vc_nodes"] += int(raw[13])
+        st["vc_seconds"] += float(raw[14])
 
     def search_clock(self) -> float:
         return reading_clock(self.seconds, self.costs) if self.charge and self.kind in (KIND["trees"], KIND["linear"], KIND["arrival"]) else self.seconds
@@ -128,8 +183,10 @@ class Mover67(OM.Mover):
         if not self.kind.startswith("tb_"):
             return super().choose(text, moves, legal)
         t0 = time.perf_counter()
-        row = PM.equal_set(CE.solve_equals_batch([(OM.VARIANT, text, list(moves))], self.search_clock(), worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1,
-                                                 ledger_share=LEDGER_SHARE)[0])
+        raw = CE.solve_equals_batch([(OM.VARIANT, text, list(moves))], self.search_clock(), worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1,
+                                    ledger_share=LEDGER_SHARE, **self.choice_kw())[0]
+        self.note_choice(raw)
+        row = PM.equal_set(raw)
         t1 = time.perf_counter()
         mv, eq = row["move"], row["equals"]
         pick, st = mv, self.stats
