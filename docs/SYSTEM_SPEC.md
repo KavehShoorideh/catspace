@@ -342,6 +342,23 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   reply read. The long count is undecided (a gap on one part of the split, none on the other). So the proposal
   above is not supported as built. The purposes read off the cases are further kinds each time, and listing them
   by hand is not what this section asks for; the open question is in section 13.
+- **Subgoals as symbols that go with winning, and whether one is ahead of us** (2026-11-17). His idea: "if we
+  quantize the GNN outputs from the statistical head, then we'll have some symbols correlate with winning
+  positions and some with losing, then we can make the achievement of that symbol the subgoal; but we'll have to
+  know if its in the future or not, so some sort of quantized quasimetric reachability?" The main agent's
+  recommendation, which he accepted ("sure your rec is good"), DECIDED as the order of work:
+  - *Fact patterns first.* The graph is already discrete, so the first symbols are small patterns of graph facts
+    with units as variables (the layer-2 patterns of plan 78.53), local to a unit or a few units. They are
+    readable as they come. A graph network with quantized codes per unit is built only if no pattern passes the
+    tests below; its codes would then be described in graph facts.
+  - *A symbol must pass two tests, on games it was not found on.* It goes with the result beyond what the count
+    of units already says. And the move played in human games makes it true more often than the other moves the
+    search holds equal do. The second test keeps out symbols that only mark a side already ahead.
+  - *Not the output.* Symbols are never bins of the head's one number; reaching a better bin would be the value
+    under another name (AGENTS.md rule 7). The symbol is a hint that orders moves.
+  - *Whether it is in the future follows the two layers.* Layer one, me playing only, is a count of my own moves
+    until the pattern holds, where a quasi-metric fits and the earlier work on one may be reused. Layer two, with
+    the opponent's veto, is a chance: the pattern coming true is one more event class of the heads of section 6.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -578,6 +595,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
 | The ladder under each measured worth record | Measured (plan 78.76): the odds record, the self-play record and the human-result record give the same division within noise; the worths are not the main cause of the open surprises. Open ones are positions where nothing is taken inside the reading. CORRECTED by plan 78.77: a unit changing kind IS an event of the ledger (since plan 78.5) and only the print left it out; the line read and the search are two readings at different depths, and the printed line now follows the search's move |
 | The goals as a hint among equal moves, scored on the open surprises | Measured (plan 78.78): silent in most tie positions by layer one; no signal above the base rate by stoppers. Missing: goals that stop the other side's goals, and a count for long walks |
 | The other side's goals as ours to stop, the long count, the replied stoppers | Measured (plan 78.79): defence and replied stoppers show no gap between accepted and not accepted moves; the long count is undecided |
+| Symbols that go with winning as subgoals (fact patterns, two tests, a wider yardstick) | Decided 2026-11-17; plan 78.80 building |
 | The menu, compression (rung 4), the chooser | Written, not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying first measured by a proxy, then truly (plans 78.70, 78.72): a claim whose read set did not change is held again only about half the time |
 | The threat list (threats with stake and response, in four bands) | Built concretely (plan 78.72, after a first form in 78.70): each row and each response is a line read to a settled end and judged by the measured worths; exchanges print apart; claims nothing bears on are dropped; the end of the game is a row for either side. Like for like cancels in the verdict and responses carry their own end and are ordered (plan 78.73). Still short of section 8: a clear gain can print as an exchange because the measured worths are coarse, many positions print no row, threats that need a quiet first move are rare, and the top band is not the most dangerous. Carrying by the frame's read set does not hold for a concrete line; the line's own read set is not built. Not wired into play |
@@ -602,11 +620,9 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
    pursuit is dropped), and the three departures of the first build listed there.
    Added 2026-11-17: may a goal be "stop one of theirs", made by running the proposer for the other side
    (PROPOSED in section 7, being measured in plan 78.79)?
-5. How is the choice among quiet moves to be learned (section 7)? Five measurements (plans 78.68 G and H, 78.76 to
-   78.79) find no part as built that tells the accepted quiet move from the other equal moves. PROPOSED (mine):
-   the miner finds which changes of graph facts a move makes separate the move played in human games from the
-   other equal moves, so the purposes come out of data and not from a hand list; and the yardstick is widened,
-   since a hundred tie positions cannot show a small gain.
+5. Answered 2026-11-17 (section 7, symbols that go with winning): fact patterns first, tested on human moves,
+   a graph network only if they fail. Still open: what is done if no pattern passes and the network's codes do
+   not either.
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
@@ -662,6 +678,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition; reachable in two layers, me playing only and with the opponent's veto; choosing among goals by the weakness pointed at, goals as facts with no name, the fix of a problem as the subgoal, subgoals graded | 2026-11-14, 16 | 7 |
 | The wake, step by step; the rule for choosing a move (threats first, answering a big threat is the subgoal, a small one may be left for an attack, the unseen threat read by statistics; a counter-threat is an allowed answer; a guide); the threat list with stake and response, high and low set by the spread; the wall | 2026-11-14, 16 | 8 |
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
+| Subgoals as symbols that go with winning: fact patterns first, two tests on human moves, a graph network with quantized codes only if they fail; in the future or not by the two layers | 2026-11-17 | 7 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
 | Rust first; game-free layers; Lean; reuse; the real store | 2026-11-14 | 11 |
 | Every build checked against the spec; modules with stated interfaces; no quiet departure | 2026-11-16 | 11 |
