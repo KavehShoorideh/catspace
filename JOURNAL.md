@@ -36814,3 +36814,8 @@ Groups of the 136 reasons at the fixed rule (average linkage, Jaccard 0.5 on FIN
 
 ## 2026-11-18 04:20 -- plan 78.89: the many band split, and a second human sample for the later game (builder agent)
 The cut is 28 units (median of the many band's tie decisions in 78.82's games): the lower part 17 to 28 plays 0.6262 [0.6000, 0.6538] v control (400 games), the upper part 29 and up 0.5663 [0.5400, 0.5925]; the hint is not an opening rule only. A second human sample (10226 positions, 3870 games, evenly over bins of 0 to 28 units; further games of the same month file) holds more than 2000 tie positions in each bin, the few band 4094 against 213: no generated game needed. Refit on it: few agreement +1.95 [+0.60, +3.39] over the old weights, mid and lower many not better; still below the search's first move in the ending. Play of the best fit per window: 0.5150 [0.5012, 0.5288] (0 to 16 units), 0.6175 [0.5913, 0.6450] (17 to 28). Thirty decisions judged. Numbers in docs/ANALYST_PLAN.md 78.89 BUILT (artifacts/experiments/symbols_78_89/full/obs.txt).
+
+
+## 2026-11-18 08:31 plan 78.90: the mover's own loose unit, one fit on both samples (builder agent; SYSTEM_SPEC 7, 9)
+
+Built and run once, directions only; numbers in docs/ANALYST_PLAN.md (78.90 BUILT) from artifacts/experiments/symbols_78_90/full/obs.txt. Cells of the other side's bearing added to the reasons, one fit on the union of both samples' FIND, scored on both CONFIRM parts, the count of part C, play (v control and v 78.82's player), thirty decisions read against the board.
