@@ -72,6 +72,7 @@ fn read_dict<'py>(py: Python<'py>, r: &LineRead) -> PyResult<Bound<'py, PyDict>>
     d.set_item("nodes", r.nodes)?;
     d.set_item("cut", r.cut)?;
     d.set_item("settled", r.settled)?;
+    d.set_item("unsettled", r.unsettled)?;
     Ok(d)
 }
 

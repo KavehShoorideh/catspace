@@ -57,7 +57,7 @@ SWEEP_DEPTH = 4                                                 # the sweep of e
 SWEEP_FUSE = 12000
 END_PLIES = 7                                                   # plies within which the end of the game is looked for (the search that counts nothing; the exact forcing read confirms the first move)
 END_FUSE = 1500000
-VERDICTS = ("CONFIRMED", "EXCHANGE", "REFUTED", "UNREAD")
+VERDICTS = ("CONFIRMED", "EXCHANGE", "REFUTED", "UNREAD", "UNSETTLED")
 WHY = ("a taking", "the unit moves", "a guard is added", "a counter threat", "a unit is put between")
 
 
@@ -120,6 +120,10 @@ class Lines:
         t0 = time.perf_counter()
         extra = {} if self.kind_change else {"kind_change": False}                              # (the default call is the call of every earlier run)
         res = CE.read_lines(self.variant, games, queries, self.record.worth, depth or self.depth, fuse or self.fuse, self.end_plies, self.end_fuse, self.threads, **extra)
+        if not self.kind_change:                                                                 # (PLAN 78.85: the verdict then leaves the event out of its net, as the line search does)
+            for r in res:
+                for rd in (r.get("reads") or []) + [x for a in (r.get("afters") or []) for x in [a["whole"]] + a["takes"]]:
+                    rd["kind_change"] = False
         self.cost["wall"] += time.perf_counter() - t0
         self.cost["queries"] += len(queries)
         self.cost["calls"] += 1
@@ -150,15 +154,26 @@ def cancel_like(lost: list, won: list) -> "tuple[list, list, int]":
     return left_lost, left_won, pairs
 
 
+def kind_change_net(read: dict, record: Record) -> int:
+    """PLAN 78.85 B: what the kind changes along a line add for the side the line was read for (`Record.change_of`, the mirror of `Worth::change`): its own units changing kind add, the other side's subtract. 0 where the
+    read was made with the event taken out of the judge (`Lines(kind_change=False)`), so the verdict agrees with the line search's own number."""
+    if not read.get("kind_change", True):
+        return 0
+    return sum((1 if mine else -1) * record.change_of(a, b) for mine, a, b in read.get("changes", []))
+
+
 def verdict_of(read: dict, record: Record) -> dict:
     """The verdict of one line read for the side that takes (the line was read with that side as `me`): see the module doc."""
     lost, won = ledger_of(read)
     net_search = int(read["value"])
     left_lost, left_won, pairs = cancel_like(lost, won)
     net = sum(record.worth.get(k, 0) for k in left_won) - sum(record.worth.get(k, 0) for k in left_lost)      # PLAN 78.73 A: the net of the kinds LEFT after like for like cancels
+    changed = kind_change_net(read, record)
+    net += changed                                                                                           # PLAN 78.85 B: a unit changing kind is an event of the ledger (78.5b) and now of the net
     res = record.resolution(left_lost + left_won)                                                           # and the resolution is built only from them (none left: nothing to tell apart)
     base = {"names": read["names"][:read["settled"]], "full_names": read["names"], "taker_lost": lost, "taker_won": won, "left_lost": left_lost, "left_won": left_won, "cancelled": pairs, "net": net,
-            "net_search": net_search, "resolution": res, "depth": read["depth"], "end": read["end"], "nodes": read["nodes"], "pv_disagrees": net != net_search}
+            "net_search": net_search, "resolution": res, "depth": read["depth"], "end": read["end"], "nodes": read["nodes"], "pv_disagrees": net != net_search, "kind_net": changed,
+            "unsettled": bool(read.get("unsettled", False))}
     if read["cut"]:
         return dict(base, verdict="UNREAD", ended=TL.ENDED[3], reason="out of budget: the fuse cut the line; no forced claim is made from it")
     if read["end"] == 1:
@@ -169,7 +184,7 @@ def verdict_of(read: dict, record: Record) -> dict:
     if net > res:
         v = "CONFIRMED"
     elif net < -res:
-        v = "REFUTED"
+        v = "UNSETTLED" if base["unsettled"] else "REFUTED"                # PLAN 78.85 B: a line still inside an exchange when the tail's fuse stopped it is not refuted
     else:
         v = "EXCHANGE" if ((lost and won) or (left_lost and left_won)) else ("CONFIRMED" if left_won else "REFUTED")
     return dict(base, verdict=v, ended=TL.ENDED[1], reason=why)

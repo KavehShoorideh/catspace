@@ -22,6 +22,7 @@ fn record_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) 
     Ok((g, s, keys))
 }
 
+mod audit_py;
 mod base_graph_py;
 mod frames_py;
 mod lines_py;
@@ -33,17 +34,17 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None, verify_ties=true))]
 #[allow(clippy::too_many_arguments)]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
-             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>)
+             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>, verify_ties: bool)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
     let (g, s, keys) = record_of(variant, fen, start960, &moves)?;
     let hist: Vec<u64> = if record { keys } else { vec![] };          // (record=False: the game's record not read -- the comparison)
     let f = g.fen(&s);
     let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
-    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, wdl, wdl_table: table, ..cs_decision::Params::default() };
-    let choice = if reason || wdl {
+    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, wdl, wdl_table: table, verify_ties, ..cs_decision::Params::default() };
+    let choice = if reason || wdl || !verify_ties {
         // (plan 78.25 / 78.26: the reasoning chain or the win / draw / loss path on: the decision with its extra steps; both off, the call below is exactly what it was)
         (if worth.is_empty() { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Count, &params) }
          else { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, &params) })
@@ -599,6 +600,7 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         ls.ordering = self.params.ordering;
         ls.prune = self.params.prune;
         ls.extend = self.params.extend;
+        ls.verify_ties = self.params.verify_ties;
         ls.root_first = prefer.clone();
         ls.root_last = avoid.clone();
         if let Some(ro) = &self.params.root_order { ls.set_root_order(&ro.order, ro.strict); }
@@ -712,12 +714,12 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=true))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
-                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool) -> PyResult<Vec<EqualsRow>> {
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool) -> PyResult<Vec<EqualsRow>> {
     let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
-    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), ..cs_decision::Params::default() };
+    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
         store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
@@ -1311,6 +1313,8 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scenario, m)?)?;
     m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
     m.add_function(wrap_pyfunction!(lines_py::read_lines, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_py::equal_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_py::value_at, m)?)?;
     m.add_class::<sheet_py::SheetModel>()?;
     m.add_class::<base_graph_py::BaseGraph>()?;
     Ok(())
