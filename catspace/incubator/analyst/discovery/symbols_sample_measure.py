@@ -26,7 +26,11 @@ INTERFACE (what each stage takes and writes; who calls it). Each stage is a comm
                 beside; the condition for play.
 Called by: the command line only; ladder_print.py reads cases89.json (`--play89`).
 
-  .venv/bin/python -m catspace.incubator.analyst.discovery.symbols_sample_measure first|cut|cases|sample|fill|coverage|events|fit|score|match|report --tag short|full
+  PLAY (only on the plan's condition: agreement in a band below the upper many part rises over the old weights with a paired band clear of zero)
+  agreement     the player's pick (symbols_group_play) against the offline pick on 200 positions of the new CONFIRM.
+  match         also `--a fitfew` (the window 0-16 units) and `--a fitlow` (the window 17 units to the cut), each with the fit that `score` found best for that window on the new CONFIRM (best.json), v control.
+
+  .venv/bin/python -m catspace.incubator.analyst.discovery.symbols_sample_measure first|cut|cases|sample|fill|coverage|events|fit|score|agreement|match|report --tag short|full
 """
 from __future__ import annotations
 
@@ -52,6 +56,7 @@ from catspace.incubator.analyst.discovery import graph_layer2_measure as G2M
 from catspace.incubator.analyst.discovery import human_heads_data as HD
 from catspace.incubator.analyst.discovery import ladder_measure as LM
 from catspace.incubator.analyst.discovery import symbols as SY
+from catspace.incubator.analyst.discovery import symbols_group_play as GP
 from catspace.incubator.analyst.discovery import symbols_groups_measure as SGM
 from catspace.incubator.analyst.discovery import symbols_measure as SM
 from catspace.incubator.analyst.discovery import symbols_play as SP
@@ -68,7 +73,7 @@ MANY_LOW = 17                                                     # the many ban
 TARGET = 1000                                                     # tie positions a bin of unit count should hold, in each part (the plan's aim)
 PER_GAME_BIN = 3                                                  # positions of one game in one bin at most
 BLOCK = 400                                                       # games taken from the pool at a time
-EXTRA_PER_SHARD = 1500                                            # further games of a shard: ranks 1500 to 3000 of its hash order (the 78.59 file holds ranks 0 to 1499)
+EXTRA_PER_SHARD = 5000                                            # further games of a shard: ranks 1500 to 6500 of its hash order (the 78.59 file holds ranks 0 to 1499); a first run with 1500 left the bin of 0 to 4 units short
 EXTRA_BASE = 1_000_000                                            # the ordinal of a further game: this plus its rank times eight plus the shard's place (never a game number)
 GEN_BASE = 5_000_000                                              # the ordinal of a generated game
 GEN_SETS = ("selfplay500", "selfplay16", "m50_control_control")   # 78.58's plain search v plain search sets (estimator_fit.SETS), the result known
@@ -166,7 +171,8 @@ def stage_first(root: Path, say, limit: int = 0) -> None:
 
 # ------------------------------------------------------------------------------------------------------------------------------ PART ONE (b): the cut and the matches
 
-KIND89 = dict(SP.KIND, manyhi="sy_reasons", manylo="sy_reasons")      # the two window players are the full reasons player of 78.82 with a window in the spec
+KIND89 = dict(SP.KIND, manyhi="sy_reasons", manylo="sy_reasons", fitfew="sy_reasons", fitlow="sy_reasons")      # the window players: the full reasons player of 78.82 with a window in the spec; fitfew and fitlow read the grouped fits (symbols_group_play)
+PLAYERS89 = ("manyhi", "manylo", "fitfew", "fitlow")
 
 
 def _games82(set_name: str) -> list:
@@ -212,16 +218,21 @@ def load_cut(root: Path) -> dict:
     return json.loads((root / "cut.json").read_text())
 
 
-def window_of(a: str, cut: dict) -> list:
+def window_of(a: str, cut: dict, root: "Path | None" = None) -> list:
+    if a in ("fitfew", "fitlow"):
+        return json.loads((root / "best.json").read_text())["fewmid" if a == "fitfew" else "lower"]["window"]
     return cut["upper"] if a == "manyhi" else cut["lower"]
 
 
 def match_specs89(a: str, set_name: str, pairs: int, seconds: float, root: Path, cut: dict) -> list:
     specs = TM.match_specs(a, "control", set_name, pairs, seconds, root / "scratch", False, KIND89)
+    fit = json.loads((root / "best.json").read_text())["fewmid" if a == "fitfew" else "lower"]["fit"] if a in ("fitfew", "fitlow") else None
     for s in specs:
         for pl in s["players"]:
             if pl["kind"] == "sy_reasons":
-                pl["window"] = list(window_of(a, cut))
+                pl["window"] = list(window_of(a, cut, root))
+                if fit:
+                    pl["fit"] = fit
     return specs
 
 
@@ -234,9 +245,10 @@ def stage_match(root: Path, a: str, set_name: str, pairs: int, workers: int, sec
     load, busy = TM.wait_quiet(lambda s: TM.emit([s], root / "obs.txt"))
     t0 = time.perf_counter()
     gf = games_file(root, a, set_name)
-    games = TM.run_games(match_specs89(a, set_name, pairs, seconds, root, cut), workers, gf, lambda s: TM.emit([s], root / "obs.txt"), play=SP.play82)
+    play = GP.play89 if a in ("fitfew", "fitlow") else SP.play82
+    games = TM.run_games(match_specs89(a, set_name, pairs, seconds, root, cut), workers, gf, lambda s: TM.emit([s], root / "obs.txt"), play=play)
     wall = time.perf_counter() - t0
-    gf.with_suffix(".meta.json").write_text(json.dumps({"load": load, "busy": busy, "wall": wall, "workers": workers, "seconds": seconds, "window": window_of(a, cut)}))
+    gf.with_suffix(".meta.json").write_text(json.dumps({"load": load, "busy": busy, "wall": wall, "workers": workers, "seconds": seconds, "window": window_of(a, cut, root)}))
     TM.emit(SP.lines_of(a, "control", set_name, games, load, busy, wall, seconds, workers, False), root / "obs.txt")
     TM.emit(SP.decision_lines(a, "control", set_name, games, GL.model(HD.GAME, HD.VARIANT)), root / "obs.txt")
 
@@ -639,6 +651,10 @@ def stage_fit(root: Path, say) -> None:
 
 # ------------------------------------------------------------------------------------------------------------------------------ PART TWO: the scores
 
+WINDOWS = {"fewmid": (0, 16), "lower": (MANY_LOW, 28)}              # the windows of the play: few and mid together; the lower many part (to the cut of the 78.89 run)
+FIT_TAG = {"old weights": "old", "new, one fit": "new", "new, by band": "newband"}
+
+
 def stage_score(root: Path, say) -> dict:
     data = load_data(root)
     cells = SGM.load_cells(root)
@@ -684,6 +700,13 @@ def stage_score(root: Path, say) -> dict:
                 if not ctl_in and label in ("few", "mid", "many") and d[1] > 0:
                     better.append((label, n, d))
             say(f"SCORE {label} ({kind}, {m} positions): " + "; ".join(parts) + "; paired (points, 90 pct bootstrap over games): " + "; ".join(pd))
+    best = {}
+    for wname, (lo, hi) in WINDOWS.items():
+        sel = (units >= lo) & (units <= hi)
+        ag = {tag: float(hits[(n, False)][sel].mean()) for n, tag in FIT_TAG.items()}
+        best[wname] = {"window": [lo, hi], "fit": max(ag, key=lambda t: ag[t]), "agreement": ag, "positions": int(sel.sum())}
+        say(f"BEST FIT for the window {lo}-{hi} units (the one whose pick without the controls agrees most with the move played on the new CONFIRM, {int(sel.sum())} positions): {best[wname]['fit']}; " + ", ".join(f"{t} {100 * a:.2f} pct" for t, a in ag.items()))
+    (root / "best.json").write_text(json.dumps(best))
     below = [x for x in better]
     say("PLAY CONDITION (agreement in a band below the upper many part rises over the old weights, the pick without the controls, paired band clear of zero): "
         + (f"MET in {[(b, n, f'{100 * d[0]:+.2f} [{100 * d[1]:+.2f}, {100 * d[2]:+.2f}]') for b, n, d in below]}" if below else "NOT MET in any band (few, mid, lower many) by either new fit"))
@@ -703,13 +726,33 @@ def stage_score(root: Path, say) -> dict:
     return {"better": better}
 
 
+def stage_agreement(root: Path, say, n: int = 200) -> None:
+    """The player's pick (symbols_group_play.GroupReader, one position at a time, the engine's counts and the cell reader) against the pick of the offline scoring (the choice rows of the new CONFIRM) for the same tie set, on `n`
+    positions evenly spaced; the tie sets are the sample's, so a difference is a difference of the reading."""
+    data = load_data(root)
+    cells = SGM.load_cells(root)
+    new = pickle.load(open(root / "fits.pkl", "rb"))
+    old = pickle.load(open(src88() / "fits.pkl", "rb"))
+    groups = old["variants"]["ii"]["groups"]
+    _R, E = SGM.reason_columns(data, True, cells)
+    rows = rows89(data, SY.group_matrix(E, groups), "confirm")
+    sample_c = [r for r in data["inp"]["sample"] if r["part"] == "confirm"]
+    fits = {"old": old["variants"]["ii"]["fits"], "new": {"all": new["fits"]["all"]}, "newband": {b: new["fits"][b] for b, _l, _h in SGM.BANDS}}
+    rd = GP.group_reader()
+    chosen = np.unique(np.linspace(0, len(sample_c) - 1, n).astype(int))
+    for name, f in fits.items():
+        pk = SGM.picks_of(rows, f, False)
+        ok = sum(1 for p in chosen if rd.pick(sample_c[p]["moves"], sample_c[p]["tied"], name)[0] == sample_c[p]["tied"][int(pk[p])])
+        say(f"AGREEMENT the player's pick against the offline pick for the same tie set, fit {name}: {ok} of {len(chosen)} positions (evenly spaced in the new CONFIRM)")
+
+
 # ------------------------------------------------------------------------------------------------------------------------------ main
 
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("stage", choices=("first", "cut", "cases", "sample", "fill", "coverage", "events", "fit", "score", "match", "report"))
+    ap.add_argument("stage", choices=("first", "cut", "cases", "sample", "fill", "coverage", "events", "fit", "score", "agreement", "match", "report"))
     ap.add_argument("--tag", default="short")
-    ap.add_argument("--a", default="manyhi", choices=("manyhi", "manylo"))
+    ap.add_argument("--a", default="manyhi", choices=PLAYERS89)
     ap.add_argument("--set", default="A", choices=("A", "B"))
     ap.add_argument("--pairs", type=int, default=100)
     ap.add_argument("--seconds", type=float, default=TM.SECONDS)
@@ -740,6 +783,8 @@ def main(argv: "list | None" = None) -> int:
         stage_fit(root, say)
     elif a.stage == "score":
         stage_score(root, say)
+    elif a.stage == "agreement":
+        stage_agreement(root, say)
     elif a.stage == "match":
         stage_match(root, a.a, a.set, a.pairs, a.workers, a.seconds, say)
     elif a.stage == "report":

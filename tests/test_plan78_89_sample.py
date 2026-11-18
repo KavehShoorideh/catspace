@@ -125,7 +125,7 @@ def test_the_cases_rule_never_takes_the_first_decision_of_a_game():
 
 
 def test_the_measure_names_no_object_of_any_game():
-    for f in ("symbols_sample_measure.py",):
+    for f in ("symbols_sample_measure.py", "symbols_group_play.py"):
         text = (Path(S.__file__).parent / f).read_text().lower()
         assert not re.search(r"\b[a-h][1-8]\b", text), f
         for w in ("fen", "san", "uci", "check", "mate", "promotion", "pawn", "bishop", "knight", "rook", "queen"):
@@ -136,3 +136,21 @@ def test_no_player_id_is_written_by_the_sample():
     text = (Path(S.__file__).parent / "symbols_sample_measure.py").read_text()
     assert "game_id" not in text
     assert 'g["id"]' not in text                                                         # the source's game number is dropped, only the ordinal of this run is kept
+
+
+def test_the_group_player_returns_a_tied_move_and_the_search_s_first_on_silence():
+    from catspace.incubator.analyst.discovery import symbols_group_play as GP
+    rd = GP.GroupReader.__new__(GP.GroupReader)
+    rd.base = type("Base", (), {"units_of": lambda self, m: 5})()
+    rd.fits = {"x": {"all": {"events": [0], "weights": [1.0]}}, "y": {"few": {"events": [1], "weights": [1.0]}}}
+    carried = [set(), {1}, {0}]
+    rd.carried_groups = lambda moves, tied: [carried[i] for i in range(len(tied))]
+    assert rd.pick([], ["a", "b", "c"], "x")[0] == "c"                              # the move that carries the weighted group
+    assert rd.pick([], ["a", "b", "c"], "y")[0] == "b"                              # the fit of the position's band (5 units: few)
+    rd.carried_groups = lambda moves, tied: [set() for _m in tied]
+    assert rd.pick([], ["a", "b", "c"], "x")[0] == "a"                              # nothing separates the moves: the search's first move
+    assert rd.pick([], ["only"], "x")[0] == "only"
+
+
+def test_the_best_fit_rule_names_one_fit_for_each_window():
+    assert S.WINDOWS == {"fewmid": (0, 16), "lower": (17, 28)} and set(S.FIT_TAG.values()) == {"old", "new", "newband"}
