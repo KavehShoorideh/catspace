@@ -22,6 +22,8 @@ PLAN 78.81 `--reasons TAG` (`reasons_cases`): THE REASONS AS READABLE CASES (sym
 |weight| in the joint fit with the controls (a rule fixed here before the cases were read), each in words and drawn on the first three CONFIRM positions, in the file's order, where the move played carries the event, the units of one
 instance in brackets, with whether the move takes a unit and what kind of unit moves said beside it. Part B: the twelve positions of 78.78 (subgoal_pick_78_78 case_rows.json) with, per tied move, the reasons it carries in words, whether it
 takes a unit, the kind of unit that moves and the sum the pick reads; the accepted moves are the answers file, for the human reader only. Writes cases.txt beside the reasons.
+PLAN 78.84 `--cut84 TAG` (`cut_cases`): THE TWENTY FLAGGED DECISIONS of part one (tie_cut_measure.py `report`): a tie set with a move whose line gives up a unit for nothing and a move whose line does not, each with the board, the units under attack,
+what the search reported, both moves with their lines and numbers, and the cause the measure named. Writes cases.txt under symbols_play_78_84/<tag>/.
 PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
@@ -458,6 +460,60 @@ def play_cases(tag: str = "full", shown: int = 6, exp: str = "symbols_play_78_82
     return root / "cases.txt"
 
 
+def _attacked(b: chess.Board, side: bool) -> str:
+    """The units of `side` that the other side attacks on this board, each with how many attack it and how many guard it (for the reader's judgement only)."""
+    out = []
+    for sq, p in b.piece_map().items():
+        if p.color == side:
+            a = len(b.attackers(not side, sq))
+            if a:
+                out.append(f"{chess.piece_name(p.piece_type)} {chess.square_name(sq)} attacked {a}, guarded {len(b.attackers(side, sq))}")
+    return "; ".join(out) or "none"
+
+
+def cut_cases(tag: str = "full", exp: str = "symbols_play_78_84") -> Path:
+    """PLAN 78.84 PART ONE: THE TWENTY FLAGGED DECISIONS (tie_cut_measure.py `report`: cases84.json under symbols_play_78_84/<tag>/, chosen by the rule in that module's doc): a tie set that holds a move whose line gives up a unit for nothing
+    and a move whose line does not. Each: the board, the units under attack, the moves held equal, what the search reported (the depth it finished, its value, whether the equal reading was cut or the position decided, the bound the equality
+    is), then for the bad move and the good one the line in words, the ledger of the line, the line search's own value, and the numbers of the moves read as the search reads them, and the cause the measure named. For the human reader's judgement only.
+    Writes cases.txt beside the decisions."""
+    root = Path(paths.experiment(exp, tag))
+    cases = json.loads((root / "cases84.json").read_text())
+    lines = [f"THE TWENTY FLAGGED DECISIONS (plan 78.84 part one): {len(cases)} read. A move FLAGGED BAD has a line (read as threat_concrete reads lines: the move, then the best replies of both sides to a settled end, 8 plies) that ends with the mover "
+             f"having lost units and taken none; the GOOD move's line does not. The search holds both EQUAL: its test is a bound (at least the best at depth D), it reports no value per move.", ""]
+    for k, c in enumerate(cases, 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+
+        def nm(m: str, b=b) -> str:
+            return b.san(chess.Move.from_uci(m))
+
+        s = c["search"]
+        pair = c["pair"]
+        lines += [f"=== CASE {k}: {c['gid']} ply {c['ply']}  band {c['band']}, {c['units']} units  ({'white' if me else 'black'} to move)", str(b), "",
+                  f"the mover's units under attack before the move: {_attacked(b, me)}",
+                  f"the other side's units under attack before the move: {_attacked(b, not me)}",
+                  f"held equal ({len(c['tied'])}), the search's first move first: {', '.join(nm(m) for m in c['tied'])}",
+                  f"the search (0.2 s again): played {nm(s['move'])}; finished depth {s['depth']}, value {s['value']}, proved {s['proved']}, equal reading cut by the clock {s['cut']}, {s['nodes']} nodes, {s['seconds']:.3f} s, of which {s['ties_seconds']:.3f} s for the ties; {s['legal']} legal moves",
+                  f"all the tied moves whose line gives up a unit for nothing: {', '.join(nm(m) for m in c['bad'])}; none of the others does ({len(c['good'])})", f"CAUSE named by the measure: {c['cause']}", ""]
+        for role, m in (("BAD", pair["bad"]), ("GOOD", pair["good"])):
+            ln = c["lines"][m]
+            x = b.copy()
+            x.push(chess.Move.from_uci(m))
+            lines += [f"  {role}: {nm(m)}   units of the mover under attack after it: {_attacked(x, me)}",
+                      f"    the line: {san_line(b, ln['names'], 9)}   (verdict {ln['verdict']}, the mover lost {ln['ev_lost']} and took {ln['ev_won']}, net {ln['net']} against a resolution of {ln['res']:.0f}; "
+                      f"the line search's own value {ln['net_search']}; depth {ln['depth']}; events disagree with value: {ln['pv_dis']})"]
+            nb = c["numbers"]["bad" if role == "BAD" else "good"]
+            lines += [f"    the move as the search reads it at depth {s['depth']}: gain {nb.get('gain')}, the position after it searched to depth {(s['depth'] or 1) - 1}: finished {nb.get('child_depth')}, value for the other side {nb.get('child_value')}, "
+                      f"so the move's value {nb.get('value')} against the search's value {s['value']}"]
+        d = c["numbers"]["bad_deeper"]
+        lines += [f"  BAD at two plies deeper: finished {d.get('child_depth')}, value {d.get('value')}", ""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: {len(cases)} flagged decisions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 _CASE_TOOLS: dict = {}
 
 
@@ -557,6 +613,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--reasons", default=None, help="PLAN 78.81: the reasons as readable cases (symbols_78_81/<tag>)")
     ap.add_argument("--play82", default=None, help="PLAN 78.82: the thirty decisions where the reasons' pick differed from the search's first move (symbols_play_78_82/<tag>)")
     ap.add_argument("--play83", default=None, help="PLAN 78.83: thirty decisions, ten from each band of units on the board (symbols_play_78_83/<tag>)")
+    ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
@@ -580,6 +637,9 @@ def main(argv: "list | None" = None) -> int:
         play_cases(a.play83, exp="symbols_play_78_83", cases_file="cases83.json",
                    title="THE THIRTY DECISIONS (plan 78.83): from the games of reasons v control, set B, of plan 78.82: in each band of units on the board the first decision per game where the pick differed from the search's first move, the first "
                          "ten games by id that have one. The reasons are 78.81's, weights are log-odds of being the move played among equals.")
+        return 0
+    if a.cut84:
+        cut_cases(a.cut84)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
