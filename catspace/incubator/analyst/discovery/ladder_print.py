@@ -22,6 +22,7 @@ PLAN 78.81 `--reasons TAG` (`reasons_cases`): THE REASONS AS READABLE CASES (sym
 |weight| in the joint fit with the controls (a rule fixed here before the cases were read), each in words and drawn on the first three CONFIRM positions, in the file's order, where the move played carries the event, the units of one
 instance in brackets, with whether the move takes a unit and what kind of unit moves said beside it. Part B: the twelve positions of 78.78 (subgoal_pick_78_78 case_rows.json) with, per tied move, the reasons it carries in words, whether it
 takes a unit, the kind of unit that moves and the sum the pick reads; the accepted moves are the answers file, for the human reader only. Writes cases.txt beside the reasons.
+PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
 from __future__ import annotations
@@ -426,6 +427,37 @@ def reasons_cases(tag: str = "full", shown: int = 8, top: int = 20) -> Path:
     return root / "cases.txt"
 
 
+def play_cases(tag: str = "full", shown: int = 6) -> Path:
+    """PLAN 78.82: THE THIRTY DECISIONS WHERE THE REASONS' PICK DIFFERED FROM THE SEARCH'S FIRST MOVE (symbols_play.py `cases`: cases82.json under symbols_play_78_82/<tag>/, chosen by the rule in that module's doc before any game was
+    read; the reasons are reasons.json of symbols_78_81/full). Each: the board, the moves held equal in words, the search's first move and the pick, each with the reasons it carries in words (the strongest `shown` by |weight|), the
+    sum of the weights, whether it takes a unit and the kind of unit that moves. For the human reader's judgement only. Writes cases.txt beside the decisions."""
+    root = Path(paths.experiment("symbols_play_78_82", tag))
+    reasons = json.loads((Path(paths.experiment("symbols_78_81", "full")) / "reasons.json").read_text())
+    cases = json.loads((root / "cases82.json").read_text())
+    lines = [f"THE THIRTY DECISIONS (plan 78.82): the first decision per game of reasons v control, set A, where the pick differed from the search's first move; {len(cases)} read. The reasons are 78.81's, weights are log-odds of being the move played among equals.", ""]
+    for k, c in enumerate(cases, 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+
+        def nm(m: str, b=b) -> str:
+            return b.san(chess.Move.from_uci(m))
+
+        def side(m: str, key: str, b=b) -> list:
+            mv = chess.Move.from_uci(m)
+            out = [f"    {nm(m)} ({chess.piece_name(b.piece_at(mv.from_square).piece_type)}{', takes a unit' if b.is_capture(mv) else ''}): {len(c[key])} reasons, sum of weights {sum(w for _i, w in c[key]):+.2f}"]
+            for i, w in sorted(c[key], key=lambda x: -abs(x[1]))[:shown]:
+                r = reasons[i]
+                out.append(f"        {'made TRUE' if r['dir'] == 'up' else 'made FALSE'} for {r['side']} (weight {w:+.3f}, reason {i}): {_words(r['words'], r['side'])}")
+            return out
+        lines += [f"=== DECISION {k}: {c['gid']} ply {c['ply']}  ({'white' if b.turn else 'black'} to move)", str(b), "",
+                  f"held equal ({len(c['tied'])}), the search's first move first: {', '.join(nm(m) for m in c['tied'])}",
+                  f"the search's first move: {nm(c['first'])}; the pick: {nm(c['pick'])}", "  the search's first move:"] + side(c["first"], "carried_first") + ["  the pick:"] + side(c["pick"], "carried_pick") + [""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: {len(cases)} play decisions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 _CASE_TOOLS: dict = {}
 
 
@@ -523,6 +555,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--pick79", default=None, help="PLAN 78.79: the twelve cases of 78.78 again, with the other side's goals and the long count (subgoal_pick_78_79/<tag>)")
     ap.add_argument("--symbols", default=None, help="PLAN 78.80: the symbols as readable cases (symbols_78_80/<tag>)")
     ap.add_argument("--reasons", default=None, help="PLAN 78.81: the reasons as readable cases (symbols_78_81/<tag>)")
+    ap.add_argument("--play82", default=None, help="PLAN 78.82: the thirty decisions where the reasons' pick differed from the search's first move (symbols_play_78_82/<tag>)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
@@ -538,6 +571,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.reasons:
         reasons_cases(a.reasons)
+        return 0
+    if a.play82:
+        play_cases(a.play82)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)

@@ -167,8 +167,10 @@ def play67(spec: dict) -> dict:
     return g
 
 
-def run_games(specs: list, workers: int, out_file: Path, say=print) -> list:
-    """Play the specs on a spawn Pool (a rerun skips the games already in `out_file`); -> the games in the order of the specs."""
+def run_games(specs: list, workers: int, out_file: Path, say=print, play=None) -> list:
+    """Play the specs on a spawn Pool (a rerun skips the games already in `out_file`); -> the games in the order of the specs. `play` is the function that plays one spec (default `play67`; a later plan hands in its own, a module-level
+    function so the spawned workers can import it)."""
+    play = play or play67
     done = {}
     if out_file.exists():
         for line in out_file.read_text().splitlines():
@@ -189,23 +191,23 @@ def run_games(specs: list, workers: int, out_file: Path, say=print) -> list:
                 say(f"OBS progress {out_file.stem}: {len(done)} of {n_all} games, {el:.0f} s, about {el / max(1, len(done) - n0) * (n_all - len(done)):.0f} s left")
         if workers <= 1 or not todo:
             for s in todo:
-                keep(play67(s))
+                keep(play(s))
         else:
             with multiprocessing.get_context("spawn").Pool(workers) as pool:
-                for g in pool.imap_unordered(play67, todo, chunksize=1):
+                for g in pool.imap_unordered(play, todo, chunksize=1):
                     keep(g)
     return [done[s["gid"]] for s in specs]
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ the matches
 
-def player_spec(name: str, base: dict, charge: bool = False) -> dict:
-    return dict(base, kind=KIND[name], charge=charge)
+def player_spec(name: str, base: dict, charge: bool = False, kinds: "dict | None" = None) -> dict:
+    return dict(base, kind=(kinds or KIND)[name], charge=charge)
 
 
-def match_specs(a: str, b: str, set_name: str, pairs: int, seconds: float, scratch: Path, charge: bool = False) -> list:
+def match_specs(a: str, b: str, set_name: str, pairs: int, seconds: float, scratch: Path, charge: bool = False, kinds: "dict | None" = None) -> list:
     base = OM.players_of(WORTH_GEN, OM.out_root() / "full")
-    pa, pb = player_spec(a, base, charge), player_spec(b, base, charge)
+    pa, pb = player_spec(a, base, charge, kinds), player_spec(b, base, charge, kinds)
     specs = []
     for seed, opening in openings(set_name, pairs):
         for colour in (0, 1):
