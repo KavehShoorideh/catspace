@@ -28,6 +28,9 @@ PLAN 78.84 `--cut84 TAG` (`cut_cases`): THE TWENTY FLAGGED DECISIONS of part one
 what the search reported, both moves with their lines and numbers, and the cause the measure named. Writes cases.txt under symbols_play_78_84/<tag>/.
 PLAN 78.90 `--own90 TAG` (`own_cases`): THE THIRTY DECISIONS where the fit with the other side's cells picks otherwise than the old weights (symbols_own_measure.py `cases`: cases90.json, groups_A.json under symbols_78_90/<tag>/), ten
 a band, each with the board, what each side has under attack, the moves that leave a unit of the mover's borne on and unguarded, and for the old pick, the new pick and the first move what it leaves under attack and its groups in words.
+PLAN 78.91 `--order91 TAG` (`order_cases`): THE THIRTY POSITIONS of the hint in the search's order (symbols_order_measure.py `cases`: cases91.json, order_78_91/<tag>/; the groups are 78.90's fit A, symbols_78_90/full/groups_A.json): twenty where the
+reasons' order puts the reference move (the search at ten times the play clock, root moves in a random order) first among the quiet moves and the static order does not, ten of the opposite. Each with the board, what each side has under attack,
+the moves that take, the reference move and its place in both orders, the first five quiet moves of each order, and the strongest groups of the reference, of the static first and of the reasons' first in words. Writes cases.txt.
 PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
@@ -604,6 +607,40 @@ def own_cases(tag: str = "full", exp: str = "symbols_78_90") -> Path:
     return root / "cases.txt"
 
 
+def order_cases(tag: str = "full", exp: str = "order_78_91") -> Path:
+    """PLAN 78.91 `--order91 TAG`; see the module doc. For the reader's judgement only."""
+    root = Path(paths.experiment(exp, tag))
+    c91 = json.loads((root / "cases91.json").read_text())
+    groups = json.loads((Path(paths.experiment(c91["groups_exp"], "full")) / c91["groups_file"]).read_text())
+    lines = [f"THE THIRTY POSITIONS (plan 78.91): {len(c91['cases'])} read. 'reasons first' = the reasons' order (78.90's fit A) puts the reference move first among the quiet moves and the static order does not; 'static first' = the opposite. "
+             "The static order is the search's own before any reading (the moves that gain, then the rest as generated); the reasons' order reorders the quiet moves only. Weights are log-odds of being the move played among equals.", ""]
+    for k, c in enumerate(c91["cases"], 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        san = lambda i, b=b, c=c: b.san(chess.Move.from_uci(c["legal"][i]))
+        takes = [san(i) for i, g in enumerate(c["gains"]) if g != 0]
+
+        def groups_of(i: int, c=c) -> list:
+            out = []
+            for gidx, w in c["groups"].get(str(i), []):
+                g = groups[gidx]
+                mem = sorted(g["members"], key=lambda y: -abs(y["weight"]))
+                out.append(f"        weight {w:+.3f}, group {gidx} ({len(mem)} members, {g['side']} {g['dir']}): {_words(mem[0]['words'], mem[0]['side'])}" + (f"  [and {len(mem) - 1} like it]" if len(mem) > 1 else ""))
+            return out or ["        no group carried"]
+        ref, st1, h1 = c["ref"], c["static_quiet"][0], c["hint_quiet"][0]
+        lines += [f"=== POSITION {k}: {c['id']} ply {c['ply']}  band {c['band']}, {c['units']} units, sample {c['sample']}, {c['kind'].replace('_', ' ')}  ({'white' if me else 'black'} to move)", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}", f"the other side's units under attack: {_attacked(b, not me)}",
+                  f"moves that take or change a unit: {', '.join(takes) or 'none'}; {c['n_quiet']} quiet moves",
+                  f"the reference move: {san(ref)} (place among the quiet moves: static {c['place_static']}, reasons' own fit {c['place_hint']}, 78.81's weights {c['place_reasons']}, short reading {c['place_short']})",
+                  f"first five quiet moves, static order: {', '.join(san(i) for i in c['static_quiet'])}", f"first five quiet moves, the reasons' order: {', '.join(san(i) for i in c['hint_quiet'])}",
+                  f"  the reference move {san(ref)} (strongest groups it carries):"] + groups_of(ref) + [f"  the static first {san(st1)}:"] + groups_of(st1) + [f"  the reasons' first {san(h1)}:"] + groups_of(h1) + [""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: {len(c91['cases'])} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -787,6 +824,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--play89", default=None, help="PLAN 78.89: thirty decisions, fifteen of the lower many part and fifteen of the mid band (symbols_78_89/<tag>)")
     ap.add_argument("--groups88", default=None, help="PLAN 78.88: the twenty largest groups in words and the thirty decisions (symbols_78_88/<tag>)")
     ap.add_argument("--own90", default=None, help="PLAN 78.90: thirty decisions where the fit with the other side's cells picks otherwise than the old weights (symbols_78_90/<tag>)")
+    ap.add_argument("--order91", default=None, help="PLAN 78.91: thirty positions where the reasons' order and the static order differ on the reference move (order_78_91/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
     ap.add_argument("--verdict87", action="store_true", help="PLAN 78.87: the ten lines whose verdict word changed (verdict_78_87/picked.json)")
@@ -833,6 +871,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.own90:
         own_cases(a.own90)
+        return 0
+    if a.order91:
+        order_cases(a.order91)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
