@@ -165,9 +165,10 @@ class Mover67(OM.Mover):
 
     def note_choice(self, raw: list) -> None:
         """Count what the verification of the choice did in one decision (row 12 the state: 1 held, 2 replaced, 3 failed and kept, 4 cut; 13 its nodes; 14 its seconds)."""
+        st = self.stats
+        st["nodes"] = st.get("nodes", 0) + int(raw[2] or 0)                         # (the nodes the decision spent, for the mean a decision)
         if not self.verify_choice or not raw[12]:
             return
-        st = self.stats
         for k in VC_KEYS:
             st.setdefault(k, 0)
         st["vc_asked"] += 1
