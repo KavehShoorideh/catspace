@@ -126,7 +126,7 @@ def test_the_reading_time_is_taken_from_the_charged_player_s_clock():
 
 def test_every_player_is_named_and_maps_to_a_kind():
     assert set(SP.PLAYERS) >= {"control", "random", "reasons", "quiet", "withctl"}
-    assert set(SP.MODE) == {"sy_reasons", "sy_quiet", "sy_withctl"}
+    assert set(SP.MODE) >= {"sy_reasons", "sy_quiet", "sy_withctl"}                      # 78.83 adds the window kinds
     for p in ("reasons", "quiet", "withctl"):
         assert SP.KIND[p] in SP.MODE
 

@@ -20,7 +20,16 @@ INTERFACE (what each piece takes, what it returns, who calls it). Written before
                                   picks so far) is taken out of the search's clock, as 78.75 did. Every tie decision is logged in stats["dlog"]; a decision where the pick differed from the search's first move is kept in full in stats["cases"].
   play82(spec) -> game            one game with these movers (a module-level function: the Pool spawns workers that import it). Called by tiebreak_measure.run_games(play=play82).
   stages (command line)           agreement | match | report | cases. agreement: on 300 positions of the 78.80 CONFIRM sample the player's pick against the pick symbols_reasons_measure computes for the same tie set. match: one match, the load
-                                  wait of 78.67 first; report: every match found, per set and pooled, the shares and the cost; cases: thirty decisions by a rule fixed here (below) for ladder_print `--play82`.
+                                  wait of 78.67 first; report: every match found, per set and pooled, the shares and the cost; cases: thirty decisions by a rule fixed here (below) for ladder_print `--play82`; cases83 (78.83): thirty decisions, ten a band, from 78.82's set B games, for ladder_print `--play83`.
+PLAN 78.83 (SYSTEM_SPEC 7, 8, 9): WHERE IN THE GAME THE GAIN COMES FROM. Interface added, written before the bodies:
+  MoverReasons.window = (low, high) | None     the count of units on the board (inclusive) inside which the hint is used; None (the default) is every position. A tie decision whose position lies OUTSIDE the window is
+                                  played as the control plays it: the search's first move, no pick, no reading cost. The window comes from the player's kind (WINDOW: the kinds `sy_many`, `sy_mid`, `sy_few`, `sy_midfew`, the bands of
+                                  ladder_measure.BANDS: few 0-8, mid 9-16, many 17 and up; all four pick in mode "reasons") or from spec["window"]. The unit count is read from the carried state of the position.
+  ReasonsReader.state_of(moves) -> text        the state of the game after `moves`, kept between decisions: the next call advances the kept state by the moves played since (the engine replays the game only the first time).
+  ReasonsReader.units_of(moves) -> int         the count of units on the board in that state (the layer-1 table of one position).
+  The kept state serves the unit count and the controls (the replay reading). The counts of the reasons (symbols.deltas_of) still read the game from its first position: handing the engine the kept state there was tried and
+  cost the same (the cost is the pattern count, not the replay: a throwaway timing of 181 decisions, OBS COST lines in the 78.83 obs.txt), so it was not kept in the code.
+  stats: "ties" every tie decision; "ties_in" those inside the window (the ones that were picked and logged in dlog/cases). The match stage writes matches/<file>.meta.json (the load seen, cores busy, wall) which `report` prints.
 Called by: the command line only. The harness is tiebreak_measure.py (the openings, the clock, the load wait, the match loop and its lines), reused as it is.
 
 THE RULE FOR THE THIRTY DECISIONS (fixed before any game was read): in the games of reasons v control on opening set A, the games in the order of their ids; in each game the first decision of the reasons' side where the pick
@@ -52,11 +61,15 @@ from catspace.incubator.analyst.discovery import subgoal_play_measure as PM
 from catspace.incubator.analyst.discovery import symbols as SY
 from catspace.io import paths
 
-OUT = ("symbols_play_78_82",)
+OUT = ("symbols_play_78_83",)                                     # this run's outputs (78.82's run lives in symbols_play_78_82/full, read only)
+OUT82 = ("symbols_play_78_82", "full")
 SRC = ("symbols_78_81", "full")                                   # the reasons and their weights: 78.81's run, read, never refitted
-KIND = dict(TM.KIND, reasons="sy_reasons", quiet="sy_quiet", withctl="sy_withctl")
-MODE = {"sy_reasons": "reasons", "sy_quiet": "quiet", "sy_withctl": "withctl"}
+KIND = dict(TM.KIND, reasons="sy_reasons", quiet="sy_quiet", withctl="sy_withctl", many="sy_many", mid="sy_mid", few="sy_few", midfew="sy_midfew")
+MODE = {"sy_reasons": "reasons", "sy_quiet": "quiet", "sy_withctl": "withctl", "sy_many": "reasons", "sy_mid": "reasons", "sy_few": "reasons", "sy_midfew": "reasons"}
+_BAND = {n: (lo, hi) for n, lo, hi in LM.BANDS}
+WINDOW = {"sy_many": _BAND["many"], "sy_mid": _BAND["mid"], "sy_few": _BAND["few"], "sy_midfew": (_BAND["few"][0], _BAND["mid"][1])}
 PLAYERS = tuple(KIND)
+MODE_PLAYERS = tuple(p for p in KIND if KIND[p] in MODE)
 TIE_DIGITS = 9                                                    # two scores that agree to this many places are equal (sums of the same weights in another order differ by rounding only)
 AGREE_N = 300                                                     # positions of the CONFIRM sample the agreement reads (evenly spaced in the sample's order)
 CASES_N = 30
@@ -88,12 +101,29 @@ class ReasonsReader:
         self.order = sorted(self.weight, key=lambda e: self.index[e])      # the reasons' own order: the sums are always added in it
         self.counter = SY.Counter(GL.model(HD.GAME, HD.VARIANT), keys, G2M.goal_kind_of(HD.VARIANT), 2, (0, 1, 2, 3), 1)
         self.facts = None
+        self._state = None                                        # (the moves of the game so far, the state text after them): kept between decisions of one game
+
+    def state_of(self, moves: list) -> str:
+        """The state text after `moves`; the kept state is advanced by the moves played since the last call (a game replays once), read again from the first position when `moves` does not extend it."""
+        kept = getattr(self, "_state", None)
+        n = len(moves)
+        if kept and n >= len(kept[0]) and list(moves[:len(kept[0])]) == kept[0]:
+            text = kept[1] if n == len(kept[0]) else CE.state(HD.VARIANT, kept[1], list(moves[len(kept[0]):]))[0]
+        else:
+            text = CE.state(HD.VARIANT, None, list(moves))[0]
+        self._state = (list(moves), text)
+        return text
+
+    def units_of(self, moves: list) -> int:
+        """The count of units on the board after `moves` (the layer-1 table of the one position, read from the kept state)."""
+        names, raw = self.counter.model.position_table([(self.state_of(moves), [])], 1)
+        return int(np.frombuffer(raw, dtype=np.int16).reshape(1, 2 + 2 * len(names)).astype(np.int32)[0, 2:].sum())
 
     def controls_of(self, moves: list, tied: list) -> "tuple[dict, dict]":
         """For each tied move: whether it takes a unit and the kind word of the unit that moves, from the board's own difference across the move (subgoal_goals.Facts.replay, the same reading 78.81's controls used)."""
         if self.facts is None:
             self.facts = SG.Facts(HD.VARIANT)
-        text = CE.state(HD.VARIANT, None, list(moves))[0]
+        text = self.state_of(moves)
         takes, kinds = {}, {}
         for m in tied:
             pl = self.facts.replay(text, [m])
@@ -138,6 +168,8 @@ class MoverReasons(TM.Mover67):
     def __init__(self, spec: dict, seconds: float, seed: str, trace: str):
         super().__init__(spec, seconds, seed, trace)
         self.detail: dict = {}
+        self.window = tuple(spec["window"]) if spec.get("window") else WINDOW.get(self.kind)
+        self.stats["ties_in"] = 0
         self.stats["dlog"] = []
         self.stats["cases"] = []
 
@@ -151,6 +183,12 @@ class MoverReasons(TM.Mover67):
         assert move in tied
         return move
 
+    def in_window(self, moves: list) -> bool:
+        if self.window is None:
+            return True
+        low, high = self.window
+        return low <= reader82().units_of(moves) <= high
+
     def choose(self, text: "str | None", moves: list, legal: list) -> tuple:
         if self.kind not in MODE:
             return super().choose(text, moves, legal)
@@ -163,6 +201,8 @@ class MoverReasons(TM.Mover67):
         st["decisions"] += 1
         if mv is not None and len(eq) >= 2:
             st["ties"] += 1
+        if mv is not None and len(eq) >= 2 and self.in_window(moves):
+            st["ties_in"] += 1
             tied = [mv] + sorted(m for m in eq if m != mv)
             pick = self.pick({"moves": list(moves)}, tied)
             cost = time.perf_counter() - t1
@@ -246,6 +286,30 @@ def decision_lines(a: str, b: str, set_name: str, games: list, layer1) -> list:
     return out
 
 
+CASES_PER_BAND = 10
+
+
+def cases_by_band(games: list, a: str, layer1) -> list:
+    """PLAN 78.83: THE THIRTY by the rule fixed before any game was read: in the games of `a` v control on set B (the full reasons player of 78.82), the games in the order of their ids; in each game and each band of units on the
+    board (LM.BANDS, the count at the decision's position) the first decision of side `a` where the pick differed from the search's first move; per band the first ten games that have one. -> the cases, band by band, each with
+    gid, band, units."""
+    out = {b: [] for b, _lo, _hi in LM.BANDS}
+    for g in sorted(games, key=lambda x: x["gid"]):
+        cs = g["stats"][TM.seat_of(g, 0)]["cases"]
+        if not cs:
+            continue
+        counts = LM.unit_counts(layer1, g["moves"])
+        seen = set()
+        for c in cs:
+            u = counts[c["ply"]]
+            b = LM.band_of(u)
+            if b not in seen:
+                seen.add(b)
+                if len(out[b]) < CASES_PER_BAND:
+                    out[b].append(dict(c, gid=g["gid"], band=b, units=u))
+    return [c for b, _lo, _hi in LM.BANDS for c in out[b]]
+
+
 def cases_of(games: list, a: str) -> list:
     """THE THIRTY by the rule in the module doc: the games in the order of their ids, the first decision of side `a` where the pick differed from the search's first move, the first thirty games that have one."""
     out = []
@@ -316,7 +380,7 @@ def emit(lines: list, out_file: "Path | None") -> None:
 
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("stage", choices=("agreement", "match", "report", "cases"))
+    ap.add_argument("stage", choices=("agreement", "match", "report", "cases", "cases83"))
     ap.add_argument("--set", default="A", choices=("A", "B"))
     ap.add_argument("--a", default="reasons", choices=PLAYERS)
     ap.add_argument("--b", default="control", choices=PLAYERS)
@@ -340,7 +404,9 @@ def main(argv: "list | None" = None) -> int:
         t0 = time.perf_counter()
         gf = games_file(a.tag, a.a, a.b, a.set, a.charge)
         games = TM.run_games(TM.match_specs(a.a, a.b, a.set, a.pairs, a.seconds, root / "scratch", a.charge, KIND), a.workers, gf, lambda s: emit([s], obs), play=play82)
-        emit(lines_of(a.a, a.b, a.set, games, load, busy, time.perf_counter() - t0, a.seconds, a.workers, a.charge), obs)
+        wall = time.perf_counter() - t0
+        gf.with_suffix(".meta.json").write_text(json.dumps({"load": load, "busy": busy, "wall": wall, "workers": a.workers, "seconds": a.seconds}))
+        emit(lines_of(a.a, a.b, a.set, games, load, busy, wall, a.seconds, a.workers, a.charge), obs)
     elif a.stage == "report":
         layer1 = GL.model(HD.GAME, HD.VARIANT)
         found: dict = {}
@@ -352,11 +418,18 @@ def main(argv: "list | None" = None) -> int:
             found.setdefault((x, y, charge), {})[s] = TM.read_games(p)
         for (x, y, charge), sets in sorted(found.items()):
             for s, games in sorted(sets.items()):
-                emit(lines_of(x, y, s, games, float("nan"), float("nan"), float("nan"), a.seconds, a.workers, charge), None)
-                if x in ("reasons", "quiet", "withctl"):
+                mf = games_file(a.tag, x, y, s, charge).with_suffix(".meta.json")
+                meta = json.loads(mf.read_text()) if mf.exists() else {}
+                emit(lines_of(x, y, s, games, meta.get("load", float("nan")), meta.get("busy", float("nan")), meta.get("wall", float("nan")), a.seconds, a.workers, charge), None)
+                if x in MODE_PLAYERS:
                     emit(decision_lines(x, y, s, games, layer1), None)
             if len(sets) > 1:
                 emit(pooled_lines(x, y, sets, charge), None)
+    elif a.stage == "cases83":
+        src = Path(paths.experiment(*OUT82, "matches", "reasons_v_control_B.jsonl"))
+        cs = cases_by_band(TM.read_games(src), "reasons", GL.model(HD.GAME, HD.VARIANT))
+        (root / "cases83.json").write_text(json.dumps(cs))
+        say(f"CASES83 {len(cs)} decisions saved to {root / 'cases83.json'}: " + ", ".join(f"{b} {sum(c['band'] == b for c in cs)}" for b, _lo, _hi in LM.BANDS) + f" (read from {src})")
     else:
         games = TM.read_games(games_file(a.tag, "reasons", "control", "A"))
         cs = cases_of(games, "reasons")
