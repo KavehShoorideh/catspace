@@ -431,7 +431,7 @@ def reasons_cases(tag: str = "full", shown: int = 8, top: int = 20) -> Path:
     return root / "cases.txt"
 
 
-def play_cases(tag: str = "full", shown: int = 6, exp: str = "symbols_play_78_82", cases_file: str = "cases82.json", title: "str | None" = None) -> Path:
+def play_cases(tag: str = "full", shown: int = 6, exp: str = "symbols_play_78_82", cases_file: str = "cases82.json", title: "str | None" = None, attacked: bool = False) -> Path:
     """PLAN 78.82: THE THIRTY DECISIONS WHERE THE REASONS' PICK DIFFERED FROM THE SEARCH'S FIRST MOVE (symbols_play.py `cases`: cases82.json under symbols_play_78_82/<tag>/, chosen by the rule in that module's doc before any game was
     read; the reasons are reasons.json of symbols_78_81/full). Each: the board, the moves held equal in words, the search's first move and the pick, each with the reasons it carries in words (the strongest `shown` by |weight|), the
     sum of the weights, whether it takes a unit and the kind of unit that moves. For the human reader's judgement only. Writes cases.txt beside the decisions."""
@@ -453,8 +453,13 @@ def play_cases(tag: str = "full", shown: int = 6, exp: str = "symbols_play_78_82
             for i, w in sorted(c[key], key=lambda x: -abs(x[1]))[:shown]:
                 r = reasons[i]
                 out.append(f"        {'made TRUE' if r['dir'] == 'up' else 'made FALSE'} for {r['side']} (weight {w:+.3f}, reason {i}): {_words(r['words'], r['side'])}")
+            if attacked:                                                    # PLAN 78.89: what each move leaves loose, for the reader's judgement
+                x = b.copy()
+                x.push(chess.Move.from_uci(m))
+                out.append(f"        after it, the mover's units under attack: {_attacked(x, b.turn)}; the other side's: {_attacked(x, not b.turn)}")
             return out
         lines += [f"=== DECISION {k}: {c['gid']} ply {c['ply']}  ({'white' if b.turn else 'black'} to move)" + (f"  [band {c['band']}, {c['units']} units]" if "band" in c else ""), str(b), "",
+                  *([f"the mover's units under attack before the move: {_attacked(b, b.turn)}", f"the other side's units under attack before the move: {_attacked(b, not b.turn)}"] if attacked else []),
                   f"held equal ({len(c['tied'])}), the search's first move first: {', '.join(nm(m) for m in c['tied'])}",
                   f"the search's first move: {nm(c['first'])}; the pick: {nm(c['pick'])}", "  the search's first move:"] + side(c["first"], "carried_first") + ["  the pick:"] + side(c["pick"], "carried_pick") + [""]
     (root / "cases.txt").write_text("\n".join(lines))
@@ -737,6 +742,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--reasons", default=None, help="PLAN 78.81: the reasons as readable cases (symbols_78_81/<tag>)")
     ap.add_argument("--play82", default=None, help="PLAN 78.82: the thirty decisions where the reasons' pick differed from the search's first move (symbols_play_78_82/<tag>)")
     ap.add_argument("--play83", default=None, help="PLAN 78.83: thirty decisions, ten from each band of units on the board (symbols_play_78_83/<tag>)")
+    ap.add_argument("--play89", default=None, help="PLAN 78.89: thirty decisions, fifteen of the lower many part and fifteen of the mid band (symbols_78_89/<tag>)")
     ap.add_argument("--groups88", default=None, help="PLAN 78.88: the twenty largest groups in words and the thirty decisions (symbols_78_88/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
@@ -770,6 +776,11 @@ def main(argv: "list | None" = None) -> int:
         play_cases(a.play83, exp="symbols_play_78_83", cases_file="cases83.json",
                    title="THE THIRTY DECISIONS (plan 78.83): from the games of reasons v control, set B, of plan 78.82: in each band of units on the board the first decision per game where the pick differed from the search's first move, the first "
                          "ten games by id that have one. The reasons are 78.81's, weights are log-odds of being the move played among equals.")
+        return 0
+    if a.play89:
+        play_cases(a.play89, shown=3, exp="symbols_78_89", cases_file="cases89.json", attacked=True,
+                   title="THE THIRTY DECISIONS (plan 78.89): from the games of reasons v control of plan 78.82 (sets A then B): fifteen of the lower many part and fifteen of the mid band, the third decision of a game in the part where the pick differed "
+                         "from the search's first move, one a game, the first fifteen games by id. The reasons are 78.81's, weights are log-odds of being the move played among equals.")
         return 0
     if a.cut84:
         cut_cases(a.cut84)

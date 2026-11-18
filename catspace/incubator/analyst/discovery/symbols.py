@@ -77,6 +77,8 @@ PLAN 78.88 (SYSTEM_SPEC 7 "subgoals as symbols", the form of the model "a combin
   cell_events(before, after) -> (up cells, down cells)   the mover's count before is the first of the position, after the move the second of the position after it (the side to move there is the other side).
   Choice.units (optional)   the units on the board at the position of each row (the caller's count; this module counts nothing of any game); fit_choice(rows, ..., band=(low, high)) reads the positions whose units lie in the band
       only; score_choice_by_band(rows, fits, bands, controls) -> per position the index of the highest-scoring tied move under the fit of the position's band (the first on a tie); `fits` {band name: fit}, `bands` [(name, low, high)].
+PLAN 78.89 (SYSTEM_SPEC 7, 9, 10 the endings risk and the fill): Choice.fill_ok (default False) -- the builder of the rows says that rows marked source "generated" (our own self-play games, FIND only, the mover's own move the one
+  "played") may be read by fit_choice; require_find then lets them pass. Without it nothing changes: a generated row is refused as before. The CONFIRM part is never generated.
 """
 from __future__ import annotations
 
@@ -413,6 +415,7 @@ class Choice:
     part: np.ndarray
     source: np.ndarray
     units: "np.ndarray | None" = None                      # PLAN 78.88: the units on the board at the row's position (None where the caller did not say)
+    fill_ok: bool = False                                  # PLAN 78.89: the builder says generated rows (our own self-play games, marked source "generated", FIND only) may be read by the fit
 
     def n_positions(self) -> int:
         return int(self.pos[-1]) + 1 if len(self.pos) else 0
@@ -424,14 +427,14 @@ class Choice:
         rows = keep[self.pos]
         new = np.cumsum(keep) - 1
         return Choice(self.E.tocsr()[rows], self.C[rows], self.control_names, new[self.pos[rows]], self.played[rows], self.game[rows], self.part[rows], self.source[rows],
-                      None if self.units is None else self.units[rows])
+                      None if self.units is None else self.units[rows], self.fill_ok)
 
 
 def require_find(rows: Choice) -> None:
     """See the module doc: the fit reads FIND rows of human games only."""
     if len(rows.part) and not bool(np.all(np.asarray(rows.part) == "find")):
         raise ValueError("a row that is not of the FIND part was offered to the fit")
-    if len(rows.source) and not bool(np.all(np.asarray(rows.source) == "human")):
+    if len(rows.source) and not rows.fill_ok and not bool(np.all(np.asarray(rows.source) == "human")):
         raise ValueError("a row of a generated game was offered to the fit")
 
 
