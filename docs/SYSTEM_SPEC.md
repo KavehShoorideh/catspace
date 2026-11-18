@@ -367,6 +367,25 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   - *Whether it is in the future follows the two layers.* Layer one, me playing only, is a count of my own moves
     until the pattern holds, where a quasi-metric fits and the earlier work on one may be reused. Layer two, with
     the opponent's veto, is a chance: the pattern coming true is one more event class of the heads of section 6.
+- **The future imagination layer** (direction given by Kaveh 2026-11-19; a build is not yet agreed). "We do need some sort of a future imagination layer."
+  It is for positions with no concrete tactic for either side: it "should help us to evaluate futures that are not directly a response to some
+  sort of a threat ... or a tactic that's directly executable." The goals are "future states that are good, future states that I can predict,
+  that include some high chance of threat. The higher the concentration of threat, the better." The steps, in his words: "a future imagining
+  scenario, and then the evaluation of the threat landscape in this future scenario"; the landscape "could evolve from the current scenario,
+  so it doesn't have to start from scratch"; "what is changing from here to get to that future scenario? What am I changing?"; then "what can
+  they change on their side? Do they have enough time to change it?"
+  READING (main agent, 2026-11-19, PROPOSED, not his word) of how it sits on what exists:
+  - The scenario is layer one of "reachable" (above): a short run of my own moves with the other side standing still, kept as the list of facts it
+    makes true and false, so the graph and the threat list are updated from the present ones and not rebuilt.
+  - The landscape is read with the threat list of section 8 on the imagined position. A threat counts as the line reading counts it, after its
+    best answer, and two threats that one answer cannot both meet count for more than two that one answer meets. No worth is assumed.
+  - Their side is layer two: the count of their moves that undo a needed fact or meet the threats, set against the count of my moves the scenario
+    takes; a scenario they can undo in fewer moves than it takes is dropped or names the next obstacle.
+  - It enters as the order of quiet moves (the prior), never as the value (AGENTS.md rule 7): the move that starts the best scenario is read first
+    or chosen among equal moves. A learned distance over the graph (the quasi-metric of layer one) is a later shortcut for the run of own moves,
+    built only after the plain run is shown to mean something.
+  - OPEN: how "concentration" is counted (per target unit, per region, or by how few answers meet them); how long a run of own moves is allowed;
+    whether the other side's scenarios are imagined the same way and ours scored against them. See section 13.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
   Not a quasi-metric: "it's a distance. What I want is like a sequence, something to model a sequence ... it's a
@@ -608,6 +627,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
 | The menu, compression (rung 4), the chooser | Written, not built |
 | Quiet or sharp by two readings; open tactics checked before the estimate; carrying measured | Measured once (plan 78.69): the difference of the readings not shown as a signal with the present heads; open claims of the frame read go with events soon; carrying first measured by a proxy, then truly (plans 78.70, 78.72): a claim whose read set did not change is held again only about half the time |
 | The threat list (threats with stake and response, in four bands) | Built concretely (plan 78.72, after a first form in 78.70): each row and each response is a line read to a settled end and judged by the measured worths; exchanges print apart; claims nothing bears on are dropped; the end of the game is a row for either side. Like for like cancels in the verdict and responses carry their own end and are ordered (plan 78.73). Still short of section 8: a clear gain can print as an exchange because the measured worths are coarse, many positions print no row, threats that need a quiet first move are rare, and the top band is not the most dangerous. Carrying by the frame's read set does not hold for a concrete line; the line's own read set is not built. Not wired into play |
+| The future imagination layer (section 7, 2026-11-19) | Not built. Pieces it would stand on exist: the threat list, the line reading, the count of own moves along the graph (plans 78.78, 78.79, undefined for most goals as built) |
 | The frame's interface (ports for the intermezzo, the pass, the deflection) | Not built beyond the named causes of plan 78.60 |
 | The rolling measure across sleeps and going back to a past learning state | Not built; snapshots of the store exist |
 | The opportunity policy, the subgoal vocabulary, holding a subgoal across moves, the rule for choosing a move | The proposer is built as a measurement (plan 78.71 A to C): goals as facts with the cause and the fix, the fix checked as a what-if edit by our own reasoning, a first grading by hindsight. The diagnosis holds. A goal for every unit of the other side and the goal unit, the fix as a set, reach carried in two layers (plan 78.74): the first three goals hold the unit then won more often than chance; the printed order is not yet a player's (goals through several units between rank first); layer one is crude. The rule for choosing a move is built as a sandbox player (plan 78.75) that picks among moves the search holds equal: in matches it was no better than the search's own choice, a random pick or the arrival number, at half a second a decision. The threat half hardly ever decided, since a real threat leaves no tie; the goal half changed most choices without gain; a goal was held about one decision. A decision took about twenty line queries. The policy as a learned part is not built |
@@ -650,6 +670,9 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
    shallow reading. Is "the prior" for these reasons the choice among equal moves and nothing more, or should the order be tried again with subgoals of
    another form (a target several moves away, not a pattern of one position)? My reading (PROPOSED): the second; patterns of one position are what a
    shallow reading already sees.
+10. The future imagination layer (section 7, 2026-11-19): how is the concentration of threat counted; how long a run of own moves may a scenario be;
+    are the other side's scenarios imagined the same way. And does my reading stand, that it is layer one for the scenario, the threat list for
+    the landscape, layer two for their time, and enters as the order of quiet moves only.
 
 Answered on 2026-11-16 and written into their sections: the estimate scores a leaf only when the reasoning has
 ended, and only orders before that (4, 6); the oracle as a last resort (9); the ceiling of an hour an action stays
@@ -705,6 +728,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The opportunity policy; belief against hint (rule 7); maxims come out; subgoals; modular, a sequence model over a Markov state; a subgoal as a condition; reachable in two layers, me playing only and with the opponent's veto; choosing among goals by the weakness pointed at, goals as facts with no name, the fix of a problem as the subgoal, subgoals graded | 2026-11-14, 16 | 7 |
 | The wake, step by step; the rule for choosing a move (threats first, answering a big threat is the subgoal, a small one may be left for an attack, the unseen threat read by statistics; a counter-threat is an allowed answer; a guide); the threat list with stake and response, high and low set by the spread; the wall | 2026-11-14, 16 | 8 |
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
+| A future imagination layer for positions with no concrete tactic: imagine a future, read its threat landscape, ask what I change and whether they have time to change it back (direction; the reading of how it sits on the two layers is PROPOSED) | 2026-11-19 | 7 |
 | Subgoals as symbols that go with winning: fact patterns first, two tests on human moves, a graph network with quantized codes only if they fail; in the future or not by the two layers | 2026-11-17 | 7 |
 | PROPOSED: the equal reading has a fast form for play and a verified form without the search's pruning for measurements and sleep | 2026-11-18 | 5 |
 | Human games may be read; the endings risk and the fill | 2026-11-15 | 10 |
