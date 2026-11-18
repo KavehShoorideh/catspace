@@ -77,6 +77,14 @@ PLAN 78.88 (SYSTEM_SPEC 7 "subgoals as symbols", the form of the model "a combin
   cell_events(before, after) -> (up cells, down cells)   the mover's count before is the first of the position, after the move the second of the position after it (the side to move there is the other side).
   Choice.units (optional)   the units on the board at the position of each row (the caller's count; this module counts nothing of any game); fit_choice(rows, ..., band=(low, high)) reads the positions whose units lie in the band
       only; score_choice_by_band(rows, fits, bands, controls) -> per position the index of the highest-scoring tied move under the fit of the position's band (the first on a tie); `fits` {band name: fit}, `bands` [(name, low, high)].
+PLAN 78.90 (SYSTEM_SPEC 7, 9): THE MOVER'S OWN LOOSE UNIT. split_borne(reasons, kinds, side="theirs") -> reasons    side "theirs" (the default, as 78.88): the reasons of the form "a unit of the mover's bears on a unit
+  of theirs" (event side "mover") are split into the four cells; side "own": the reasons of that same pattern whose event side is "other" (the count of the OTHER side's instances, that is: a unit of theirs bears on a unit of
+  the mover's, the unit of the mover's being the one that is guarded or not, the bearing unit of theirs the one that is borne on or not) are split into four cells, the words saying so. A reason already split (its "cell" is not
+  None) is passed through unchanged, so the two calls may follow each other in either order; "parent" stays the index in the list the first call was given. loose_units(items, units, side) -> set of unit ids   the units of
+  the side (0: the side to move, 1: the other) that a unit of the other side bears on and no unit of their own side bears on, from the graph's own bear items (the facts cell_counts reads). left_loose(before, after, frm, to) ->
+  set   the units of `after` that are not in `before` once the unit that stood on `frm` is read as standing on `to` (the move's own start and end, as the engine's replay gives them): the units a move LEAVES borne on and
+  unguarded that were not so before. Called by symbols_own_measure (the cells of the other side and the count of part C), ladder_print (the print of the decisions). A reason with weight 0 is its own sign in groups_of
+  (a candidate that has no parent reason and so no sign of its own is not merged with a reason of either sign).
 PLAN 78.89 (SYSTEM_SPEC 7, 9, 10 the endings risk and the fill): Choice.fill_ok (default False) -- the builder of the rows says that rows marked source "generated" (our own self-play games, FIND only, the mover's own move the one
   "played") may be read by fit_choice; require_find then lets them pass. Without it nothing changes: a generated row is refused as before. The CONFIRM part is never generated.
 """
@@ -700,7 +708,7 @@ def groups_of(reasons: list, rows: Choice, threshold: float = GROUP_SIM) -> list
     G = (E.T @ E).toarray()
     J = G / np.maximum(car[:, None] + car[None, :] - G, 1.0)
     J[(car[:, None] == 0) | (car[None, :] == 0)] = 0.0
-    key = [(r["side"], r["dir"], 1 if float(r["weight"]) > 0 else -1) for r in reasons]
+    key = [(r["side"], r["dir"], (float(r["weight"]) > 0) - (float(r["weight"]) < 0)) for r in reasons]
     clusters = [[i] for i in range(n)]
     while True:
         best, pair = threshold, None
@@ -739,30 +747,61 @@ def bear_form(p: L2.Pattern) -> bool:
     return p.size == 1 and p.atoms[0][0] == "bear" and p.atoms[0][2] == "u" and p.atoms[0][1] == 0 and p.atoms[0][3] == 1 and list(p.sides) == [True, False]
 
 
-def split_borne(reasons: list, kinds: list) -> list:
-    """See the module doc. `reasons` carry "bytes" (the pattern's encoding in hexadecimal) and "side"; `kinds` the kind words (the decoder needs none for a split decision, kept for the layer-3 words)."""
+CELL_WORDS_OWN = ("the unit of the mover's is not guarded and the bearing unit of theirs is not borne on", "the unit of the mover's is not guarded and the bearing unit of theirs is borne on by a unit of the mover's",
+                  "the unit of the mover's is guarded and the bearing unit of theirs is not borne on", "the unit of the mover's is guarded and the bearing unit of theirs is borne on by a unit of the mover's")
+
+
+def split_borne(reasons: list, kinds: list, side: str = "theirs") -> list:
+    """See the module doc. `reasons` carry "bytes" (the pattern's encoding in hexadecimal) and "side"; `kinds` the kind words (the decoder needs none for a split decision, kept for the layer-3 words). `side` "theirs" splits the
+    reasons whose event side is the mover (a unit of the mover's bears on a unit of theirs), "own" those whose event side is the other (a unit of theirs bears on a unit of the mover's)."""
+    if side not in ("theirs", "own"):
+        raise ValueError("side is 'theirs' or 'own'")
+    want, words = ("mover", CELL_WORDS) if side == "theirs" else ("other", CELL_WORDS_OWN)
     out = []
     for i, r in enumerate(reasons):
-        if r["side"] == "mover" and bear_form(L2.decode(bytes.fromhex(r["bytes"]))):
+        if r.get("cell") is not None:
+            out.append(dict(r))
+            continue
+        parent = r.get("parent", i)
+        if r["side"] == want and bear_form(L2.decode(bytes.fromhex(r["bytes"]))):
             for c in range(4):
-                out.append(dict(r, cell=c, parent=i, words=r["words"] + "; " + CELL_WORDS[c]))
+                out.append(dict(r, cell=c, parent=parent, words=r["words"] + "; " + words[c]))
         else:
-            out.append(dict(r, cell=None, parent=i))
+            out.append(dict(r, cell=None, parent=parent))
     return out
 
 
-def cell_counts(items: list, units: dict, p: L2.Pattern, kinds: list) -> "tuple[list, list]":
-    """See the module doc. The instances are the matcher's; the two facts are read from the graph's own `bear` items between units."""
-    from catspace.incubator.analyst.discovery import graph_layer2_match as GM
-    bears = [it for it in items if it[0] == "bear" and it[2][0] == "u"]
+def _guard_facts(items: list, units: dict) -> "tuple[set, set]":
+    """The units that a unit of their own side bears on (guarded) and those that a unit of the other side bears on (borne on), from the graph's own bear items between units."""
     guarded, borne = set(), set()
-    for _ty, actor, (_s, tgt), _ln, _b in bears:
+    for _ty, actor, (_s, tgt), _ln, _b in (it for it in items if it[0] == "bear" and it[2][0] == "u"):
         if actor == tgt:
             continue
         if units[actor]["side"] == units[tgt]["side"]:
             guarded.add(tgt)
         else:
             borne.add(tgt)
+    return guarded, borne
+
+
+def loose_units(items: list, units: dict, side: int) -> set:
+    """See the module doc: the units of the side (0: the side to move, 1: the other) that are borne on and not guarded."""
+    guarded, borne = _guard_facts(items, units)
+    return {u for u, un in units.items() if un["mine"] == (side == 0) and u in borne and u not in guarded}
+
+
+def left_loose(before: set, after: set, frm: str, to: str) -> set:
+    """See the module doc. A unit id ends in its place after a colon; the unit that stood on `frm` stands on `to` after the move."""
+    def f(uid: str) -> str:
+        return uid.rsplit(":", 1)[0] + ":" + to if uid.endswith(":" + frm) else uid
+    return set(after) - {f(u) for u in before}
+
+
+def cell_counts(items: list, units: dict, p: L2.Pattern, kinds: list) -> "tuple[list, list]":
+    """See the module doc. The instances are the matcher's; the two facts are read from the graph's own `bear` items between units."""
+    from catspace.incubator.analyst.discovery import graph_layer2_match as GM
+    bears = [it for it in items if it[0] == "bear" and it[2][0] == "u"]
+    guarded, borne = _guard_facts(items, units)
     s0, s1 = GM.match_binds(bears, units, p, kinds)
     out = []
     for found in (s0, s1):

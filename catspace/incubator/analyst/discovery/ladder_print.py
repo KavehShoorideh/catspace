@@ -26,6 +26,8 @@ instance in brackets, with whether the move takes a unit and what kind of unit m
 takes a unit, the kind of unit that moves and the sum the pick reads; the accepted moves are the answers file, for the human reader only. Writes cases.txt beside the reasons.
 PLAN 78.84 `--cut84 TAG` (`cut_cases`): THE TWENTY FLAGGED DECISIONS of part one (tie_cut_measure.py `report`): a tie set with a move whose line gives up a unit for nothing and a move whose line does not, each with the board, the units under attack,
 what the search reported, both moves with their lines and numbers, and the cause the measure named. Writes cases.txt under symbols_play_78_84/<tag>/.
+PLAN 78.90 `--own90 TAG` (`own_cases`): THE THIRTY DECISIONS where the fit with the other side's cells picks otherwise than the old weights (symbols_own_measure.py `cases`: cases90.json, groups_A.json under symbols_78_90/<tag>/), ten
+a band, each with the board, what each side has under attack, the moves that leave a unit of the mover's borne on and unguarded, and for the old pick, the new pick and the first move what it leaves under attack and its groups in words.
 PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
@@ -562,6 +564,46 @@ def groups_cases(tag: str = "full", exp: str = "symbols_78_88", top: int = 20) -
     return root / "cases.txt"
 
 
+def own_cases(tag: str = "full", exp: str = "symbols_78_90") -> Path:
+    """PLAN 78.90 `--own90 TAG` (symbols_own_measure.py `cases`): THE THIRTY DECISIONS where the pick of the fit with the other side's cells (A) differs from the pick of the old weights, ten a band (five from each CONFIRM part), by the rule
+    in that module's doc. Each: the board, the units of each side under attack before the move, the moves held equal with a mark on those that leave a unit of the mover's borne on and unguarded that was not so before, the move the
+    human played, the search's first move, the old pick and the new pick, each with what it leaves under attack and the three strongest groups it carries in words (the groups of A, groups_A.json). For the reader's judgement only.
+    Writes cases.txt under symbols_78_90/<tag>/."""
+    root = Path(paths.experiment(exp, tag))
+    c90 = json.loads((root / "cases90.json").read_text())
+    groups = json.loads((root / c90["groups_file"]).read_text())
+    lines = [f"THE THIRTY DECISIONS (plan 78.90): {len(c90['cases'])} read; ten a band, five from each CONFIRM part (sample 1 the early game, sample 2 the later game), where the pick of A (the fit with the cells of the other side's "
+             "bearing) differs from the pick of the old weights (78.88's). Groups are those of A; weights are log-odds of being the move played among equals.", ""]
+
+    def side(b: chess.Board, c: dict, m: str, tops: list) -> list:
+        mv = chess.Move.from_uci(m)
+        loose = c["left"][c["tied"].index(m)]
+        out = [f"    {b.san(mv)} ({chess.piece_name(b.piece_at(mv.from_square).piece_type)}{', takes a unit' if b.is_capture(mv) else ''}{'; LEAVES a unit of the mover borne on and unguarded that was not so before' if loose else ''})"]
+        x = b.copy()
+        x.push(mv)
+        out.append(f"        after it, the mover's units under attack: {_attacked(x, b.turn)}; the other side's: {_attacked(x, not b.turn)}")
+        for gidx, w in tops:
+            g = groups[gidx]
+            mem = sorted(g["members"], key=lambda y: -abs(y["weight"]))
+            out.append(f"        weight {w:+.3f}, group {gidx} ({len(mem)} members, {g['side']} {g['dir']}): {_words(mem[0]['words'], mem[0]['side'])}" + (f"  [and {len(mem) - 1} like it]" if len(mem) > 1 else ""))
+        return out
+    for k, c in enumerate(c90["cases"], 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        nm = lambda m, b=b: b.san(chess.Move.from_uci(m))
+        mark = lambda m, c=c, nm=nm: nm(m) + ("*" if c["left"][c["tied"].index(m)] else "")
+        lines += [f"=== DECISION {k}: {c['id']} ply {c['ply']}  band {c['band']}, {c['units']} units, sample {c['sample']}  ({'white' if me else 'black'} to move)", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}", f"the other side's units under attack: {_attacked(b, not me)}",
+                  f"held equal ({len(c['tied'])}), the search's first move first; * leaves a unit of the mover's borne on and unguarded that was not so before: {', '.join(mark(m) for m in c['tied'])}",
+                  f"the human played: {nm(c['played'])}; the search's first move: {nm(c['first'])}; the old pick: {nm(c['old'])}; the new pick: {nm(c['new'])}",
+                  "  the old pick (the three strongest groups of A it carries):"] + side(b, c, c["old"], c["old_groups"]) + ["  the new pick:"] + side(b, c, c["new"], c["new_groups"]) + ["  the search's first move:"] + side(b, c, c["first"], c["first_groups"]) + [""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: {len(c90['cases'])} decisions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -744,6 +786,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--play83", default=None, help="PLAN 78.83: thirty decisions, ten from each band of units on the board (symbols_play_78_83/<tag>)")
     ap.add_argument("--play89", default=None, help="PLAN 78.89: thirty decisions, fifteen of the lower many part and fifteen of the mid band (symbols_78_89/<tag>)")
     ap.add_argument("--groups88", default=None, help="PLAN 78.88: the twenty largest groups in words and the thirty decisions (symbols_78_88/<tag>)")
+    ap.add_argument("--own90", default=None, help="PLAN 78.90: thirty decisions where the fit with the other side's cells picks otherwise than the old weights (symbols_78_90/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
     ap.add_argument("--verdict87", action="store_true", help="PLAN 78.87: the ten lines whose verdict word changed (verdict_78_87/picked.json)")
@@ -787,6 +830,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.groups88:
         groups_cases(a.groups88)
+        return 0
+    if a.own90:
+        own_cases(a.own90)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
