@@ -66,6 +66,8 @@ pub struct LedgerOp<'a, J: Judge> {
     pub verify_ties: bool,
     /// Plan 78.92: the chosen move asked again without the two prunings (`Search::verified_choice`); false is the search as it is.
     pub verify_choice: bool,
+    /// Plan 78.93: where the verification takes its time (`ChoiceMode`); Slot is 78.92's form and the default.
+    pub choice_mode: crate::ledger::ChoiceMode,
     /// Plan 78.92: the two prunings apart (`Search::null_move`, `Search::late_reduce`); true is the search as it is.
     pub null_move: bool,
     pub late_reduce: bool,
@@ -74,7 +76,7 @@ pub struct LedgerOp<'a, J: Judge> {
 }
 
 impl<'a, J: Judge> LedgerOp<'a, J> {
-    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, null_move: true, late_reduce: true, root_order: None } }
+    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, choice_mode: crate::ledger::ChoiceMode::Slot, null_move: true, late_reduce: true, root_order: None } }
 }
 
 impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
@@ -83,7 +85,8 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
     fn run(&self, g: &G, s: &G::State, goal: &Goal, b: Budget) -> Outcome<G::Move> {
         let Goal::Ledger { role, ties, prefer, avoid } = goal else { return Outcome::unsupported("ledger", goal) };
         let t0 = std::time::Instant::now();
-        let mut ls = Search::new(g, self.judge, *role, b.seconds_left());
+        let main_seconds = b.seconds_left();
+        let mut ls = Search::new(g, self.judge, *role, self.choice_mode.deepening_seconds(self.verify_choice, main_seconds));
         ls.set_fuse(b.max_nodes);
         ls.history = self.history.iter().copied().collect();
         ls.ordering = self.ordering;
@@ -91,6 +94,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         ls.extend = self.extend;
         ls.verify_ties = self.verify_ties;
         ls.verify_choice = self.verify_choice;
+        ls.choice_mode = self.choice_mode;
         ls.null_move = self.null_move;
         ls.late_reduce = self.late_reduce;
         ls.root_first = prefer.clone();
@@ -110,7 +114,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         let mut i = i;
         let mut replaced = false;
         if self.verify_choice {
-            ls.resume(b.rest_of_decision() * ties.unwrap_or(1.0));
+            ls.resume(self.choice_mode.verification_seconds(main_seconds, t0.elapsed().as_secs_f64(), b.rest_of_decision(), ties.unwrap_or(1.0)));
             let (n0, t1) = (ls.nodes, std::time::Instant::now());
             let v = ls.verified_choice(s, ln.depth, ln.value, i);
             o.part(format!("verify_choice ({})", v.state.label()), ls.nodes - n0, t1.elapsed().as_secs_f64());

@@ -34,23 +34,21 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None, verify_ties=false, verify_choice=false))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None, verify_ties=false, verify_choice=false, choice_mode="slot".to_string()))]
 #[allow(clippy::too_many_arguments)]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
-             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>, verify_ties: bool, verify_choice: bool)
+             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>, verify_ties: bool, verify_choice: bool, choice_mode: String)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
     let (g, s, keys) = record_of(variant, fen, start960, &moves)?;
     let hist: Vec<u64> = if record { keys } else { vec![] };          // (record=False: the game's record not read -- the comparison)
     let f = g.fen(&s);
     let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
-    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, wdl, wdl_table: table, verify_ties, verify_choice, ..cs_decision::Params::default() };
-    let choice = if reason || wdl || !verify_ties || verify_choice {
-        // (plan 78.25 / 78.26: the reasoning chain or the win / draw / loss path on: the decision with its extra steps; both off, the call below is exactly what it was)
-        (if worth.is_empty() { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Count, &params) }
-         else { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, &params) })
-            .map(|d| cs_decision::Choice { mv: d.mv.expect("a decision with a move"), proved: d.proved, trace: d.trace, nodes: d.cost.nodes })
-    } else if worth.is_empty() { cs_decision::decide_with(&g, &s, seconds, &cs_tactics::ledger::Count, prior, &hist, prior_depth, ledger_share, prior_defects, ordering, prune, extend) }
-                 else { cs_decision::decide_with(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, prior, &hist, prior_depth, ledger_share, prior_defects, ordering, prune, extend) };
+    let choice_mode = cs_tactics::ledger::ChoiceMode::parse(&choice_mode).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("choice_mode is \"slot\" or \"main\""))?;
+    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, wdl, wdl_table: table, verify_ties, verify_choice, choice_mode, ..cs_decision::Params::default() };
+    // (plan 78.93: every call goes through `decide_params`, so that `verify_ties`, `verify_choice` and `choice_mode` reach the search. Before, `verify_ties=True` alone went to `decide_with`, which builds its own Params and dropped the switch. `decide_with` is `decide_params` with these fields at their defaults, so the default call is what it was.)
+    let choice = (if worth.is_empty() { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Count, &params) }
+                  else { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, &params) })
+        .map(|d| cs_decision::Choice { mv: d.mv.expect("a decision with a move"), proved: d.proved, trace: d.trace, nodes: d.cost.nodes });
     Ok(match choice {
         Some(c) => (Some(g.move_name(&s, &c.mv)), c.proved, c.trace, c.nodes, f),
         None => (None, false, vec!["the game is over".into()], 0, f),
@@ -594,7 +592,8 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         use cs_operator::{Outcome, Status};
         let cs_operator::Goal::Ledger { role, ties, prefer, avoid } = goal else { return Outcome::unsupported("ledger", goal) };
         let t0 = std::time::Instant::now();
-        let mut ls = cs_tactics::ledger::Search::new(g, self.judge, *role, b.seconds_left());
+        let main_seconds = b.seconds_left();
+        let mut ls = cs_tactics::ledger::Search::new(g, self.judge, *role, self.params.choice_mode.deepening_seconds(self.params.verify_choice, main_seconds));
         ls.set_fuse(b.max_nodes);
         ls.history = self.history.iter().copied().collect();
         ls.ordering = self.params.ordering;
@@ -602,6 +601,7 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         ls.extend = self.params.extend;
         ls.verify_ties = self.params.verify_ties;
         ls.verify_choice = self.params.verify_choice;
+        ls.choice_mode = self.params.choice_mode;
         ls.null_move = self.params.null_move;
         ls.late_reduce = self.params.late_reduce;
         ls.root_first = prefer.clone();
@@ -621,11 +621,11 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         let mut replaced = false;
         let mut nodes = ln.nodes;
         if self.params.verify_choice {                  // (plan 78.92: the chosen move asked again without the two prunings, in the equal reading's slot of the clock)
-            ls.resume(b.rest_of_decision() * ties.unwrap_or(1.0));
+            ls.resume(self.params.choice_mode.verification_seconds(main_seconds, t0.elapsed().as_secs_f64(), b.rest_of_decision(), ties.unwrap_or(1.0)));
             let (n0, t1) = (ls.nodes, std::time::Instant::now());
             let v = ls.verified_choice(s, ln.depth, ln.value, i);
             o.part(format!("verify_choice ({})", v.state.label()), ls.nodes - n0, t1.elapsed().as_secs_f64());
-            nodes += ls.nodes - n0;
+            nodes +=ls.nodes - n0;
             replaced = v.index != i;
             i = v.index;
         }
@@ -732,12 +732,13 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false, null_move=true, late_reduce=true, verify_choice=false))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false, null_move=true, late_reduce=true, verify_choice=false, choice_mode="slot".to_string()))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
-                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool, null_move: bool, late_reduce: bool, verify_choice: bool) -> PyResult<Vec<PyObject>> {
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool, null_move: bool, late_reduce: bool, verify_choice: bool, choice_mode: String) -> PyResult<Vec<PyObject>> {
+    let choice_mode = cs_tactics::ledger::ChoiceMode::parse(&choice_mode).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("choice_mode is \"slot\" or \"main\""))?;
     let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
-    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, verify_choice, null_move, late_reduce, ..cs_decision::Params::default() };
+    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, verify_choice, choice_mode, null_move, late_reduce, ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
         store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))

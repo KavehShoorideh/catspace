@@ -271,8 +271,10 @@ class MoverReasons(TM.Mover67):
         if self.kind not in MODE:
             return super().choose(text, moves, legal)
         t0 = time.perf_counter()
-        row = PM.equal_set(CE.solve_equals_batch([(OM.VARIANT, text, list(moves))], self.search_clock(), worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1,
-                                                 ledger_share=TM.LEDGER_SHARE)[0])
+        raw = CE.solve_equals_batch([(OM.VARIANT, text, list(moves))], self.search_clock(), worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1,
+                                    ledger_share=TM.LEDGER_SHARE, **self.choice_kw())[0]
+        self.note_choice(raw)
+        row = PM.equal_set(raw)
         t1 = time.perf_counter()
         mv, eq = row["move"], row["equals"]
         pick, st = mv, self.stats

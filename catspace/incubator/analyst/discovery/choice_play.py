@@ -52,7 +52,7 @@ class ChoiceMover(TM.Mover67):
     def choose(self, text: "str | None", moves: list, legal: list) -> tuple:
         t0 = time.perf_counter()
         raw = CE.solve_equals_batch([(OM.VARIANT, text, list(moves))], self.seconds, worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1,
-                                    ledger_share=TM.LEDGER_SHARE, null_move=self.null_move, late_reduce=self.late_reduce, verify_choice=self.verify_choice)[0]
+                                    ledger_share=TM.LEDGER_SHARE, null_move=self.null_move, late_reduce=self.late_reduce, verify_choice=self.verify_choice, choice_mode=self.choice_mode)[0]
         row = PM.equal_set(raw)
         state, vc_nodes, vc_seconds = raw[12], raw[13], raw[14]                          # (the last three of the row: what the verification of the choice did)
         wall = time.perf_counter() - t0

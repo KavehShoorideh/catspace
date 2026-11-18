@@ -133,6 +133,8 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub verify_ties: bool,
     /// PLAN 78.92: the move the deepening chooses is asked again without the two prunings (`verified_choice`); false (the default everywhere) is the search as it is.
     pub verify_choice: bool,
+    /// PLAN 78.93: where the verification of the choice takes its time (`ChoiceMode`); only read when `verify_choice` is on. Slot (the default) is 78.92's form.
+    pub choice_mode: ChoiceMode,
     /// THE FEW-REPLY EXTENSION (plan 78.11): a forced answer does not shorten the line
     pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
@@ -158,6 +160,24 @@ pub struct Search<'a, G: Game, J: Judge> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChoiceState { Off, Held, Replaced, Failed, Cut }
 
+/// PLAN 78.93: where the verification of the choice (`verified_choice`) takes its time from. Slot (78.92, the default): after the deepening, out of the rest of the decision's clock, so the equal reading's slot is
+/// what is left. Main: out of the main search's own clock: the deepening is stopped when `CHOICE_MAIN_SHARE` of that clock is left, the verification reads in that part and in whatever the deepening left unused, and the
+/// equal reading keeps its whole slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChoiceMode { Slot, Main }
+
+/// The part of the main search's clock kept back for the verification in `ChoiceMode::Main`. A named reading of 78.92's cost, not a tuned number: the verification of the chosen move cost a median 1.15 times the nodes of the search
+/// that chose it, so about half of the clock is what it asks for.
+pub const CHOICE_MAIN_SHARE: f64 = 0.5;
+
+impl ChoiceMode {
+    /// The clock the deepening itself gets out of `seconds` of the main search's clock (all of it unless the verification is on and takes its time from there).
+    pub fn deepening_seconds(self, verify_choice: bool, seconds: f64) -> f64 { if verify_choice && self == ChoiceMode::Main { seconds * (1.0 - CHOICE_MAIN_SHARE) } else { seconds } }
+    /// The clock the verification gets: Slot: `rest * share` as before (the equal reading's slot); Main: what is left of the main search's whole clock `seconds` after `used` seconds.
+    pub fn verification_seconds(self, seconds: f64, used: f64, rest: f64, share: f64) -> f64 { if self == ChoiceMode::Main { (seconds - used).max(0.0).min(rest) } else { rest * share } }
+    pub fn parse(s: &str) -> Option<ChoiceMode> { match s { "slot" => Some(ChoiceMode::Slot), "main" => Some(ChoiceMode::Main), _ => None } }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChoiceVerdict { pub index: usize, pub state: ChoiceState }
 
@@ -175,12 +195,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, extend: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, extend: true,
                  killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
