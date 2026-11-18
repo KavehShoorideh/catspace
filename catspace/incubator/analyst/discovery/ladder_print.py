@@ -18,7 +18,12 @@ in words, the count of each of them before and after each tied move (own = layer
 PLAN 78.80 `--symbols TAG` (`symbols_cases`): THE SYMBOLS AS READABLE CASES. Part A: the twelve positions of 78.78 with, per tied move, the passing events (patterns made true or false, for each side) it carries, in words; part B: the ten
 strongest passing patterns (a rule fixed in the function's doc) each drawn on three positions where the move played carries the event, the units of one instance in brackets. Reads artifacts/experiments/symbols_78_80/<tag>/ and writes
 cases.txt there. The only place of the symbols' files where the game's renderer and names appear.
+PLAN 78.81 `--reasons TAG` (`reasons_cases`): THE REASONS AS READABLE CASES (symbols_reasons_measure.py; reasons.json and ahead.json under symbols_78_81/<tag>/, the 78.80 sample, events and keys). Part A: THE STRONGEST TWENTY REASONS by
+|weight| in the joint fit with the controls (a rule fixed here before the cases were read), each in words and drawn on the first three CONFIRM positions, in the file's order, where the move played carries the event, the units of one
+instance in brackets, with whether the move takes a unit and what kind of unit moves said beside it. Part B: the twelve positions of 78.78 (subgoal_pick_78_78 case_rows.json) with, per tied move, the reasons it carries in words, whether it
+takes a unit, the kind of unit that moves and the sum the pick reads; the accepted moves are the answers file, for the human reader only. Writes cases.txt beside the reasons.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -216,6 +221,39 @@ def _sq(unit_id: str) -> int:
     return chess.parse_square(unit_id.rsplit(":", 1)[1])
 
 
+def _draw_event(model, static, goal, kinds, pat, moves: list, played: str, side: str, dr: str, pid: str) -> list:
+    """One drawing of an event on a position where the move played carries it: for an event made true the board after the move with the units of one new instance in brackets, for an event made false the board before
+    with the units of one lost instance in brackets. Also the two things the choice fit controls for, said in words: whether the move takes a unit and what kind of unit moves. -> the lines."""
+    b0 = chess.Board()
+    for m in moves:
+        b0.push_uci(m)
+    mv = chess.Move.from_uci(played)
+    san = b0.san(mv)
+    mover_piece = chess.piece_name(b0.piece_at(mv.from_square).piece_type)
+    takes = b0.is_capture(mv)
+    b1 = b0.copy()
+    b1.push(mv)
+    before0, before1 = _instances(model, static, goal, pat, kinds, b0)
+    after0, after1 = _instances(model, static, goal, pat, kinds, b1)
+    own_before = before0 if side == "mover" else before1                   # before the move the mover is the side to move (side 0), after it the mover is the other side (side 1)
+    own_after = after1 if side == "mover" else after0
+    frm, to = chess.square_name(mv.from_square), chess.square_name(mv.to_square)
+
+    def remap(t: tuple, frm=frm, to=to) -> tuple:
+        return tuple(u.rsplit(":", 1)[0] + ":" + to if u.endswith(":" + frm) else u for u in t)
+    old = {remap(t) for t in own_before}
+    if dr == "up":
+        new = [t for t in own_after if t not in old]
+        inst, board, label = (new[0] if new else (own_after[0] if own_after else ())), b1, "after the move"
+    else:
+        now = set(own_after)
+        lost = [t for t in own_before if remap(t) not in now]
+        inst, board, label = (lost[0] if lost else (own_before[0] if own_before else ())), b0, "before the move"
+    marks = {_sq(u) for u in inst}
+    return [f"  --- position {pid} ({'white' if b0.turn else 'black'} plays {san}: a {mover_piece} moves{', taking a unit' if takes else ''}); counts of the pattern for {side}: before {len(own_before)}, after {len(own_after)}; the board {label}, the units of one instance in brackets",
+            _board_marked(board, marks), ""]
+
+
 def symbols_cases(tag: str = "full", shown: int = 8) -> Path:
     """PLAN 78.80: THE SYMBOLS AS READABLE CASES (symbols_measure.py; passing.json, keys.json, sample.jsonl, events.npz under symbols_78_80/<tag>/). Part A: the twelve positions of plan 78.78 (the first six open surprises of the
     scored part with an accepted move among the moves held equal and the first six resolved positions its best candidate broke; subgoal_pick_78_78 case_rows.json), each with the board, the moves held equal and, per tied move, the passing
@@ -297,34 +335,94 @@ def symbols_cases(tag: str = "full", shown: int = 8) -> Path:
             if start[i] + j not in hit:
                 continue
             shown_n += 1
-            b0 = chess.Board()
-            for m in r["moves"]:
-                b0.push_uci(m)
-            mv = chess.Move.from_uci(r["played"])
-            san = b0.san(mv)
-            b1 = b0.copy()
-            b1.push(mv)
-            before0, before1 = _instances(model, static, goal, pat, kinds, b0)
-            after0, after1 = _instances(model, static, goal, pat, kinds, b1)
-            own_before = before0 if side == "mover" else before1                   # before the move the mover is the side to move (side 0), after it the mover is the other side (side 1)
-            own_after = after1 if side == "mover" else after0
-            frm, to = chess.square_name(mv.from_square), chess.square_name(mv.to_square)
-
-            def remap(t: tuple, frm=frm, to=to) -> tuple:
-                return tuple(u.rsplit(":", 1)[0] + ":" + to if u.endswith(":" + frm) else u for u in t)
-            old = {remap(t) for t in own_before}
-            if dr == "up":
-                new = [t for t in own_after if t not in old]
-                inst, board, label = (new[0] if new else (own_after[0] if own_after else ())), b1, "after the move"
-            else:
-                now = set(own_after)
-                lost = [t for t in own_before if remap(t) not in now]
-                inst, board, label = (lost[0] if lost else (own_before[0] if own_before else ())), b0, "before the move"
-            marks = {_sq(u) for u in inst}
-            lines += [f"  --- position {r['id']} ({'white' if b0.turn else 'black'} plays {san}); counts of the pattern for {side}: before {len(own_before)}, after {len(own_after)}; the board {label}, the units of one instance in brackets",
-                      _board_marked(board, marks), ""]
+            lines += _draw_event(model, static, goal, kinds, pat, r["moves"], r["played"], side, dr, r["id"])
     (root / "cases.txt").write_text("\n".join(lines))
     print(f"OBS ladder print: symbols cases written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
+def reasons_cases(tag: str = "full", shown: int = 8, top: int = 20) -> Path:
+    """PLAN 78.81: see the module doc (`--reasons`)."""
+    import numpy as np
+    from scipy import sparse
+    from catspace.incubator.analyst.discovery import graph_layer1 as GL
+    from catspace.incubator.analyst.discovery import graph_layer2 as L2
+    from catspace.incubator.analyst.discovery import graph_layer2_measure as G2M
+    from catspace.incubator.analyst.discovery import human_heads_data as HD
+    from catspace.incubator.analyst.discovery import symbols as SY
+    root = Path(paths.experiment("symbols_78_81", tag))
+    src = Path(paths.experiment("symbols_78_80", "full"))
+    keys = json.loads((src / "keys.json").read_text())
+    reasons = sorted(json.loads((root / "reasons.json").read_text()), key=lambda d: -abs(d["weight"]))
+    sample = [json.loads(x) for x in (src / "sample.jsonl").read_text().splitlines() if x.strip()]
+    model = GL.model(HD.GAME, HD.VARIANT)
+    static = model.static_part()
+    kinds = [n[len("kind:"):] for ty, n in static["nodes"] if ty == "kind"]
+    goal = G2M.goal_kind_of(HD.VARIANT)
+    n_cols = len(keys)
+    cols = sorted({d["column"] for d in reasons})
+    ci = {c: j for j, c in enumerate(cols)}
+    counter = SY.Counter(model, [int(keys[c]["key"]) for c in cols], goal, 2, (0, 1, 2, 3), 1)
+    w = {(ci[d["column"]], d["side"], d["dir"]): d["weight"] for d in reasons}
+    by_event = {(ci[d["column"]], d["side"], d["dir"]): d for d in reasons}
+    rank = {e: k for k, e in enumerate(sorted(by_event, key=lambda e: -abs(w[e])), 1)}
+    ctl_dir = root
+    takes = np.load(ctl_dir / "controls.npz")["takes"] if (ctl_dir / "controls.npz").exists() else None
+    lines = [f"THE REASONS (plan 78.81): {len(reasons)} reasons with a weight in the joint fit with the controls; the weights are the fit's (log-odds of being the move played among the moves held equal, the controls held fixed)", ""]
+    # ---- Part A: the twenty strongest, each drawn three times
+    lines += [f"##### PART A: THE STRONGEST {min(top, len(reasons))} REASONS, EACH ON THREE CONFIRM POSITIONS WHERE THE MOVE PLAYED CARRIES IT", ""]
+    M = sparse.load_npz(src / "events.npz").tocsc()
+    sizes = np.array([len(r["tied"]) for r in sample])
+    start = np.concatenate([[0], np.cumsum(sizes)])
+    for k, d in enumerate(reasons[:top], 1):
+        pat = L2.decode(bytes.fromhex(keys[d["column"]]["bytes"]))
+        idx = SY.event_index(d["column"], d["side"], d["dir"], n_cols)
+        hit = set(M.indices[M.indptr[idx]:M.indptr[idx + 1]].tolist())
+        share = float(takes[sorted(hit)].mean()) if takes is not None and hit and len(takes) > max(hit) else float("nan")
+        lines += [f"=== REASON {k}: {d['id'][:8]} (size {d['size']}, level {d['level']}), the event: {'made TRUE' if d['dir'] == 'up' else 'made FALSE'} for {d['side']}; weight {d['weight']:+.3f}"
+                  + (f" (events alone {d['weight_events_alone']:+.3f})" if d.get("weight_events_alone") is not None else " (no weight without the controls)"),
+                  f"    {_words(keys[d['column']]['words'], d['side'])}",
+                  f"    carried by {len(hit)} tied moves of the 78.80 sample, {100 * share:.1f} pct of them take a unit", ""]
+        shown_n = 0
+        for i, r in enumerate(sample):
+            if r["part"] != "confirm" or shown_n >= 3:
+                continue
+            j = r["tied"].index(r["played"])
+            if start[i] + j not in hit:
+                continue
+            shown_n += 1
+            lines += _draw_event(model, static, goal, kinds, pat, r["moves"], r["played"], d["side"], d["dir"], r["id"])
+    # ---- Part B: the twelve positions
+    prepsr = Path(paths.experiment("subgoal_pick_78_79", "full"))
+    preps = pickle.loads((prepsr / "preps.pkl").read_bytes())
+    cr = json.loads((prepsr / "case_rows.json").read_text())
+    ans = {d["id"]: d["accepted"] for d in (json.loads(x) for x in (LM.out_root("full") / "answers.jsonl").read_text().splitlines() if x.strip())}
+    lines += ["##### PART B: THE TWELVE POSITIONS OF PLAN 78.78", ""]
+    pats = [{"column": c, "side": sd, "dir": dr, "weight": wt} for (c, sd, dr), wt in w.items()]
+    for key in ("A", "B"):
+        for k, pid in enumerate(cr[key], 1):
+            moves = cr["moves"][pid]
+            tied = preps[pid]["tied"]
+            b = chess.Board()
+            for m in moves:
+                b.push_uci(m)
+
+            def nm(m: str, b=b) -> str:
+                return b.san(chess.Move.from_uci(m))
+            ev = SY.deltas_of({"moves": moves}, tied, counter)
+            lines += [f"=== SET {key} CASE {k}: {pid}  ({'white' if b.turn else 'black'} to move)", str(b), "",
+                      f"held equal ({len(tied)}), the search's first move first: {', '.join(nm(m) for m in tied)}",
+                      f"the accepted moves: {', '.join(nm(m) for m in ans[pid])}   (accepted among the tied: {', '.join(nm(m) for m in tied if m in ans[pid]) or 'none'})"]
+            for m in tied:
+                mv = chess.Move.from_uci(m)
+                carried = sorted((e for e in ev[m] if e in w), key=lambda e: -abs(w[e]))
+                lines.append(f"  {'*' if m in ans[pid] else ' '} {nm(m)} ({chess.piece_name(b.piece_at(mv.from_square).piece_type)}{', takes a unit' if b.is_capture(mv) else ''}): {len(carried)} reasons, sum of weights {sum(w[e] for e in carried):+.2f}")
+                for e in carried[:shown]:
+                    lines.append(f"        {'made TRUE' if e[2] == 'up' else 'made FALSE'} for {e[1]} (weight {w[e]:+.3f}, reason {rank[e]}, pattern {keys[cols[e[0]]]['id'][:8]}): {_words(keys[cols[e[0]]]['words'], e[1])}")
+            pk = SY.symbol_pick({"moves": moves}, tied, pats, None, ev)
+            lines += [f"  the pick of the reasons: {nm(pk)}" + (" (accepted)" if pk in ans[pid] else ""), ""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: reasons cases written to {root / 'cases.txt'}")
     return root / "cases.txt"
 
 
@@ -424,6 +522,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--pick", default=None, help="PLAN 78.78: the cases of the subgoal rule scored on the open surprises (subgoal_pick_78_78/<tag>)")
     ap.add_argument("--pick79", default=None, help="PLAN 78.79: the twelve cases of 78.78 again, with the other side's goals and the long count (subgoal_pick_78_79/<tag>)")
     ap.add_argument("--symbols", default=None, help="PLAN 78.80: the symbols as readable cases (symbols_78_80/<tag>)")
+    ap.add_argument("--reasons", default=None, help="PLAN 78.81: the reasons as readable cases (symbols_78_81/<tag>)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
@@ -436,6 +535,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.symbols:
         symbols_cases(a.symbols)
+        return 0
+    if a.reasons:
+        reasons_cases(a.reasons)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
