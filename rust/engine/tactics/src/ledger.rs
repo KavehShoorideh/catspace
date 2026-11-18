@@ -129,6 +129,8 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// PLAN 78.85 (diagnosis): the two parts of `prune` apart; both read `prune` too, so `prune` off is both off
     pub null_move: bool,
     pub late_reduce: bool,
+    /// PLAN 78.85: the second reading of `ties` (`verify`); false is the equal reading exactly as it was (one reading, the search's own pruning, the warm table). THE DEFAULT OF THE ENGINE IS SET HERE (true), in `cs_decision::Params::default` and in the binding's signature.
+    pub verify_ties: bool,
     /// THE FEW-REPLY EXTENSION (plan 78.11): a forced answer does not shorten the line
     pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
@@ -159,12 +161,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, extend: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: true, extend: true,
                  killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
@@ -217,6 +219,9 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// keeps them); the moves that hold are returned. A move the first reading did not name is not asked again (a first reading that is too cautious is a smaller set, not a false equal).
     /// Where the clock or the fuse stops either reading, only the moves verified so far are returned.
     pub fn ties(&mut self, s: &G::State, depth: i32, best: i64) -> Vec<usize> {
+        if !self.verify_ties {                                          // (the equal reading as it was before plan 78.85)
+            return self.probes(s, depth, best, None).into_iter().filter(|(_, p)| *p >= best).map(|(i, _)| i).collect();
+        }
         let first: Vec<usize> = self.probes(s, depth, best, None).into_iter().filter(|(_, p)| *p >= best).map(|(i, _)| i).collect();
         if self.stopped || first.is_empty() { return if self.stopped { vec![] } else { first }; }
         self.verify(s, depth, best, &first)

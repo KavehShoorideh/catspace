@@ -92,7 +92,16 @@ def test_value_at_reads_a_node_with_a_window_and_the_switches():
 # ------------------------------------------------------------------------------------------------------------------------------ the wall
 
 def test_the_new_sources_name_no_game_object():
-    files = [ROOT / "rust/engine/tactics/src/equal_audit.rs", ROOT / "rust/engine/py/src/audit_py.rs", ROOT / "catspace/incubator/analyst/discovery/debts_measure.py"]
+    files = [ROOT / "rust/engine/tactics/src/equal_audit.rs", ROOT / "rust/engine/py/src/audit_py.rs", ROOT / "catspace/incubator/analyst/discovery/debts_measure.py", ROOT / "catspace/incubator/analyst/discovery/debts_verify.py"]
     for p in files:
         for i, line in enumerate(p.read_text().splitlines(), 1):
             assert not re.search(NAMES, line, re.I), f"{p.name}:{i}: {line.strip()[:100]}"
+
+
+def test_the_switch_of_the_second_reading_reaches_the_binding_and_off_is_the_old_reading():
+    """`verify_ties` False is the equal reading as it was: one reading, so no more nodes than on; the sets with it on are within the sets with it off is tested in Rust (tactics/tests/equal_reading.rs)."""
+    from catspace.incubator.analyst.discovery import odds_measure as OM
+    pos = [(OM.VARIANT, None, ["e2e4", "e7e5", "g1f3", "b8c6"])]
+    off = CE.solve_equals_batch(pos, 1.0, worth=WORTH, threads=1, ledger_share=0.4, verify_ties=False)[0]
+    on = CE.solve_equals_batch(pos, 1.0, worth=WORTH, threads=1, ledger_share=0.4)[0]           # the default is ON
+    assert off[10] == on[10] and off[5] and on[5] and not off[11]                              # both read; the one-reading equal set is not cut by the clock here (a clock-free comparison of the sets is the Rust test)

@@ -64,3 +64,30 @@ fn a_line_read_to_one_reply_is_read_on_through_its_captures() {
     assert!(!take.unsettled);
     assert!(take.names.len() >= 3, "the line is read on past its first reply: {:?}", take.names);
 }
+
+/// Plan 78.85 follow-up: with the second reading off `ties` is the equal reading as it was (one null-window reading per root move on the table of the run), on several positions; with it on the set is within that.
+#[test]
+fn with_the_second_reading_off_ties_is_the_old_equal_reading() {
+    let fens = [POSITION, "4k3/8/8/8/8/8/8/R3K3 w - - 0 1", "4k3/pppp4/8/8/8/8/PPPP4/4K3 w - - 0 1", "r3k3/8/8/8/8/8/8/R3K3 w - - 0 1", "4k3/8/2p5/3p4/4P3/2N5/8/4K3 w - - 0 1"];
+    for fen in fens {
+        let g = KernelGame::from_fen("chess", fen).unwrap();
+        let s = g.initial();
+        let me: Role = g.mover(&s).unwrap();
+        let j = record();
+        let make = |verify: bool| {
+            let mut x = Search::with_fuse(&g, &j, me, 100_000);
+            x.verify_ties = verify;
+            let ln = x.run(&s, 64);
+            x.rebudget(50_000_000);
+            (x, ln)
+        };
+        let (mut off, ln) = make(false);
+        let (mut reference, _) = make(true);
+        let old: Vec<usize> = reference.probes(&s, ln.depth, ln.value, None).into_iter().filter(|(_, p)| *p >= ln.value).map(|(i, _)| i).collect();
+        let got = off.ties(&s, ln.depth, ln.value);
+        assert_eq!(got, old, "{fen}");
+        let (mut on, _) = make(true);
+        let new = on.ties(&s, ln.depth, ln.value);
+        assert!(new.iter().all(|i| old.contains(i)), "{fen}: {new:?} not within {old:?}");
+    }
+}

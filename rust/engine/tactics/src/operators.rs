@@ -62,12 +62,14 @@ pub struct LedgerOp<'a, J: Judge> {
     pub ordering: bool,
     pub prune: bool,
     pub extend: bool,
+    /// Plan 78.85: the second reading of the equal reading (`Search::verify_ties`).
+    pub verify_ties: bool,
     /// Plan 78.51: a caller's order of the root moves; None (the default) is the search as it was.
     pub root_order: Option<crate::ledger::RootOrder>,
 }
 
 impl<'a, J: Judge> LedgerOp<'a, J> {
-    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, root_order: None } }
+    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: true, root_order: None } }
 }
 
 impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
@@ -82,6 +84,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         ls.ordering = self.ordering;
         ls.prune = self.prune;
         ls.extend = self.extend;
+        ls.verify_ties = self.verify_ties;
         ls.root_first = prefer.clone();
         ls.root_last = avoid.clone();
         if let Some(ro) = &self.root_order { ls.set_root_order(&ro.order, ro.strict); }
