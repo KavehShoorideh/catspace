@@ -60,6 +60,23 @@ PLAN 78.81 (SYSTEM_SPEC 7 "subgoals as symbols" and "reachable has two layers", 
       it true); 0 when it was not at k = 1; None for a reason this layer does not read (a "down" reason or the other side's: no walk back is defined for them) or when the record has no earlier own position.
       `limit` is a cost guard: a count equal to it may be longer (symbols_reasons_measure prints how often it is hit). Called by symbols_reasons_measure (stage ahead) and the tests.
   Called by: symbols_reasons_measure.py; ladder_print.py reads its outputs for the cases.
+
+PLAN 78.88 (SYSTEM_SPEC 7 "subgoals as symbols", the form of the model "a combination, mixture of experts kind of thing"): ONE REASON ONE PURPOSE, AND WEIGHTS BY PART OF THE GAME. INTERFACE, written before the bodies.
+  THE GROUPING RULE (fixed before it was run; no number in it was tuned): two reasons are TWINS when their carrier sets on the FIND rows (the tied moves, in the human games' FIND positions, that carry the event) are alike. The groups are
+  the clusters of AGGLOMERATIVE CLUSTERING with AVERAGE LINKAGE on the Jaccard index of the carrier sets: start with every reason alone; repeatedly merge the two clusters with the highest average Jaccard index over all pairs of
+  their members, but only two clusters whose members all have the same side, the same direction (up or down) and the same sign of the weight (78.81's weight; for a cell of `split_borne` its parent's); stop when the best pair is
+  below GROUP_SIM = 0.5 (the one fixed threshold). A reason with no carrier on the rows stays alone. One group is one feature: true on a tied move when ANY member fires; it gets one weight in the fit.
+  groups_of(reasons, rows) -> [[reason index, ...]]    `reasons` the list of {"side", "dir", "weight"}, `rows` a Choice of FIND rows whose column i of E is reason i (require_find is called first). Groups in the order of their first member.
+  group_matrix(E, groups) -> a sparse 0/1 matrix, rows x groups: the OR of the members' columns.
+  split_borne(reasons, kinds) -> reasons    each reason of the form "a unit of the mover's bears on a unit of theirs" (bear_form: one atom, the first unit the mover's, the second the other side's, event side "mover") is
+      replaced by four, one for each CELL, a cell being two facts the layer's graph already holds about the instance's units: whether the unit of theirs is GUARDED (a unit of its own side bears on it) and whether the bearing unit
+      is BORNE ON (a unit of the other side bears on it); cell = 2 x guarded + borne. The four copy the parent and carry "cell" and "parent" (the index in the input); every other reason is copied with "cell" None.
+      Why Python and not patterns: a count of instances of a size-2 pattern (the two bears onto one unit) counts a unit once for each guard, and the language has no negation, so "loose" and "not borne on" are not
+      patterns; the matcher's instances (graph_layer2_match.match_binds) carry the units, the graph's own `bear` items carry the two facts, and no Rust change is needed.
+  cell_counts(items, units, pattern, kinds) -> (first, second)  the instance counts of a bear_form pattern by cell, read for the side to move (first) and for the other side (second); each a list of four.
+  cell_events(before, after) -> (up cells, down cells)   the mover's count before is the first of the position, after the move the second of the position after it (the side to move there is the other side).
+  Choice.units (optional)   the units on the board at the position of each row (the caller's count; this module counts nothing of any game); fit_choice(rows, ..., band=(low, high)) reads the positions whose units lie in the band
+      only; score_choice_by_band(rows, fits, bands, controls) -> per position the index of the highest-scoring tied move under the fit of the position's band (the first on a tie); `fits` {band name: fit}, `bands` [(name, low, high)].
 """
 from __future__ import annotations
 
@@ -395,6 +412,7 @@ class Choice:
     game: np.ndarray
     part: np.ndarray
     source: np.ndarray
+    units: "np.ndarray | None" = None                      # PLAN 78.88: the units on the board at the row's position (None where the caller did not say)
 
     def n_positions(self) -> int:
         return int(self.pos[-1]) + 1 if len(self.pos) else 0
@@ -405,7 +423,8 @@ class Choice:
         keep = positions if positions.dtype == bool else np.isin(np.arange(self.n_positions()), positions)
         rows = keep[self.pos]
         new = np.cumsum(keep) - 1
-        return Choice(self.E.tocsr()[rows], self.C[rows], self.control_names, new[self.pos[rows]], self.played[rows], self.game[rows], self.part[rows], self.source[rows])
+        return Choice(self.E.tocsr()[rows], self.C[rows], self.control_names, new[self.pos[rows]], self.played[rows], self.game[rows], self.part[rows], self.source[rows],
+                      None if self.units is None else self.units[rows])
 
 
 def require_find(rows: Choice) -> None:
@@ -540,11 +559,28 @@ def _features(rows: Choice, controls: tuple, events: "list | None") -> "tuple[np
     return X, pen, cols, list(controls)
 
 
-def fit_choice(rows: Choice, controls: tuple = (), events: "list | None" = None, folds: int = FOLDS, seed: int = 0) -> dict:
-    """See the module doc."""
+def position_units(rows: Choice) -> np.ndarray:
+    """PLAN 78.88: the units on the board at each position (the value on the position's first row)."""
+    if rows.units is None:
+        raise ValueError("the rows carry no unit counts")
+    P = rows.n_positions()
+    first = np.concatenate([[0], np.flatnonzero(np.diff(rows.pos)) + 1]) if len(rows.pos) else np.zeros(0, int)
+    out = np.zeros(P, int)
+    out[rows.pos[first]] = np.asarray(rows.units)[first]
+    return out
+
+
+def fit_choice(rows: Choice, controls: tuple = (), events: "list | None" = None, folds: int = FOLDS, seed: int = 0, band: "tuple | None" = None) -> dict:
+    """See the module doc. PLAN 78.88: `band` = (low, high) fits on the positions whose units on the board lie in it (inclusive) and nothing else; the folds are then cut from the games of those positions."""
     require_find(rows)
     import torch
     torch.set_num_threads(max(1, (os.cpu_count() or 2) - 2))
+    if band is not None:
+        pu = position_units(rows)
+        rows = rows.subset((pu >= band[0]) & (pu <= band[1]))
+        folds = max(2, min(folds, len(np.unique(rows.game)))) if len(rows.pos) else folds
+        if rows.n_positions() == 0:
+            return {"lambda": 0.0, "events": [], "weights": [], "controls": {}, "cv": [], "n_events": 0, "positions": 0, "band": list(band)}
     X, pen_np, cols, cnames = _features(rows, tuple(controls), events)
     P = rows.n_positions()
     out = {"lambda": 0.0, "events": [], "weights": [], "controls": {}, "cv": [], "n_events": len(cols), "positions": P}
@@ -626,6 +662,118 @@ def score_choice(rows: Choice, fit: dict, controls: bool = False) -> np.ndarray:
         seg = s[start[p]:start[p] + sizes[p]]
         out[p] = int(np.argmax(seg)) if seg.max() > seg[0] else 0
     return out
+
+
+def score_choice_by_band(rows: Choice, fits: dict, bands: list, controls: bool = False) -> np.ndarray:
+    """PLAN 78.88, see the module doc: the mixture gated by the band of the position's units. A band with no fit (a key missing from `fits`) is silent: the search's first move."""
+    P = rows.n_positions()
+    pu = position_units(rows)
+    sizes = np.bincount(rows.pos, minlength=P)
+    start = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+    out = np.zeros(P, int)
+    for name, lo, hi in bands:
+        if name not in fits:
+            continue
+        s = choice_scores(rows, fits[name], controls)
+        for p in np.flatnonzero((pu >= lo) & (pu <= hi)):
+            seg = s[start[p]:start[p] + sizes[p]]
+            out[p] = int(np.argmax(seg)) if seg.max() > seg[0] else 0
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.88: twins grouped, the unit borne on
+
+GROUP_SIM = 0.5                        # the one fixed threshold of the grouping rule (module doc): not tuned
+
+
+def groups_of(reasons: list, rows: Choice, threshold: float = GROUP_SIM) -> list:
+    """See the module doc. Average linkage on the Jaccard index of the carrier sets over `rows` (FIND only), merging only reasons of one side, one direction and one sign of weight."""
+    require_find(rows)
+    E = rows.E.tocsc().astype(np.float64)
+    n = E.shape[1]
+    if n != len(reasons):
+        raise ValueError("one column of rows.E for each reason")
+    car = np.asarray(E.sum(axis=0)).ravel()
+    G = (E.T @ E).toarray()
+    J = G / np.maximum(car[:, None] + car[None, :] - G, 1.0)
+    J[(car[:, None] == 0) | (car[None, :] == 0)] = 0.0
+    key = [(r["side"], r["dir"], 1 if float(r["weight"]) > 0 else -1) for r in reasons]
+    clusters = [[i] for i in range(n)]
+    while True:
+        best, pair = threshold, None
+        for a in range(len(clusters)):
+            for b in range(a + 1, len(clusters)):
+                if key[clusters[a][0]] != key[clusters[b][0]]:
+                    continue
+                s = float(J[np.ix_(clusters[a], clusters[b])].mean())
+                if s >= best and (pair is None or s > best):
+                    best, pair = s, (a, b)
+        if pair is None:
+            break
+        a, b = pair
+        clusters[a] = sorted(clusters[a] + clusters[b])
+        del clusters[b]
+    return sorted(clusters, key=lambda c: c[0])
+
+
+def group_matrix(E, groups: list):
+    """See the module doc: one column for each group, 1 where any member's column is 1."""
+    from scipy import sparse
+    E = E.tocsc()
+    cols = []
+    for g in groups:
+        s = E[:, g].sum(axis=1)
+        cols.append(sparse.csc_matrix((np.asarray(s).ravel() > 0).astype(np.float32)[:, None]))
+    return sparse.hstack(cols, format="csr") if cols else sparse.csr_matrix((E.shape[0], 0), dtype=np.float32)
+
+
+CELL_WORDS = ("the unit of theirs is not guarded and the bearing unit is not borne on", "the unit of theirs is not guarded and the bearing unit is borne on by a unit of theirs",
+              "the unit of theirs is guarded and the bearing unit is not borne on", "the unit of theirs is guarded and the bearing unit is borne on by a unit of theirs")
+
+
+def bear_form(p: L2.Pattern) -> bool:
+    """One `bear` atom from the first unit to the second, the first the side's own and the second the other side's (a unit of the mover's bears on a unit of theirs, for the mover's events)."""
+    return p.size == 1 and p.atoms[0][0] == "bear" and p.atoms[0][2] == "u" and p.atoms[0][1] == 0 and p.atoms[0][3] == 1 and list(p.sides) == [True, False]
+
+
+def split_borne(reasons: list, kinds: list) -> list:
+    """See the module doc. `reasons` carry "bytes" (the pattern's encoding in hexadecimal) and "side"; `kinds` the kind words (the decoder needs none for a split decision, kept for the layer-3 words)."""
+    out = []
+    for i, r in enumerate(reasons):
+        if r["side"] == "mover" and bear_form(L2.decode(bytes.fromhex(r["bytes"]))):
+            for c in range(4):
+                out.append(dict(r, cell=c, parent=i, words=r["words"] + "; " + CELL_WORDS[c]))
+        else:
+            out.append(dict(r, cell=None, parent=i))
+    return out
+
+
+def cell_counts(items: list, units: dict, p: L2.Pattern, kinds: list) -> "tuple[list, list]":
+    """See the module doc. The instances are the matcher's; the two facts are read from the graph's own `bear` items between units."""
+    from catspace.incubator.analyst.discovery import graph_layer2_match as GM
+    bears = [it for it in items if it[0] == "bear" and it[2][0] == "u"]
+    guarded, borne = set(), set()
+    for _ty, actor, (_s, tgt), _ln, _b in bears:
+        if actor == tgt:
+            continue
+        if units[actor]["side"] == units[tgt]["side"]:
+            guarded.add(tgt)
+        else:
+            borne.add(tgt)
+    s0, s1 = GM.match_binds(bears, units, p, kinds)
+    out = []
+    for found in (s0, s1):
+        c = [0, 0, 0, 0]
+        for fs in found:
+            u0, u1 = sorted(fs)[0]
+            c[2 * int(u1 in guarded) + int(u0 in borne)] += 1
+        out.append(c)
+    return out[0], out[1]
+
+
+def cell_events(before: list, after: list) -> "tuple[list, list]":
+    """The cells whose count rose and those whose count fell for the mover: `before` the position's first, `after` the second of the position after the move."""
+    return [c for c in range(4) if after[c] > before[c]], [c for c in range(4) if after[c] < before[c]]
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.81: layer one, a first reading
