@@ -34,7 +34,7 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None, verify_ties=true))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None, verify_ties=false))]
 #[allow(clippy::too_many_arguments)]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
              prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>, verify_ties: bool)
@@ -714,7 +714,7 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=true))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
                       specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool) -> PyResult<Vec<EqualsRow>> {

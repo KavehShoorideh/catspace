@@ -69,7 +69,7 @@ pub struct LedgerOp<'a, J: Judge> {
 }
 
 impl<'a, J: Judge> LedgerOp<'a, J> {
-    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: true, root_order: None } }
+    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, root_order: None } }
 }
 
 impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {

@@ -89,7 +89,7 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Params {
-        Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, claims: true, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true, verify_ties: true,
+        Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, claims: true, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true, verify_ties: false,
                  max_depth: MAX_DEPTH, ledger_depth: LEDGER_DEPTH, root_order: None }
     }
 }
