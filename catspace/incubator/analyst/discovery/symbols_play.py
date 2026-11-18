@@ -30,6 +30,20 @@ PLAN 78.83 (SYSTEM_SPEC 7, 8, 9): WHERE IN THE GAME THE GAIN COMES FROM. Interfa
   The kept state serves the unit count and the controls (the replay reading). The counts of the reasons (symbols.deltas_of) still read the game from its first position: handing the engine the kept state there was tried and
   cost the same (the cost is the pattern count, not the replay: a throwaway timing of 181 decisions, OBS COST lines in the 78.83 obs.txt), so it was not kept in the code.
   stats: "ties" every tie decision; "ties_in" those inside the window (the ones that were picked and logged in dlog/cases). The match stage writes matches/<file>.meta.json (the load seen, cores busy, wall) which `report` prints.
+PLAN 78.84 (SYSTEM_SPEC 5 the tactical reasoner decides and the hint orders only what it holds equal; 7, 8): THE TIE SET CUT BY THE LINE READING. Interface added, written before the bodies:
+  LineCut(record=None)                         per process (use cutter()): the line reading of threat_concrete (Record.load(None), the record the matches judge by; Lines with the defaults of ladder_measure.Tools.line:
+                                               depth TC.DEPTH + 1, fuse TC.FUSE, one thread).
+      .reads(moves, tied) -> {move: verdict}   for each tied move the line that starts with it (mode 9: the move, then the best replies of both sides, read to a settled end), judged for the side that played it by
+                                               TC.verdict_of; a line the engine could not read is None. One call of the engine for all the tied moves.
+  gives_up(verdict, own_value=False) -> bool   the line ENDS BEHIND for the mover: verdict REFUTED, ended by the settled end (not the game's end), the mover left having lost units and having taken none (like for like
+                                               already cancelled by verdict_of). A cut line (UNREAD) is never a loss claimed. `own_value`: and the line search's own number for the move (its value, the move's gain
+                                               included) is under minus the resolution: the events are read off the printed line, which can stop in the middle of an exchange or leave out a change of kind, the number is what
+                                               the search counts. Part one of 78.84 prints how often they differ; the matches' cut kinds ask them to agree, except sy_evreasons (the events alone, the literal reading).
+  sound_ties(position, tied) -> list          the subset of `tied` (order kept, `tied[0]` the search's first move): a tied move is DROPPED if its line gives up a unit for nothing and some other tied move's does not;
+                                               never empty (if every line gives up a unit, or none does, `tied` is returned whole). position = {"moves": [...]}.
+  MoverReasons.cut = spec["cut"] or a kind of CUT_KINDS (sy_cutreasons: the cut and the reasons' pick in every band; sy_cutonly: the cut and then the search's first move among the rest; sy_cutmidfew: the cut and the pick
+                                               inside the window of the mid and few bands, the control outside it). The time of the cut and of the pick is one cost per tie decision, CHARGED to the search's clock with --charge as in 78.82.
+      stats["cut_log"]: per tie decision read [ply, tied, dropped, first move dropped (0/1), ms of the cut].
 Called by: the command line only. The harness is tiebreak_measure.py (the openings, the clock, the load wait, the match loop and its lines), reused as it is.
 
 THE RULE FOR THE THIRTY DECISIONS (fixed before any game was read): in the games of reasons v control on opening set A, the games in the order of their ids; in each game the first decision of the reasons' side where the pick
@@ -59,15 +73,21 @@ from catspace.incubator.analyst.discovery import odds_measure as OM
 from catspace.incubator.analyst.discovery import subgoal_goals as SG
 from catspace.incubator.analyst.discovery import subgoal_play_measure as PM
 from catspace.incubator.analyst.discovery import symbols as SY
+from catspace.incubator.analyst.discovery import threat_concrete as TC
 from catspace.io import paths
 
-OUT = ("symbols_play_78_83",)                                     # this run's outputs (78.82's run lives in symbols_play_78_82/full, read only)
+OUT = ("symbols_play_78_84",)                                     # this run's outputs (the 78.82 and 78.83 runs are read only)
 OUT82 = ("symbols_play_78_82", "full")
 SRC = ("symbols_78_81", "full")                                   # the reasons and their weights: 78.81's run, read, never refitted
-KIND = dict(TM.KIND, reasons="sy_reasons", quiet="sy_quiet", withctl="sy_withctl", many="sy_many", mid="sy_mid", few="sy_few", midfew="sy_midfew")
-MODE = {"sy_reasons": "reasons", "sy_quiet": "quiet", "sy_withctl": "withctl", "sy_many": "reasons", "sy_mid": "reasons", "sy_few": "reasons", "sy_midfew": "reasons"}
+KIND = dict(TM.KIND, reasons="sy_reasons", quiet="sy_quiet", withctl="sy_withctl", many="sy_many", mid="sy_mid", few="sy_few", midfew="sy_midfew",
+            cutreasons="sy_cutreasons", cutonly="sy_cutonly", cutmidfew="sy_cutmidfew", evreasons="sy_evreasons")
+MODE = {"sy_reasons": "reasons", "sy_quiet": "quiet", "sy_withctl": "withctl", "sy_many": "reasons", "sy_mid": "reasons", "sy_few": "reasons", "sy_midfew": "reasons",
+        "sy_cutreasons": "reasons", "sy_cutonly": "first", "sy_cutmidfew": "reasons", "sy_evreasons": "reasons"}
+CUT_KINDS = ("sy_cutreasons", "sy_cutonly", "sy_cutmidfew", "sy_evreasons")
+EVENTS_ONLY = ("sy_evreasons",)                                   # the cut by the events of the printed line alone (the literal reading); every other cut kind asks the line's own value to agree (see gives_up)
 _BAND = {n: (lo, hi) for n, lo, hi in LM.BANDS}
-WINDOW = {"sy_many": _BAND["many"], "sy_mid": _BAND["mid"], "sy_few": _BAND["few"], "sy_midfew": (_BAND["few"][0], _BAND["mid"][1])}
+WINDOW = {"sy_many": _BAND["many"], "sy_mid": _BAND["mid"], "sy_few": _BAND["few"], "sy_midfew": (_BAND["few"][0], _BAND["mid"][1]),
+          "sy_cutmidfew": (_BAND["few"][0], _BAND["mid"][1])}
 PLAYERS = tuple(KIND)
 MODE_PLAYERS = tuple(p for p in KIND if KIND[p] in MODE)
 TIE_DIGITS = 9                                                    # two scores that agree to this many places are equal (sums of the same weights in another order differ by rounding only)
@@ -153,6 +173,58 @@ class ReasonsReader:
         return (tied[0] if tied[0] in best else best[0]), detail
 
 
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.84: the line reading of the tied moves
+
+class LineCut:
+    """See the module doc."""
+
+    def __init__(self, record: "TC.Record | None" = None):
+        self.record = record or TC.Record.load(None)
+        self.lines = TC.Lines(self.record, threads=1)
+        self.depth, self.fuse = TC.DEPTH + 1, TC.FUSE                  # ladder_measure.Tools.line at its first clock
+
+    def reads(self, moves: list, tied: list) -> dict:
+        games = [(None, list(moves) + [m]) for m in tied]
+        res = self.lines.ask(games, [(i, 9, 0, 1, 0, 0, 0) for i in range(len(tied))], self.depth, self.fuse)
+        out = {}
+        for m, r in zip(tied, res):
+            rd = (r.get("reads") or [None])[0] if r.get("ok") else None
+            out[m] = TC.verdict_of(rd, self.record) if rd else None
+        return out
+
+
+def gives_up(v: "dict | None", own_value: bool = False) -> bool:
+    """The line's events end behind for the mover (see the module doc). `own_value`: and the line search's own number for the move agrees (below minus the resolution); the events are read off the printed line, which can stop in the
+    middle of an exchange, the number is what the search itself counts (plan 78.84 part one prints how often they differ)."""
+    if not (v and v["verdict"] == "REFUTED" and v["end"] == 0 and v["left_lost"] and not v["left_won"]):
+        return False
+    return (v["net_search"] < -v["resolution"]) if own_value else True
+
+
+_CUTTER = None
+
+
+def cutter() -> LineCut:
+    global _CUTTER
+    if _CUTTER is None:
+        _CUTTER = LineCut()
+    return _CUTTER
+
+
+def cut_of(verdicts: dict, tied: list, own_value: bool = False) -> list:
+    """The cut itself, on the verdicts: drop a tied move whose line gives up a unit for nothing while some other tied move's line does not; never empty."""
+    bad = [m for m in tied if gives_up(verdicts.get(m), own_value)]
+    if not bad or len(bad) == len(tied):
+        return list(tied)
+    return [m for m in tied if m not in bad]
+
+
+def sound_ties(position: dict, tied: list, own_value: bool = False) -> list:
+    if len(tied) < 2:
+        return list(tied)
+    return cut_of(cutter().reads(position["moves"], tied), tied, own_value)
+
+
 def reader82() -> ReasonsReader:
     global _READER
     if _READER is None:
@@ -169,6 +241,9 @@ class MoverReasons(TM.Mover67):
         super().__init__(spec, seconds, seed, trace)
         self.detail: dict = {}
         self.window = tuple(spec["window"]) if spec.get("window") else WINDOW.get(self.kind)
+        self.cut = bool(spec.get("cut")) or self.kind in CUT_KINDS
+        self.cut_value = bool(spec.get("cut_value", self.kind not in EVENTS_ONLY))      # the line's own value must agree with the events for a move to be dropped
+        self.stats["cut_log"] = []
         self.stats["ties_in"] = 0
         self.stats["dlog"] = []
         self.stats["cases"] = []
@@ -179,6 +254,9 @@ class MoverReasons(TM.Mover67):
         return super().search_clock()
 
     def pick(self, position: dict, tied: list) -> str:
+        if MODE[self.kind] == "first":                                 # the cut alone: the search's first move among what is left
+            self.detail = {"scores": {}, "carried": {m: [] for m in tied}, "takes": None, "kinds": None}
+            return tied[0]
         move, self.detail = reader82().pick(position["moves"], tied, MODE[self.kind])
         assert move in tied
         return move
@@ -204,14 +282,21 @@ class MoverReasons(TM.Mover67):
         if mv is not None and len(eq) >= 2 and self.in_window(moves):
             st["ties_in"] += 1
             tied = [mv] + sorted(m for m in eq if m != mv)
-            pick = self.pick({"moves": list(moves)}, tied)
+            if self.cut:
+                kept = sound_ties({"moves": list(moves)}, tied, self.cut_value)
+                st["cut_log"].append([len(moves), len(tied), len(tied) - len(kept), int(mv not in kept), round(1000 * (time.perf_counter() - t1), 3)])
+                tied = kept
+            if len(tied) > 1:
+                pick = self.pick({"moves": list(moves)}, tied)
+            else:
+                pick, self.detail = tied[0], {"scores": {}, "carried": {}, "takes": None, "kinds": None}
             cost = time.perf_counter() - t1
             self.costs.append(cost)
             st["changed"] += pick != mv
             st["dlog"].append([len(moves), len(tied), int(pick != mv), round(1000 * cost, 3)])
             if pick != mv:
                 d = self.detail
-                st["cases"].append({"ply": len(moves), "moves": list(moves), "tied": tied, "first": mv, "pick": pick, "carried_pick": d["carried"][pick], "carried_first": d["carried"][mv],
+                st["cases"].append({"ply": len(moves), "moves": list(moves), "tied": tied, "first": mv, "pick": pick, "carried_pick": d["carried"].get(pick, []), "carried_first": d["carried"].get(mv, []),
                                     "scores": d["scores"], "takes": d["takes"], "kinds": d["kinds"]})
         st["log"].append((len(moves), len(eq), int(pick != mv)))
         t2 = time.perf_counter()
@@ -236,7 +321,7 @@ def games_file(tag: str, a: str, b: str, set_name: str, charge: bool = False) ->
 
 
 def _plain(games: list) -> list:
-    return [dict(g, stats=[{k: v for k, v in s.items() if k not in ("dlog", "cases")} for s in g["stats"]]) for g in games]
+    return [dict(g, stats=[{k: v for k, v in s.items() if k not in ("dlog", "cases", "cut_log")} for s in g["stats"]]) for g in games]
 
 
 def lines_of(a: str, b: str, set_name: str, games: list, load: float, busy: float, wall: float, seconds: float, workers: int, charge: bool) -> list:
