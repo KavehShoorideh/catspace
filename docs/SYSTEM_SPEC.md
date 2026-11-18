@@ -412,6 +412,23 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
     learned is the chance of each frame's outcomes as they happen in play, which is what the event heads of section 6 are for, counted per frame.
     CONFLICT TO SETTLE, not resolved here: "guided by the oracle" meets the standing rule of section 9 that no oracle number enters a fit except
     as the last resort with his word. Until he says this is that word, the prior is fitted on human moves and results only. See section 13.
+  - HOW IT IS BUILT, three steps (direction given by Kaveh 2026-11-19, later still): "first we need to train some sort of legal future judge off of
+    human game trajectories, that will give us a way to see if we can get to point b from point a legally with high accuracy but not perfect.
+    Then we need to evaluate frames that lead to winning situations per the oracle from human games, then we need to predict whether we can get
+    from point a to one of these future points where the winning frames exist or something."
+    READING (main agent, PROPOSED, not his word):
+    (1) The future judge is a learned model over the fact graph: given the present position and a target, the chance that the target comes
+        true later in the game. Human trajectories hold the other side's replies, so what it learns is "reached in real play", which is more than
+        legal and is the thing wanted. The target is a description in facts (a frame, a goal as defined above), never a whole position: a whole
+        position of one game is almost never reached in another.
+    (2) The points worth reaching are found in human games: positions where a goal as defined above holds (two threats no one reply meets) and
+        what followed, as chances, not best play.
+    (3) From the present position, the judge of (1) is asked for the goals of (2); the answer orders the equal moves.
+    CONFLICT TO SETTLE: "per the oracle" in step two. Under section 9 the oracle may give the best move in sleep and may be a measure; its number
+    may not enter a fit except as the last resort with his word. Until he says so in those words, step two labels a winning point by the
+    reasoner's own confirmed line reading and the game's result, and the oracle only measures how right those labels are. See section 13 item 12.
+    This replaces the order of work of plan 78.94 as first written (an explicit run of own moves first): the labels come first, then the learned
+    judge; the explicit run is kept as the check of the judge on a sample.
   - STILL OPEN after his answer: the size of N; how a goal that is "too far" is broken into a closer one beyond the proposer of section 7 above.
 - **The form of the model** (direction given 2026-11-16, not settled). Modular: "a combination, mixture of experts
   kind of thing ... we need to be able to slot in different things to work side by side, maybe even in tandem."
@@ -706,7 +723,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     silent on, made by the builder and kept until you say otherwise: a chosen move that fails its verification is replaced by the first move
     of the search's own equal reading that holds, else kept; the verification's time comes from the equal reading's slot of the clock;
     the reference for a fault is the same search without the prunings, deepened step by step with a node limit and a fresh table.
-12. From his words of 2026-11-19 on the opening prior (section 7): is "guided by the oracle" the word that takes the last resort of section 9,
+12. (Raised twice on 2026-11-19: the opening prior, and "winning situations per the oracle" in the three steps of the imagination layer.)
+    From his words of 2026-11-19 on the opening prior (section 7): is "guided by the oracle" the word that takes the last resort of section 9,
     so that an oracle's move may enter the fit of the prior? Until answered: human moves and results only.
 13. Not understood when asked on 2026-11-19 and asked again in plain words: whether the careful form of the equal reading stays off in play
     (section 5, PROPOSED of 2026-11-18), and whether the check of the chosen move may be on in play if plan 78.93 repeats (item 11).
@@ -769,6 +787,7 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Sleep: the agent, the menu, the oracle and the ladder, a rule scored by the surprises it resolves, heads fitted on our own deeper reasoning and playouts (the oracle a last resort), the limits, how it chooses, the diagnosis, the rolling measure and going back to a past learning state, do not break the rest | 2026-11-14, 15, 16 | 9 |
 | PROPOSED (main agent): the chosen move has a verified form (verify_choice), off in play until a second run and Kaveh's word | 2026-11-19 | 5 |
 | A goal is two threats made at once that no one reply meets; the stake orders goals; not the length; the budget is N questions, past N only inside a frame still making progress; ruled out means too far, break it down; their goals imagined too; among equal moves choose by progress toward the goals | 2026-11-19 | 7 |
+| The imagination layer is built in three steps: a learned future judge from human trajectories, the winning points found in human games, then the prediction from here to those points (direction; the oracle's part is the open conflict of section 13 item 12) | 2026-11-19 | 7 |
 | The prior learns the tactical situations of the opening and the chances of frame outcomes as played, not best play (direction; the oracle's part is an open conflict with section 9) | 2026-11-19 | 7 |
 | A future imagination layer for positions with no concrete tactic: imagine a future, read its threat landscape, ask what I change and whether they have time to change it back (direction; the reading of how it sits on the two layers is PROPOSED) | 2026-11-19 | 7 |
 | Subgoals as symbols that go with winning: fact patterns first, two tests on human moves, a graph network with quantized codes only if they fail; in the future or not by the two layers | 2026-11-17 | 7 |
