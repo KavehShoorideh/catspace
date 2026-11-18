@@ -73,6 +73,7 @@ fn read_dict<'py>(py: Python<'py>, r: &LineRead) -> PyResult<Bound<'py, PyDict>>
     d.set_item("cut", r.cut)?;
     d.set_item("settled", r.settled)?;
     d.set_item("unsettled", r.unsettled)?;
+    d.set_item("tail_end", r.tail_end)?;
     Ok(d)
 }
 
