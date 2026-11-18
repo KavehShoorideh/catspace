@@ -33,6 +33,11 @@ want it to be modular with clean interfaces and according to the overall high-le
 - A Rust build (`cd <worktree>/rust/analyst_core && <worktree>/.venv/bin/maturin develop --release`) re-points the shared editable install to your
   crate: say so in the report; the parent rebuilds main after the merge. Never while a test or timed run is going.
 
+- Shell commands the owner can read at a glance (Kaveh 2026-11-19: permission pop-ups of chained commands cannot be judged). One plain command per
+  call, at most one short filter after it; anything longer goes into a script file in your worktree and you run the file. No `rm` except your own
+  setup links at the end, one link per call, never `-r` or `-f`. Nothing outside your worktree is touched except the one final copy of your
+  outputs folder into the main checkout. A denied command is not retried in another form: work around it or say so in the report.
+
 ## 2. Verification, priced (the speed rules of 2026-10-28)
 - THE GUARD (`scripts/trace_identity.py`: traces, read sets, leaf verdict lists, word lists, provenance lists; ten cases and `--sets wide`; tiers 0 and 2;
   PYTHONHASHSEED=0): the PARENT SNAPSHOT IS TAKEN ONCE PER PLAN and reused by every stage and every agent of that plan (the parent names its path);
