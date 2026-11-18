@@ -80,6 +80,11 @@ pub struct Params {
     pub extend: bool,
     /// PLAN 78.85: the equal reading asks each candidate again without the search's pruning (`Search::verify_ties`). THE DEFAULT IS SET IN `Params::default` below.
     pub verify_ties: bool,
+    /// PLAN 78.92: the chosen move is asked again without the two prunings (`Search::verified_choice`). THE DEFAULT (false) IS SET IN `Params::default` below.
+    pub verify_choice: bool,
+    /// PLAN 78.92: the two forward prunings of the ledger search apart (`Search::null_move`, `Search::late_reduce`); both read `prune` too. THE DEFAULT (true, the search as it is) IS SET IN `Params::default` below.
+    pub null_move: bool,
+    pub late_reduce: bool,
     /// The deepest forced line asked, and the deepest ledger reading (named caps; the clock is the real bound).
     pub max_depth: u32,
     pub ledger_depth: i32,
@@ -89,7 +94,7 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Params {
-        Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, claims: true, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true, verify_ties: false,
+        Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, claims: true, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, null_move: true, late_reduce: true,
                  max_depth: MAX_DEPTH, ledger_depth: LEDGER_DEPTH, root_order: None }
     }
 }
@@ -306,7 +311,7 @@ pub fn decide_with_store<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, j
     if n == 0 { return None; }
     let trace = vec![format!("decide: {} to move, {} legal moves, {:.2} s", g.roles()[me], n, seconds)];
     let forcing = ForcingOp;
-    let ledger = LedgerOp { judge, history: params.history.clone(), ordering: params.ordering, prune: params.prune, extend: params.extend, verify_ties: params.verify_ties, root_order: params.root_order.clone() };
+    let ledger = LedgerOp { judge, history: params.history.clone(), ordering: params.ordering, prune: params.prune, extend: params.extend, verify_ties: params.verify_ties, verify_choice: params.verify_choice, null_move: params.null_move, late_reduce: params.late_reduce, root_order: params.root_order.clone() };
     let density = DensityOp { judge };
     let reason = ReasonOp { judge };
     let mut ops: Vec<&dyn Operator<G>> = vec![&forcing, &ledger, &density, &reason];

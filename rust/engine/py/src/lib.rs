@@ -34,17 +34,17 @@ mod shakmaty_state { pub type S = <cs_game::kernel::KernelGame as cs_game::Game>
 /// DECISION (plan 78.5: tactics `forcing`, then the ledger search) for the side to move after `moves` from the start (or from `fen`). The ledger's JUDGE is the
 /// store's valuation record in use, passed in: `worth` (kind name -> worth), `ours_first`, `valuation` (its name, for the trace); an empty table: the built-in Count.
 #[pyfunction]
-#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None, verify_ties=false))]
+#[pyo3(signature = (variant, fen=None, moves=vec![], seconds=1.0, worth=HashMap::new(), start960=518, ours_first=false, valuation=String::new(), prior=false, record=true, prior_depth=2, ledger_share=0.6, prior_defects=1, ordering=true, prune=true, extend=true, reason=false, wdl=false, wdl_table=None, verify_ties=false, verify_choice=false))]
 #[allow(clippy::too_many_arguments)]
 fn best_move(variant: &str, fen: Option<&str>, moves: Vec<String>, seconds: f64, worth: HashMap<String, i64>, start960: u32, ours_first: bool, valuation: String,
-             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>, verify_ties: bool)
+             prior: bool, record: bool, prior_depth: i32, ledger_share: f64, prior_defects: u32, ordering: bool, prune: bool, extend: bool, reason: bool, wdl: bool, wdl_table: Option<String>, verify_ties: bool, verify_choice: bool)
              -> PyResult<(Option<String>, bool, Vec<String>, u64, String)> {
     let (g, s, keys) = record_of(variant, fen, start960, &moves)?;
     let hist: Vec<u64> = if record { keys } else { vec![] };          // (record=False: the game's record not read -- the comparison)
     let f = g.fen(&s);
     let table = if wdl { load_wdl_table(wdl_table.as_deref())? } else { None };
-    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, wdl, wdl_table: table, verify_ties, ..cs_decision::Params::default() };
-    let choice = if reason || wdl || !verify_ties {
+    let params = cs_decision::Params { prior, history: hist.clone(), prior_depth, ledger_share, prior_defects, ordering, prune, extend, reason, wdl, wdl_table: table, verify_ties, verify_choice, ..cs_decision::Params::default() };
+    let choice = if reason || wdl || !verify_ties || verify_choice {
         // (plan 78.25 / 78.26: the reasoning chain or the win / draw / loss path on: the decision with its extra steps; both off, the call below is exactly what it was)
         (if worth.is_empty() { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Count, &params) }
          else { cs_decision::decide_params(&g, &s, seconds, &cs_tactics::ledger::Worth { name: valuation, table: worth.clone(), ours_first }, &params) })
@@ -578,8 +578,8 @@ fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: H
 
 /// What `solve_equals_batch` returns per position: (the move the search plays, proved, nodes, seconds, error, the names of the root moves the search holds EQUAL to its best,
 /// their indices in the game's own list of legal moves, the depth the ledger finished, its value, the seconds the equal reading took, the number of legal moves, whether the
-/// clock cut the equal reading).
-type EqualsRow = (Option<String>, bool, u64, f64, Option<String>, Vec<String>, Vec<usize>, Option<i64>, Option<i64>, f64, usize, bool);
+/// clock cut the equal reading), and (plan 78.92) what the verification of the choice did: its state (0 not asked, 1 held, 2 replaced, 3 failed and kept, 4 cut), its nodes and its seconds.
+/// A list of fifteen (a tuple holds twelve at most); the first twelve are what they were.
 
 /// PLAN 78.50: the ledger step of the decision with the equal reading kept apart and its completeness told. It is `cs_tactics::operators::LedgerOp` read again: the same `Search`
 /// (history, ordering, pruning, extension, root order), the same deepening, the same move and value; afterwards the root moves are each asked "at least the best?" by a null window at
@@ -601,6 +601,9 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         ls.prune = self.params.prune;
         ls.extend = self.params.extend;
         ls.verify_ties = self.params.verify_ties;
+        ls.verify_choice = self.params.verify_choice;
+        ls.null_move = self.params.null_move;
+        ls.late_reduce = self.params.late_reduce;
         ls.root_first = prefer.clone();
         ls.root_last = avoid.clone();
         if let Some(ro) = &self.params.root_order { ls.set_root_order(&ro.order, ro.strict); }
@@ -614,12 +617,23 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
             return o;
         };
         let mut o = Outcome::new(Status::Read);
+        let mut i = i;
+        let mut replaced = false;
+        let mut nodes = ln.nodes;
+        if self.params.verify_choice {                  // (plan 78.92: the chosen move asked again without the two prunings, in the equal reading's slot of the clock)
+            ls.resume(b.rest_of_decision() * ties.unwrap_or(1.0));
+            let (n0, t1) = (ls.nodes, std::time::Instant::now());
+            let v = ls.verified_choice(s, ln.depth, ln.value, i);
+            o.part(format!("verify_choice ({})", v.state.label()), ls.nodes - n0, t1.elapsed().as_secs_f64());
+            nodes += ls.nodes - n0;
+            replaced = v.index != i;
+            i = v.index;
+        }
         o.mv = Some(moves[i].clone());
         o.value = Some(ln.value);
         o.depth = Some(ln.depth as i64);
-        o.line = ln.line.clone();
-        o.events = ln.lost.clone();
-        let mut nodes = ln.nodes;
+        o.line = if replaced { vec![g.move_name(s, &moves[i])] } else { ln.line.clone() };
+        o.events = if replaced { vec![] } else { ln.lost.clone() };
         if let Some(share) = ties {
             if ln.value.abs() < cs_tactics::ledger::WIN - 1000 {
                 ls.resume(b.rest_of_decision() * share);
@@ -705,6 +719,10 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
     v["ledger_value"] = serde_json::json!(step.and_then(|st| st.outcome.value));
     v["ties_seconds"] = serde_json::json!(tie_parts.iter().map(|p| p.cost.seconds).sum::<f64>());
     v["ties_cut"] = serde_json::json!(tie_parts.iter().any(|p| p.name == "ties (cut)"));
+    let ver: Option<&cs_operator::Part> = step.and_then(|st| st.outcome.parts.iter().find(|p| p.name.starts_with("verify_choice")));
+    v["choice_state"] = serde_json::json!(ver.map_or(0, |p| if p.name.contains("(held)") { 1 } else if p.name.contains("(replaced)") { 2 } else if p.name.contains("(failed") { 3 } else { 4 }));
+    v["choice_nodes"] = serde_json::json!(ver.map_or(0, |p| p.cost.nodes));
+    v["choice_seconds"] = serde_json::json!(ver.map_or(0.0, |p| p.cost.seconds));
     (summary, v)
 }
 
@@ -714,12 +732,12 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false, null_move=true, late_reduce=true, verify_choice=false))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
-                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool) -> PyResult<Vec<EqualsRow>> {
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool, null_move: bool, late_reduce: bool, verify_choice: bool) -> PyResult<Vec<PyObject>> {
     let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
-    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, ..cs_decision::Params::default() };
+    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, verify_choice, null_move, late_reduce, ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
         store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
@@ -736,12 +754,29 @@ fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, w
             }
         }
     });
-    Ok(done.into_iter().map(|(s, v)| {
+    let mut out: Vec<PyObject> = Vec::with_capacity(done.len());
+    for (s, v) in done {
         let names: Vec<String> = v["equals"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(|t| t.to_string())).collect()).unwrap_or_default();
         let idx: Vec<usize> = v["equal_indices"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|t| t as usize)).collect()).unwrap_or_default();
-        (s.mv, s.proved, s.nodes, s.seconds, s.error, names, idx, v["ledger_depth"].as_i64(), v["ledger_value"].as_i64(), v["ties_seconds"].as_f64().unwrap_or(0.0), v["legal"].as_u64().unwrap_or(0) as usize,
-         v["ties_cut"].as_bool().unwrap_or(false))
-    }).collect())
+        let row = pyo3::types::PyList::empty(py);
+        row.append(s.mv)?;
+        row.append(s.proved)?;
+        row.append(s.nodes)?;
+        row.append(s.seconds)?;
+        row.append(s.error)?;
+        row.append(names)?;
+        row.append(idx)?;
+        row.append(v["ledger_depth"].as_i64())?;
+        row.append(v["ledger_value"].as_i64())?;
+        row.append(v["ties_seconds"].as_f64().unwrap_or(0.0))?;
+        row.append(v["legal"].as_u64().unwrap_or(0) as usize)?;
+        row.append(v["ties_cut"].as_bool().unwrap_or(false))?;
+        row.append(v["choice_state"].as_u64().unwrap_or(0))?;
+        row.append(v["choice_nodes"].as_u64().unwrap_or(0))?;
+        row.append(v["choice_seconds"].as_f64().unwrap_or(0.0))?;
+        out.push(row.into_any().unbind());
+    }
+    Ok(out)
 }
 
 fn vocab_of(json: &str) -> PyResult<cs_game::Vocabulary> {
@@ -1315,6 +1350,7 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lines_py::read_lines, m)?)?;
     m.add_function(wrap_pyfunction!(audit_py::equal_audit, m)?)?;
     m.add_function(wrap_pyfunction!(audit_py::value_at, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_py::choice_audit, m)?)?;
     m.add_class::<sheet_py::SheetModel>()?;
     m.add_class::<base_graph_py::BaseGraph>()?;
     Ok(())

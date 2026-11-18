@@ -131,6 +131,8 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub late_reduce: bool,
     /// PLAN 78.85: the second reading of `ties` (`verify`); false is the equal reading exactly as it was (one reading, the search's own pruning, the warm table). THE DEFAULT OF THE ENGINE IS SET HERE (true), in `cs_decision::Params::default` and in the binding's signature.
     pub verify_ties: bool,
+    /// PLAN 78.92: the move the deepening chooses is asked again without the two prunings (`verified_choice`); false (the default everywhere) is the search as it is.
+    pub verify_choice: bool,
     /// THE FEW-REPLY EXTENSION (plan 78.11): a forced answer does not shorten the line
     pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
@@ -151,6 +153,18 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub reads: Vec<DepthRead>,
 }
 
+/// PLAN 78.92: what `verified_choice` found: the move to play and why. Off: not asked; Held: the chosen move holds its value without the two prunings; Replaced: it did not and another candidate did (`index` is that one);
+/// Failed: it did not and no other candidate held, the choice stands; Cut: the clock or the fuse stopped the reading, the choice stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChoiceState { Off, Held, Replaced, Failed, Cut }
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChoiceVerdict { pub index: usize, pub state: ChoiceState }
+
+impl ChoiceState {
+    pub fn label(self) -> &'static str { match self { ChoiceState::Off => "off", ChoiceState::Held => "held", ChoiceState::Replaced => "replaced", ChoiceState::Failed => "failed, kept", ChoiceState::Cut => "cut" } }
+}
+
 /// One deepening step of `run`, as measured: the depth, the nodes it spent, its seconds, and whether it finished (the last one may have been cut by the clock).
 #[derive(Debug, Clone, Copy)]
 pub struct DepthRead { pub depth: i32, pub nodes: u64, pub seconds: f64, pub complete: bool }
@@ -161,12 +175,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, extend: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, extend: true,
                  killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
@@ -227,6 +241,25 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         self.verify(s, depth, best, &first)
     }
 
+    /// PLAN 78.92 THE VERIFICATION OF THE CHOICE (SYSTEM_SPEC 5; the debt of the equal reading's row, here for the move itself). Takes the root, the depth D the deepening finished, its value and the move it chose (an index
+    /// in the root's legal moves); the clock or the fuse must have been given back (`resume`). The chosen move alone is asked "at least that value at depth D?" on a fresh table with the late-move reduction and the null move off
+    /// (`verify`). Held: the choice stands. Failed: the search's own reading (the table of the run, warm) names the other moves whose null-window answer is at least the value, in its reading order, and each is asked the same way
+    /// until one holds; that one replaces the choice. None holds: the choice stands, said so. A reading the clock or the fuse stops leaves the choice as it is, said so. Off (the switch, or a value that ends the game) asks nothing.
+    /// Called by: LedgerOp (tactics/operators.rs) and the equal-reading operator of the binding (py/lib.rs), once, after `run`.
+    pub fn verified_choice(&mut self, s: &G::State, depth: i32, value: i64, chosen: usize) -> ChoiceVerdict {
+        if !self.verify_choice || value.abs() >= WIN - 1000 { return ChoiceVerdict { index: chosen, state: ChoiceState::Off }; }
+        let held = !self.verify(s, depth, value, &[chosen]).is_empty();
+        if held { return ChoiceVerdict { index: chosen, state: ChoiceState::Held }; }
+        if self.stopped { return ChoiceVerdict { index: chosen, state: ChoiceState::Cut }; }
+        let others: Vec<usize> = self.probes(s, depth, value, None).into_iter().filter(|(i, p)| *p >= value && *i != chosen).map(|(i, _)| i).collect();
+        if self.stopped { return ChoiceVerdict { index: chosen, state: ChoiceState::Cut }; }
+        for c in others {
+            if !self.verify(s, depth, value, &[c]).is_empty() { return ChoiceVerdict { index: c, state: ChoiceState::Replaced }; }
+            if self.stopped { return ChoiceVerdict { index: chosen, state: ChoiceState::Cut }; }
+        }
+        ChoiceVerdict { index: chosen, state: ChoiceState::Failed }
+    }
+
     /// The moves of `of` (indices of the root's legal moves) that hold at least `best` at `depth` when asked on a fresh table with the late-move reduction and the null move off (the table of the run and the two
     /// switches are put back after).
     pub fn verify(&mut self, s: &G::State, depth: i32, best: i64, of: &[usize]) -> Vec<usize> {
@@ -253,6 +286,22 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             out.push((i, probe));
         }
         out
+    }
+
+    /// PLAN 78.92 (the instrument of the choice audit): the value of `s` at `depth` with the full window and the root move the table keeps for it, or None where the clock or the fuse stopped the reading.
+    pub fn root_best(&mut self, s: &G::State, depth: i32) -> Option<(i64, Option<usize>)> {
+        let v = self.value(s, depth, 0, i64::MIN / 2, i64::MAX / 2);
+        if self.stopped { return None; }
+        Some((v, self.tt.get(&self.g.key(s)).map(|e| e.best)))
+    }
+
+    /// PLAN 78.92: the value of the root move numbered `index` at `depth` (its gain plus the future read with the full window, as `root_values` reads each move), or None where the reading was stopped.
+    pub fn move_value(&mut self, s: &G::State, index: usize, depth: i32) -> Option<i64> {
+        let m = self.g.moves(s).into_iter().nth(index)?;
+        let d = self.gain(s, &m);
+        let q = self.g.apply(s, &m);
+        let v = d + self.value(&q, depth - 1, 1, i64::MIN / 2, i64::MAX / 2);
+        if self.stopped { None } else { Some(v) }
     }
 
     /// PLAN 78.85 (the instrument of the trace): the value of the future of `s` at `depth` plies read as a node at ply `ply` of the main search with the window (`alpha`, `beta`).
