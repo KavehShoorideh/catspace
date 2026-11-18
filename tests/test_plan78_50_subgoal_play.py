@@ -57,7 +57,7 @@ def test_the_control_call_is_unchanged_and_agrees_where_the_line_decides():
 def test_every_listed_move_is_legal_and_a_long_clock_reads_the_equals_whole():
     store, specs = store_and_specs()
     start = [(VARIANT, None, [])]
-    d = PM.equal_set(CE.solve_equals_batch(start, 0.5, store=store, specs=specs, threads=1, ledger_share=0.2)[0])
+    d = PM.equal_set(CE.solve_equals_batch(start, 2.0, store=store, specs=specs, threads=1, ledger_share=0.2)[0])      # (plan 78.85: 0.5 s before; each candidate is now asked again without the pruning, so the whole reading takes about a second here)
     legal = CE.state(VARIANT, None, [])[2]
     assert not d["cut"] and d["move"] in d["equals"] and set(d["equals"]) <= set(legal) and [legal[i] for i in d["equal_indices"]] == d["equals"]
     assert len(d["equals"]) > 1                                                                        # the opening position: no move yet changes what is lost or won

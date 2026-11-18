@@ -199,9 +199,12 @@ def test_78_6_the_census_of_the_other_side_is_read_after_a_pass():
 
 def test_78_7_the_density_prior_reads_ties_and_reports_its_choice():
     from catspace.incubator.analyst.discovery import lemma_store as LS
-    mv, _p, trace, _n, _f = CE.best_move("chess", None, ["e2e4", "e7e5", "g1f3", "b8c6"], 0.5, **LS.judge_of("chess", "material"), prior=True, prior_depth=3)
+    # PLAN 78.85: the equal reading asks each candidate again without the search's two pruning heuristics, which costs many times the first reading; in the opening position (twenty and more equal moves) it
+    # no longer finishes in the clock and the prior has no two equal moves to choose between, so the test reads a position with few units, where it finishes
+    fen = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1"
+    mv, _p, trace, _n, _f = CE.best_move("chess", fen, [], 0.5, **LS.judge_of("chess", "material"), prior=True, prior_depth=3)
     assert any("planning density" in x and "[PRIOR]" in x for x in trace), trace
-    mv2, _p, trace2, _n, _f = CE.best_move("chess", None, ["e2e4", "e7e5", "g1f3", "b8c6"], 0.5, **LS.judge_of("chess", "material"))
+    mv2, _p, trace2, _n, _f = CE.best_move("chess", fen, [], 0.5, **LS.judge_of("chess", "material"))
     assert not any("planning density" in x for x in trace2)                       # (off by default)
 
 

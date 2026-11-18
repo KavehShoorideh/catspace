@@ -22,6 +22,7 @@ fn record_of(variant: &str, fen: Option<&str>, start960: u32, moves: &[String]) 
     Ok((g, s, keys))
 }
 
+mod audit_py;
 mod base_graph_py;
 mod frames_py;
 mod lines_py;
@@ -1311,6 +1312,8 @@ fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scenario, m)?)?;
     m.add_function(wrap_pyfunction!(mine_valuation, m)?)?;
     m.add_function(wrap_pyfunction!(lines_py::read_lines, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_py::equal_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(audit_py::value_at, m)?)?;
     m.add_class::<sheet_py::SheetModel>()?;
     m.add_class::<base_graph_py::BaseGraph>()?;
     Ok(())

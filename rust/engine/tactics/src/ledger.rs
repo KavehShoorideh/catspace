@@ -97,7 +97,7 @@ const LMR_MIN_DEPTH: i32 = 3;           // late quiet moves reduced at nodes thi
 const LMR_AFTER: usize = 3;             // ... after this many moves read in full
 const FEW_REPLIES: usize = 2;           // a node with this few legal moves is a forced answer: the line is not shortened there
 pub const NODE_FUSE: u64 = 200_000_000;
-const QUIET_FUSE: u32 = 16;            // the deepest capture run resolved at a horizon (a named fuse: captures end sooner)
+pub const QUIET_FUSE: u32 = 16;           // the deepest capture run resolved at a horizon (a named fuse: captures end sooner)
 
 /// A caller's ORDER of the root moves (plan 78.51): indices of the root's legal moves, first read first; `strict` replaces the root's own order, else it breaks ties inside it (see `Search::root_pos`).
 #[derive(Clone, Debug)]
@@ -126,6 +126,9 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// PRUNING (plan 78.10, game-free): the pass read shallow -- if passing already holds the bound, the node is cut (null move; never where the game has no
     /// pass or the mover has few units: a zugzwang guard); late quiet moves read two plies shallower first (re-read in full when they look better)
     pub prune: bool,
+    /// PLAN 78.85 (diagnosis): the two parts of `prune` apart; both read `prune` too, so `prune` off is both off
+    pub null_move: bool,
+    pub late_reduce: bool,
     /// THE FEW-REPLY EXTENSION (plan 78.11): a forced answer does not shorten the line
     pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
@@ -156,12 +159,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, extend: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, extend: true,
                  killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
@@ -206,17 +209,49 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     }
 
     /// THE FIRST MOVES AS GOOD AS `best` at `depth` (each asked "at least best?" by a null window; the table of the run warms it) -> their indices in `moves`.
+    ///
+    /// PLAN 78.85: TWO READINGS. The first is as it was (the search's own pruning, the table of the run warm): cheap, and it names the candidates. The search prunes by two heuristics that are not exact:
+    /// the late-move reduction (a late quiet reply is read two plies shallower and the shallow answer is kept when it does not look better for the side to move) and the null move (the side to move passes, read
+    /// shallow, and a pass that already holds the bound cuts the node). Asked whether a move holds at least the best, a reduced reading can miss the reply of the other side that wins a unit deeper, and a bound
+    /// proved on such a reading is stored in the table as a full one. So each candidate is asked again by `verify`: a fresh table with both heuristics off (alpha-beta and the table alone; the search itself
+    /// keeps them); the moves that hold are returned. A move the first reading did not name is not asked again (a first reading that is too cautious is a smaller set, not a false equal).
+    /// Where the clock or the fuse stops either reading, only the moves verified so far are returned.
     pub fn ties(&mut self, s: &G::State, depth: i32, best: i64) -> Vec<usize> {
+        let first: Vec<usize> = self.probes(s, depth, best, None).into_iter().filter(|(_, p)| *p >= best).map(|(i, _)| i).collect();
+        if self.stopped || first.is_empty() { return if self.stopped { vec![] } else { first }; }
+        self.verify(s, depth, best, &first)
+    }
+
+    /// The moves of `of` (indices of the root's legal moves) that hold at least `best` at `depth` when asked on a fresh table with the late-move reduction and the null move off (the table of the run and the two
+    /// switches are put back after).
+    pub fn verify(&mut self, s: &G::State, depth: i32, best: i64, of: &[usize]) -> Vec<usize> {
+        let (warm, late, nul) = (std::mem::take(&mut self.tt), self.late_reduce, self.null_move);
+        self.late_reduce = false;
+        self.null_move = false;
+        let out = self.probes(s, depth, best, Some(of)).into_iter().filter(|(_, p)| *p >= best).map(|(i, _)| i).collect();
+        self.late_reduce = late;
+        self.null_move = nul;
+        self.tt = warm;
+        out
+    }
+
+    /// PLAN 78.85 (the instrument of the equal reading's audit): each first move's null-window answer at `depth` against `best`, the raw fail-soft number kept (`only`: just those moves)
+    /// -> [(index, probe)]; the move is tied iff its probe is `best` or more. Stops where the clock or the fuse stops.
+    pub fn probes(&mut self, s: &G::State, depth: i32, best: i64, only: Option<&[usize]>) -> Vec<(usize, i64)> {
         let maxing = self.g.mover(s) == Some(self.me);
         let mut out = vec![];
         for (i, m, d) in self.ordered(s, maxing, None) {
+            if only.is_some_and(|o| !o.contains(&i)) { continue; }
             let q = self.g.apply(s, &m);
             let probe = d + self.value(&q, depth - 1, 1, best - 1 - d, best - d);
             if self.stopped { break; }
-            if probe >= best { out.push(i); }
+            out.push((i, probe));
         }
         out
     }
+
+    /// PLAN 78.85 (the instrument of the trace): the value of the future of `s` at `depth` plies read as a node at ply `ply` of the main search with the window (`alpha`, `beta`).
+    pub fn value_at(&mut self, s: &G::State, depth: i32, ply: i32, alpha: i64, beta: i64) -> i64 { self.value(s, depth, ply, alpha, beta) }
 
     /// THE FIRST MOVES THAT GAIN at `depth` -- each first asked only "above nothing?" (a null window: cheap), the gaining ones then read exact -> [(index, value)],
     /// best first. The census's reading: every move that gains, none that does not.
@@ -342,7 +377,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             }
         }
         let maxing = self.g.mover(s) == Some(self.me);
-        if self.prune && ply > 0 && depth >= NULL_MIN_DEPTH && beta < WIN - 1000 && alpha > -WIN + 1000 {
+        if self.prune && self.null_move && ply > 0 && depth >= NULL_MIN_DEPTH && beta < WIN - 1000 && alpha > -WIN + 1000 {
             let mover = self.g.mover(s);
             let mine = self.g.units(s).iter().filter(|(o, _)| Some(*o) == mover).count();
             if mine > ZUGZWANG_UNITS {
@@ -362,7 +397,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let depth = depth + ext;
         for (n_read, (i, m, d)) in order.into_iter().enumerate() {
             let q = self.g.apply(s, &m);
-            let late = self.prune && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint && !(ply == 0 && self.root_strict);          // (plan 78.51: under a strict root order no root move is read shallow first, so the first of the best value IS the first one that holds it at this depth)
+            let late = self.prune && self.late_reduce && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint && !(ply == 0 && self.root_strict);          // (plan 78.51: under a strict root order no root move is read shallow first, so the first of the best value IS the first one that holds it at this depth)
             let mut v = if late { d + self.value(&q, depth - 3, ply + 1, alpha - d, beta - d) } else { 0 };
             if !late || (maxing && v > alpha) || (!maxing && v < beta) {
                 v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
