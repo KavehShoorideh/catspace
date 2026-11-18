@@ -13604,3 +13604,8 @@ ONLY IF (b) shows the played move under the reference's best in a share clearly 
 JUDGE. Twenty positions where the played move is under the reference's best, by a fixed rule, through ladder_print, read against the board: is the reference right.
 INTERFACE. The switches null_move, late_reduce, verify_ties exist (78.85). A new switch only under the condition above: verify_choice, default off, in Params, Search and the two binding signatures, as verify_ties is. Outputs artifacts/experiments/reasoner_choice_78_92/. Nothing written to the real store.
 READ BEFOREHAND. If the played move is rarely under the reference and the prunings win in play, the debt is closed as measured and the row in section 12 says so. If it is often under, the fault is in play today and the verification is the next piece.
+
+
+### FULL ENGINE GATE (main agent, 2026-11-19, at fce117b2, quiet machine)
+
+OBS gate engine: files 138, passed 2020, failed 0, xfailed 1, errors 0, wall 2138.9 s. The debt of a full gate, carried since 78.82, is paid.
