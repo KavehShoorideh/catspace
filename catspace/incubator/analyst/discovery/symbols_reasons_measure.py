@@ -633,14 +633,15 @@ def wilson_line(k: float, n: int) -> str:
     return SM.wilson_line(k, n)
 
 
-def score_ladder_reasons(root: Path, workers: int, say) -> None:
+def score_ladder_reasons(root: Path, workers: int, say, results_root: "Path | None" = None) -> None:
     """SCORES 2 AND 3 for the new pick, 78.80's pick and the search's first move: deep_heads.score on the ladder's scored part and hit_rate against the accepted moves there. The one function of this module that reads the
     ladder's answers; no pick has read them."""
     from catspace.incubator.analyst.discovery import subgoal_pick_measure as SPM
     lr = LM.out_root("full")
     positions = {p["id"]: p for p in SM.jsonl(lr / "positions.jsonl")}
-    results = {d["id"]: d for d in SM.jsonl(lr / "results.jsonl")}
-    open_ids = [r["id"] for r in SM.jsonl(lr / "surprise_list.jsonl")]
+    rr = results_root or lr                                                    # PLAN 78.86: the results and the list of open surprises of another run of the same 400 positions (default: the 78.68 run)
+    results = {d["id"]: d for d in SM.jsonl(rr / "results.jsonl")}
+    open_ids = [r["id"] for r in SM.jsonl(rr / "surprise_list.jsonl")]
     resolved_ids = [i for i, d in results.items() if d["result"] and d["result"]["rung"] in (1, 2)]
     preps = pickle.loads((Path(paths.experiment("subgoal_pick_78_79", "full")) / "preps.pkl").read_bytes())
     reasons = json.loads((root / "reasons.json").read_text())
