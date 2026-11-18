@@ -8,7 +8,7 @@ INTERFACE (what this module takes, what it returns, who calls it).
                                 interval of each kind (its RESOLUTION: the least gap between two ledgers that the record can tell apart).
   Lines(record, ...)            one per process: `ask(games, queries)` is the Rust `cs_engine.read_lines` (rust/engine/tactics/src/lines.rs: a line is read to a settled end by the ledger search with the record as judge;
                                 the forced end of the game by the forcing read). It reads nothing else of the engine and keeps the wall time and node counts it spent (`cost`).
-  verdict_of(read, record)      the verdict of one line read FOR THE SIDE THAT TAKES: CONFIRMED (it ends ahead), EXCHANGE (units are traded and neither ends ahead), REFUTED (it ends behind), UNREAD (the fuse cut the line:
+  verdict_of(read, record)      the verdict of one line read FOR THE SIDE THAT TAKES: CONFIRMED (it ends ahead), EXCHANGE (units are traded and neither ends ahead), REFUTED (it ends behind), QUIET (plan 78.87: nothing is taken, no unit changes kind and the net is zero: neither refuted nor confirmed), UNREAD (the fuse cut the line:
                                 printed as suspected, no forced claim is made from a cut line), with the units each side is left with and the reason the line ended in the words of spec 4. "Ahead" is the record's:
                                 the sum of the worths of what the taker took less what it lost is above the resolution of the units in that ledger (the half widths added in quadrature), or the game itself ends in its favour.
   response_of(after, passed, record, how, source)
@@ -57,7 +57,7 @@ SWEEP_DEPTH = 4                                                 # the sweep of e
 SWEEP_FUSE = 12000
 END_PLIES = 7                                                   # plies within which the end of the game is looked for (the search that counts nothing; the exact forcing read confirms the first move)
 END_FUSE = 1500000
-VERDICTS = ("CONFIRMED", "EXCHANGE", "REFUTED", "UNREAD", "UNSETTLED")
+VERDICTS = ("CONFIRMED", "EXCHANGE", "REFUTED", "UNREAD", "UNSETTLED", "QUIET")
 WHY = ("a taking", "the unit moves", "a guard is added", "a counter threat", "a unit is put between")
 
 
@@ -172,19 +172,21 @@ def verdict_of(read: dict, record: Record) -> dict:
     net += changed                                                                                           # PLAN 78.85 B: a unit changing kind is an event of the ledger (78.5b) and now of the net
     res = record.resolution(left_lost + left_won)                                                           # and the resolution is built only from them (none left: nothing to tell apart)
     base = {"names": read["names"][:read["settled"]], "full_names": read["names"], "taker_lost": lost, "taker_won": won, "left_lost": left_lost, "left_won": left_won, "cancelled": pairs, "net": net,
-            "net_search": net_search, "resolution": res, "depth": read["depth"], "end": read["end"], "nodes": read["nodes"], "pv_disagrees": net != net_search, "kind_net": changed,
-            "unsettled": bool(read.get("unsettled", False))}
+            "net_search": net_search, "resolution": res, "depth": read["depth"], "end": read["end"] or read.get("tail_end", 0), "nodes": read["nodes"], "pv_disagrees": net != net_search, "kind_net": changed,
+            "unsettled": bool(read.get("unsettled", False)), "tail_end": int(read.get("tail_end", 0))}
     if read["cut"]:
         return dict(base, verdict="UNREAD", ended=TL.ENDED[3], reason="out of budget: the fuse cut the line; no forced claim is made from it")
-    if read["end"] == 1:
-        return dict(base, verdict="CONFIRMED", ended=TL.ENDED[0], reason="the end of the game, won by the taker, decides it")
-    if read["end"] == 2:
-        return dict(base, verdict="REFUTED", ended=TL.ENDED[0], reason="the end of the game, lost by the taker, decides it")
+    if base["end"] == 1:                                                                                       # PLAN 78.87: the end of the game inside the settled tail counts as the search's own (read["tail_end"])
+        return dict(base, verdict="CONFIRMED", ended=TL.ENDED[0], reason="the end of the game, won by the taker, decides it" + ("" if read["end"] else " (reached in the tail of the line)"))
+    if base["end"] == 2:
+        return dict(base, verdict="REFUTED", ended=TL.ENDED[0], reason="the end of the game, lost by the taker, decides it" + ("" if read["end"] else " (reached in the tail of the line)"))
     why = f"the settled end: no capture is left to either side after {read['depth']} plies" + (f"; {pairs} like for like cancelled" if pairs else "")
     if net > res:
         v = "CONFIRMED"
     elif net < -res:
         v = "UNSETTLED" if base["unsettled"] else "REFUTED"                # PLAN 78.85 B: a line still inside an exchange when the tail's fuse stopped it is not refuted
+    elif not lost and not won and not read.get("changes") and net == 0:
+        v = "QUIET"                                                                                        # PLAN 78.87: nothing taken, no unit changed kind, net zero: the line neither wins nor loses; it is not refuted
     else:
         v = "EXCHANGE" if ((lost and won) or (left_lost and left_won)) else ("CONFIRMED" if left_won else "REFUTED")
     return dict(base, verdict=v, ended=TL.ENDED[1], reason=why)
@@ -440,7 +442,7 @@ def concrete_lists(items: list, lines: Lines, record: "Record | None" = None) ->
             row["response"], row["resp_read"], row["resp_unread"] = [], 0, 0
         if v == "EXCHANGE":
             out[i]["exchange"].append(row)
-        elif v == "REFUTED":
+        elif v in ("REFUTED", "QUIET"):                          # (PLAN 78.87: a quiet line, nothing taken and net zero, was REFUTED before and is dropped as it was)
             drop(i, "the taker ends behind: the claim is refuted", row, "refuted")
         else:
             if v == "UNREAD":

@@ -566,6 +566,37 @@ def reread_cases(exp: str = "ladder_78_86") -> Path:
     return out
 
 
+TAIL_WORDS = {0: "no", 1: "won by the mover", 2: "lost by the mover"}
+
+
+def verdict_cases(exp: str = "verdict_78_87") -> Path:
+    """PLAN 78.87: THE TEN LINES WHOSE VERDICT WORD CHANGED (verdict_measure.pick: the rule is in its doc; picked.json and the before/after reads in verdict_78_87/): the board before the line's first move, the units
+    under attack, and the line with its word, its net, the line search's own number and how its tail ended, before (main's extension) and after (the new tail and the word QUIET). Runs no reader. Writes cases.txt."""
+    root = Path(paths.experiment(exp))
+    picked = json.loads((root / "picked.json").read_text())
+    moves = {}
+    for name in ("a", "b"):
+        for x in (json.loads(t) for t in (root / f"before_{name}.jsonl").read_text().splitlines() if t.strip()):
+            moves[(name.upper(), x.get("key", x.get("id")))] = list(x["moves"])
+    lines = [f"THE TEN LINES WHOSE VERDICT WORD CHANGED (plan 78.87): {len(picked)} lines, by the rule of verdict_measure.pick. A = the bad move of a flagged decision of 78.84, B = a position of 78.86 at rung 3 or open.", ""]
+    for k, r in enumerate(picked, 1):
+        b = chess.Board()
+        for m in moves[(r["set"], r["id"])]:
+            b.push_uci(m)
+        me = b.turn
+        lines += [f"=== CASE {k}: {r['set']} {r['id']}  ({'white' if me else 'black'} to move; the line starts with the mover's {'move played' if r['set'] == 'A' else 'move the search chose'})", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}", f"the other side's units under attack: {_attacked(b, not me)}"]
+        for label, v in (("BEFORE", r["before"]), ("AFTER", r["after"])):
+            lines += [f"  {label}: {v['verdict']}; the line: {san_line(b, v['full_names'], 20)}",
+                      f"    the mover lost {v['taker_lost']} and took {v['taker_won']}; net {v['net']}, the line search's own number {v['net_search']}, kind change in the net {v['kind_net']}; "
+                      f"the tail ended the game: {TAIL_WORDS[v['tail_end']]}; unsettled {v['unsettled']}"]
+        lines.append("")
+    out = root / "cases.txt"
+    out.write_text("\n".join(lines))
+    print(f"OBS ladder print: {len(picked)} changed lines written to {out}")
+    return out
+
+
 _CASE_TOOLS: dict = {}
 
 
@@ -667,10 +698,14 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--play83", default=None, help="PLAN 78.83: thirty decisions, ten from each band of units on the board (symbols_play_78_83/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
+    ap.add_argument("--verdict87", action="store_true", help="PLAN 78.87: the ten lines whose verdict word changed (verdict_78_87/picked.json)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
     a = ap.parse_args(argv)
+    if a.verdict87:
+        verdict_cases()
+        return 0
     if a.reread:
         reread_cases()
         return 0

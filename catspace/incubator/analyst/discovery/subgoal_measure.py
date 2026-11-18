@@ -190,7 +190,7 @@ def stage_b(goal_sets: list, texts: list, movers: list, names: dict, rng: random
             side = names["roles"].index(g["taker"])
             item = {"start": tx, "moves": [], "names": names}
             try:
-                gb = SG.build_goal(item, side, row, "refuted" if v["verdict"] in ("REFUTED", "EXCHANGE") else "no_taking_legal", G["facts"], G["editor"], tx, g["taker"], g["owner"], names)
+                gb = SG.build_goal(item, side, row, "refuted" if v["verdict"] in ("REFUTED", "EXCHANGE", "QUIET") else "no_taking_legal", G["facts"], G["editor"], tx, g["taker"], g["owner"], names)
             except Exception:
                 gb = None
             v["still"] = gb["key"] if gb else "not explained"

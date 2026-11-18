@@ -95,7 +95,7 @@ def every_unit(items: list, sides: list, concs: list, facts: SG.Facts, lines: TC
         row = {k: x for k, x in row.items() if not k.startswith("_")}
         if v == "DROPPED":
             c["dropped_rows"].append(row)
-        elif v == "REFUTED":
+        elif v in ("REFUTED", "QUIET"):                                  # (PLAN 78.87: a quiet line, nothing taken and net zero, was REFUTED before and is dropped as it was)
             c["dropped_rows"].append(dict(row, why="refuted"))
         elif v == "EXCHANGE":
             c["exchange"].append(row)

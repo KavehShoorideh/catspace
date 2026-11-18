@@ -50,6 +50,9 @@ pub struct LineRead {
     pub settled: usize,
     /// PLAN 78.85: the line, read on through its tail of captures, still ends in the middle of an exchange (a fuse stopped the tail): the caller marks it UNSETTLED, not REFUTED
     pub unsettled: bool,
+    /// PLAN 78.87: how the TAIL ended (END_QUIET: nothing more is taken, or the game's own end won (END_WON) or lost (END_LOST) by `me` inside the tail: the judge counts the end of the game as an event of the ledger
+    /// (the search's own `terminal`), so a taking that lets the other side end the game is not played, and a tail that does reach the end says so)
+    pub tail_end: u8,
 }
 
 /// The number of moves of `names` (played from `s`) up to and including the last one that takes a unit (at least 1: the first move of a line is always shown).
@@ -71,10 +74,13 @@ fn lost_kind(text: &str) -> Option<&str> { text.strip_prefix("lose ") }
 /// PLAN 78.85 PART TWO: THE TAIL OF A LINE. The ledger search resolves the captures at its horizon (each side may stand or go on capturing) but its printed line (the table's best moves) stops at the horizon,
 /// so a line that ends inside an exchange shows the first capture and not the recapture the search counted. `settle_tail` reads the line on from its last position by the same rule: the side to move stands
 /// (the ledger as it is) or takes on; returns the moves of the best run of captures (each side's best for `me`), whether the run met the named fuse `QUIET_FUSE` (then the line is UNSETTLED: it is still in the
-/// middle of an exchange when a fuse stops it).
+/// middle of an exchange when a fuse stops it). PLAN 78.87: it is a READING by the judge, not a run of takings: the end of the game is counted (`WIN` less the plies), so a taking after which the other side ends the game is
+/// worse than standing and is not played, and the side to move stands whenever every taking leaves it worse by the judge's own count (a move that takes nothing and changes no kind is not read, as in the search's own horizon).
 pub fn settle_tail<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State) -> (Vec<G::Move>, bool) {
     fn go<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State, depth: u32, mut alpha: i64, mut beta: i64, hit: &mut bool, nodes: &mut u32) -> (i64, Vec<G::Move>) {
-        if g.outcome(s).is_some() { return (0, vec![]); }
+        if let Some(v) = g.outcome(s) {                                  // (PLAN 78.87: the end of the game is counted as the search counts it: above or below every ledger, the sooner the larger)
+            return (if won(&v, me) { WIN - depth as i64 } else if (0..v.len()).any(|i| i != me && won(&v, i)) { -WIN + depth as i64 } else { 0 }, vec![]);
+        }
         *nodes += 1;
         if depth >= crate::ledger::QUIET_FUSE || *nodes > TAIL_NODES { *hit = true; return (0, vec![]); }
         let maxing = g.mover(s) == Some(me);
@@ -100,13 +106,13 @@ pub fn settle_tail<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State) 
 
 /// The line `names` (played from `s`) read on through the tail: the names of the tail moves, its captures and kind changes, and whether it is unsettled. The events of the line then agree with the
 /// search's own value, which counts the tail.
-fn read_on<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State, names: &[String]) -> (Vec<String>, Vec<(bool, String)>, Vec<(bool, String, String)>, bool) {
+fn read_on<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State, names: &[String]) -> (Vec<String>, Vec<(bool, String)>, Vec<(bool, String, String)>, bool, u8) {
     let mut cur = s.clone();
     for n in names {
-        let Some(m) = g.find_move(&cur, n) else { return (vec![], vec![], vec![], false) };
+        let Some(m) = g.find_move(&cur, n) else { return (vec![], vec![], vec![], false, END_QUIET) };
         cur = g.apply(&cur, &m);
     }
-    if g.outcome(&cur).is_some() { return (vec![], vec![], vec![], false); }
+    if g.outcome(&cur).is_some() { return (vec![], vec![], vec![], false, END_QUIET); }
     let (tail, hit) = settle_tail(g, judge, me, &cur);
     let (mut tn, mut ev, mut ch) = (vec![], vec![], vec![]);
     for m in tail {
@@ -115,7 +121,8 @@ fn read_on<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State, names: &
         tn.push(g.move_name(&cur, &m));
         cur = g.apply(&cur, &m);
     }
-    (tn, ev, ch, hit)
+    let end = match g.outcome(&cur) { Some(v) if won(&v, me) => END_WON, Some(v) if (0..v.len()).any(|i| i != me && won(&v, i)) => END_LOST, _ => END_QUIET };
+    (tn, ev, ch, hit, end)
 }
 
 /// The kind changes of one move, for `me`.
@@ -138,7 +145,7 @@ pub fn read_line<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: 
     let q = g.apply(s, m);
     let first = g.move_ends(s, m);
     let (value, depth, cut);
-    let mut unsettled = false;
+    let (mut unsettled, mut tail_end) = (false, END_QUIET);
     if let Some(v) = g.outcome(&q) {
         value = d0 + if won(&v, me) { WIN } else if (0..v.len()).any(|i| i != me && won(&v, i)) { -WIN } else { 0 };
         depth = 0;
@@ -151,15 +158,18 @@ pub fn read_line<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: 
         names.extend(line.line);
         changes.extend(changes_in(&line.lost, me));
         for (o, e) in line.lost { if let Some(k) = lost_kind(&e) { events.push((o == me, k.to_string())); } }
-        let (tn, tev, tch, hit) = read_on(g, judge, me, s, &names);
+        let (tn, tev, tch, hit, te) = read_on(g, judge, me, s, &names);
         names.extend(tn);
         events.extend(tev);
         changes.extend(tch);
         unsettled = hit;
+        tail_end = te;
     }
-    let end = if value >= WIN - 1000 { END_WON } else if value <= -WIN + 1000 { END_LOST } else { END_QUIET };
+    // PLAN 78.87: `value` here carries the first move's own gain (a unit taken), which can be larger than the margin the search's own value is read with: a line that takes a unit and then loses the game was counted QUIET
+    // (value -WIN plus the gain) and judged by its events alone. The end of the game is read against half of WIN, as the ledger's own numbers are (WIN less the plies, the sum of a ledger is far below it).
+    let end = if value >= WIN / 2 { END_WON } else if value <= -WIN / 2 { END_LOST } else { END_QUIET };
     let settled = settled_len(g, s, &names);
-    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, changes, value, end, depth, nodes: sr.nodes, cut, settled, unsettled }
+    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, changes, value, end, depth, nodes: sr.nodes, cut, settled, unsettled, tail_end }
 }
 
 pub fn takings_on<G: Game + Placed>(g: &G, s: &G::State, place: Place) -> Vec<G::Move> {
@@ -218,13 +228,13 @@ pub fn read_best<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me:
     let mut events: Vec<(bool, String)> = line.lost.iter().filter_map(|(o, e)| lost_kind(e).map(|k| (*o == me, k.to_string()))).collect();
     let mut changes = changes_in(&line.lost, me);
     let mut names = line.line.clone();
-    let (tn, tev, tch, unsettled) = read_on(g, judge, me, s, &names);
+    let (tn, tev, tch, unsettled, tail_end) = read_on(g, judge, me, s, &names);
     names.extend(tn);
     events.extend(tev);
     changes.extend(tch);
     let end = if line.value >= WIN - 1000 { END_WON } else if line.value <= -WIN + 1000 { END_LOST } else { END_QUIET };
     let settled = settled_len(g, s, &names);
-    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, changes, value: line.value, end, depth: line.depth, nodes: sr.nodes, cut: sr.cut() && line.depth < p.depth, settled, unsettled }
+    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, changes, value: line.value, end, depth: line.depth, nodes: sr.nodes, cut: sr.cut() && line.depth < p.depth, settled, unsettled, tail_end }
 }
 
 /// The quiet moves of the mover of `s` that MAKE a threat on `place`: after the move and one pass of the other side a taking on `place` stands (the threat as the pass reads it). Each is then read as a whole-board
