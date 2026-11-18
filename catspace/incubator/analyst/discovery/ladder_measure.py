@@ -239,7 +239,17 @@ class Tools:
             r = self.lines.ask([(None, moves)], [(0, 8, 0, 1, 0, 0, 0)], TC.DEPTH + 2 * i, TC.FUSE * 4 ** i)[0]
         rd = (r.get("reads") or [{}])[0] if r.get("ok") else {}
         return {"names": rd.get("names", []), "events": rd.get("events", []), "end": rd.get("end"), "depth": rd.get("depth"), "cut": rd.get("cut"), "nodes": rd.get("nodes", 0),
-                "changes": rd.get("changes", [])}
+                "changes": rd.get("changes", []), "verdict": self.verdict(rd)}
+
+    def verdict(self, rd: dict) -> "dict | None":
+        """PLAN 78.86: the line's verdict as it is on main (threat_concrete.verdict_of: the net counts a unit changing kind, the settled tail, UNSETTLED), for the side that moved, and the same verdict with the kind
+        changes left out of the net (what the verdict said before 78.85 on this point). None where the read failed. Printed and counted; no rung reads it."""
+        if not rd or "value" not in rd or "settled" not in rd:
+            return None
+        rd = dict(rd, kind_change=self.kind_change)
+        v = TC.verdict_of(rd, self.record)
+        w = TC.verdict_of(dict(rd, changes=[]), self.record)
+        return {"verdict": v["verdict"], "net": v["net"], "net_search": v["net_search"], "kind_net": v["kind_net"], "unsettled": v["unsettled"], "without_kind": w["verdict"], "net_without_kind": w["net"]}
 
     def features(self, position: dict, deep: dict) -> dict:
         moves = list(position["moves"])

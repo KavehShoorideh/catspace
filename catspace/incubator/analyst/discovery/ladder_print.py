@@ -15,6 +15,8 @@ surprises of the scored part whose accepted move is among the moves the search h
 in words, the count of each of them before and after each tied move (own = layer one's count of our own moves, None where it is not defined; w = the stoppers still in the way), the pick of every candidate and the accepted moves
 (the answers file, for the human reader only). Reads artifacts/experiments/subgoal_pick_78_78/<tag>/ (preps.pkl, case_rows.json); writes cases.txt beside them.
 
+PLAN 78.86 `--reread` (`reread_cases`): the twenty positions whose rung changed between 78.77's run and the re-read (rule in ladder_reread.pick_changed), each from the stored results: board, units under attack, the earlier and
+the new reading. Writes ladder_78_86/cases.txt.
 PLAN 78.80 `--symbols TAG` (`symbols_cases`): THE SYMBOLS AS READABLE CASES. Part A: the twelve positions of 78.78 with, per tied move, the passing events (patterns made true or false, for each side) it carries, in words; part B: the ten
 strongest passing patterns (a rule fixed in the function's doc) each drawn on three positions where the move played carries the event, the units of one instance in brackets. Reads artifacts/experiments/symbols_78_80/<tag>/ and writes
 cases.txt there. The only place of the symbols' files where the game's renderer and names appear.
@@ -514,6 +516,56 @@ def cut_cases(tag: str = "full", exp: str = "symbols_play_78_84") -> Path:
     return root / "cases.txt"
 
 
+def _reading(b: chess.Board, r: dict, ans: set) -> list:
+    """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
+    def nm(m: str) -> str:
+        return b.san(chess.Move.from_uci(m))
+    d = r.get("deep") or {}
+    out = [f"    rung {r['rung']}" + (f" (found at {r['found_at']:g} s)" if r["found_at"] else "") + f"; the wake's search held {r['equals']} moves equal; the first move at the wake's clock is "
+           + ("accepted" if r.get("first_hit") else "not accepted")]
+    for k, v in r["chose"].items():
+        if k.startswith("3 search"):
+            out.append(f"    {k}: chose {nm(v['move'])} ({'accepted' if v['move'] in ans else 'not accepted'}), held {v['equals']} equal, depth {v['depth']}")
+    if d:
+        out.append(f"    the deepest line: {san_line(b, d.get('names', []), 14)}; events {d.get('events')}; kind changes {d.get('changes')}; ended {d.get('end')} after {d.get('depth')} plies, cut {d.get('cut')}")
+        if d.get("verdict"):
+            out.append(f"    the verdict: {d['verdict']}")
+    if r.get("features"):
+        out.append(f"    features: {r['features']}")
+    return out
+
+
+def reread_cases(exp: str = "ladder_78_86") -> Path:
+    """PLAN 78.86: THE TWENTY CHANGED POSITIONS (ladder_reread.pick_changed: the rule is in its doc; chosen_ids.json beside the run) printed from the STORED results of the earlier run (ladder_78_77/selfplay_78_58_on)
+    and the new one: the board, the units of both sides under attack with how many guard them, the accepted moves (the answers file, for the human reader only), and each run's reading. Runs no reader. Writes cases.txt in
+    ladder_78_86/."""
+    from catspace.incubator.analyst.discovery import ladder_reread as LR
+    root = Path(paths.experiment(exp))
+    chosen = json.loads((root / "chosen_ids.json").read_text())
+    old = LR.load(Path(paths.experiment(*LR.EARLIER)))
+    new = LR.load(root / "selfplay_78_58_on")
+    src = LM.out_root("full")
+    ans = {d["id"]: d["accepted"] for d in (json.loads(x) for x in (src / "answers.jsonl").read_text().splitlines() if x.strip())}
+    pos = {d["id"]: d for d in (json.loads(x) for x in (src / "positions.jsonl").read_text().splitlines() if x.strip())}
+    lines = [f"THE TWENTY CHANGED POSITIONS (plan 78.86): {len(chosen)} positions, by the rule of ladder_reread.pick_changed. Earlier run: ladder_78_77/selfplay_78_58_on. New run: this folder.", ""]
+    for k, pid in enumerate(chosen, 1):
+        b = chess.Board()
+        for m in pos[pid]["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        lines += [f"=== CASE {k}: {pid}  (rung {old[pid]['result']['rung']} -> {new[pid]['result']['rung']}; {'white' if me else 'black'} to move)", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}", f"the other side's units under attack: {_attacked(b, not me)}",
+                  f"the accepted moves: {', '.join(b.san(chess.Move.from_uci(m)) for m in ans[pid])}", "  EARLIER:"]
+        lines += _reading(b, old[pid]["result"], set(ans[pid]))
+        lines.append("  NOW:")
+        lines += _reading(b, new[pid]["result"], set(ans[pid]))
+        lines.append("")
+    out = root / "cases.txt"
+    out.write_text("\n".join(lines))
+    print(f"OBS ladder print: {len(chosen)} changed positions written to {out}")
+    return out
+
+
 _CASE_TOOLS: dict = {}
 
 
@@ -614,10 +666,14 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--play82", default=None, help="PLAN 78.82: the thirty decisions where the reasons' pick differed from the search's first move (symbols_play_78_82/<tag>)")
     ap.add_argument("--play83", default=None, help="PLAN 78.83: thirty decisions, ten from each band of units on the board (symbols_play_78_83/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
+    ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
     ap.add_argument("--tag", default="full")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--deep", action="store_true", help="the cases of plan 78.68 stages G and H (deep_heads_78_68/<tag>/case_rows.json)")
     a = ap.parse_args(argv)
+    if a.reread:
+        reread_cases()
+        return 0
     if a.pick:
         pick_cases(a.pick)
         return 0

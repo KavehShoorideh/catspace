@@ -36,7 +36,7 @@ from pathlib import Path
 
 LIMITS = {"wake_seconds": 0.2, "ladder": (1.0, 4.0, 16.0, 64.0), "head": "arrival"}
 ROW_FIELDS = ("id", "source", "moves", "rung", "found_at", "cost", "equals", "features", "deep")
-DEEP_FIELDS = ("names", "events", "end", "depth", "cut", "nodes")
+DEEP_FIELDS = ("names", "events", "end", "depth", "cut", "nodes", "changes", "verdict")        # (PLAN 78.86: the line's kind changes and the repaired verdict of 78.85 are kept too)
 # any key or word of an oracle's reading: the wall's grep (a key of a row, or a word in the file's text)
 FORBIDDEN = re.compile(r"oracle|stockfish|centipawn|\bcp\b|score|eval|accepted|best_move|answer|label|multipv|pv\b", re.I)
 

@@ -632,13 +632,14 @@ def ladder_tables(counter, positions: dict, preps: dict) -> dict:
     return out
 
 
-def score_ladder(root: Path, workers: int, say) -> None:
+def score_ladder(root: Path, workers: int, say, results_root: "Path | None" = None) -> None:
     """SCORES 2 AND 3: deep_heads.score on the ladder's scored part (the control picks beside it) and hit_rate against the accepted moves there. This is the one function that reads the ladder's answers; the pick has not."""
     from catspace.incubator.analyst.discovery import subgoal_pick_measure as SM
     lr = LM.out_root("full")
     positions = {p["id"]: p for p in jsonl(lr / "positions.jsonl")}
-    results = {d["id"]: d for d in jsonl(lr / "results.jsonl")}
-    open_ids = [r["id"] for r in jsonl(lr / "surprise_list.jsonl")]
+    rr = results_root or lr                                                    # PLAN 78.86: the results and the list of open surprises of another run of the same 400 positions (default: the 78.68 run)
+    results = {d["id"]: d for d in jsonl(rr / "results.jsonl")}
+    open_ids = [r["id"] for r in jsonl(rr / "surprise_list.jsonl")]
     resolved_ids = [i for i, d in results.items() if d["result"] and d["result"]["rung"] in (1, 2)]
     preps = pickle.loads((Path(paths.experiment("subgoal_pick_78_79", "full")) / "preps.pkl").read_bytes())
     keys = json.loads((root / "keys.json").read_text())
