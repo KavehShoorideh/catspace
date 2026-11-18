@@ -64,12 +64,17 @@ pub struct LedgerOp<'a, J: Judge> {
     pub extend: bool,
     /// Plan 78.85: the second reading of the equal reading (`Search::verify_ties`).
     pub verify_ties: bool,
+    /// Plan 78.92: the chosen move asked again without the two prunings (`Search::verified_choice`); false is the search as it is.
+    pub verify_choice: bool,
+    /// Plan 78.92: the two prunings apart (`Search::null_move`, `Search::late_reduce`); true is the search as it is.
+    pub null_move: bool,
+    pub late_reduce: bool,
     /// Plan 78.51: a caller's order of the root moves; None (the default) is the search as it was.
     pub root_order: Option<crate::ledger::RootOrder>,
 }
 
 impl<'a, J: Judge> LedgerOp<'a, J> {
-    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, root_order: None } }
+    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, null_move: true, late_reduce: true, root_order: None } }
 }
 
 impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
@@ -85,6 +90,9 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         ls.prune = self.prune;
         ls.extend = self.extend;
         ls.verify_ties = self.verify_ties;
+        ls.verify_choice = self.verify_choice;
+        ls.null_move = self.null_move;
+        ls.late_reduce = self.late_reduce;
         ls.root_first = prefer.clone();
         ls.root_last = avoid.clone();
         if let Some(ro) = &self.root_order { ls.set_root_order(&ro.order, ro.strict); }
@@ -99,11 +107,21 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
             return o;
         };
         let mut o = Outcome::new(Status::Read);
+        let mut i = i;
+        let mut replaced = false;
+        if self.verify_choice {
+            ls.resume(b.rest_of_decision() * ties.unwrap_or(1.0));
+            let (n0, t1) = (ls.nodes, std::time::Instant::now());
+            let v = ls.verified_choice(s, ln.depth, ln.value, i);
+            o.part(format!("verify_choice ({})", v.state.label()), ls.nodes - n0, t1.elapsed().as_secs_f64());
+            replaced = v.index != i;
+            i = v.index;
+        }
         o.mv = Some(moves[i].clone());
         o.value = Some(ln.value);
         o.depth = Some(ln.depth as i64);
-        o.line = ln.line.clone();
-        o.events = ln.lost.clone();
+        o.line = if replaced { vec![g.move_name(s, &moves[i])] } else { ln.line.clone() };
+        o.events = if replaced { vec![] } else { ln.lost.clone() };
         for r in &ls.reads { o.part(format!("depth {}{}", r.depth, if r.complete { "" } else { " (cut)" }), r.nodes, r.seconds); }
         let who = |r: cs_game::Role| if r == *role { "we" } else { "they" };
         let lost: Vec<String> = ln.lost.iter().map(|(owner, k)| format!("{} {k}", who(*owner))).collect();

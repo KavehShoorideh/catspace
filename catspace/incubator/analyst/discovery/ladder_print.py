@@ -31,6 +31,8 @@ a band, each with the board, what each side has under attack, the moves that lea
 PLAN 78.91 `--order91 TAG` (`order_cases`): THE THIRTY POSITIONS of the hint in the search's order (symbols_order_measure.py `cases`: cases91.json, order_78_91/<tag>/; the groups are 78.90's fit A, symbols_78_90/full/groups_A.json): twenty where the
 reasons' order puts the reference move (the search at ten times the play clock, root moves in a random order) first among the quiet moves and the static order does not, ten of the opposite. Each with the board, what each side has under attack,
 the moves that take, the reference move and its place in both orders, the first five quiet moves of each order, and the strongest groups of the reference, of the static first and of the reasons' first in words. Writes cases.txt.
+PLAN 78.92 `--choice92 TAG` (`choice_cases`): THE TWENTY POSITIONS where the search's played move is under the reference's best (choice_measure.py `cases`: cases92.json under reasoner_choice_78_92/<tag>/; the reference is the same search with
+the late-move reduction and the null move off): the board, what each side has under attack, the played move, the reference's best and both values at the search's depth and two plies deeper. Writes cases.txt.
 PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
@@ -641,6 +643,31 @@ def order_cases(tag: str = "full", exp: str = "order_78_91") -> Path:
     return root / "cases.txt"
 
 
+def choice_cases(tag: str = "full", exp: str = "reasoner_choice_78_92") -> Path:
+    """PLAN 78.92 `--choice92 TAG`; see the module doc. For the reader's judgement only."""
+    root = Path(paths.experiment(exp, tag))
+    c92 = json.loads((root / "cases92.json").read_text())
+    lines = [f"THE TWENTY POSITIONS (plan 78.92): {len(c92['cases'])} read. {c92['rule']} Values are in the judge's own units (the record's table), for the side the search plays for (the mover): the value of the whole line from here, "
+             "the played move's own gain included. 'plain' is the search with both prunings off (the reference), read to the depth the search finished and, where it finished, two plies deeper.", ""]
+    for k, c in enumerate(c92["cases"], 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        san = lambda u, b=b: b.san(chess.Move.from_uci(u)) if u else None
+        lines += [f"=== POSITION {k}: {c['id']}  band {c['band']}, {c['units']} units  ({'white' if me else 'black'} to move)", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}", f"the other side's units under attack: {_attacked(b, not me)}",
+                  f"the search (both prunings on) finished depth {c['depth']} with value {c['value']} and plays {san(c['played'])}",
+                  f"plain at depth {c['depth']}: best {san(c['best_move0'])} = {c['best0']}; the played move {san(c['played'])} = {c['played0']}; shortfall {c['best0'] - c['played0']}",
+                  (f"plain at depth {c['depth'] + 2}: best {san(c['best_move2'])} = {c['best2']}; the played move = {c['played2']}; shortfall {c['best2'] - c['played2']}"
+                   if c["best2"] is not None and c["played2"] is not None else f"plain at depth {c['depth'] + 2}: not finished within the fuse"),
+                  f"null move off alone, depth {c['depth']}: best {c['no_null0'][0]}, played move {c['no_null0'][1]}; late reduction off alone: best {c['no_late0'][0]}, played move {c['no_late0'][1]}",
+                  f"the played move asked again without the two prunings (null window at {c['value']}): probe {c['verify_probe']}", ""]
+    (root / "cases.txt").write_text(chr(10).join(lines))
+    print(f"OBS ladder print: {len(c92['cases'])} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -825,6 +852,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--groups88", default=None, help="PLAN 78.88: the twenty largest groups in words and the thirty decisions (symbols_78_88/<tag>)")
     ap.add_argument("--own90", default=None, help="PLAN 78.90: thirty decisions where the fit with the other side's cells picks otherwise than the old weights (symbols_78_90/<tag>)")
     ap.add_argument("--order91", default=None, help="PLAN 78.91: thirty positions where the reasons' order and the static order differ on the reference move (order_78_91/<tag>)")
+    ap.add_argument("--choice92", default=None, help="PLAN 78.92: twenty positions where the played move is under the reference's best (reasoner_choice_78_92/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
     ap.add_argument("--verdict87", action="store_true", help="PLAN 78.87: the ten lines whose verdict word changed (verdict_78_87/picked.json)")
@@ -874,6 +902,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.order91:
         order_cases(a.order91)
+        return 0
+    if a.choice92:
+        choice_cases(a.choice92)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)

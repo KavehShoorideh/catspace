@@ -36819,3 +36819,8 @@ The cut is 28 units (median of the many band's tie decisions in 78.82's games): 
 ## 2026-11-18 08:31 plan 78.90: the mover's own loose unit, one fit on both samples (builder agent; SYSTEM_SPEC 7, 9)
 
 Built and run once, directions only; numbers in docs/ANALYST_PLAN.md (78.90 BUILT) from artifacts/experiments/symbols_78_90/full/obs.txt. Cells of the other side's bearing added to the reasons, one fit on the union of both samples' FIND, scored on both CONFIRM parts, the count of part C, play (v control and v 78.82's player), thirty decisions read against the board.
+
+
+## 2026-11-18 12:42 plan 78.92: does the search's own choice carry the pruning fault (builder agent; SYSTEM_SPEC 5, section 12)
+
+Built and run once, directions only; numbers in docs/ANALYST_PLAN.md (78.92 BUILT) from artifacts/experiments/reasoner_choice_78_92/full/obs.txt. The played move is under the prunings-off reference at the same depth in 14.5 pct of 600 positions [12.2, 16.8] (the late-move reduction alone does it; the control is 0), also at a deeper setting; the late reduction buys about two plies in play and a score the band does not clearly separate from a half; the condition for a verification of the chosen move was met as written (by 0.0012 in play) and the switch `verify_choice` (off by default) was built: 14.5 pct falls to 9.5 pct offline, and in play the player with it scores about 0.54 against the one without. Twenty positions read against the board.

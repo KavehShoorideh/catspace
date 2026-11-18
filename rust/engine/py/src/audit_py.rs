@@ -66,3 +66,40 @@ pub fn value_at(variant: &str, moves: Vec<String>, root_plies: usize, worth: Has
     let names = g.moves(&s).iter().map(|m| g.move_name(&s, m)).collect();
     Ok((v, x.nodes, names))
 }
+
+/// PLAN 78.92: the Python entry of the choice audit (cs_tactics::choice_audit). `choice_audit(variant, moves, worth, run_nodes, max_depth=64, big=4000000, extra=2, kind_change=True, other=None)` -> a dict
+/// {depth, value, played, played_name, run_nodes, verify_probe, verify_nodes, readings: [{name, depth, best, best_index, best_name, played, other, nodes}]} or None. No clock: the budgets are node counts.
+#[pyfunction]
+#[pyo3(signature = (variant, moves, worth, run_nodes, max_depth=64, big=4_000_000, extra=2, kind_change=true, other=None, repair=false))]
+#[allow(clippy::too_many_arguments)]
+pub fn choice_audit(py: Python<'_>, variant: &str, moves: Vec<String>, worth: HashMap<String, i64>, run_nodes: u64, max_depth: i32, big: u64, extra: i32, kind_change: bool, other: Option<String>, repair: bool) -> PyResult<PyObject> {
+    let (g, s, keys) = crate::record_of(variant, None, 518, &moves)?;
+    let judge = Worth { name: "record".into(), table: worth, ours_first: false };
+    let r = if kind_change { cs_tactics::choice_audit::choice_audit(&g, &judge, &s, &keys, run_nodes, max_depth, big, extra, other.as_deref(), repair) } else { cs_tactics::choice_audit::choice_audit(&g, &NoChange(judge), &s, &keys, run_nodes, max_depth, big, extra, other.as_deref(), repair) };
+    let Some(a) = r else { return Ok(py.None()) };
+    let d = PyDict::new(py);
+    d.set_item("depth", a.depth)?;
+    d.set_item("value", a.value)?;
+    d.set_item("played", a.played)?;
+    d.set_item("played_name", a.played_name.clone())?;
+    d.set_item("run_nodes", a.run_nodes)?;
+    d.set_item("verify_probe", a.verify_probe)?;
+    d.set_item("verify_nodes", a.verify_nodes)?;
+    d.set_item("repair_state", a.repair_state.label())?;
+    d.set_item("repair_nodes", a.repair_nodes)?;
+    let rows = PyList::empty(py);
+    for r in &a.readings {
+        let e = PyDict::new(py);
+        e.set_item("name", r.name)?;
+        e.set_item("depth", r.depth)?;
+        e.set_item("best", r.best)?;
+        e.set_item("best_index", r.best_index)?;
+        e.set_item("best_name", r.best_name.clone())?;
+        e.set_item("played", r.played)?;
+        e.set_item("other", r.other)?;
+        e.set_item("nodes", r.nodes)?;
+        rows.append(e)?;
+    }
+    d.set_item("readings", rows)?;
+    Ok(d.into_any().unbind())
+}
