@@ -167,9 +167,29 @@ def play67(spec: dict) -> dict:
     return g
 
 
-def run_games(specs: list, workers: int, out_file: Path, say=print, play=None) -> list:
+def settled(games: list, level: float = 99.0, min_pairs: int = 30, margin: float = 0.03) -> "str | None":
+    """Whether a match may stop early, read on whole opening pairs only: "clear" when the band at `level` per cent (bootstrap over opening pairs) lies wholly on one side of a half, "level" when it lies
+    wholly within `margin` of a half, else None. The band is wider than the 90 per cent one that is reported, because it is looked at many times while the games come in."""
+    pairs = OM.pair_scores(games)
+    if len(pairs) < min_pairs:
+        return None
+    v = np.array(list(pairs.values()), dtype=float)
+    rng = np.random.default_rng(OM.BOOT_SEED)
+    boots = np.array([v[rng.integers(0, len(v), len(v))].mean() / 2 for _ in range(OM.DRAWS)])
+    lo, hi = float(np.percentile(boots, (100 - level) / 2)), float(np.percentile(boots, 100 - (100 - level) / 2))
+    if lo > 0.5 or hi < 0.5:
+        return "clear"
+    if lo > 0.5 - margin and hi < 0.5 + margin:
+        return "level"
+    return None
+
+
+def run_games(specs: list, workers: int, out_file: Path, say=print, play=None, stop=None) -> list:
     """Play the specs on a spawn Pool (a rerun skips the games already in `out_file`); -> the games in the order of the specs. `play` is the function that plays one spec (default `play67`; a later plan hands in its own, a module-level
-    function so the spawned workers can import it)."""
+    function so the spawned workers can import it).
+    `stop` (default None: every game is played) is asked after every ten further opening pairs that are whole IN THE ORDER OF THE SPECS (a function of that leading run of games -> a word or None, such
+    as `settled`); on a word the pool is ended and only that leading run is returned. The leading run is used, not the games that happen to be done, because short games finish first and are not a fair
+    sample of the match."""
     play = play or play67
     done = {}
     if out_file.exists():
@@ -189,13 +209,46 @@ def run_games(specs: list, workers: int, out_file: Path, say=print, play=None) -
             if len(done) % 20 == 0 or len(done) == n_all:
                 el = time.perf_counter() - t0
                 say(f"OBS progress {out_file.stem}: {len(done)} of {n_all} games, {el:.0f} s, about {el / max(1, len(done) - n0) * (n_all - len(done)):.0f} s left")
+        asked = [0]
+
+        def lead() -> list:
+            run = []
+            for s in specs:
+                if s["gid"] not in done:
+                    break
+                run.append(done[s["gid"]])
+            return run
+
+        def stopped() -> "list | None":
+            if stop is None:
+                return None
+            run = lead()
+            if len(run) - asked[0] < 20 or len(run) == n_all:
+                return None
+            asked[0] = len(run) - len(run) % 20
+            word = stop(run[:asked[0]])
+            if word:
+                say(f"OBS early stop {out_file.stem}: {word} after the first {asked[0]} of {n_all} games in the order of the openings; the rest is not played")
+                return run[:asked[0]]
+            return None
+
+        cut = stopped()
+        if cut is not None:
+            return cut
         if workers <= 1 or not todo:
             for s in todo:
                 keep(play(s))
+                cut = stopped()
+                if cut is not None:
+                    return cut
         else:
             with multiprocessing.get_context("spawn").Pool(workers) as pool:
                 for g in pool.imap_unordered(play, todo, chunksize=1):
                     keep(g)
+                    cut = stopped()
+                    if cut is not None:
+                        pool.terminate()
+                        return cut
     return [done[s["gid"]] for s in specs]
 
 

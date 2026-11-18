@@ -104,3 +104,27 @@ def test_every_player_is_named_and_the_default_player_is_untouched():
     assert set(TM.KIND) == set(TM.PLAYERS)
     assert all(k.startswith("tb_") for k in TM.KIND.values())
     assert OM.Mover.choose is not TM.Mover67.choose                     # the 78.61 mover is subclassed, not edited
+
+
+def _fake_specs(n_pairs: int) -> list:
+    return [{"gid": f"x:{i}:{c}", "start": f"S{i:03d}", "colour": c} for i in range(n_pairs) for c in (0, 1)]
+
+
+def test_a_match_that_is_clear_stops_early_on_whole_leading_pairs_and_a_close_one_plays_on(tmp_path):
+    specs = _fake_specs(100)
+    # player a wins every game it moves first in and draws the rest: far from a half
+    one_sided = lambda s: dict(s, outcome=100 if s["colour"] == 0 else 50)
+    said: list = []
+    got = TM.run_games(specs, 1, tmp_path / "a.jsonl", say=said.append, play=one_sided, stop=TM.settled)
+    assert 60 <= len(got) < 200 and len(got) % 20 == 0
+    assert [g["gid"] for g in got] == [s["gid"] for s in specs[:len(got)]]
+    assert any("early stop" in line for line in said)
+    # a match of alternating whole points is neither clear nor level: every game is played
+    mixed = lambda s: dict(s, outcome=100 if (int(s["start"][1:]) + s["colour"]) % 2 == 0 else 0)
+    rng = random.Random(5)
+    noisy = lambda s: dict(s, outcome=rng.choice([0, 50, 100, 100, 0, 50, 0, 100]))
+    assert len(TM.run_games(specs, 1, tmp_path / "b.jsonl", say=lambda _: None, play=noisy, stop=lambda games: None)) == 200
+    assert TM.settled([one_sided(s) for s in specs[:40]]) is None            # under the least number of pairs
+    assert TM.settled([dict(s, outcome=50) for s in specs]) == "level"
+    assert TM.settled([one_sided(s) for s in specs]) == "clear"
+    assert len(TM.run_games(specs, 1, tmp_path / "c.jsonl", say=lambda _: None, play=mixed)) == 200      # no stop given: as before

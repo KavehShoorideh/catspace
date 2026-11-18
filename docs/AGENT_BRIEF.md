@@ -38,6 +38,11 @@ want it to be modular with clean interfaces and according to the overall high-le
   setup links at the end, one link per call, never `-r` or `-f`. Nothing outside your worktree is touched except the one final copy of your
   outputs folder into the main checkout. A denied command is not retried in another form: work around it or say so in the report.
 
+- Matches are the slowest thing we run (games times plies times seconds a move, over the workers), so (Kaveh 2026-11-19): play a match through
+  `tiebreak_measure.run_games(..., stop=tiebreak_measure.settled)`, which ends it once the leading opening pairs are clear of a half or clearly
+  level, and print the early-stop line; play only the matches the plan's question needs, the side matches only if the main ones are unclear; a
+  load average above 4 at the start of a timed match is waited out, not played through.
+
 ## 2. Verification, priced (the speed rules of 2026-10-28)
 - THE GUARD (`scripts/trace_identity.py`: traces, read sets, leaf verdict lists, word lists, provenance lists; ten cases and `--sets wide`; tiers 0 and 2;
   PYTHONHASHSEED=0): the PARENT SNAPSHOT IS TAKEN ONCE PER PLAN and reused by every stage and every agent of that plan (the parent names its path);
