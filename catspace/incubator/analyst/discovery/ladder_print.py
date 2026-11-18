@@ -516,6 +516,47 @@ def cut_cases(tag: str = "full", exp: str = "symbols_play_78_84") -> Path:
     return root / "cases.txt"
 
 
+def groups_cases(tag: str = "full", exp: str = "symbols_78_88", top: int = 20) -> Path:
+    """PLAN 78.88 `--groups88 TAG` (symbols_groups_measure.py): PART A: the twenty largest groups of the 136 reasons (by members, then by the tied moves that carry them; groups_i.json), every member in words with side,
+    direction and weight, for the reader to judge whether a group is one idea. PART B: the thirty decisions of `cases` (cases88.json: ten a band, the rule in the measure's doc), each with the board, the units under attack
+    (for the reader's judgement only), the moves held equal, the move the human played, the search's first move and the pick, and for each of the two the three strongest groups they carry in words. Writes cases.txt under
+    symbols_78_88/<tag>/."""
+    root = Path(paths.experiment(exp, tag))
+    gi = json.loads((root / "groups_i.json").read_text())
+    lines = [f"PART A. THE TWENTY LARGEST OF THE {len(gi)} GROUPS of the 136 reasons (rule in symbols.py: average linkage on the Jaccard index of the carrier sets on the FIND rows, same side, direction and sign of weight, at or above 0.5). "
+             f"Groups with two or more members first, then the singletons with the most carrying tied moves.", ""]
+    for k, g in enumerate(sorted(gi, key=lambda g: (-len(g["members"]), -g["carriers"]))[:top], 1):
+        lines.append(f"=== GROUP {k} (number {g['group']}): {len(g['members'])} members, {g['side']} {g['dir']}, carried by {g['carriers']} FIND tied moves")
+        for m in sorted(g["members"], key=lambda m: -abs(m["weight"])):
+            lines.append(f"      weight {m['weight']:+.3f} (size {m['size']}, level {m['level']}): {_words(m['words'], m['side'])}")
+        lines.append("")
+    c88 = json.loads((root / "cases88.json").read_text())
+    groups = json.loads((root / c88["groups_file"]).read_text())
+    lines += [f"PART B. THE THIRTY DECISIONS: variant {c88['variant']}; {len(c88['cases'])} read. The pick is the highest sum of group weights among the moves the search holds equal; the groups are those of the variant.", ""]
+
+    def side(b: chess.Board, m: str, tops: list) -> list:
+        mv = chess.Move.from_uci(m)
+        out = [f"    {b.san(mv)} ({chess.piece_name(b.piece_at(mv.from_square).piece_type)}{', takes a unit' if b.is_capture(mv) else ''}): the three strongest groups it carries"]
+        for gidx, w in tops:
+            g = groups[gidx]
+            mem = sorted(g["members"], key=lambda x: -abs(x["weight"]))
+            out.append(f"        weight {w:+.3f}, group {gidx} ({len(mem)} members, {g['side']} {g['dir']}): {_words(mem[0]['words'], mem[0]['side'])}" + (f"  [and {len(mem) - 1} like it]" if len(mem) > 1 else ""))
+        return out or ["        none"]
+    for k, c in enumerate(c88["cases"], 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        nm = lambda m, b=b: b.san(chess.Move.from_uci(m))
+        lines += [f"=== DECISION {k}: {c['id']} ply {c['ply']}  band {c['band']}, {c['units']} units  ({'white' if me else 'black'} to move)", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}", f"the other side's units under attack: {_attacked(b, not me)}",
+                  f"held equal ({len(c['tied'])}), the search's first move first: {', '.join(nm(m) for m in c['tied'])}",
+                  f"the human played: {nm(c['played'])}; the search's first move: {nm(c['first'])}; the pick: {nm(c['pick'])}", "  the search's first move:"] + side(b, c["first"], c["first_groups"]) + ["  the pick:"] + side(b, c["pick"], c["pick_groups"]) + [""]
+    (root / "cases.txt").write_text("\n".join(lines))
+    print(f"OBS ladder print: groups and {len(c88['cases'])} decisions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -696,6 +737,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--reasons", default=None, help="PLAN 78.81: the reasons as readable cases (symbols_78_81/<tag>)")
     ap.add_argument("--play82", default=None, help="PLAN 78.82: the thirty decisions where the reasons' pick differed from the search's first move (symbols_play_78_82/<tag>)")
     ap.add_argument("--play83", default=None, help="PLAN 78.83: thirty decisions, ten from each band of units on the board (symbols_play_78_83/<tag>)")
+    ap.add_argument("--groups88", default=None, help="PLAN 78.88: the twenty largest groups in words and the thirty decisions (symbols_78_88/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
     ap.add_argument("--verdict87", action="store_true", help="PLAN 78.87: the ten lines whose verdict word changed (verdict_78_87/picked.json)")
@@ -731,6 +773,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.cut84:
         cut_cases(a.cut84)
+        return 0
+    if a.groups88:
+        groups_cases(a.groups88)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
