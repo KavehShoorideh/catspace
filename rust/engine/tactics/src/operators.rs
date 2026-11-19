@@ -70,6 +70,8 @@ pub struct LedgerOp<'a, J: Judge> {
     pub choice_mode: crate::ledger::ChoiceMode,
     /// Plan 79.02: the equal reading asks a held move again without the two prunings, in the deepening's order (`Search::reask`); false is the equal reading as it was.
     pub reask: bool,
+    /// Plan 79.03: no late-move reduction at the root (`Search::root_full`); false is the search as it is.
+    pub root_full: bool,
     /// Plan 78.92: the two prunings apart (`Search::null_move`, `Search::late_reduce`); true is the search as it is.
     pub null_move: bool,
     pub late_reduce: bool,
@@ -78,7 +80,7 @@ pub struct LedgerOp<'a, J: Judge> {
 }
 
 impl<'a, J: Judge> LedgerOp<'a, J> {
-    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, choice_mode: crate::ledger::ChoiceMode::Slot, reask: false, null_move: true, late_reduce: true, root_order: None } }
+    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, choice_mode: crate::ledger::ChoiceMode::Slot, reask: false, root_full: false, null_move: true, late_reduce: true, root_order: None } }
 }
 
 impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
@@ -98,6 +100,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         ls.verify_choice = self.verify_choice;
         ls.choice_mode = self.choice_mode;
         ls.reask = self.reask;
+        ls.root_full = self.root_full;
         ls.null_move = self.null_move;
         ls.late_reduce = self.late_reduce;
         ls.root_first = prefer.clone();

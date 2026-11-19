@@ -80,11 +80,12 @@ def pick_state(pick: "str | None", labels: dict) -> str:
 class Mend(SR.Stack):
     """The stack's search with the switch as a parameter, and the stack's pick."""
 
-    def search2(self, moves: list, reask: bool) -> dict:
+    def search2(self, moves: list, reask: bool, extra: "dict | None" = None) -> dict:
         import cs_engine as CE
         from catspace.incubator.analyst.discovery import subgoal_play_measure as PM
         t0 = time.perf_counter()
         kw = {"reask": True} if reask else {}
+        kw.update(extra or {})                               # (plan 79.03: another switch of the same call, e.g. root_full; none unless the caller names it)
         try:
             raw = CE.solve_equals_batch([(OM.VARIANT, None, list(moves))], CLOCK, worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1, ledger_share=TM.LEDGER_SHARE, verify_choice=True, choice_mode="slot", **kw)[0]
         except Exception as e:

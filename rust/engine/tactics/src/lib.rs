@@ -6,6 +6,7 @@
 pub mod census;
 pub mod choice_audit;
 pub mod equal_audit;
+pub mod gap_audit;
 pub mod ledger;
 pub mod lines;
 pub mod operators;
