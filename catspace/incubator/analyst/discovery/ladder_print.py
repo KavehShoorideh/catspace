@@ -765,6 +765,33 @@ def future95_cases(tag: str = "full") -> Path:
     return root / "cases.txt"
 
 
+def prior96_cases(tag: str = "full") -> Path:
+    """PLAN 78.96 `--prior96 TAG`: the twenty positions of prior_78_96/<tag>/cases96.json (prior_measure.py `cases`), ten where the fitted prior's pick keeps the oracle's class and the pattern pick does not, ten the other way, all CONFIRM positions where the moves the search holds
+    equal differ in keeping the class. Each: the board, what each side has under attack, the moves held equal with the oracle's class after each (for the reader's judgement only; no oracle number is read by the engine), the picks and what the prior read (its chance per move)."""
+    root = Path(paths.experiment("prior_78_96", tag))
+    cases = json.loads((root / "cases96.json").read_text())
+    cname = {1: "winning", 0: "neither", -1: "losing"}
+    lines = ["THE TWENTY POSITIONS (plan 78.96): CONFIRM positions where the equal moves differ in keeping the oracle's class; the class is the oracle's at depth 16 for the side that moves, after each move; for the reader's judgement only.", ""]
+    for k, c in enumerate(cases, 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        nm = lambda m, b=b: b.san(chess.Move.from_uci(m))
+        lines += [f"=== POSITION {k}: {c['id']}  [{c['group']}]  {c['units']} units ({c['band']}), ply {len(c['moves'])}  ({'white' if me else 'black'} to move); the position's class: {cname[c['cls']]}", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}",
+                  f"held equal ({len(c['tied'])}), the search's first move first; class after each, the prior's chance that it keeps the class, whether it takes a unit:"]
+        for m, cm, sc, tk in zip(c["tied"], c["cm"], c["scores"], c["takes"]):
+            tag_ = [n for n, x in (("search's first", c["first"]), ("pattern pick", c["pattern"]), ("judge of 78.94", c["judge"]), ("joined", c["joined"]), ("PRIOR", c["prior"]), ("oracle's move", c["best"])) if x == m]
+            lines.append(f"    {nm(m)}: {cname[cm]}; chance {sc:.2f}{'; takes a unit' if tk else ''}" + (f"   <- {', '.join(tag_)}" if tag_ else ""))
+        if c["best"] and c["best"] not in c["tied"]:
+            lines.append(f"    the oracle's own move {nm(c['best'])} is not among them (class after it: {cname[c['best_cls']]})")
+        lines.append("")
+    (root / "cases.txt").write_text(chr(10).join(lines))
+    print(f"OBS ladder print: {len(cases)} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -951,6 +978,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--order91", default=None, help="PLAN 78.91: thirty positions where the reasons' order and the static order differ on the reference move (order_78_91/<tag>)")
     ap.add_argument("--choice92", default=None, help="PLAN 78.92: twenty positions where the played move is under the reference's best (reasoner_choice_78_92/<tag>)")
     ap.add_argument("--future95", default=None, help="PLAN 78.95: thirty positions: goals that fall, frames of one threat, picks of the weighted chooser (future_78_95/<tag>)")
+    ap.add_argument("--prior96", default=None, help="PLAN 78.96: twenty positions where the equal moves differ in keeping the oracle's class, the fitted prior against the pattern pick (prior_78_96/<tag>)")
     ap.add_argument("--future94", default=None, help="PLAN 78.94: thirty positions with the oracle's class and frame, our goals and the judge's chances (future_78_94/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
@@ -1010,6 +1038,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.future95:
         future95_cases(a.future95)
+        return 0
+    if a.prior96:
+        prior96_cases(a.prior96)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)

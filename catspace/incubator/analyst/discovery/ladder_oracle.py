@@ -53,6 +53,19 @@ def analyse(moves: list, depth: int = FUTURE_DEPTH) -> dict:
 PV_PLIES = 6
 
 
+def analyse_after(moves: list, move: str, depth: int = FUTURE_DEPTH) -> dict:
+    """PLAN 78.96 (SYSTEM_SPEC 9 "the oracle labels positions and frames in sleep, for the prior"): the oracle's verdict on the position AFTER `move` is played from `moves`, read from the point of view of the side that plays `move` (so the class of the
+    move is future_labels.class_of of this answer). Same fields as `analyse`. A move that ends the game by taking the other side's last chance is a forced end for the mover (forced_in 1); any other finished position is level (cp 0).
+    A sleep call only (prior_equal.py); the wake never reaches it."""
+    b = board_of(list(moves) + [move])
+    if b.is_checkmate():
+        return {"cp": None, "forced_in": 1, "pv": []}
+    if b.is_game_over():
+        return {"cp": 0, "forced_in": None, "pv": []}
+    a = analyse(list(moves) + [move], depth)
+    return {"cp": None if a["cp"] is None else -a["cp"], "forced_in": None if a["forced_in"] is None else -a["forced_in"], "pv": a["pv"]}
+
+
 def label(moves: list, depth: int = ORACLE_DEPTH, lines: int = ORACLE_LINES, margin: int = SEVERAL_MARGIN) -> dict:
     import chess.engine
     b = board_of(moves)
