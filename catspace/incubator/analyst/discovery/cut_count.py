@@ -40,6 +40,7 @@ from pathlib import Path
 
 import numpy as np
 
+from catspace.incubator.analyst.discovery.cut_out import OUT, Say, out_root                  # (the output folder and the OBS lines: a helper that loads nothing of the oracle)
 from catspace.incubator.analyst.discovery import leaf_ask as LA
 from catspace.incubator.analyst.discovery import leaf_firm as LF
 from catspace.incubator.analyst.discovery import prior_equal as PE
@@ -47,7 +48,6 @@ from catspace.incubator.analyst.discovery import prior_measure as PMS
 from catspace.incubator.analyst.discovery import stack_causes as SC
 from catspace.incubator.analyst.discovery import stack_room as SR
 
-OUT = ("cut_79_02",)
 CHUNK = 8
 MIN_CELL = 30
 HOLDS = ("plain", "late", "null", "both", "joint", "unread")
@@ -57,24 +57,6 @@ REDUCED = ("late", "null", "both", "joint")
 STATEMENT = ("WHAT THE CODE DOES ON A CUT, in plain words (from ledger.rs Search::ties/probes and the binding's equals_one, before any number): the equal reading asks the root moves one after the other, in a fixed order (the moves that gain first, then the rest by their number), each \"at least the value v at the depth D the "
              "deepening finished?\" by a null window on the warm table with the late-move reduction and the null move on; a move is equal iff the answer is v or more. When the clock of the slot stops it, `probes` stops: the moves answered stay, the one being asked and every later one are dropped, so a move not asked is NOT in the set (the set is too small, "
              "not unsound); the only exception is the move the search plays, which the binding adds to the set whatever the reading did. A move is held by ONE kind of answer: the pruned null-window answer (a reduced bound the table stores as a full one); the played move by the deepening's own value (and by one unpruned asking when the verified choice is on).")
-
-
-def out_root(tag: str) -> Path:
-    from catspace.io import paths
-    p = Path(paths.experiment(*OUT, tag))
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-class Say:
-    def __init__(self, root: Path, stage: str):
-        self.root, self.stage = root, stage
-
-    def __call__(self, msg: str) -> None:
-        line = f"OBS cut {self.stage}: {msg}"
-        print(line, flush=True)
-        with open(self.root / "obs.txt", "a") as f:
-            f.write(line + "\n")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------ pure parts
@@ -231,9 +213,15 @@ def gather(tag: str, src: str) -> dict:
         positions.append({"id": i, "game": r["ord"], "band": r["band"], "part": LF.part_of(r["ord"]), "cut": bool(r["cut"]), "firm": firm, "room": LF.in_room(r), "n": len(r["tied"]), "dropped": len(drop),
                           "dropped_reduced": sum(1 for m in drop if hold_kind(rows[m], a["audit"]["value"]) not in ("plain", "none")), "first_state": next(x["kind"] for x in ms if x["first"]) if any(x["first"] for x in ms) else "unknown",
                           "reduced": sum(1 for x in ms if x["hold"] in REDUCED and not x["first"]), "seconds_ties": None})
+        ex = [x["exact"] for x in a["audit"]["rows"] if x["exact"] is not None]
+        best_ex = max(ex) if ex else None
+        positions[-1]["ref_low"] = bool(best_ex is not None and best_ex > a["audit"]["value"])
         for x in ms:
             x["firm"] = firm
             x["room"] = LF.in_room(r)
+            e = rows.get(x["move"], {}).get("exact")
+            x["under_best"] = bool(e is not None and best_ex is not None and e < best_ex)
+            x["under_v"] = bool(e is not None and e < a["audit"]["value"])
             moves.append(x)
     return {"moves": moves, "positions": positions, "margin": margin}
 
@@ -260,6 +248,8 @@ def count_block(say, name: str, moves: list, positions: list, label_key: str) ->
     lose = _arr(lab, label_key, lambda x: x == "lose")
     keep = ~lose
     say(f"[{name}] labelled equal moves {len(lab)}: losing {int(lose.sum())}, keeping {int(keep.sum())}; the first move loses {cell(lose.astype(float), g, _arr(lab, 'first'))} pct of {int(_arr(lab, 'first').sum())}; the other equal moves lose {cell(lose.astype(float), g, ~_arr(lab, 'first'))} pct")
+    say(f"[{name}] THE REFERENCE (a reading of the value the set is held against, not of the cut): positions where some root move's exact value at D is above the value v of the position (the deepening's value is under the exact best) {cell(np.array([float(p['ref_low']) for p in positions]), pg, np.ones(pn, bool))} pct; "
+        f"of the LOSING equal moves, exact value under the exact best of the position {cell(_arr(lab, 'under_best', lambda x: float(x)), g, lose)} pct, under v itself {cell(_arr(lab, 'under_v', lambda x: float(x)), g, lose)} pct; of the KEEPING equal moves, under the exact best {cell(_arr(lab, 'under_best', lambda x: float(x)), g, keep)} pct, under v {cell(_arr(lab, 'under_v', lambda x: float(x)), g, keep)} pct")
     kinds = ("first-asked", "first-unshown", "other-plain", "other-late", "other-null", "other-both", "other-joint", "other-unread")
     for k in kinds:
         inn = _arr(lab, "kind", lambda x, k=k: x == k)

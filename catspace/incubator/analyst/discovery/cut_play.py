@@ -22,7 +22,7 @@ import os
 import time
 from pathlib import Path
 
-from catspace.incubator.analyst.discovery import cut_count as CC
+from catspace.incubator.analyst.discovery import cut_out as CO
 from catspace.incubator.analyst.discovery import stack_play as SPL
 
 PLAYERS = {"stack": {"record": "human", "pick": True, "verify": True, "reask": False},
@@ -69,7 +69,7 @@ def depth_and_time(games: list, who: int) -> dict:
 
 
 def cmd_match(name: str, a: str, b: str, set_name: str, pairs: int, seconds: float, workers: int, tag: str, say, stop: bool = True) -> list:
-    root = CC.out_root(tag)
+    root = CO.out_root(tag)
     (root / "matches").mkdir(parents=True, exist_ok=True)
     say(f"OBS cut {name} {a} v {b} [set {set_name}]: the early stop is asked with min_pairs={SPL.MIN_PAIRS} (99 pct band on whole opening pairs, clear of a half or within 0.03 of it); sides: {a} {PLAYERS[a]}, {b} {PLAYERS[b]}; the judge the human-result record on both sides, the pick of 78.82 on both sides; ply cap {TM.PLY_CAP}, ledger share {TM.LEDGER_SHARE}")
     load0, busy = TM.wait_quiet(say)
@@ -101,7 +101,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--workers", type=int, default=9)
     ap.add_argument("--tag", default="full")
     a = ap.parse_args(argv)
-    root = CC.out_root(a.tag)
+    root = CO.out_root(a.tag)
     obs = root / "obs.txt"
 
     def say(line: str) -> None:

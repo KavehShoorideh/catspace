@@ -11,7 +11,7 @@ from catspace.incubator.analyst.discovery import cut_mend as CM
 from catspace.incubator.analyst.discovery import cut_play as CP
 
 DIR = Path(CC.__file__).parent
-LAYER = ("cut_count.py", "cut_mend.py", "cut_play.py")
+LAYER = ("cut_count.py", "cut_mend.py", "cut_play.py", "cut_out.py")
 BANNED = ("fen", "san", "uci", "check", "mate", "promotion", "king", "queen", "rook", "bishop", "knight", "pawn", "castle", "castling", "chess")
 
 
@@ -36,7 +36,19 @@ def test_the_wall_no_module_of_this_plan_calls_the_oracle_and_no_play_path_loads
     for p in DIR.glob("*.py"):
         if p.name.startswith("cut_") or p.name in ("ladder_print.py",):
             continue
-        assert not re.search(r"^\s*(from|import) .*\bcut_(count|mend|play)\b", p.read_text(), flags=re.M), p.name
+        assert not re.search(r"^\s*(from|import) .*\bcut_(count|mend|play|out)\b", p.read_text(), flags=re.M), p.name
+    play = (DIR / "cut_play.py").read_text()
+    assert not re.search(r"^\s*(from|import) .*\b(leaf_\w+|cut_count|cut_mend|ladder_oracle|prior_equal|stack_room)\b", play, flags=re.M)
+
+
+def test_the_match_module_does_not_load_the_oracle_wrapper_even_through_what_it_imports():
+    import subprocess
+    import sys
+    code = ("import sys; import catspace.incubator.analyst.discovery.cut_play; "
+            "bad = [m for m in sys.modules if m.endswith('ladder_oracle') or m.endswith('leaf_ask') or m.endswith('cut_count') or m.endswith('cut_mend')]; "
+            "print('LOADED', bad); sys.exit(1 if bad else 0)")
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout + r.stderr
 
 
 # ---- part one: how a held move is held
@@ -126,6 +138,22 @@ def test_confirm_is_not_read_before_the_rule_is_written(tmp_path, monkeypatch):
     CM.cmd_rule("x", said.append)
     rule = json.loads((tmp_path / "rule.json").read_text())
     assert rule["price_max"] == CM.PRICE_MAX and "before CONFIRM" in said[0]
+
+
+def test_a_firmly_losing_move_that_left_the_mends_set_left_by_the_unpruned_answer_or_by_the_cut_and_the_order():
+    labels = {"k": "keep", "l1": "lose", "l2": "lose", "l3": "lose"}
+    aud = {"1_1": {"audit": {"value": 5, "rows": [{"name": "l1", "warm": 5, "plain": 0, "no_late": 0, "no_null": 5, "exact": 5}, {"name": "l2", "warm": 5, "plain": 5, "no_late": 5, "no_null": 5, "exact": 5},
+                                                  {"name": "l3", "warm": 5, "plain": 0, "no_late": 5, "no_null": 0, "exact": 5}]}}}
+    r = _pos(1, ["k", "l1", "l2", "l3"], ["k", "l3"], ["k", "l1", "l2", "l3"], "k", "k", labels)
+    r["id"] = "1_1"
+    assert CM.put_out_reasons([r], aud) == {"reasked": 1, "dropped": 1, "no_audit": 0}          # l1 left with an unpruned answer under v, l2 is held by the plain answer too
+    assert CM.put_out_reasons([r], aud, "n") == {"reasked": 0, "dropped": 0, "no_audit": 0}      # the noise arm kept all of them
+    assert CM.put_out_reasons([r], {}) == {"reasked": 0, "dropped": 0, "no_audit": 2}
+
+
+def test_the_clock_of_the_mend_measure_is_the_play_clock_unless_a_supplement_says_otherwise():
+    from catspace.incubator.analyst.discovery import tiebreak_measure as TM
+    assert CM.CLOCK == TM.SECONDS
 
 
 def test_the_three_arms_are_read_in_the_order_switch_off_on_off():

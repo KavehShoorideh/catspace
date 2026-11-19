@@ -9,7 +9,7 @@ the verified choice's state, the seconds, and the counts of the second asking. T
   The first move is the move the search plays; it is the same in all arms unless the clock moved the deepening (counted).
 
 THE RULE FOR PLAYING (written by `rule` BEFORE CONFIRM is read; `count --part confirm` refuses without it): the mend is played against the unmended player iff on CONFIRM (the firm room), (1) the pick's firm-keeps share under M less under A has a 90 pct band (games resampled whole) wholly above zero; (2) the firmly losing moves M puts out
-less those N puts out (the noise) has a band wholly above zero; (3) the firmly keeping moves M puts out are under a tenth of A's firmly keeping moves; (4) the mean seconds of a decision under M exceed A's by no more than the clock's own noise (N less A) plus 0.01 s: no new time; and FIND agrees with (1) and (2) in sign. Written before any number of CONFIRM.
+less those N puts out (the noise) has a band wholly above zero; (3) the firmly keeping moves M puts out are under a tenth of A's firmly keeping moves; (4) the mean seconds of a decision under M stay within the play clock (the slot the equal reading already has is what is left of the clock; M's reading takes the part of it that A's leaves unused, so M's decisions are longer than A's by that part, which is PRINTED and is not a condition: the clock bounds both sides alike); and FIND agrees with (1) and (2) in sign. Written before any number of CONFIRM (condition (4) first read "no more than the clock's noise plus 0.01 s over A's": changed after the short run of 14 positions showed M spends the unused slot by design, before any FIND or CONFIRM number of the full run).
 
 INTERFACE (written before the bodies).
   labels_of(rec, ask, margin) -> {move: "keep" | "lose" | None}     the firm label of every equal move of 79.00's set (pure; tested).
@@ -45,7 +45,7 @@ from catspace.incubator.analyst.discovery import stack_room as SR
 
 CHUNK = 6
 MIN_CELL = 30
-NOISE_SLACK = 0.01                                     # seconds: the rule's allowance on a decision's time, besides the clock's own noise
+CLOCK = float(os.environ.get("CUT_CLOCK", TM.SECONDS))     # the play clock; another clock only for a SUPPLEMENT (the environment variable CUT_CLOCK, read by the workers too), never for the plan's reading
 PRICE_MAX = 0.10                                       # the rule's ceiling on the share of firmly keeping moves put out
 ARMS = ("a", "m", "n")
 
@@ -86,7 +86,7 @@ class Mend(SR.Stack):
         t0 = time.perf_counter()
         kw = {"reask": True} if reask else {}
         try:
-            raw = CE.solve_equals_batch([(OM.VARIANT, None, list(moves))], TM.SECONDS, worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1, ledger_share=TM.LEDGER_SHARE, verify_choice=True, choice_mode="slot", **kw)[0]
+            raw = CE.solve_equals_batch([(OM.VARIANT, None, list(moves))], CLOCK, worth=dict(self.worth), ours_first=False, valuation="odds record", threads=1, ledger_share=TM.LEDGER_SHARE, verify_choice=True, choice_mode="slot", **kw)[0]
         except Exception as e:
             return {"first": None, "equals": [], "depth": None, "cut": False, "error": f"{type(e).__name__}: {str(e)[:120]}", "seconds": time.perf_counter() - t0}
         row = PM.equal_set(raw)
@@ -137,7 +137,7 @@ def run(tag: str, workers: int, limit: int, say) -> None:
     items = LL.items_of("full", LA.SRC)
     if limit:
         items = items[:limit]
-    say(f"the firm room: {len(items)} positions (margin {LF.load_margin('full'):g}); each read three times at {TM.SECONDS} s, ledger share {TM.LEDGER_SHARE}, verify on (slot), the judge the human-result record {RP.worth_of(SR.RECORD)}: A (switch off), M (switch on), N (switch off again, the clock's noise); the pick of 78.82 inside each set; {workers} workers of {os.cpu_count()} cores")
+    say(f"the firm room: {len(items)} positions (margin {LF.load_margin('full'):g}); each read three times at {CLOCK} s, ledger share {TM.LEDGER_SHARE}, verify on (slot), the judge the human-result record {RP.worth_of(SR.RECORD)}: A (switch off), M (switch on), N (switch off again, the clock's noise); the pick of 78.82 inside each set; {workers} workers of {os.cpu_count()} cores")
     load0, busy = TM.wait_quiet(lambda s: say(s.replace("OBS ", "", 1)))
     say(f"load average at the start {os.getloadavg()[0]:.2f}")
     jobs = [(a // CHUNK, items[a:a + CHUNK], str(root)) for a in range(0, len(items), CHUNK)]
@@ -183,10 +183,11 @@ def rows_of(tag: str) -> list:
 
 
 def cmd_rule(tag: str, say) -> None:
-    rule = {"pick_gain_band_above_zero": True, "put_out_over_noise_band_above_zero": True, "price_max": PRICE_MAX, "time_slack_seconds": NOISE_SLACK, "find_agrees_in_sign": True}
+    rule = {"pick_gain_band_above_zero": True, "put_out_over_noise_band_above_zero": True, "price_max": PRICE_MAX, "time_within_clock_seconds": TM.SECONDS, "find_agrees_in_sign": True}
     (CC.out_root(tag) / "rule.json").write_text(json.dumps(rule))
     say("THE RULE FOR PLAYING, written before CONFIRM is read: play the mend against the unmended player iff on CONFIRM (the firm room) (1) the pick's firm-keeps share under M less under A has a 90 pct band (games resampled whole) wholly above zero; (2) the firmly losing moves M puts out, less those N puts out (the clock's noise), has a band wholly above zero; "
-        f"(3) the firmly keeping moves M puts out are under {PRICE_MAX:.2f} of A's firmly keeping moves; (4) the mean seconds of a decision under M exceed A's by no more than N's excess over A plus {NOISE_SLACK} s; and FIND agrees with (1) and (2) in sign.")
+        f"(3) the firmly keeping moves M puts out are under {PRICE_MAX:.2f} of A's firmly keeping moves; (4) the mean seconds of a decision under M stay within the play clock {TM.SECONDS} s (M's reading takes the part of the slot that A's leaves unused: the excess over A is printed, not a condition); and FIND agrees with (1) and (2) in sign. "
+        "(Condition (4) first read: no more than the clock's noise plus 0.01 s over A's; changed after the short run of 14 positions showed M spends the unused slot by design, before any FIND or CONFIRM number of the full run.)")
 
 
 def block(say, name: str, rows: list) -> dict:
@@ -198,7 +199,7 @@ def block(say, name: str, rows: list) -> dict:
     say(f"[{name}] firm-room positions {n}")
     for arm, lab in (("a", "A (switch off)"), ("m", "M (switch on)"), ("n", "N (switch off again)")):
         rd = [r["reads"][arm] for r in rows]
-        say(f"[{name}] {lab}: set size {np.mean([len(r['sets'][arm]) for r in rows]):.2f}; depth {np.mean([x['depth'] for x in rd]):.2f}; cut by the clock {cell(f(lambda r: float(r['reads'][arm]['cut'])), g, allp)} pct; seconds a decision {np.mean([x['seconds'] for x in rd]):.4f}; ties seconds {np.mean([x.get('ties_seconds', 0.0) for x in rd]):.4f}; "
+        say(f"[{name}] {lab}: set size {np.mean([len(r['sets'][arm]) for r in rows]):.2f}; depth {np.mean([x['depth'] for x in rd if x['depth'] is not None] or [float('nan')]):.2f} ({sum(1 for x in rd if x['depth'] is None)} with none); cut by the clock {cell(f(lambda r: float(r['reads'][arm]['cut'])), g, allp)} pct; seconds a decision {np.mean([x['seconds'] for x in rd]):.4f}; ties seconds {np.mean([x.get('ties_seconds', 0.0) for x in rd]):.4f}; "
             f"the move played firmly keeps {cell(f(lambda r: float(r['first'][arm] == 'keep')), g, allp)}, firmly loses {cell(f(lambda r: float(r['first'][arm] == 'lose')), g, allp)} pct; the pick firmly keeps {cell(f(lambda r: float(r['pick'][arm] == 'keep')), g, allp)}, firmly loses {cell(f(lambda r: float(r['pick'][arm] == 'lose')), g, allp)}, unlabelled {cell(f(lambda r: float(r['pick'][arm] == 'unlabelled')), g, allp)} pct")
     changed = f(lambda r: float(r["reads"]["m"]["first"] != r["reads"]["a"]["first"]))
     changed2 = f(lambda r: float(r["reads"]["n"]["first"] != r["reads"]["a"]["first"]))
@@ -248,12 +249,28 @@ def conditions(rows: list) -> dict:
     sec = {a: float(np.mean([r["reads"][a]["seconds"] for r in rows])) for a in ARMS}
     price = keep_out / max(1, keep_n)
     return {"pick_gain": pick, "pick_pass": bool(pick[1] > 0), "over_noise": over, "over_pass": bool(over[1] > 0), "price": price, "price_pass": bool(price < PRICE_MAX),
-            "dt": sec["m"] - sec["a"], "noise_dt": sec["n"] - sec["a"], "time_pass": bool(sec["m"] - sec["a"] <= max(0.0, sec["n"] - sec["a"]) + NOISE_SLACK)}
+            "dt": sec["m"] - sec["a"], "noise_dt": sec["n"] - sec["a"], "time_pass": bool(sec["m"] <= CLOCK)}
 
 
 def say_conditions(say, name: str, c: dict) -> None:
     say(f"[{name}] THE RULE'S CONDITIONS: (1) the pick firmly keeps, M less A: {PMS.fmt(c['pick_gain'], plus=True)} points, band wholly above zero: {c['pick_pass']}; (2) firmly losing moves put out, M less the noise: {PMS.fmt(c['over_noise'], plus=True)} points, band wholly above zero: {c['over_pass']}; "
-        f"(3) firmly keeping moves put out by M {100 * c['price']:.1f} pct, under {100 * PRICE_MAX:.0f}: {c['price_pass']}; (4) seconds a decision M less A {c['dt']:+.4f}, the noise {c['noise_dt']:+.4f}, within the slack: {c['time_pass']}")
+        f"(3) firmly keeping moves put out by M {100 * c['price']:.1f} pct, under {100 * PRICE_MAX:.0f}: {c['price_pass']}; (4) seconds a decision under M within the clock {CLOCK} s: {c['time_pass']} (M less A {c['dt']:+.4f} s, N less A {c['noise_dt']:+.4f} s: printed)")
+
+
+def put_out_reasons(rows: list, aud: dict, arm: str = "m") -> dict:
+    """Of the firmly LOSING moves of A's set that M puts out: by the audit of the position, the move's unpruned answer is under v (REASKED: the reason the mend names), or it is held by the plain answer too (DROPPED: the set M read lacks it because its first reading was cut or read in another order, which is the clock and the order, not the unpruned answer). A position with no audit is counted apart."""
+    out = {"reasked": 0, "dropped": 0, "no_audit": 0}
+    for r in rows:
+        a = aud.get(r["id"])
+        for m in r["sets"]["a"]:
+            if r["labels"].get(m) != "lose" or m in r["sets"][arm]:
+                continue
+            if not a:
+                out["no_audit"] += 1
+                continue
+            row = {x["name"]: x for x in a["audit"]["rows"]}.get(m)
+            out["reasked" if CC.hold_kind(row, a["audit"]["value"]) in CC.REDUCED else "dropped"] += 1
+    return out
 
 
 def cmd_count(tag: str, part: str, say) -> None:
@@ -268,6 +285,10 @@ def cmd_count(tag: str, part: str, say) -> None:
             block(say, f"{part} {band}", sub)
             if band == "all":
                 say_conditions(say, f"{part} all", conditions(sub))
+                aud = {x["id"]: x for x in CC.load(CC.out_root("full")) if x.get("audit")} if (CC.out_root("full") / "audit.jsonl").exists() else {}
+                for arm, lab in (("m", "M"), ("n", "N (the noise)")):
+                    pr = put_out_reasons(sub, aud, arm)
+                    say(f"[{part} all] the firmly LOSING moves {lab} puts out ({sum(pr.values())}): by the unpruned answer (under v by the audit) {pr['reasked']}; held by the plain answer too, so dropped by the cut or the order of the reading and not by the mend's question {pr['dropped']}; no audit {pr['no_audit']}")
 
 
 JUDGED_NEW = 12

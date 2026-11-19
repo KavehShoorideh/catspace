@@ -1007,7 +1007,12 @@ def cut02_cases(tag: str = "full") -> Path:
             r = c["rows"][j]
             cp = lambda x: "forced" if x is None else f"{x:+d}"
             ans = (f"warm {r['warm']}, no-late {r['no_late']}, no-null {r['no_null']}, plain {r['plain']}, exact {r['exact']}" if r else "no audit")
-            gone = "PUT OUT by M" if rd and m not in inm else ("kept by M" if rd else "")
+            reduced = c["hold"][j] in ("late", "null", "both", "joint")
+            if rd and m not in inm and m not in (set(rd["a"]["equals"]) | {rd["a"]["first"]}):
+                gone_note = "in neither A's nor M's set at this reading (79.00's run held it: the clock)"
+            else:
+                gone_note = None
+            gone = (gone_note if gone_note else ("NOT IN M's set; the audit's unpruned answer is under v, so the unpruned question is the reason the count names (M's own count of moves it put out is in the header: when it is 0 the move was absent from M's first reading instead)" if reduced else "NOT IN M's set although the audit's plain answer holds it too (the cut or the order of M's first reading, not the unpruned question)") if rd and m not in inm else ("kept by M" if rd else ""))
             tag_m = ("FIRST " if m == c["first"] else "") + ("PICK(stored) " if m == c["pick"] else "")
             lines.append(f"  {nm(m)} {tag_m}| {c['vec'][j] or 'neither'} (class {cname[c['cm'][j]]} [{cname[c['cls2'][j]]}], number {cp(c['cp'][j])} [{cp(c['cp2'][j])}]) | held by: {c['hold'][j]} ({ans}) | {gone}"
                          + (f" | line ({ln['settled']} plies, value {ln['value']}" + (", cut" if ln["cut"] else "") + f"): {san_line(b, ln['names'], 14)}" if ln else ""))
