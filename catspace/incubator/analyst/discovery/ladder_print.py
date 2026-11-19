@@ -668,6 +668,37 @@ def choice_cases(tag: str = "full", exp: str = "reasoner_choice_78_92") -> Path:
     return root / "cases.txt"
 
 
+def _goal_words(g: dict, who: str) -> str:
+    if not g["goal"]:
+        return f"{who}: no goal ({g['threats']} confirmed threat(s); {g['unread']} cut, {g['deferred']} needing a quiet first move)" + ("; a forced end of the game is found" if g["forced"] else "")
+    return (f"{who}: a goal ({g['kind']}): two threats on {' and '.join(g['shape'])}, stake {g['stake']} in the record's integers, {g['n_pairs']} such pair(s)" + ("; a forced end of the game is found" if g["forced"] else ""))
+
+
+def future_cases(tag: str = "full") -> Path:
+    """PLAN 78.94 `--future94 TAG`: the thirty positions of future_78_94/<tag>/cases94.json, for the reader's judgement only."""
+    root = Path(paths.experiment("future_78_94", tag))
+    data = json.loads((root / "cases94.json").read_text())
+    lines = [data["rule"], ""]
+    cls_word = {1: "winning", 0: "neither", -1: "losing"}
+    for k, c in enumerate(data["cases"], 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        lines += [f"=== POSITION {k}: {c['id']}  [{c['why']}]  {c['band']} band, {c['units']} units, ply {c['ply']}  ({'white' if me else 'black'} to move)", str(b), "",
+                  f"the oracle (depth 16): the side to move is {cls_word[c['cls']]}" + (f" (score {c['cp']})" if c["cp"] is not None else f" (forced end in {c['forced_in']})") + f"; its best line: {san_line(b, c['pv'])}",
+                  f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}",
+                  "our reading: " + _goal_words(c["mover_g"], "the side to move") + " | " + _goal_words(c["other_g"], "the other side"),
+                  f"our reading of the oracle's line (frame): {c['frame_type']}" + (" -- " + "; ".join(f"after {j} plies {v['threats']} threat(s), goal {v['goal']}, units {v['n_first']}/{v['n_second']}" for j, v in sorted(c["frame"].items(), key=lambda t: int(t[0]))) if c["frame"] else "")
+                  + (f"; our concrete list {'holds' if c['seen']['any'] else 'does not hold'} the oracle's first move" if c["seen"] else ""),
+                  "the judge's chances (the side to move, the other side): " + "; ".join(f"{n} {v[0]:.3f}, {v[1]:.3f}" for n, v in c["chances"].items()),
+                  f"what happened (the side to move, the other): a goal within 8 plies {c['later']['G8']}, a winning point within 8 {c['later']['W8']}, either within 16 {c['later']['GW16']} (-1 where the game ended first); the game's result for the side to move: {['won', 'drawn', 'lost'][c['result_mover']]}",
+                  f"the next moves in the game: {san_line(b, c['next_moves'])}", ""]
+    (root / "cases.txt").write_text(chr(10).join(lines))
+    print(f"OBS ladder print: {len(data['cases'])} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -853,6 +884,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--own90", default=None, help="PLAN 78.90: thirty decisions where the fit with the other side's cells picks otherwise than the old weights (symbols_78_90/<tag>)")
     ap.add_argument("--order91", default=None, help="PLAN 78.91: thirty positions where the reasons' order and the static order differ on the reference move (order_78_91/<tag>)")
     ap.add_argument("--choice92", default=None, help="PLAN 78.92: twenty positions where the played move is under the reference's best (reasoner_choice_78_92/<tag>)")
+    ap.add_argument("--future94", default=None, help="PLAN 78.94: thirty positions with the oracle's class and frame, our goals and the judge's chances (future_78_94/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
     ap.add_argument("--verdict87", action="store_true", help="PLAN 78.87: the ten lines whose verdict word changed (verdict_78_87/picked.json)")
@@ -905,6 +937,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.choice92:
         choice_cases(a.choice92)
+        return 0
+    if a.future94:
+        future_cases(a.future94)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)

@@ -34,6 +34,25 @@ def board_of(moves: list):
     return b
 
 
+FUTURE_DEPTH = 16                 # PLAN 78.94 (SYSTEM_SPEC 9 "the oracle labels positions and frames in sleep, for the prior"): the fixed setting of the labelling run, search depth in plies, one line, one thread
+
+
+def analyse(moves: list, depth: int = FUTURE_DEPTH) -> dict:
+    """PLAN 78.94: the oracle's verdict on one position, for the labelling stage (a sleep stage) only. Takes the moves played from the start of the game; returns {"cp": the score for the side to move on the oracle's
+    own scale (None when it is a forced end), "forced_in": moves to the forced end, positive when the side to move gives it (None otherwise), "pv": the oracle's best line as move words (at most PV_PLIES)}. The class
+    (winning, losing, neither) is made by the caller from these numbers and the number itself is only kept beside it for the record; no fit reads it. Called by future_labels.py."""
+    import chess.engine
+    b = board_of(moves)
+    if b.is_game_over():
+        return {"cp": None, "forced_in": None, "pv": []}
+    info = _engine().analyse(b, chess.engine.Limit(depth=depth))
+    sc = info["score"].pov(b.turn)
+    return {"cp": sc.score(), "forced_in": sc.mate(), "pv": [m.uci() for m in (info.get("pv") or [])[:PV_PLIES]]}
+
+
+PV_PLIES = 6
+
+
 def label(moves: list, depth: int = ORACLE_DEPTH, lines: int = ORACLE_LINES, margin: int = SEVERAL_MARGIN) -> dict:
     import chess.engine
     b = board_of(moves)
