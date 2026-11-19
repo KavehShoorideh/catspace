@@ -34,7 +34,7 @@ def test_the_wall_no_module_of_this_plan_calls_the_oracle_and_no_play_path_loads
         assert not re.search(r"\bLO\.(analyse|analyse_after|label)\b", text), f
         assert "ladder_oracle" not in text, f
     for p in DIR.glob("*.py"):
-        if p.name.startswith("cut_") or p.name in ("ladder_print.py",):
+        if p.name.startswith(("cut_", "best_")) or p.name in ("ladder_print.py",):          # (plan 79.03: its measure modules read the cut_ ones; its match module is held to the stricter rule in test_plan79_03_best.py)
             continue
         assert not re.search(r"^\s*(from|import) .*\bcut_(count|mend|play|out)\b", p.read_text(), flags=re.M), p.name
     play = (DIR / "cut_play.py").read_text()
