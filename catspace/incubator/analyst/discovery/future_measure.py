@@ -151,6 +151,28 @@ def cmd_counts(root: Path, say) -> None:
         tt, bb = max(1, sum(tallies.values())), max(1, sum(base.values()))
         say(f"WHAT FOLLOWED a goal of kind {kind or 'any'} within six plies (units won less lost by count): won {tallies['won']} ({100 * tallies['won'] / tt:.1f} pct), nothing {tallies['nothing']} ({100 * tallies['nothing'] / tt:.1f} pct), lost {tallies['lost']} ({100 * tallies['lost'] / tt:.1f} pct) of {tt}; "
             f"the same for a side with no goal: won {100 * base['won'] / bb:.1f} pct, nothing {100 * base['nothing'] / bb:.1f} pct, lost {100 * base['lost'] / bb:.1f} pct of {bb}")
+    real = Counter()
+    for _r, q in pos:
+        for key, sgn in (("mover_g", 1), ("other_g", -1)):
+            if q[key]["goal"]:
+                real[sgn * q["cls"]] += 1
+    allside = Counter()
+    for _r, q in pos:
+        allside[q["cls"]] += 1
+        allside[-q["cls"]] += 1
+    tot_g, tot_a = max(1, sum(real.values())), sum(allside.values())
+    say(f"IS THE GOAL REAL (the oracle's class of the side that holds the goal, at every labelled position with one): winning {real[1]} ({100 * real[1] / tot_g:.1f} pct), neither {real[0]} ({100 * real[0] / tot_g:.1f} pct), losing {real[-1]} ({100 * real[-1] / tot_g:.1f} pct) of {tot_g}; "
+        f"the same over all positions and both sides: winning {100 * allside[1] / tot_a:.1f} pct, neither {100 * allside[0] / tot_a:.1f} pct, losing {100 * allside[-1] / tot_a:.1f} pct")
+    paid: dict = {}
+    for r in recs:
+        ps = r["positions"]
+        for i, q in enumerate(ps):
+            for key, side_is_mover in (("mover_g", True), ("other_g", False)):
+                if q[key]["goal"]:
+                    f = follow(ps, i, side_is_mover)
+                    if f is not None:
+                        paid.setdefault((tuple(q[key]["shape"]), q[key]["kind"]), Counter())[f] += 1
+    say("WHAT FOLLOWED by kind of goal (the chance each kind pays, within six plies): " + "; ".join(f"{'+'.join(s)} {k}: won {c['won']}, nothing {c['nothing']}, lost {c['lost']} of {sum(c.values())}" for (s, k), c in sorted(paid.items(), key=lambda t: -sum(t[1].values()))[:8]))
     # the result of the game beyond the count of units
     rows = FJ.rows_from_labels(recs)
     from sklearn.linear_model import LogisticRegression
@@ -414,6 +436,9 @@ def FI_word(pair, places: list) -> "str | None":
     return FI.word_of(pair, places)
 
 
+LIMIT = 0                                                    # a dry run: the human rows and the explicit run's sample are cut to about this many (0: all)
+
+
 def human_rows() -> list:
     out = []
     for tag, d, t in (("A", "symbols_78_80", "full"), ("B", "symbols_78_89", "full")):
@@ -421,6 +446,8 @@ def human_rows() -> list:
             if len(r["tied"]) >= 2 and r["played"] in r["tied"]:
                 r = dict(r, sample=tag, id=f"{tag}{r['id']}")
                 out.append(r)
+    if LIMIT:
+        out = out[::max(1, len(out) // LIMIT)]
     return out
 
 
@@ -577,7 +604,7 @@ def cmd_explicit(root: Path, say) -> None:
     import multiprocessing
     recs = load_recs(root)
     games = games_by_ordinal()
-    sample = quiet_sample(recs, PER_BAND)
+    sample = quiet_sample(recs, LIMIT or PER_BAND)
     jobs = []
     for r, q in sample:
         for side in ("mover", "other"):
@@ -694,7 +721,10 @@ def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("cmd", choices=["counts", "fit", "score", "explicit", "human", "cases"])
     ap.add_argument("--tag", default="short")
+    ap.add_argument("--limit", type=int, default=0, help="a dry run on a small part of the human rows and of the explicit run's sample")
     a = ap.parse_args(argv)
+    global LIMIT
+    LIMIT = a.limit
     root = FL.out_root(a.tag)
     t0 = time.perf_counter()
     say = FL.Say(root, a.cmd)

@@ -255,7 +255,7 @@ class FutureJudge:
     def fit(self, rows: Rows, X: np.ndarray, targets: "list | None" = None, say=None, min_pos: int = 25) -> None:
         if (rows["part"] != 0).any():
             raise ValueError("the future judge is fitted on FIND games only")
-        names = targets or [f"{w}{k}" for k in KS for w in ("G", "W", "L", "GW")]
+        names = targets or [f"{w}{k}" for k in KS for w in ("G", "W", "GW")]           # L (a losing point of the side) is the same question as W of the other side: not fitted twice
         for name in names:
             now = {"G": "now_G", "W": "now_W", "L": "now_L", "GW": None}[name.rstrip("0123456789")]
             use = rows[name] >= 0
