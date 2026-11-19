@@ -19,7 +19,8 @@ INTERFACE (written before the bodies).
   class_of(analysis) -> -1 | 0 | 1   the class from ladder_oracle.analyse's answer.
   Labeller()                         per process: the reader, the lines, the record; `.label(game) -> record` {"ord", "part", "y", "n_moves", "positions": [ {...} ]} (every field a number, a word or a list of them).
   run(tag, per_part, workers, say)   the Pool over all cores, one file a game under <tag>/labels/ (a game with a file is not redone), then labels.jsonl.
-  Called by: future_measure.py (counts, the judge's data); the command line (`label`).
+  stable_points(rec) -> [flags]      PLAN 78.95: per position of a label record whether its winning (or losing) class holds at the next sampled position of the same side too; from the stored classes only, no oracle call.
+  Called by: future_measure.py (counts, the judge's data); the command line (`label`); future_frames.py (the stable points).
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.future_labels label --tag short --per-part 12 | --tag full --per-part N [--workers K]
 """
@@ -108,6 +109,19 @@ def class_of(a: dict) -> int:
     if a["cp"] is None:
         return 0
     return 1 if a["cp"] >= WIN_CP else (-1 if a["cp"] <= -WIN_CP else 0)
+
+
+def stable_points(rec: dict) -> list:
+    """PLAN 78.95 PART ONE (c) (SYSTEM_SPEC 9 "the oracle labels positions and frames in sleep", with the class's edge made fair). A label's class is the oracle's score cut at WIN_CP, and a score near the edge flips a ply later (78.94 counted 3411 of 3532
+    frame positions flipping), so a WINNING POINT of the side to move is STABLE when the class is still winning at the next sampled position of the same side (two plies on, the same side to move); a LOSING POINT likewise. Read from the stored classes only:
+    this function never calls the oracle and reads no score. Returns, per position of the record in order, {"win": bool, "lose": bool, "stable_win": bool, "stable_lose": bool}; the last position of a game (or one whose next sampled position is not two plies on) is never stable."""
+    pos = rec["positions"]
+    out = []
+    for i, q in enumerate(pos):
+        nxt = pos[i + 1] if i + 1 < len(pos) and pos[i + 1]["ply"] == q["ply"] + STRIDE else None
+        win, lose = q["cls"] == 1, q["cls"] == -1
+        out.append({"win": win, "lose": lose, "stable_win": bool(win and nxt is not None and nxt["cls"] == 1), "stable_lose": bool(lose and nxt is not None and nxt["cls"] == -1)})
+    return out
 
 
 def word_of(pair, places: list) -> "str | None":
