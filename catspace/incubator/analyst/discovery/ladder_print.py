@@ -699,6 +699,72 @@ def future_cases(tag: str = "full") -> Path:
     return root / "cases.txt"
 
 
+def _kind_name(k: str) -> str:
+    try:
+        return chess.piece_name(chess.PIECE_SYMBOLS.index(k.lower()))
+    except ValueError:
+        return str(k)
+
+
+def _threat_words(th: dict, places: list) -> str:
+    return f"{_kind_name(th['kind'])} on {places[th['place']]} (the line reading's net {th['net']})"
+
+
+def future95_cases(tag: str = "full") -> Path:
+    """PLAN 78.95 `--future95 TAG`: the thirty positions of future_78_95/<tag>/cases95.json, three groups of ten, for the reader's judgement only: goals of 78.94 that fall when every legal reply is tried (the reply that meets both threats), frames of one threat with the chance
+    that kind pays as played, picks of the weighted chooser that differ from both the search's first move and the pattern pick."""
+    root = Path(paths.experiment("future_78_95", tag))
+    data = json.loads((root / "cases95.json").read_text())
+    lines = [data["rule"], ""]
+    for k, c in enumerate(data["cases"], 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+        pl = c["places"]
+        head = f"=== POSITION {k}: {c['id']}  [{c['group']}]  {c['units']} units, ply {len(c['moves'])}  ({'white' if me else 'black'} to move)"
+        if c["group"] == "a goal that falls":
+            owner_board = b.copy()
+            if c["side"] == "mover":
+                owner_board.push(chess.Move.null())                       # the owner of the threatened units moves after the side to move's pass
+            kt = c["kept"]
+            lines += [head + f"  [{c['part']} game]", str(b), "",
+                      f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}",
+                      f"the goal of {'the side to move' if c['side'] == 'mover' else 'the other side'} by the kept replies: two threats ({kt['kind']}): " + " and ".join(_threat_words(t, pl) for t in kt["threats"]) + f"; stake {kt['stake']}",
+                      f"legal replies of the owner tried: {c['replies']}"]
+            for fl in c["fallen"]:
+                com = fl["common"]
+                words = []
+                for m in com[:6]:
+                    try:
+                        words.append(owner_board.san(chess.Move.from_uci(m)))
+                    except Exception:
+                        words.append(m + "?")
+                lines.append("  a pair that falls: " + " and ".join(_threat_words(t, pl) for t in fl["threats"]) + f"; {fl['n_common']} replies meet both after which the taking is no longer confirmed, for instance {', '.join(words)}")
+            lines += [f"the oracle (depth 16, side to move class {c['cls']}): its best line {san_line(b, c['pv'])}", f"the next moves in the game: {san_line(b, c['next_moves'])}", ""]
+        elif c["group"] == "a frame of one threat":
+            f = c["frame"]
+            ch = c["chance_band"] or {}
+            lines += [head, str(b), "",
+                      f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}",
+                      f"the oracle: the side to move is winning; its best line: {san_line(b, c['pv'])}",
+                      f"our reading of that line: {f['kind']} (one threat); steps read " + "; ".join(f"after {j} plies {s['threats']} threat(s), units of the victim {s['n_v']}" for j, s in sorted(f["steps"].items(), key=lambda t: int(t[0]))) + f"; the material of the line in the record's worths {f['net']}",
+                      f"the three questions: the search at the play clock {'plays' if f['q1']['plays'] else ('holds equal' if f['q1']['equal'] else 'does not play')} the oracle's first move; the line reading of it says {f['q2']['verdict']}; the threat list {'names' if f['q3']['any'] else 'does not name'} it",
+                      f"the chance this kind pays as played ({c['band']} band, FIND): " + (f"the first move of the line is played in {100 * ch['first']:.1f} pct of {ch['n']} points, the winning side's class holds at the next position in {100 * ch['pay_first']:.1f} pct when it was played and {100 * ch['pay_not']:.1f} pct when not" if ch and ch.get("pay_first") is not None and ch.get("pay_not") is not None else "too few points"),
+                      f"what happened here: the class {'held' if c['stable'] else 'did not hold'} at the next position; the next moves in the game: {san_line(b, c['next_moves'])}", ""]
+        else:
+            nm = lambda m: b.san(chess.Move.from_uci(m))
+            p = c["picks"]
+            lines += [head, str(b), "",
+                      f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}",
+                      f"held equal ({len(c['tied'])}), the search's first move first: {', '.join(nm(m) for m in c['tied'])}",
+                      f"picks: the weighted chooser {nm(p['chooser'])}; the search's first move {nm(p['first'])}; the pattern pick {nm(p['pattern'])}; the judge of 78.94 {nm(p['judge94'])}; the joined pick {nm(p['joined'])}; the human played {nm(p['played'])}",
+                      f"what the chooser reads (window {c['setting']} plies; weight x (chance for the side that moves less the chance for the other side), by kind of frame): " + " | ".join(f"{nm(m)}: " + ", ".join(f"{kd} {v:+.1f}" for kd, v in sorted(pk.items())) for m, pk in c["per_kind"].items()), ""]
+    (root / "cases.txt").write_text(chr(10).join(lines))
+    print(f"OBS ladder print: {len(data['cases'])} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -884,6 +950,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--own90", default=None, help="PLAN 78.90: thirty decisions where the fit with the other side's cells picks otherwise than the old weights (symbols_78_90/<tag>)")
     ap.add_argument("--order91", default=None, help="PLAN 78.91: thirty positions where the reasons' order and the static order differ on the reference move (order_78_91/<tag>)")
     ap.add_argument("--choice92", default=None, help="PLAN 78.92: twenty positions where the played move is under the reference's best (reasoner_choice_78_92/<tag>)")
+    ap.add_argument("--future95", default=None, help="PLAN 78.95: thirty positions: goals that fall, frames of one threat, picks of the weighted chooser (future_78_95/<tag>)")
     ap.add_argument("--future94", default=None, help="PLAN 78.94: thirty positions with the oracle's class and frame, our goals and the judge's chances (future_78_94/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
@@ -940,6 +1007,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.future94:
         future_cases(a.future94)
+        return 0
+    if a.future95:
+        future95_cases(a.future95)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)

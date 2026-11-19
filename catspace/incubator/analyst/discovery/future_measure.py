@@ -11,7 +11,21 @@ STAGES (each a command; the labels come first, made by future_labels.py `label`)
   human    (step three) among the moves the search holds equal in the human samples' CONFIRM positions: the move the judge picks against the move played, the search's first move and the pattern pick, paired bands.
   cases                 thirty positions for ladder_print --future94.
 
-  .venv/bin/python -m catspace.incubator.analyst.discovery.future_measure counts|fit|score|explicit|human|cases --tag short|full
+PLAN 78.95 (SYSTEM_SPEC 7 "the future imagination layer" and "the prior learns ... the chances of frame outcomes as played", 9 the oracle in sleep and the wall, 11 the judge against the board). STAGES ADDED, outputs under future_78_95/<tag>/ (the labels and the inputs of 78.94 are
+copied there first; no new oracle run: the frames read the oracle's STORED best lines):
+  fair      part one (a): the goals of 78.94 recounted with EVERY legal reply tried (future_goals.Complete), the counts twice (kept replies; every reply), how many fall.
+  (frames)  future_frames.py: for every labelled position at a winning or losing class, the frame of the winning side read from the oracle's stored line, its kind and stake, the three questions of part one (b), the stable flag of part one (c).
+  reasoner  part one (c) and (b): the stable points; the three questions (the search plays or holds equal the oracle's first move; given it, our line reading confirms the gain; our threat list names it), by band and by kind of frame.
+  chances   part two: by kind of frame and band, from FIND games, how often the winning side played the line's first move, how often the other side answered as the line does, how often the point stays winning; the weights of part three (stake x chance it pays).
+  fitk      part two: one head per kind of frame and window (FIND only; linear and boosted trees as in 78.94), the baselines (units, patterns) fitted beside.
+  scorek    part two: the heads on CONFIRM (AUC against the baselines, calibration, paired bands, games resampled).
+  human95   part three: the weighted chooser on human moves (setting chosen on FIND by agreement with the move played; CONFIRM read once), against the search's first move, the pattern pick, the judge of 78.94 and the plain joining of the two picks.
+  cases95   the thirty positions for ladder_print --future95.
+HOW THE CONDITIONS ARE READ (written before any result of 78.95 was looked at): a goal falls when the pair's complete reply sets share a reply; a winning point is stable when the class holds at the next sampled position of the same side; a head or a chooser "clears" a baseline in a band
+when the 90 pct band of the paired difference (games resampled) lies wholly above zero; with one run each these are DIRECTIONS, not verdicts. The chooser is played (part four) whatever the human-move test says, because the plan asks for both players against both opponents; it is read as AHEAD of an opponent when the
+lower end of its 90 pct band is above a half, LEVEL when the band holds a half, BEHIND when its upper end is below a half. The charged match is played only for a player that is ahead uncharged.
+
+  .venv/bin/python -m catspace.incubator.analyst.discovery.future_measure counts|fit|score|explicit|human|cases|fair|reasoner|chances|fitk|scorek|human95|cases95 --tag short|full
 Called by: the command line only; ladder_print.py reads cases94.json.
 """
 from __future__ import annotations
@@ -34,7 +48,10 @@ from catspace.incubator.analyst.discovery import ladder_measure as LM
 from catspace.incubator.analyst.discovery import symbols_measure as SM
 from catspace.io import paths
 
-BANDS = LM.BANDS                                              # phase by the count of units (the ladder's cut: few 0-8, mid 9-16, many 17 up)
+OUT95 = ("future_78_95",)
+KS_KIND = (4, 8)                                              # the windows of the kind heads (plies; 78.95)
+SRC94 = ("future_78_94", "full")                              # the labels, the inputs and the fitted judge of 78.94 (read, never rewritten)
+BANDS = LM.BANDS                                          # phase by the count of units (the ladder's cut: few 0-8, mid 9-16, many 17 up)
 FINE = ((0, 4), (5, 8), (9, 12), (13, 16), (17, 24), (25, 99))  # the finer bins of the coverage print
 DRAWS = 400
 SEED = 9494
@@ -95,25 +112,11 @@ def follow(pos: list, i: int, side_is_mover: bool, steps: int = 3) -> "str | Non
     return "won" if gain > 0 else ("lost" if gain < 0 else "nothing")
 
 
-def cmd_counts(root: Path, say) -> None:
-    recs = load_recs(root)
+def goal_tables(recs: list, say, label: str = "") -> None:
+    """The goal sections of the counts (how often, which kinds, what followed, whether real, the result beyond the count of units) for the label records given; `label` is put in front of every line (78.95 prints them twice: the kept replies and every reply)."""
     pos = [(r, q) for r in recs for q in r["positions"]]
-    say(f"labels: {len(recs)} games (find {sum(r['part'] == 'find' for r in recs)}, confirm {sum(r['part'] == 'confirm' for r in recs)}), {len(pos)} sampled positions (every {FL.STRIDE}nd ply from {FL.MIN_PLY}); the oracle: depth {FL.FUTURE_DEPTH}, one line, one thread, default hash; "
-        f"class winning or losing at {FL.WIN_CP} on its own scale or a forced end, else neither")
-    wall = {k: sum(r["wall"][k] for r in recs) for k in ("read", "lines", "oracle", "frames")}
-    say(f"COST per position, one thread's seconds: threat reading {wall['read'] / len(pos):.3f}, concrete lines {wall['lines'] / len(pos):.3f}, oracle {wall['oracle'] / len(pos):.3f}, frames (the oracle's line read, only where one is made) {wall['frames'] / len(pos):.3f}")
-    # coverage and classes
-    for part in ("find", "confirm"):
-        sel = [(r, q) for r, q in pos if r["part"] == part]
-        u = np.array([q["units"] for _r, q in sel])
-        say(f"COVERAGE {part}: {len(sel)} positions in {len({r['ord'] for r, _q in sel})} games; by band of units: " + "; ".join(f"{n} ({lo}-{hi if hi < 99 else 'more'}) {int(((u >= lo) & (u <= hi)).sum())} ({100 * ((u >= lo) & (u <= hi)).mean():.1f} pct)" for n, lo, hi in BANDS)
-            + "; finer: " + "; ".join(f"{lo}-{hi if hi < 99 else 'more'}: {int(((u >= lo) & (u <= hi)).sum())}" for lo, hi in FINE))
-        for n, lo, hi in BANDS:
-            c = Counter(q["cls"] for _r, q in sel if lo <= q["units"] <= hi)
-            tot = max(1, sum(c.values()))
-            say(f"CLASS {part} {n}: winning {c[1]} ({100 * c[1] / tot:.1f} pct), losing {c[-1]} ({100 * c[-1] / tot:.1f} pct), neither {c[0]} ({100 * c[0] / tot:.1f} pct) for the side to move")
-    ends = Counter(r["y"] for r in recs)
-    say(f"RESULTS of the games for the first mover: win {ends[0]}, draw {ends[1]}, loss {ends[2]}")
+    say0 = say
+    say = (lambda m: say0(label + m)) if label else say0
     # goals by band and by ply
     for who, key in (("the side to move", "mover_g"), ("the other side", "other_g")):
         for n, lo, hi in BANDS:
@@ -202,6 +205,28 @@ def cmd_counts(root: Path, say) -> None:
     bs = np.array(bs)
     say(f"RESULT beyond the count of units (a logistic of the side winning the game on its units, the other's, the ply, and whether a goal of its own or of the other side holds; every labelled row, both parts, a measure not a fit): "
         f"log-odds per goal of its own {c_a:+.3f} (90 pct {np.percentile(bs[:, 0], 5):+.3f} to {np.percentile(bs[:, 0], 95):+.3f}), per goal of the other side {c_b:+.3f} (90 pct {np.percentile(bs[:, 1], 5):+.3f} to {np.percentile(bs[:, 1], 95):+.3f}); rows with a goal of the side {int(now_g.sum())} of {len(y)}")
+
+
+def cmd_counts(root: Path, say) -> None:
+    recs = load_recs(root)
+    pos = [(r, q) for r in recs for q in r["positions"]]
+    say(f"labels: {len(recs)} games (find {sum(r['part'] == 'find' for r in recs)}, confirm {sum(r['part'] == 'confirm' for r in recs)}), {len(pos)} sampled positions (every {FL.STRIDE}nd ply from {FL.MIN_PLY}); the oracle: depth {FL.FUTURE_DEPTH}, one line, one thread, default hash; "
+        f"class winning or losing at {FL.WIN_CP} on its own scale or a forced end, else neither")
+    wall = {k: sum(r["wall"][k] for r in recs) for k in ("read", "lines", "oracle", "frames")}
+    say(f"COST per position, one thread's seconds: threat reading {wall['read'] / len(pos):.3f}, concrete lines {wall['lines'] / len(pos):.3f}, oracle {wall['oracle'] / len(pos):.3f}, frames (the oracle's line read, only where one is made) {wall['frames'] / len(pos):.3f}")
+    # coverage and classes
+    for part in ("find", "confirm"):
+        sel = [(r, q) for r, q in pos if r["part"] == part]
+        u = np.array([q["units"] for _r, q in sel])
+        say(f"COVERAGE {part}: {len(sel)} positions in {len({r['ord'] for r, _q in sel})} games; by band of units: " + "; ".join(f"{n} ({lo}-{hi if hi < 99 else 'more'}) {int(((u >= lo) & (u <= hi)).sum())} ({100 * ((u >= lo) & (u <= hi)).mean():.1f} pct)" for n, lo, hi in BANDS)
+            + "; finer: " + "; ".join(f"{lo}-{hi if hi < 99 else 'more'}: {int(((u >= lo) & (u <= hi)).sum())}" for lo, hi in FINE))
+        for n, lo, hi in BANDS:
+            c = Counter(q["cls"] for _r, q in sel if lo <= q["units"] <= hi)
+            tot = max(1, sum(c.values()))
+            say(f"CLASS {part} {n}: winning {c[1]} ({100 * c[1] / tot:.1f} pct), losing {c[-1]} ({100 * c[-1] / tot:.1f} pct), neither {c[0]} ({100 * c[0] / tot:.1f} pct) for the side to move")
+    ends = Counter(r["y"] for r in recs)
+    say(f"RESULTS of the games for the first mover: win {ends[0]}, draw {ends[1]}, loss {ends[2]}")
+    goal_tables(recs, say)
     # frames
     fr = [(r, q) for r, q in pos if "frame" in q]
     say(f"FRAMES made (the oracle's best line read by our threat list and line reading, at the first and second move of the side and the third): {len(fr)} positions: where the class of the side to move changes two plies on {sum(q['frame_why'] == 'changed' for _r, q in fr)}, only because a goal holds {sum(q['frame_why'] == 'goal' for _r, q in fr)}")
@@ -276,9 +301,22 @@ def population(rows: FJ.Rows, name: str) -> np.ndarray:
     return use & (rows[f"now_{w}"] == 0)
 
 
-def cmd_fit(root: Path, say) -> None:
+def rows_for(root: Path, recs: list, kinds: bool) -> FJ.Rows:
+    """The label table; with `kinds` (78.95) also the kind-of-frame targets F<kind><k> over the windows KS_KIND, from the frames file of the folder."""
+    if not kinds:
+        return FJ.rows_from_labels(recs)
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    return FJ.rows_from_labels(recs, KS_KIND, FF.load(root), FF.KINDS)
+
+
+def kind_names() -> list:
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    return [f"F{kd}{k}" for kd in FF.KINDS for k in KS_KIND]
+
+
+def cmd_fit(root: Path, say, kinds: bool = False) -> None:
     recs = load_recs(root)
-    rows = FJ.rows_from_labels(recs)
+    rows = rows_for(root, recs, kinds)
     inp = build_inputs(root, recs, say)
     X, U, P = side_inputs(inp, rows)
     assert len(X) == len(rows)
@@ -290,19 +328,23 @@ def cmd_fit(root: Path, say) -> None:
     idx = {g: np.flatnonzero(rows["game"] == g) for g in gs}
     rb = [FJ.effective_rank(X[np.concatenate([idx[g] for g in rng.choice(gs, len(gs), replace=True)])]) for _ in range(20)]
     say(f"COLLAPSE TEST: effective rank of the encoder's standardised output on FIND {rank:.2f} of {X.shape[1]} columns (the games resampled, 20 draws: {np.percentile(rb, 5):.2f} to {np.percentile(rb, 95):.2f}); the pattern baseline's {FJ.effective_rank(P[find]):.2f} of {P.shape[1]}")
-    for k in FJ.KS:
-        for name in (f"G{k}", f"W{k}", f"L{k}", f"GW{k}"):
+    for name in (kind_names() if kinds else [f"{w}{k}" for k in FJ.KS for w in ("G", "W", "L", "GW")]):
+        if True:
             use = population(rows, name) & find
             say(f"TARGET {name}: rows on FIND {int(use.sum())}, positives {int(rows[name][use].sum())} ({100 * float(rows[name][use].mean()) if use.any() else 0:.2f} pct)")
     j = FJ.FutureJudge()
     t0 = time.perf_counter()
-    j.fit(rows.select(find), X[find], say=lambda m: say("FIT " + m))
+    j.fit(rows.select(find), X[find], targets=kind_names() if kinds else None, say=lambda m: say("FIT " + m))
     say(f"FIT done in {time.perf_counter() - t0:.0f} s; heads fitted: {sorted(n for n, i in j.info.items() if i['fitted'])}; not fitted (too few positives or negatives): {sorted(n for n, i in j.info.items() if not i['fitted'])}")
     base = {}
     for name in [n for n, i in j.info.items() if i["fitted"]]:
         use = population(rows, name) & find
         y, g, b = rows[name][use], rows["game"][use], band_index(rows["units"][use])
         base[name] = {"units": FJ.fit_linear(U[use], y, g), "patterns": FJ.fit_linear(P[use], y, g), "band_rate": [float(y[b == i].mean()) if (b == i).any() else float(y.mean()) for i in range(len(BANDS))]}
+    if kinds:
+        pickle.dump({"judge": j, "base": base}, open(root / "judge_kinds.pkl", "wb"))
+        say(f"saved {root / 'judge_kinds.pkl'}")
+        return
     vocab = FJ.target_vocabulary([r for r in recs if r["part"] == "find"])
     say(f"PAIRWISE: targets are descriptions of a goal in facts (the kinds of its two threatened units, larger worth first, and open or fork); {len(vocab)} occur in the FIND games: " + "; ".join("+".join(d[0]) + " " + d[1] for d in vocab[:8]))
     pairs = {}
@@ -317,12 +359,12 @@ def cmd_fit(root: Path, say) -> None:
     say(f"saved {root / 'judge.pkl'}")
 
 
-def cmd_score(root: Path, say) -> None:
+def cmd_score(root: Path, say, kinds: bool = False) -> None:
     recs = load_recs(root)
-    rows = FJ.rows_from_labels(recs)
+    rows = rows_for(root, recs, kinds)
     inp = build_inputs(root, recs, say)
     X, U, P = side_inputs(inp, rows)
-    saved = pickle.load(open(root / "judge.pkl", "rb"))
+    saved = pickle.load(open(root / ("judge_kinds.pkl" if kinds else "judge.pkl"), "rb"))
     j, base = saved["judge"], saved["base"]
     conf = rows["part"] == 1
     band = band_index(rows["units"])
@@ -366,6 +408,8 @@ def cmd_score(root: Path, say) -> None:
                 f"patterns {FJ.logloss(pb[m], ym) - FJ.logloss(pp[m], ym):+.4f}; paired AUC band, judge less units {res['units'][0]:+.3f} [{res['units'][1]:+.3f}, {res['units'][2]:+.3f}], judge less patterns {res['patterns'][0]:+.3f} [{res['patterns'][1]:+.3f}, {res['patterns'][2]:+.3f}]")
         table.append((name, FJ.auc(pj, y), FJ.auc(pu, y), FJ.auc(pp, y)))
     say("SUMMARY AUC on CONFIRM (judge / units / patterns): " + "; ".join(f"{n} {a:.3f}/{b:.3f}/{c:.3f}" for n, a, b, c in table))
+    if kinds:
+        return
     vocab = saved["vocab"]
     for k, p in sorted(j.pair.items()):
         pr = FJ.pair_rows(recs, rows, vocab, k, seed=SEED)
@@ -717,18 +761,400 @@ def cmd_cases(root: Path, say) -> None:
     say(f"CASES: {len(cases)} positions written to cases94.json ({Counter(c['why'] for c in cases)})")
 
 
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.95 PART ONE (a): THE GOALS RECOUNTED WITH EVERY LEGAL REPLY
+
+_FAIR = None
+
+
+def _init_fair() -> None:
+    global _FAIR
+    from catspace.incubator.analyst.discovery import future_goals as FG
+    from catspace.incubator.analyst.discovery import human_heads_data as HD
+    lab = FL.Labeller()
+    _FAIR = (lab, FG.Complete(HD.VARIANT, lab.reader, lab.lines, lab.record), FG)
+
+
+def _fair_job(job: dict) -> dict:
+    lab, ctx, FG = _FAIR
+    it = lab._items([job["moves"]], [job["ply"]])[0]
+    g = FG.goals_of([it], lab.lines, lab.record, complete=True, ctx=ctx, scope="all")[0]
+    out = {"ord": job["ord"], "ply": job["ply"]}
+    for side in ("mover", "other"):
+        d = g[side]
+        out[side] = {"summary": FL.summary(d), "kept_pairs": d.get("kept_pairs", 0), "fell": d.get("fell", 0), "new": d.get("new", 0), "replies": d.get("replies", 0), "fallen": d.get("fallen", []), "top": d["goals"][0] if d["goals"] else None, "kept_top": d.get("kept_top"),
+                     "kept": FL.summary(g["kept"][side])}
+    return out
+
+
+def with_complete(recs: list, fair: dict) -> list:
+    """The label records with the goals of the positions in `fair` replaced by the complete reading (the other positions hold no goal by the kept reading, so none by the complete one)."""
+    out = []
+    for r in recs:
+        qs = []
+        for q in r["positions"]:
+            f = fair.get((r["ord"], q["ply"]))
+            qs.append(dict(q, mover_g=f["mover"]["summary"], other_g=f["other"]["summary"]) if f else q)
+        out.append(dict(r, positions=qs))
+    return out
+
+
+def cmd_fair(root: Path, say) -> None:
+    import multiprocessing
+    recs = load_recs(root)
+    games = games_by_ordinal()
+    jobs = [{"ord": r["ord"], "ply": q["ply"], "moves": games[r["ord"]]["moves"][:q["ply"]]} for r in recs for q in r["positions"] if q["mover_g"]["goal"] or q["other_g"]["goal"]]
+    if LIMIT:
+        jobs = jobs[::max(1, len(jobs) // LIMIT)][:LIMIT]                         # a dry run: a few of the positions
+    f = root / ("fair_dry.json" if LIMIT else "fair.json")
+    if f.exists():
+        res = json.loads(f.read_text())
+    else:
+        t0 = time.perf_counter()
+        say(f"FAIR (a): {len(jobs)} positions where the kept-list test finds a goal for either side; every legal reply of the owner is read (scope all: every pair of confirmed threats on different units is tried); load average {os.getloadavg()[0]:.2f}")
+        with multiprocessing.get_context("spawn").Pool(max(1, (os.cpu_count() or 2) - 2), initializer=_init_fair) as pool:
+            res = pool.map(_fair_job, jobs, chunksize=1)
+        f.write_text(json.dumps(res))
+        say(f"FAIR (a): read in {time.perf_counter() - t0:.0f} s wall")
+    fair = {(x["ord"], x["ply"]): x for x in res}
+    part = {r["ord"]: r["part"] for r in recs}
+    for who in ("mover", "other"):
+        k0 = [x for x in res if x[who]["kept"]["goal"]]
+        k1 = [x for x in k0 if x[who]["summary"]["goal"]]
+        pairs0 = sum(x[who]["kept_pairs"] for x in res)
+        fell = sum(x[who]["fell"] for x in res)
+        new = sum(x[who]["new"] for x in res)
+        reps = [x[who]["replies"] for x in res if x[who]["replies"]]
+        say(f"FAIR (a) {'the side to move' if who == 'mover' else 'the other side'}: positions with a goal by the kept replies {len(k0)}; with a goal when every legal reply is tried {len(k1)}; so {len(k0) - len(k1)} fall ({100 * (len(k0) - len(k1)) / max(1, len(k0)):.1f} pct); "
+            f"pairs of threats: kept test {pairs0}, fallen {fell}, new ones the kept test missed {new}; legal replies read a position and side: mean {np.mean(reps) if reps else 0:.1f}; by part, goals kept / complete: find {sum(part[x['ord']] == 'find' for x in k0)} / {sum(part[x['ord']] == 'find' for x in k1)}, "
+            f"confirm {sum(part[x['ord']] == 'confirm' for x in k0)} / {sum(part[x['ord']] == 'confirm' for x in k1)}")
+        kinds0, kinds1 = Counter(x[who]["kept"]["kind"] for x in k0), Counter(x[who]["summary"]["kind"] for x in k1)
+        say(f"FAIR (a) {who} kinds: kept {dict(kinds0)}, complete {dict(kinds1)}")
+    both = [x for x in res if x["mover"]["kept"]["goal"] or x["other"]["kept"]["goal"]]
+    say(f"FAIR (a) in all: positions with a goal of either side by the kept replies {len(both)}, still one when every reply is tried {sum(x['mover']['summary']['goal'] or x['other']['summary']['goal'] for x in both)}; goals (a position and a side) kept {sum(x[w]['kept']['goal'] for x in res for w in ('mover', 'other'))}, "
+        f"complete {sum(x[w]['summary']['goal'] for x in res for w in ('mover', 'other'))}")
+    new_recs = with_complete(recs, fair)
+    say("FAIR (a) THE COUNTS TWICE. First, the kept replies (78.94's reading, as labelled); then every legal reply. Same positions, same labels, only the goal test differs.")
+    goal_tables(recs, say, "[kept replies] ")
+    goal_tables(new_recs, say, "[every reply] ")
+    (root / "labels_complete.jsonl").write_text("\n".join(json.dumps(r) for r in new_recs) + "\n")
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.95 PART ONE (b), (c) and PART TWO'S CHANCES AS PLAYED
+
+def rate(vals: np.ndarray, game: np.ndarray) -> str:
+    """A share with its 90 pct band, the games resampled whole; `vals` 0 or 1 per position."""
+    if len(vals) == 0:
+        return "n/a (0)"
+    v, lo, hi = boot(game, lambda ix: float(vals[ix].mean()), 200)
+    return f"{100 * v:.1f} [{100 * lo:.1f}, {100 * hi:.1f}]"
+
+
+def frame_table(root: Path):
+    """(label records, frames {(ordinal, ply): record}, games by ordinal, the oracle's stored best line of every labelled position {(ordinal, ply): pv})."""
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    recs = load_recs(root)
+    fr = FF.load(root)
+    pv = {(r["ord"], q["ply"]): q["pv"] for r in recs for q in r["positions"]}
+    return recs, fr, games_by_ordinal(), pv
+
+
+def cmd_reasoner(root: Path, say) -> None:
+    """PLAN 78.95 PART ONE (c) the stable points, (b) the three questions on the reasoner. How each is read is in future_frames' doc, written before any count: stable = the class holds at the next sampled position of the same side; the three questions: q1 the search at the play
+    clock plays or holds equal the oracle's first move, q2 given that move our line reading confirms the gain, q3 our threat list names it. Kept apart; by band of units and by kind of frame; the games resampled for the 90 pct bands."""
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    recs, fr, _games, _pv = frame_table(root)
+    kw = FF.KIND_WORDS
+    # (c) how many points remain
+    for part in ("find", "confirm"):
+        sel = [(r, q, fr.get((r["ord"], q["ply"]))) for r in recs if r["part"] == part for q in r["positions"]]
+        for n, lo, hi in BANDS + (("all", 0, 99),):
+            s = [(q, f) for _r, q, f in sel if lo <= q["units"] <= hi]
+            w = [(q, f) for q, f in s if q["cls"] == 1]
+            l = [(q, f) for q, f in s if q["cls"] == -1]
+            sw = sum(1 for q, f in w if f and f["stable_win"])
+            sl = sum(1 for q, f in l if f and f["stable_lose"])
+            say(f"STABLE POINTS {part} {n}: positions {len(s)}; winning for the side to move {len(w)}, stable {sw} ({100 * sw / max(1, len(w)):.1f} pct); losing {len(l)}, stable {sl} ({100 * sl / max(1, len(l)):.1f} pct)")
+    old = [(r, q) for r in recs for q in r["positions"] if "frame" in q and q["cls"] == 1]
+    kept = sum(1 for r, q in old if fr.get((r["ord"], q["ply"])) and fr[(r["ord"], q["ply"])]["stable_win"])
+    say(f"STABLE POINTS of 78.94's frames at a winning point: {len(old)} frames (made where the class changed two plies on, or a goal held); of them the class still holds at the next position {kept}")
+    # the kinds redone
+    for who, key, flag in (("the side to move wins (X)", "x", "stable_win"), ("the other side wins (Y)", "y", "stable_lose")):
+        for stable in (True, False):
+            sel = [(f, q) for r in recs for q in r["positions"] for f in [fr.get((r["ord"], q["ply"]))] if f and f["owner"] == key and (f[flag] if stable else not f[flag]) and ((q["cls"] == 1) if key == "x" else (q["cls"] == -1))]
+            for n, lo, hi in BANDS + (("all", 0, 99),):
+                s = [f for f, q in sel if lo <= q["units"] <= hi]
+                c = Counter(f["kind"] for f in s)
+                tot = max(1, len(s))
+                say(f"FRAME KINDS at {'stable' if stable else 'not stable'} winning points, {who}, {n}: {len(s)}; " + "; ".join(f"{kw[k]} {c[k]} ({100 * c[k] / tot:.1f} pct)" for k in FF.KINDS))
+    # (b) the three questions at the points where the side to move wins
+    for label, only_stable in (("STABLE winning points", True), ("ALL winning points", False)):
+        pts = [(f, q, r) for r in recs for q in r["positions"] for f in [fr.get((r["ord"], q["ply"]))] if f and f["owner"] == "x" and "q1" in f and (f["stable_win"] or not only_stable)]
+        groups = [("all", lambda f, q: True)] + [(n, (lambda f, q, lo=lo, hi=hi: lo <= q["units"] <= hi)) for n, lo, hi in BANDS] + [(kw[k], (lambda f, q, k=k: f["kind"] == k)) for k in FF.KINDS]
+        for name, pred in groups:
+            sel = [(f, q, r) for f, q, r in pts if pred(f, q)]
+            if len(sel) < 20:
+                say(f"THREE QUESTIONS {label}, {name}: {len(sel)} points: too few")
+                continue
+            g = np.array([r["ord"] for _f, _q, r in sel])
+            q1p = np.array([f["q1"]["plays"] for f, _q, _r in sel], float)
+            q1e = np.array([f["q1"]["equal"] for f, _q, _r in sel], float)
+            q2 = np.array([f["q2"]["verdict"] == "CONFIRMED" for f, _q, _r in sel], float)
+            q3 = np.array([f["q3"]["any"] for f, _q, _r in sel], float)
+            none = np.array([not f["q1"]["equal"] and f["q2"]["verdict"] != "CONFIRMED" and not f["q3"]["any"] for f, _q, _r in sel], float)
+            say(f"THREE QUESTIONS {label}, {name}: {len(sel)} points; q1 the search plays the oracle's first move {rate(q1p, g)} pct, plays or holds it equal {rate(q1e, g)}; q2 the line reading confirms the gain of that move {rate(q2, g)}; q3 the threat list names it {rate(q3, g)}; "
+                f"none of the three {rate(none, g)} (shares in pct, 90 pct bands)")
+        for band in [b for b, _l, _h in BANDS]:
+            lo, hi = next((l, h) for n, l, h in BANDS if n == band)
+            for k in FF.KINDS:
+                sel = [(f, q, r) for f, q, r in pts if lo <= q["units"] <= hi and f["kind"] == k]
+                if len(sel) < 20:
+                    continue
+                g = np.array([r["ord"] for _f, _q, r in sel])
+                say(f"THREE QUESTIONS {label}, {band} and {kw[k]}: {len(sel)} points; q1 plays or holds equal {rate(np.array([f['q1']['equal'] for f, _q, _r in sel], float), g)}; q2 confirms {rate(np.array([f['q2']['verdict'] == 'CONFIRMED' for f, _q, _r in sel], float), g)}; "
+                    f"q3 names {rate(np.array([f['q3']['any'] for f, _q, _r in sel], float), g)}")
+    verdicts = Counter()
+    for r in recs:
+        for q in r["positions"]:
+            f = fr.get((r["ord"], q["ply"]))
+            if f and "q2" in f:
+                verdicts[f["q2"]["verdict"]] += 1
+    say(f"THREE QUESTIONS the verdicts of q2 over all winning points read: {dict(verdicts)}")
+
+
+def cmd_chances(root: Path, say) -> None:
+    """PLAN 78.95 PART TWO: THE CHANCES OF FRAME OUTCOMES AS PLAYED, from FIND games. For each kind of frame and band: the winning side's frame is the oracle's best line (its first move, then the other side's best answer). X frames (X, the side to move, is winning): X 'did it' when it played the
+    line's first move; the other side 'met it' when it then played the line's answer; the point 'pays' when the class is still winning at the next sampled position (stable). Y frames (the other side wins at a position where X is to move): X 'met it' when it played the line's first move (the best defence);
+    Y 'did it' when it then played the line's answer. The weights of part three (the stake of a kind: the mean material of its frames in the record's worths; the chance it pays: the share of the points whose first move was played that stay winning) are written to weights.json from FIND only."""
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    recs, fr, games, pv = frame_table(root)
+    kw = FF.KIND_WORDS
+    out: dict = {}
+    table: dict = {}
+    for owner in ("x", "y"):
+        flag = "stable_win" if owner == "x" else "stable_lose"
+        cls = 1 if owner == "x" else -1
+        for kd in FF.KINDS:
+            for n, lo, hi in BANDS + (("all", 0, 99),):
+                rows = []
+                for r in recs:
+                    if r["part"] != "find":
+                        continue
+                    mv = games[r["ord"]]["moves"]
+                    for q in r["positions"]:
+                        f = fr.get((r["ord"], q["ply"]))
+                        p = q["ply"]
+                        line = pv[(r["ord"], p)]
+                        if not f or f["owner"] != owner or f["kind"] != kd or q["cls"] != cls or not (lo <= q["units"] <= hi) or len(line) < 2 or p + 1 >= len(mv):
+                            continue
+                        first, second = mv[p] == line[0], mv[p + 1] == line[1]
+                        rows.append((first, second, bool(f[flag]), f["net"]))
+                if not rows:
+                    continue
+                a = np.array([(x[0], x[1], x[2]) for x in rows], bool)
+                nn = len(a)
+                played_first = a[:, 0]
+                played_second = a[played_first][:, 1] if played_first.any() else np.array([], bool)
+                pay_first = a[played_first][:, 2] if played_first.any() else np.array([], bool)
+                pay_not = a[~played_first][:, 2] if (~played_first).any() else np.array([], bool)
+                nm = "X" if owner == "x" else "Y"
+                lab = ("the line's first move played (X did it)", "the answer played given that (the other side met it)") if owner == "x" else ("the line's first move played (X met it)", "the answer played given that (Y did it)")
+                say(f"CHANCES AS PLAYED {nm}'s frame, {kw[kd]}, {n}: {nn} points; {lab[0]} {100 * played_first.mean():.1f} pct; {lab[1]} {100 * played_second.mean() if len(played_second) else float('nan'):.1f} pct of {len(played_second)}; "
+                    f"still winning at the next position (stable): when the first move was played {100 * pay_first.mean() if len(pay_first) else float('nan'):.1f} pct of {len(pay_first)}, when not {100 * pay_not.mean() if len(pay_not) else float('nan'):.1f} pct of {len(pay_not)}; mean stake {np.mean([x[3] for x in rows]):.0f}")
+                table.setdefault(owner, {}).setdefault(kd, {})[n] = {"n": nn, "first": float(played_first.mean()), "second": float(played_second.mean()) if len(played_second) else None, "pay_first": float(pay_first.mean()) if len(pay_first) else None, "pay_not": float(pay_not.mean()) if len(pay_not) else None}
+                if owner == "x" and n == "all":
+                    nets = [x[3] for x in rows]
+                    out[kd] = {"n": nn, "stake": max(0.0, float(np.mean(nets))), "pay": float(pay_first.mean()) if len(pay_first) else 0.0}
+    for kd, d in out.items():
+        d["w"] = d["stake"] * d["pay"]
+    (root / "weights.json").write_text(json.dumps(out))
+    (root / "chances.json").write_text(json.dumps(table))
+    say("CHANCES the weights of part three from FIND (stake = mean material of the kind's frames, in the record's worths; pay = the share still winning at the next position when the first move was played; w = stake x pay): " + "; ".join(f"{kw[k]}: stake {d['stake']:.0f}, pay {d['pay']:.3f}, w {d['w']:.0f}" for k, d in out.items()))
+
+
+# ------------------------------------------------------------------------------------------------------------------------------ PLAN 78.95 PART THREE: THE WEIGHTED CHOOSER ON HUMAN MOVES
+
+def kind_candidate_chances(judge: FJ.FutureJudge, rows: list, inputs: FJ.Inputs, say) -> dict:
+    """For every tied move of every row (row order, then tied order): the kind heads' chances for the side that just moved (ours) and for the side to move (theirs): {(kind, k): (ours, theirs)}."""
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    wires = [(None, list(r["moves"]) + [m]) for r in rows for m in r["tied"]]
+    heads = [(kd, k) for kd in FF.KINDS for k in KS_KIND if judge.head(f"F{kd}{k}") is not None]
+    ours = {h: [] for h in heads}
+    theirs = {h: [] for h in heads}
+    t0 = time.perf_counter()
+    threads = max(1, (os.cpu_count() or 2) - 1)
+    for a in range(0, len(wires), 2000):
+        part = wires[a:a + 2000]
+        inp = inputs.inputs_of(part, [[len(m)] for _s, m in part], threads)
+        xs, xt = FJ.side_matrix(inp, False), FJ.side_matrix(inp, True)
+        for h in heads:
+            ours[h].append(judge.chance(xs, h[1], "frame:" + h[0]))
+            theirs[h].append(judge.chance(xt, h[1], "frame:" + h[0]))
+        if (a // 2000) % 10 == 0:
+            say(f"human95: candidates {min(a + 2000, len(wires))} of {len(wires)}; {time.perf_counter() - t0:.0f} s")
+    return {h: (np.concatenate(ours[h]), np.concatenate(theirs[h])) for h in heads}
+
+
+def picks_from_scores(rows: list, score: np.ndarray) -> list:
+    """(pick, silent) per row from one score per candidate (row order, tied order): the greatest score; the search's first move when it is among the greatest; silent (the first move) when every score is equal (a tie within six places is no preference)."""
+    out, i = [], 0
+    for r in rows:
+        n = len(r["tied"])
+        val = np.round(score[i:i + n], 6)
+        best = np.flatnonzero(val == val.max())
+        out.append((r["tied"][0] if (0 in best or len(best) == n) else r["tied"][int(best[0])], len(best) == n))
+        i += n
+    return out
+
+
+def cmd_human95(root: Path, say) -> None:
+    """PLAN 78.95 PART THREE. Among the equal moves of the human samples' tie positions, the weighted chooser (the kind heads, FIND only; the stake and the chance it pays as played from FIND) against the search's first move, the pattern pick (78.81's reasons), the judge of 78.94 and the plain
+    joining of the two picks of 78.94 (the judge where a tied move takes a unit, the patterns otherwise). The setting (the window k and the form of the weights: stake x pay, pay alone, equal) is chosen on FIND by agreement with the move played; CONFIRM is read once with it."""
+    from catspace.incubator.analyst.discovery import future_choose as FC
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    from catspace.incubator.analyst.discovery import graph_layer1 as GL
+    from catspace.incubator.analyst.discovery import human_heads_data as HD
+    judge = pickle.load(open(root / "judge_kinds.pkl", "rb"))["judge"]
+    wt = json.loads((root / "weights.json").read_text())
+    rows = human_rows()
+    f = root / "human95_chances.pkl"
+    if f.exists():
+        ch = pickle.load(open(f, "rb"))
+    else:
+        ch = kind_candidate_chances(judge, rows, FJ.Inputs(GL.model(HD.GAME, HD.VARIANT), HD.statements_chunked), say)
+        pickle.dump(ch, open(f, "wb"))
+    old = pickle.load(open(Path(paths.experiment(*SRC94)) / "human_chances.pkl", "rb"))             # 78.94's judge on the same candidates (the same rows in the same order)
+    jobs = json.loads((Path(paths.experiment(*SRC94)) / "human_jobs.json").read_text())
+    find_ix = [i for i, r in enumerate(rows) if r["part"] == "find"]
+    conf_ix = [i for i, r in enumerate(rows) if r["part"] == "confirm"]
+    offs = np.cumsum([0] + [len(r["tied"]) for r in rows])
+    cand = lambda ix: np.concatenate([np.arange(offs[i], offs[i + 1]) for i in ix])
+    forms = {"stake x pay": {k: v["w"] for k, v in wt.items()}, "pay": {k: v["pay"] for k, v in wt.items()}, "equal": {k: 1.0 for k in wt}}
+    say(f"HUMAN95: tie positions of both human samples with the move played among the equal moves {len(rows)} (FIND {len(find_ix)}, CONFIRM {len(conf_ix)}); the weights from FIND: " + "; ".join(f"{k}: stake {v['stake']:.0f}, pay {v['pay']:.3f}" for k, v in wt.items()))
+
+    def score(k: int, form: str, ix: list) -> np.ndarray:
+        c = cand(ix)
+        tot = np.zeros(len(c))
+        for kd, w in forms[form].items():
+            if (kd, k) in ch:
+                tot = tot + w * (ch[(kd, k)][0][c] - ch[(kd, k)][1][c])
+        return tot
+    first_f = float(np.mean([rows[i]["tied"][0] == rows[i]["played"] for i in find_ix]))
+    best, best_hit = None, -1.0
+    for k in KS_KIND:
+        for form in forms:
+            pk = picks_from_scores([rows[i] for i in find_ix], score(k, form, find_ix))
+            hit = float(np.mean([p == rows[i]["played"] for (p, _s), i in zip(pk, find_ix)]))
+            say(f"HUMAN95 FIND setting (k {k}, weights {form}): the chooser's pick is the move played in {100 * hit:.2f} pct; the search's first move {100 * first_f:.2f} pct; silent (all equal) {100 * float(np.mean([s for _p, s in pk])):.1f} pct")
+            if hit > best_hit:
+                best, best_hit = (k, form), hit
+    say(f"HUMAN95: the setting chosen on FIND (the highest agreement with the move played): window {best[0]} plies, weights {best[1]} ({100 * best_hit:.2f} pct); CONFIRM is read once with it")
+    # the judge of 78.94, its setting chosen on FIND by the same rule
+    o94, h94 = None, -1.0
+    for s in sorted(old):
+        o, t = old[s][0][cand(find_ix)], old[s][1][cand(find_ix)]
+        pk = judge_picks([rows[i] for i in find_ix], o, t)
+        hit = float(np.mean([p == rows[i]["played"] for (p, _s), i in zip(pk, find_ix)]))
+        if hit > h94:
+            o94, h94 = s, hit
+    say(f"HUMAN95: the judge of 78.94, its setting chosen on FIND by the same rule: {o94} ({100 * h94:.2f} pct on FIND)")
+    crow = [rows[i] for i in conf_ix]
+    pk95 = picks_from_scores(crow, score(best[0], best[1], conf_ix))
+    pk94 = judge_picks(crow, old[o94][0][cand(conf_ix)], old[o94][1][cand(conf_ix)])
+    first = np.array([r["tied"][0] == r["played"] for r in crow], float)
+    pat = np.array([jobs[r["id"]]["pattern"] == r["played"] for r in crow], float)
+    h95 = np.array([p == r["played"] for (p, _s), r in zip(pk95, crow)], float)
+    h94a = np.array([p == r["played"] for (p, _s), r in zip(pk94, crow)], float)
+    takes = np.array([any(jobs[r["id"]]["takes"].values()) for r in crow])
+    joined_pick = [(pk94[i][0] if takes[i] else jobs[r["id"]]["pattern"]) for i, r in enumerate(crow)]
+    hj = np.array([p == r["played"] for p, r in zip(joined_pick, crow)], float)
+    rnd = np.array([1.0 / len(r["tied"]) for r in crow])
+    game = np.array([r["game"] for r in crow])
+    units = np.array([r["units"] for r in crow])
+    bi = band_index(units)
+    quiet = ~takes
+    say(f"HUMAN95 CONFIRM: agreement with the move played: weighted chooser {100 * h95.mean():.2f} pct, judge of 78.94 {100 * h94a.mean():.2f}, joined (judge where a tied move takes a unit, patterns otherwise) {100 * hj.mean():.2f}, search's first move {100 * first.mean():.2f}, pattern pick {100 * pat.mean():.2f}, "
+        f"a random equal move {100 * rnd.mean():.2f}; the chooser silent in {100 * float(np.mean([s for _p, s in pk95])):.1f} pct; positions where a tied move takes a unit {int(takes.sum())} of {len(crow)}")
+    groups = [("all", np.ones(len(crow), bool))] + [(n, bi == i) for i, (n, _l, _h) in enumerate(BANDS)] + [("a tied move takes a unit", takes), ("quiet (no tied move takes a unit)", quiet)] + [(f"{n} and quiet", (bi == i) & quiet) for i, (n, _l, _h) in enumerate(BANDS)] + [(f"{n} and a tied move takes a unit", (bi == i) & takes) for i, (n, _l, _h) in enumerate(BANDS)]
+    for name, m in groups:
+        if int(m.sum()) < 30:
+            say(f"HUMAN95 paired {name}: {int(m.sum())} positions: too few")
+            continue
+        parts = []
+        for lab, a_, b_, seed in (("chooser less first", h95, first, 1), ("chooser less pattern", h95, pat, 2), ("chooser less judge 78.94", h95, h94a, 3), ("joined less first", hj, first, 4), ("joined less pattern", hj, pat, 5), ("joined less judge 78.94", hj, h94a, 6)):
+            v = SM.paired(a_[m], b_[m], game[m], SEED + seed)
+            parts.append(f"{lab} {100 * v[0]:+.2f} [{100 * v[1]:+.2f}, {100 * v[2]:+.2f}]")
+        say(f"HUMAN95 paired {name}: positions {int(m.sum())}; agreement chooser {100 * h95[m].mean():.2f}, joined {100 * hj[m].mean():.2f}, first {100 * first[m].mean():.2f}, pattern {100 * pat[m].mean():.2f}, judge 78.94 {100 * h94a[m].mean():.2f}; " + "; ".join(parts) + " (pct points, 90 pct bands, games resampled)")
+    (root / "settings.json").write_text(json.dumps({"k": best[0], "form": best[1], "weights": forms[best[1]], "judge94": list(o94)}))
+    (root / "picks95.json").write_text(json.dumps({r["id"]: {"chooser": pk95[i][0], "judge94": pk94[i][0], "first": r["tied"][0], "pattern": jobs[r["id"]]["pattern"], "joined": joined_pick[i], "played": r["played"]} for i, r in enumerate(crow)}))
+    say(f"HUMAN95: settings.json written (the chooser's window and weights, the judge of 78.94's setting) for the match player")
+
+
+CASE95_RULE = ("THE THIRTY POSITIONS (plan 78.95), chosen by hash order before any was read, from the CONFIRM games where the group has enough (the first group falls back to FIND games if it must): ten goals of 78.94 that fall when every legal reply is tried (the pair of threats the kept-list test passed and the reply that "
+               "meets both); ten frames of ONE THREAT at a winning point of the side to move, with the chance that kind pays as played (FIND); ten picks of the weighted chooser that differ from both the search's first move and the pattern pick. Read against the board by the builder.")
+
+
+def cmd_cases95(root: Path, say) -> None:
+    """PLAN 78.95 JUDGE: the thirty positions for ladder_print --future95."""
+    import hashlib
+    from catspace.incubator.analyst.discovery import future_frames as FF
+    recs, fr, games, pv = frame_table(root)
+    fair = json.loads((root / "fair.json").read_text())
+    lab = FL.Labeller()
+    places = lab.reader.read([(None, [])], [[0]])["places"]
+    part = {r["ord"]: r["part"] for r in recs}
+    qs = {(r["ord"], q["ply"]): q for r in recs for q in r["positions"]}
+    h = lambda salt, o, p: hashlib.md5(f"{salt}:{o}:{p}".encode()).hexdigest()
+    cases = []
+    falls = [(x, side) for x in fair for side in ("mover", "other") if x[side]["kept"]["goal"] and not x[side]["summary"]["goal"]]
+    falls.sort(key=lambda t: (part[t[0]["ord"]] != "confirm", h("f95", t[0]["ord"], t[0]["ply"])))
+    for x, side in falls[:10]:
+        q = qs[(x["ord"], x["ply"])]
+        cases.append({"group": "a goal that falls", "id": f"c{x['ord']}:{x['ply']}", "ord": x["ord"], "ply": x["ply"], "part": part[x["ord"]], "moves": games[x["ord"]]["moves"][:x["ply"]], "next_moves": games[x["ord"]]["moves"][x["ply"]:x["ply"] + 6], "side": side,
+                      "kept": x[side]["kept_top"], "fallen": x[side]["fallen"], "replies": x[side]["replies"], "units": q["units"], "cls": q["cls"], "pv": q["pv"], "places": places})
+    ones = [(r, q, fr[(r["ord"], q["ply"])]) for r in recs if r["part"] == "confirm" for q in r["positions"] if (r["ord"], q["ply"]) in fr and fr[(r["ord"], q["ply"])]["owner"] == "x" and fr[(r["ord"], q["ply"])]["kind"] == "one" and q["cls"] == 1]
+    ones.sort(key=lambda t: h("o95", t[0]["ord"], t[1]["ply"]))
+    chances = json.loads((root / "chances.json").read_text())
+    wt = json.loads((root / "weights.json").read_text())
+    for r, q, f in ones[:10]:
+        mv = games[r["ord"]]["moves"]
+        band = BANDS[band_index(np.array([q["units"]]))[0]][0]
+        cases.append({"group": "a frame of one threat", "id": f"c{r['ord']}:{q['ply']}", "ord": r["ord"], "ply": q["ply"], "moves": mv[:q["ply"]], "next_moves": mv[q["ply"]:q["ply"] + 6], "units": q["units"], "band": band, "pv": q["pv"], "frame": f,
+                      "chance_band": chances.get("x", {}).get("one", {}).get(band), "chance_all": chances.get("x", {}).get("one", {}).get("all"), "weights_one": wt.get("one"), "stable": f["stable_win"], "places": places})
+    picks = json.loads((root / "picks95.json").read_text())
+    rows = {r["id"]: r for r in human_rows()}
+    ch = pickle.load(open(root / "human95_chances.pkl", "rb"))
+    set_ = json.loads((root / "settings.json").read_text())
+    allrows = human_rows()
+    offs = np.cumsum([0] + [len(r["tied"]) for r in allrows])
+    where = {r["id"]: i for i, r in enumerate(allrows)}
+    diff = [pid for pid, p in picks.items() if p["chooser"] != p["first"] and p["chooser"] != p["pattern"]]
+    diff.sort(key=lambda pid: h("p95", pid, ""))
+    for pid in diff[:10]:
+        r, p = rows[pid], picks[pid]
+        i = where[pid]
+        per = {}
+        for m in (p["chooser"], p["first"]):
+            c = offs[i] + r["tied"].index(m)
+            per[m] = {kd: set_["weights"][kd] * float(ch[(kd, set_["k"])][0][c] - ch[(kd, set_["k"])][1][c]) for kd in set_["weights"] if (kd, set_["k"]) in ch}
+        cases.append({"group": "a pick of the chooser that differs from the other two", "id": pid, "moves": r["moves"], "tied": r["tied"], "units": r["units"], "picks": p, "per_kind": per, "setting": set_["k"], "places": places})
+    (root / "cases95.json").write_text(json.dumps({"rule": CASE95_RULE, "cases": cases}))
+    say(f"CASES95: {len(cases)} positions written to cases95.json ({dict(Counter(c['group'] for c in cases))}); goals that fall in all {len(falls)}")
+
+
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", choices=["counts", "fit", "score", "explicit", "human", "cases"])
+    ap.add_argument("cmd", choices=["counts", "fit", "score", "explicit", "human", "cases", "fair", "reasoner", "chances", "fitk", "scorek", "human95", "cases95"])
     ap.add_argument("--tag", default="short")
     ap.add_argument("--limit", type=int, default=0, help="a dry run on a small part of the human rows and of the explicit run's sample")
     a = ap.parse_args(argv)
     global LIMIT
     LIMIT = a.limit
-    root = FL.out_root(a.tag)
+    root = Path(paths.experiment(*OUT95, a.tag))                   # 78.95 writes under future_78_95/<tag>/ (the labels and the inputs of 78.94 are copied there first: `seed_folder`)
+    root.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     say = FL.Say(root, a.cmd)
-    {"counts": cmd_counts, "fit": cmd_fit, "score": cmd_score, "explicit": cmd_explicit, "human": cmd_human, "cases": cmd_cases}[a.cmd](root, say)
+    {"counts": cmd_counts, "fit": cmd_fit, "score": cmd_score, "explicit": cmd_explicit, "human": cmd_human, "cases": cmd_cases, "fair": cmd_fair, "reasoner": cmd_reasoner, "chances": cmd_chances,
+     "fitk": lambda r, s: cmd_fit(r, s, True), "scorek": lambda r, s: cmd_score(r, s, True), "human95": cmd_human95, "cases95": cmd_cases95}[a.cmd](root, say)
     say(f"wall {time.perf_counter() - t0:.0f} s")
     return 0
 

@@ -14,7 +14,10 @@ INTERFACE (written before the bodies).
   FutureJudge.fit(rows, X)                 one linear head and one tree head per target, on FIND rows only (raises on any other part); the head used for a target is the one with the lower held-out loss on FIND.
   FutureJudge.chance(X, k, what) -> probability     what in {"goal", "win", "lose", "either"}; X the side matrices (side_matrix) of one or more positions. The wake's call (never the oracle's).
   FutureJudge.chance_of(X, target, k) -> probability the pairwise form: `target` a description in facts (the kind words of a goal's two threats ordered by the judge's own worth order and whether it is open or a fork); fitted by fit_pair on pair_rows.
-  Called by: future_measure.py (fit, score, explicit, human-move test), the match player of stage five if it runs, tests.
+  PLAN 78.95 (SYSTEM_SPEC 7 "the prior learns ... the chances of frame outcomes as played"): HEADS BY KIND OF FRAME. kind_flag(frames, ordinal, ply, side_is_mover) -> kind | None (the kind of frame a side holds at a stable winning point of its own at a labelled position);
+  rows_from_labels(recs, ks, frames, kinds) gains the targets F<kind><k> (a stable winning point of the side with that kind of frame within k plies after the row) and now_F<kind>; FutureJudge.fit(rows, X, targets=[...]) fits them like any head (FIND only, the same two forms);
+  FutureJudge.chance(X, k, "frame:<kind>") reads one. The kinds are words the caller hands in (future_frames.KINDS); nothing here names one.
+  Called by: future_measure.py (fit, score, explicit, human-move test, the kind heads), future_choose.py, the match player of 78.95 (future_play.py), tests.
 """
 from __future__ import annotations
 
@@ -62,14 +65,30 @@ class Rows:
         return Rows({k: v[mask] for k, v in self.c.items()})
 
 
-def rows_from_labels(recs: list, ks: tuple = KS) -> Rows:
-    """See the module doc. A window that leaves the game (the row's ply + k beyond the last move less one) is -1. The raw score of a label is never read."""
+def kind_flag(frames: dict, ordinal: int, ply: int, side_is_mover: bool) -> "str | None":
+    """PLAN 78.95 PART TWO: the kind of frame the side holds at a STABLE winning point of its own at this labelled position, else None. `frames` {(game ordinal, ply): the frame record of future_frames}: the side to move X is winning when its class is winning
+    and the record's owner is x; the other side Y is winning when the class for X is losing (owner y); stable by the record's flags (the class holds at the next sampled position of the same side)."""
+    f = frames.get((ordinal, ply))
+    if not f:
+        return None
+    if side_is_mover:
+        return f["kind"] if f["owner"] == "x" and f["stable_win"] else None
+    return f["kind"] if f["owner"] == "y" and f["stable_lose"] else None
+
+
+def rows_from_labels(recs: list, ks: tuple = KS, frames: "dict | None" = None, kinds: tuple = ()) -> Rows:
+    """See the module doc. A window that leaves the game (the row's ply + k beyond the last move less one) is -1. The raw score of a label is never read.
+    PLAN 78.95: with `frames` and `kinds`, for each kind K and window k the target `F<K><k>`: a stable winning point of the side whose frame has kind K occurs at a labelled position within k plies after the row (kind_flag); `now_F<K>` the same at the row itself."""
     cols: dict = {n: [] for n in ("game", "ord", "ply", "mover_side", "units", "n_s", "n_o", "part", "y", "mover_at", "n_moves")}
     for k in ks:
         for w in ("G", "W", "L", "GW"):
             cols[f"{w}{k}"] = []
     for w in ("G", "W", "L"):
         cols[f"now_{w}"] = []
+    for kd in kinds:
+        cols[f"now_F{kd}"] = []
+        for k in ks:
+            cols[f"F{kd}{k}"] = []
     for gi, r in enumerate(recs):
         pos = r["positions"]
         for i, q in enumerate(pos):
@@ -93,6 +112,12 @@ def rows_from_labels(recs: list, ks: tuple = KS) -> Rows:
                     for name, idx in (("G", 0), ("W", 1), ("L", 2)):
                         cols[f"{name}{k}"].append(int(any(a[idx] for a in ahead)) if seen else -1)
                     cols[f"GW{k}"].append(int(any(a[0] or a[1] for a in ahead)) if seen else -1)
+                    if kinds:
+                        got = {kind_flag(frames, r["ord"], x["ply"], side_is_mover) for x in pos[i + 1:] if x["ply"] <= q["ply"] + k}
+                        for kd in kinds:
+                            cols[f"F{kd}{k}"].append(int(kd in got) if seen else -1)
+                for kd in kinds:
+                    cols[f"now_F{kd}"].append(int(kind_flag(frames, r["ord"], q["ply"], side_is_mover) == kd))
     return Rows({k: np.array(v) for k, v in cols.items()})
 
 
@@ -257,7 +282,8 @@ class FutureJudge:
             raise ValueError("the future judge is fitted on FIND games only")
         names = targets or [f"{w}{k}" for k in KS for w in ("G", "W", "GW")]           # L (a losing point of the side) is the same question as W of the other side: not fitted twice
         for name in names:
-            now = {"G": "now_G", "W": "now_W", "L": "now_L", "GW": None}[name.rstrip("0123456789")]
+            prefix = name.rstrip("0123456789")
+            now = {"G": "now_G", "W": "now_W", "L": "now_L", "GW": None}.get(prefix, f"now_{prefix}")             # 78.95: a kind head `F<K><k>` is asked where that frame does not already hold at the row
             use = rows[name] >= 0
             if now is not None:
                 use &= rows[now] == 0
@@ -283,7 +309,7 @@ class FutureJudge:
 
     def chance(self, X: np.ndarray, k: int, what: str) -> np.ndarray:
         """The chance, for rows of side matrices X, that a goal / winning point / losing point (or either) of the side holds within k plies later in the same game."""
-        name = {"goal": "G", "win": "W", "lose": "L", "either": "GW"}[what] + str(k)
+        name = ({"goal": "G", "win": "W", "lose": "L", "either": "GW"}[what] if not what.startswith("frame:") else "F" + what[6:]) + str(k)       # 78.95: "frame:<kind>" asks a kind head
         h = self.head(name)
         if h is None:
             raise KeyError(f"head {name} is not fitted")

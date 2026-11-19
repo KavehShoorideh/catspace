@@ -6,7 +6,10 @@ INTERFACE (written before the bodies).
   .scores(items) -> [{move: (ours, theirs)}]   `items` [(moves, equal_moves)]: for each equal move, the judge's chance that a goal or winning point of the MOVER holds within k plies after it (the mover is the other side at the position it leaves) and the same chance for the other side
                                           (the mover there). One batch of inputs for all the positions after the moves (future_judge.Inputs).
   .choose(moves, equal_moves) -> move | None   the equal move with the greatest ours less theirs; None when every equal move has the same score (the caller falls back to its own order). A tie within TIE_DIGITS places is no preference.
-  Called by: future_measure.py (stage human), the match player of stage five.
+  PLAN 78.95 PART THREE (SYSTEM_SPEC 7 "among equal moves ... whichever gets us closer to our goal(s)", "the prior learns ... the chances of frame outcomes as played"): THE WEIGHTED FORM. Chooser(..., weights={kind: w}) with the setting ("frames", k): a move is
+  scored by the sum over the kinds of frame of w[kind] times the chance the kind head gives (FutureJudge.chance(X, k, "frame:<kind>")), for the side that just moved less the other side; w is the stake of the kind in the record's worths times the chance it pays as played
+  (future_measure.cmd_chances writes both from FIND). The pick is the greatest ours less theirs, silent on a tie, as before: a prior that orders the moves the search holds equal and never scores a leaf.
+  Called by: future_measure.py (stage human, human95), future_play.py (the match player of 78.95).
 """
 from __future__ import annotations
 
@@ -21,18 +24,28 @@ CHUNK = 2500
 class Chooser:
     """See the module doc."""
 
-    def __init__(self, judge: FJ.FutureJudge, setting: tuple, inputs: FJ.Inputs, threads: int = 1):
-        self.judge, self.setting, self.inputs, self.threads = judge, setting, inputs, threads
+    def __init__(self, judge: FJ.FutureJudge, setting: tuple, inputs: FJ.Inputs, threads: int = 1, weights: "dict | None" = None):
+        self.judge, self.setting, self.inputs, self.threads, self.weights = judge, setting, inputs, threads, weights or {}
+
+    def chance_of(self, X: np.ndarray) -> np.ndarray:
+        """The chance (or, for the setting ("frames", k), the weighted sum of the kind heads' chances) for the side matrices X."""
+        what, k = self.setting
+        if what != "frames":
+            return self.judge.chance(X, k, what)
+        tot = np.zeros(len(X))
+        for kd, w in self.weights.items():
+            if w and self.judge.head(f"F{kd}{k}") is not None:
+                tot = tot + float(w) * self.judge.chance(X, k, f"frame:{kd}")
+        return tot
 
     def chances(self, wires: list) -> "tuple[np.ndarray, np.ndarray]":
         """For positions [(start, moves)] read at their last ply: (the chance for the side that just moved, the chance for the side to move)."""
-        what, k = self.setting
         ours, theirs = [], []
         for a in range(0, len(wires), CHUNK):
             part = wires[a:a + CHUNK]
             inp = self.inputs.inputs_of(part, [[len(m)] for _s, m in part], self.threads)
-            ours.append(self.judge.chance(FJ.side_matrix(inp, False), k, what))
-            theirs.append(self.judge.chance(FJ.side_matrix(inp, True), k, what))
+            ours.append(self.chance_of(FJ.side_matrix(inp, False)))
+            theirs.append(self.chance_of(FJ.side_matrix(inp, True)))
         return np.concatenate(ours), np.concatenate(theirs)
 
     def scores(self, items: list) -> list:
