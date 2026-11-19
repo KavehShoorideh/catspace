@@ -135,6 +135,13 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub verify_choice: bool,
     /// PLAN 78.93: where the verification of the choice takes its time (`ChoiceMode`); only read when `verify_choice` is on. Slot (the default) is 78.92's form.
     pub choice_mode: ChoiceMode,
+    /// PLAN 79.02: the equal reading reads the root moves in the deepening's own order and asks every move its null window held once more without the two prunings, in that order, while the slot lasts (`ties_reasked`); a move the unpruned
+    /// answer puts under the best leaves the set, a move not reached before the clock stopped stays (held as it was). false (the default everywhere) is the equal reading as it was.
+    pub reask: bool,
+    /// PLAN 79.02: the move the search plays (the caller sets it after `run` and the verification of the choice): its value is the deepening's own, so `ties_reasked` does not ask it again.
+    pub reask_skip: Option<usize>,
+    /// PLAN 79.02: what the last `ties_reasked` did.
+    pub reasked: ReaskCount,
     /// THE FEW-REPLY EXTENSION (plan 78.11): a forced answer does not shorten the line
     pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
@@ -178,6 +185,11 @@ impl ChoiceMode {
     pub fn parse(s: &str) -> Option<ChoiceMode> { match s { "slot" => Some(ChoiceMode::Slot), "main" => Some(ChoiceMode::Main), _ => None } }
 }
 
+/// PLAN 79.02: what `ties_reasked` did at one root: `asked` the moves the first reading answered before the clock stopped it, `held` of them the moves whose pruned null-window answer held the best, `reasked` the held moves asked again without
+/// the two prunings and answered, `out` of them the moves the unpruned answer put under the best, `unreached` the held moves not asked again before the clock stopped, `first_cut` whether the clock stopped the first reading.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReaskCount { pub asked: usize, pub held: usize, pub reasked: usize, pub out: usize, pub unreached: usize, pub first_cut: bool }
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChoiceVerdict { pub index: usize, pub state: ChoiceState }
 
@@ -195,12 +207,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, extend: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), extend: true,
                  killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
     }
 
@@ -253,12 +265,53 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// keeps them); the moves that hold are returned. A move the first reading did not name is not asked again (a first reading that is too cautious is a smaller set, not a false equal).
     /// Where the clock or the fuse stops either reading, only the moves verified so far are returned.
     pub fn ties(&mut self, s: &G::State, depth: i32, best: i64) -> Vec<usize> {
+        if self.reask && !self.verify_ties { return self.ties_reasked(s, depth, best); }          // (plan 79.02, off by default)
         if !self.verify_ties {                                          // (the equal reading as it was before plan 78.85)
             return self.probes(s, depth, best, None).into_iter().filter(|(_, p)| *p >= best).map(|(i, _)| i).collect();
         }
         let first: Vec<usize> = self.probes(s, depth, best, None).into_iter().filter(|(_, p)| *p >= best).map(|(i, _)| i).collect();
         if self.stopped || first.is_empty() { return if self.stopped { vec![] } else { first }; }
         self.verify(s, depth, best, &first)
+    }
+
+    /// PLAN 79.02 THE EQUAL READING THAT ASKS A HELD MOVE AGAIN (SYSTEM_SPEC 4; the debt of plan 78.84). Takes the root, the depth D the deepening finished and its value `best`; the clock or the fuse must have been given back (`resume`). Returns the
+    /// indices of the root moves held equal. (1) The root moves are asked "at least best at D?" by a null window on the warm table, as `ties` asks, but in the DEEPENING'S OWN ORDER of the root moves (`deepening_order`: the table's best first, then the
+    /// order the last iteration read them in) and not in the fixed reading order, so that a clock that stops the reading drops the moves the deepening found least likely. (2) Each move that held is asked once more on a fresh table with the late-move
+    /// reduction and the null move off (the table of the run and the two switches are put back after), in the same order, skipping `reask_skip` (the move the search plays: its value is the deepening's own). A move the unpruned answer puts under `best` leaves
+    /// the set; a move held by the unpruned answer stays; a move not asked again before the clock stopped stays (held by the pruned answer as before; counted in `reasked.unreached`). A first reading the clock stopped returns the moves it had held, none asked again.
+    /// A move not asked in the first reading is not in the set (it never was). The set is therefore never larger than `ties` returns on the same order. Called by: `ties` when `reask` is on (LedgerOp, the binding's equal-reading operator).
+    pub fn ties_reasked(&mut self, s: &G::State, depth: i32, best: i64) -> Vec<usize> {
+        self.reasked = ReaskCount::default();
+        let order = self.deepening_order(s);
+        let first = self.probes_in(s, depth, best, None, Some(&order));
+        let mut held: Vec<usize> = first.iter().filter(|(_, p)| *p >= best).map(|(i, _)| *i).collect();
+        self.reasked.asked = first.len();
+        self.reasked.held = held.len();
+        if self.stopped { self.reasked.first_cut = true; self.reasked.unreached = held.iter().filter(|i| Some(**i) != self.reask_skip).count(); return held; }
+        let todo: Vec<usize> = held.iter().copied().filter(|i| Some(*i) != self.reask_skip).collect();
+        let (warm, late, nul) = (std::mem::take(&mut self.tt), self.late_reduce, self.null_move);
+        self.late_reduce = false;
+        self.null_move = false;
+        let mut out: Vec<usize> = vec![];
+        for (k, c) in todo.iter().enumerate() {
+            let ans = self.probes_in(s, depth, best, Some(&[*c]), None);
+            if self.stopped { self.reasked.unreached = todo.len() - k; break; }
+            self.reasked.reasked += 1;
+            if !ans.iter().any(|(_, p)| *p >= best) { out.push(*c); }
+        }
+        self.late_reduce = late;
+        self.null_move = nul;
+        self.tt = warm;
+        self.reasked.out = out.len();
+        held.retain(|i| !out.contains(i));
+        held
+    }
+
+    /// PLAN 79.02: the root moves in the order the deepening reads them (the table's best first, then `ordered_at` at the root with its killers and history).
+    pub fn deepening_order(&self, s: &G::State) -> Vec<usize> {
+        let maxing = self.g.mover(s) == Some(self.me);
+        let hint = self.tt.get(&self.g.key(s)).map(|e| e.best);
+        self.ordered_at(s, maxing, hint, 0).into_iter().map(|(i, _, _)| i).collect()
     }
 
     /// PLAN 78.92 THE VERIFICATION OF THE CHOICE (SYSTEM_SPEC 5; the debt of the equal reading's row, here for the move itself). Takes the root, the depth D the deepening finished, its value and the move it chose (an index
@@ -295,10 +348,17 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
 
     /// PLAN 78.85 (the instrument of the equal reading's audit): each first move's null-window answer at `depth` against `best`, the raw fail-soft number kept (`only`: just those moves)
     /// -> [(index, probe)]; the move is tied iff its probe is `best` or more. Stops where the clock or the fuse stops.
-    pub fn probes(&mut self, s: &G::State, depth: i32, best: i64, only: Option<&[usize]>) -> Vec<(usize, i64)> {
+    pub fn probes(&mut self, s: &G::State, depth: i32, best: i64, only: Option<&[usize]>) -> Vec<(usize, i64)> { self.probes_in(s, depth, best, only, None) }
+
+    /// PLAN 79.02: `probes` with the root moves read in `order` (indices of the root's legal moves; None: the fixed reading order `ordered`).
+    pub fn probes_in(&mut self, s: &G::State, depth: i32, best: i64, only: Option<&[usize]>, order: Option<&[usize]>) -> Vec<(usize, i64)> {
         let maxing = self.g.mover(s) == Some(self.me);
         let mut out = vec![];
-        for (i, m, d) in self.ordered(s, maxing, None) {
+        let items: Vec<(usize, G::Move, i64)> = match order {
+            None => self.ordered(s, maxing, None),
+            Some(o) => { let ms = self.g.moves(s); o.iter().filter_map(|&i| ms.get(i).map(|m| (i, m.clone(), self.gain(s, m)))).collect() }
+        };
+        for (i, m, d) in items {
             if only.is_some_and(|o| !o.contains(&i)) { continue; }
             let q = self.g.apply(s, &m);
             let probe = d + self.value(&q, depth - 1, 1, best - 1 - d, best - d);

@@ -156,17 +156,26 @@ class Mover67(OM.Mover):
         self.costs: list = []
         self.verify_choice = bool(spec.get("verify_choice", False))                 # plan 78.92 / 78.93: the verification of the choice, off unless the spec asks
         self.choice_mode = str(spec.get("choice_mode", "slot"))
+        self.reask = bool(spec.get("reask", False))                                 # plan 79.02: the equal reading asks a held move again without the prunings, off unless the spec asks
         self.stats = {"decisions": 0, "ties": 0, "changed": 0, "wall": 0.0, "read": 0.0, "search": 0.0, "quiet": 0, "children": 0, "log": []}
         REG.append(self)
 
     def choice_kw(self) -> dict:
         """The keywords of `solve_equals_batch` for the verification of the choice (empty when it is off: the call is exactly what it was)."""
-        return {"verify_choice": True, "choice_mode": self.choice_mode} if self.verify_choice else {}
+        kw = {"verify_choice": True, "choice_mode": self.choice_mode} if self.verify_choice else {}
+        if self.reask:
+            kw["reask"] = True
+        return kw
 
     def note_choice(self, raw: list) -> None:
         """Count what the verification of the choice did in one decision (row 12 the state: 1 held, 2 replaced, 3 failed and kept, 4 cut; 13 its nodes; 14 its seconds)."""
         st = self.stats
         st["nodes"] = st.get("nodes", 0) + int(raw[2] or 0)                         # (the nodes the decision spent, for the mean a decision)
+        if self.reask and len(raw) > 15 and raw[15]:                                # plan 79.02: the second asking of the equal reading, summed over the decisions (asked, held, reasked, out, unreached, first reading cut)
+            rk = st.setdefault("rk", [0, 0, 0, 0, 0, 0, 0])
+            for i, x in enumerate(raw[15][:6]):
+                rk[i] += int(x)
+            rk[6] += 1
         if not self.verify_choice or not raw[12]:
             return
         for k in VC_KEYS:
