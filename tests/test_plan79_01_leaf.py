@@ -38,7 +38,7 @@ def test_the_wall_only_the_second_asking_calls_the_oracle_and_no_play_path_loads
         calls = re.search(r"\bLO\.(analyse|analyse_after|label)\b", text)
         assert bool(calls) == (f == "leaf_ask.py"), f
     for p in DIR.glob("*.py"):
-        if p.name.startswith("leaf_") or p.name in ("ladder_print.py",):
+        if p.name.startswith("leaf_") or p.name.startswith("cut_") or p.name in ("ladder_print.py",):          # (plan 79.02: its measure modules read the leaf_ files; tests/test_plan79_02_cut.py holds the match module to the stricter rule)
             continue
         assert not re.search(r"^\s*(from|import) .*\bleaf_(ask|firm|line|measure|debt)\b", p.read_text(), flags=re.M), p.name
 

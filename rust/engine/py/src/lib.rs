@@ -577,7 +577,7 @@ fn solve_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: H
 /// What `solve_equals_batch` returns per position: (the move the search plays, proved, nodes, seconds, error, the names of the root moves the search holds EQUAL to its best,
 /// their indices in the game's own list of legal moves, the depth the ledger finished, its value, the seconds the equal reading took, the number of legal moves, whether the
 /// clock cut the equal reading), and (plan 78.92) what the verification of the choice did: its state (0 not asked, 1 held, 2 replaced, 3 failed and kept, 4 cut), its nodes and its seconds.
-/// A list of fifteen (a tuple holds twelve at most); the first twelve are what they were.
+/// A list of sixteen (a tuple holds twelve at most); the first fifteen are what they were; the sixteenth (plan 79.02) is what the second asking of the equal reading did ([asked, held, reasked, out, unreached, first reading cut]), empty with the switch off.
 
 /// PLAN 78.50: the ledger step of the decision with the equal reading kept apart and its completeness told. It is `cs_tactics::operators::LedgerOp` read again: the same `Search`
 /// (history, ordering, pruning, extension, root order), the same deepening, the same move and value; afterwards the root moves are each asked "at least the best?" by a null window at
@@ -602,6 +602,7 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         ls.verify_ties = self.params.verify_ties;
         ls.verify_choice = self.params.verify_choice;
         ls.choice_mode = self.params.choice_mode;
+        ls.reask = self.params.reask;                    // (plan 79.02: off by default)
         ls.null_move = self.params.null_move;
         ls.late_reduce = self.params.late_reduce;
         ls.root_first = prefer.clone();
@@ -639,9 +640,11 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
                 ls.resume(b.rest_of_decision() * share);
                 let n0 = ls.nodes;
                 let t1 = std::time::Instant::now();
+                ls.reask_skip = Some(i);
                 o.candidates = ls.ties(s, ln.depth, ln.value);
                 nodes += ls.nodes - n0;
                 o.part(if ls.cut() { "ties (cut)" } else { "ties" }, ls.nodes - n0, t1.elapsed().as_secs_f64());
+                if self.params.reask && !self.params.verify_ties { let r = ls.reasked; o.part(format!("reask {} {} {} {} {} {}", r.asked, r.held, r.reasked, r.out, r.unreached, r.first_cut as u8), 0, 0.0); }
             }
         }
         o.cost.nodes = nodes;
@@ -723,6 +726,9 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
     v["choice_state"] = serde_json::json!(ver.map_or(0, |p| if p.name.contains("(held)") { 1 } else if p.name.contains("(replaced)") { 2 } else if p.name.contains("(failed") { 3 } else { 4 }));
     v["choice_nodes"] = serde_json::json!(ver.map_or(0, |p| p.cost.nodes));
     v["choice_seconds"] = serde_json::json!(ver.map_or(0.0, |p| p.cost.seconds));
+    // (plan 79.02: what the second asking of the equal reading did, [asked, held, reasked, out, unreached, first reading cut]; empty when the switch is off)
+    let rk: Vec<u64> = step.and_then(|st| st.outcome.parts.iter().find(|p| p.name.starts_with("reask "))).map(|p| p.name.split_whitespace().skip(1).filter_map(|w| w.parse().ok()).collect()).unwrap_or_default();
+    v["reask"] = serde_json::json!(rk);
     (summary, v)
 }
 
@@ -732,13 +738,13 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false, null_move=true, late_reduce=true, verify_choice=false, choice_mode="slot".to_string()))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false, null_move=true, late_reduce=true, verify_choice=false, choice_mode="slot".to_string(), reask=false))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
-                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool, null_move: bool, late_reduce: bool, verify_choice: bool, choice_mode: String) -> PyResult<Vec<PyObject>> {
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool, null_move: bool, late_reduce: bool, verify_choice: bool, choice_mode: String, reask: bool) -> PyResult<Vec<PyObject>> {
     let choice_mode = cs_tactics::ledger::ChoiceMode::parse(&choice_mode).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("choice_mode is \"slot\" or \"main\""))?;
     let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
-    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, verify_choice, choice_mode, null_move, late_reduce, ..cs_decision::Params::default() };
+    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, verify_choice, choice_mode, reask, null_move, late_reduce, ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
         store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
@@ -775,6 +781,7 @@ fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, w
         row.append(v["choice_state"].as_u64().unwrap_or(0))?;
         row.append(v["choice_nodes"].as_u64().unwrap_or(0))?;
         row.append(v["choice_seconds"].as_f64().unwrap_or(0.0))?;
+        row.append(v["reask"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64()).collect::<Vec<u64>>()).unwrap_or_default())?;
         out.push(row.into_any().unbind());
     }
     Ok(out)

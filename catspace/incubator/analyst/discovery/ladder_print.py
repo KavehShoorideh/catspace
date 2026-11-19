@@ -978,6 +978,50 @@ def leaf01_cases(tag: str = "full") -> Path:
     return root / "cases.txt"
 
 
+def cut02_cases(tag: str = "full") -> Path:
+    """PLAN 79.02 `--cut02 TAG`: THE JUDGED POSITIONS OF THE CUT AND THE MEND (cut_mend.py `cases`: cases_cut.json under cut_79_02/<tag>/): 79.01's positions 2, 3 and 5 and twelve where the mend puts out a firmly losing move. Each: the board, the first move and the pick without the mend (A) and with it (M), and for every equal move of A's set its firm label, the oracle's
+    class and number asked twice, the audit's answers at the search's depth (the pruned null-window answer the equal reading held it by, with the late-move reduction off, the null move off, both off, and the exact value, against the value of the position), by what kind of answer it was held, whether M put it out, and the line in words. For the reader's judgement only
+    (appended by hand); no oracle number is read by the engine."""
+    root = Path(paths.experiment("cut_79_02", tag))
+    cases = json.loads((root / "cases_cut.json").read_text())
+    cname = {1: "winning", 0: "neither", -1: "losing"}
+    lines = ["THE JUDGED POSITIONS (plan 79.02): positions 2, 3 and 5 of 79.01's fifteen, and positions of the firm room where the mend puts out a firmly losing move. A = the equal reading as it was, M = the equal reading asking a held move again without the two prunings in the deepening's order. The class is the oracle's at depth 16 for the side that plays the move; "
+             "the answers are the audit's at the search's depth D (the value v of the position; a move is held when its answer is v or more); for the reader's judgement only.", ""]
+    for k, c in enumerate(cases, 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+
+        def nm(m, b=b):
+            return b.san(chess.Move.from_uci(m)) if m else "none"
+        rd = c.get("reads") or {}
+        lines += [f"=== POSITION {k}: {c['id']}{'  [named by the plan: 79.01]' if c['named'] else ''}  part {c['part']}, band {c['band']} ({c['units']} units), ply {len(c['moves'])}  ({'white' if me else 'black'} to move); the position's class: {cname[c['cls']]}; depth of the stored run {c['depth']}; the audit's value v {c['value']}", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}"]
+        if rd:
+            lines.append(f"A: plays {nm(rd['a']['first'])}, set {[nm(x) for x in sorted(set(rd['a']['equals']) | {rd['a']['first']})]}, pick {nm(rd['a'].get('pick'))}, depth {rd['a']['depth']}, cut {rd['a']['cut']}; M: plays {nm(rd['m']['first'])}, set {[nm(x) for x in sorted(set(rd['m']['equals']) | {rd['m']['first']})]}, pick {nm(rd['m'].get('pick'))}, depth {rd['m']['depth']}, cut {rd['m']['cut']}, "
+                         f"second asking [asked, held, asked again, put out, not reached, first reading cut] {rd['m']['reask']}")
+        inm = set(rd["m"]["equals"]) | {rd["m"]["first"]} if rd else set()
+        for j, m in enumerate(c["tied"]):
+            ln = (c.get("lines") or [None] * len(c["tied"]))[j]
+            r = c["rows"][j]
+            cp = lambda x: "forced" if x is None else f"{x:+d}"
+            ans = (f"warm {r['warm']}, no-late {r['no_late']}, no-null {r['no_null']}, plain {r['plain']}, exact {r['exact']}" if r else "no audit")
+            reduced = c["hold"][j] in ("late", "null", "both", "joint")
+            if rd and m not in inm and m not in (set(rd["a"]["equals"]) | {rd["a"]["first"]}):
+                gone_note = "in neither A's nor M's set at this reading (79.00's run held it: the clock)"
+            else:
+                gone_note = None
+            gone = (gone_note if gone_note else ("NOT IN M's set; the audit's unpruned answer is under v, so the unpruned question is the reason the count names (M's own count of moves it put out is in the header: when it is 0 the move was absent from M's first reading instead)" if reduced else "NOT IN M's set although the audit's plain answer holds it too (the cut or the order of M's first reading, not the unpruned question)") if rd and m not in inm else ("kept by M" if rd else ""))
+            tag_m = ("FIRST " if m == c["first"] else "") + ("PICK(stored) " if m == c["pick"] else "")
+            lines.append(f"  {nm(m)} {tag_m}| {c['vec'][j] or 'neither'} (class {cname[c['cm'][j]]} [{cname[c['cls2'][j]]}], number {cp(c['cp'][j])} [{cp(c['cp2'][j])}]) | held by: {c['hold'][j]} ({ans}) | {gone}"
+                         + (f" | line ({ln['settled']} plies, value {ln['value']}" + (", cut" if ln["cut"] else "") + f"): {san_line(b, ln['names'], 14)}" if ln else ""))
+        lines.append("")
+    (root / "cases.txt").write_text(chr(10).join(lines))
+    print(f"OBS ladder print: {len(cases)} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -1171,6 +1215,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--record99", default=None, help="PLAN 78.99: the judged positions, the search under each measured record (record_78_99/<tag>/cases99.json, written to cases.txt)")
     ap.add_argument("--stack79", default=None, help="PLAN 79.00: twenty room positions where the first move under the stack loses the class (stack_79_00/<tag>/cases79.json, written to cases.txt)")
     ap.add_argument("--leaf01", default=None, help="PLAN 79.01: fifteen firm-room positions where the highest end-of-line chance is not the first move (leaf_79_01/<tag>/cases_leaf.json, written to cases.txt)")
+    ap.add_argument("--cut02", default=None, help="PLAN 79.02: the judged positions of the cut and the mend (cut_79_02/<tag>/cases_cut.json, written to cases.txt)")
     ap.add_argument("--future94", default=None, help="PLAN 78.94: thirty positions with the oracle's class and frame, our goals and the judge's chances (future_78_94/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
@@ -1248,6 +1293,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.leaf01:
         leaf01_cases(a.leaf01)
+        return 0
+    if a.cut02:
+        cut02_cases(a.cut02)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
