@@ -35,6 +35,7 @@ PLAN 78.92 `--choice92 TAG` (`choice_cases`): THE TWENTY POSITIONS where the sea
 the late-move reduction and the null move off): the board, what each side has under attack, the played move, the reference's best and both values at the search's depth and two plies deeper. Writes cases.txt.
 PLAN 78.98 `--equal98 TAG` (`equal98_cases`): THE TRACE OF THE EQUAL MOVES (equal_trace.py, trace.jsonl under equal_78_98/<tag>/): the five named positions (trace.txt) or ten more stuck moves of kind all present (cases.txt): the board, the stuck move and a class-keeping move with what the root holds for each, the rule of equality, the lines the values come from and the units each side has at their end.
 PLAN 78.99 `--record99 TAG` (`record99_cases`): THE JUDGED POSITIONS (record_measure.py `cases`, cases99.json under record_78_99/<tag>/): the five positions of 78.98 and ten room positions where the first move changes between the odds record and the human-result record, with the move the search plays under each measured record. Writes cases.txt.
+PLAN 79.00 `--stack79 TAG` (`stack79_cases`): THE TWENTY JUDGED POSITIONS of the new room (stack_measure.py `cases`, cases79.json under stack_79_00/<tag>/): room positions where the first move of the search under the stack (human-result record, verified choice) loses the oracle's class: the board, what each side has under attack, the first move, the pick, the oracle's line after the first move, the class after it and the equal moves that keep the class. Writes cases.txt (the reader's judgement is appended by hand).
 PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
@@ -908,6 +909,40 @@ def record99_cases(tag: str = "full") -> Path:
     return root / "cases.txt"
 
 
+def stack79_cases(tag: str = "full") -> Path:
+    """PLAN 79.00 `--stack79 TAG`: THE TWENTY JUDGED POSITIONS (stack_measure.py `cases`: cases79.json under stack_79_00/<tag>/): the room of the stack (the search under the human-result record with the verified choice), the first move loses the oracle's class. Each: the board, what each side has under attack,
+    the first move and the pick, the oracle's line after the first move in words, the class after it (and asked again), the oracle's own move and the equal moves that keep the class. For the reader's judgement only (appended by hand); no oracle number is read by the engine."""
+    root = Path(paths.experiment("stack_79_00", tag))
+    cases = json.loads((root / "cases79.json").read_text())
+    cname = {1: "winning", 0: "neither", -1: "losing"}
+    lines = ["THE TWENTY JUDGED POSITIONS (plan 79.00): positions of the room under the stack (human-result record, verified choice, 78.82's pick) where the search's first move loses the oracle's class (its class after the move is lower than the position's). The class is the oracle's at depth 16 for the side "
+             "that moves; for the reader's judgement only.", ""]
+    for k, c in enumerate(cases, 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+
+        def nm(m, b=b):
+            return b.san(chess.Move.from_uci(m)) if m else "none"
+        a = b.copy()
+        a.push_uci(c["first"])
+        words, t = [], a.copy()
+        for m in c["pv_first"]:
+            words.append(t.san(chess.Move.from_uci(m)))
+            t.push_uci(m)
+        keepers = [nm(m) for m, cm in zip(c["tied"], c["cm"]) if cm >= c["cls"]]
+        pick_cls = c["cm"][c["tied"].index(c["pick"])] if c["pick"] in c["tied"] else None
+        lines += [f"=== POSITION {k}: {c['id']}  band {c['band']} ({c['units']} units), ply {len(c['moves'])}  ({'white' if me else 'black'} to move); the position's class: {cname[c['cls']]}; the verification: {['off', 'held', 'replaced', 'failed', 'cut'][c['state']]}", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}",
+                  f"the search's first move: {nm(c['first'])}; class after it: {cname[c['cm'][c['tied'].index(c['first'])]]} (asked again: {cname[c['cls_again']]}); the equal set holds {len(c['tied'])} moves, depth {c['depth']}; the pick: {nm(c['pick'])} (class after it: {cname[pick_cls] if pick_cls is not None else 'none'})",
+                  f"the oracle's line after the first move: {' '.join(words) or 'none'}" + (f"; forced end in {c['forced_in']}" if c["forced_in"] is not None else ""),
+                  f"the oracle's own move: {nm(c['best'])} (class after it: {cname[c['best_cls']] if c['best_cls'] is not None else 'none'}); the equal moves that keep the class ({len(keepers)} of {len(c['tied'])}): {', '.join(keepers[:12])}", ""]
+    (root / "cases.txt").write_text(chr(10).join(lines))
+    print(f"OBS ladder print: {len(cases)} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -1099,6 +1134,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--equal98", default=None, help="PLAN 78.98: the trace of the equal moves (equal_78_98/<tag>): the five named positions (trace.txt) or ten more stuck moves (--equal98-set rest, cases.txt)")
     ap.add_argument("--equal98-set", default="named", choices=["named", "rest"])
     ap.add_argument("--record99", default=None, help="PLAN 78.99: the judged positions, the search under each measured record (record_78_99/<tag>/cases99.json, written to cases.txt)")
+    ap.add_argument("--stack79", default=None, help="PLAN 79.00: twenty room positions where the first move under the stack loses the class (stack_79_00/<tag>/cases79.json, written to cases.txt)")
     ap.add_argument("--future94", default=None, help="PLAN 78.94: thirty positions with the oracle's class and frame, our goals and the judge's chances (future_78_94/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
@@ -1170,6 +1206,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.record99:
         record99_cases(a.record99)
+        return 0
+    if a.stack79:
+        stack79_cases(a.stack79)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
