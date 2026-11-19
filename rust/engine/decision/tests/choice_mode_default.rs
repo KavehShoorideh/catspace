@@ -6,5 +6,6 @@ fn the_defaults_keep_the_search_as_it_is() {
     let p = cs_decision::Params::default();
     assert!(!p.verify_choice && !p.verify_ties);
     assert!(!p.reask, "plan 79.02: the second asking of the equal reading is off by default");
+    assert!(!p.root_full, "plan 79.03: no reduction at the root is off by default");
     assert_eq!(p.choice_mode, ChoiceMode::Slot);
 }

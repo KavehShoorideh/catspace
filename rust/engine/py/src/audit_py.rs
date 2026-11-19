@@ -47,6 +47,36 @@ pub fn equal_audit(py: Python<'_>, variant: &str, moves: Vec<String>, worth: Has
     Ok(d.into_any().unbind())
 }
 
+/// PLAN 79.03: the Python entry of the gap audit (cs_tactics::gap_audit). `gap_audit(variant, moves, worth, run_nodes, max_depth=64, big=20000000, kind_change=True, root_full=False)` -> a dict {depth, value, first, run_nodes, exact_cut, rows: [{index, name, gain, exact}]} or None.
+/// No clock: the budgets are node counts, so the result repeats. `root_full` is the switch of the mend (no late-move reduction at the root), false by default.
+#[pyfunction]
+#[pyo3(signature = (variant, moves, worth, run_nodes, max_depth=64, big=20_000_000, kind_change=true, root_full=false))]
+#[allow(clippy::too_many_arguments)]
+pub fn gap_audit(py: Python<'_>, variant: &str, moves: Vec<String>, worth: HashMap<String, i64>, run_nodes: u64, max_depth: i32, big: u64, kind_change: bool, root_full: bool) -> PyResult<PyObject> {
+    let (g, s, keys) = crate::record_of(variant, None, 518, &moves)?;
+    let judge = Worth { name: "record".into(), table: worth, ours_first: false };
+    let r = if kind_change { cs_tactics::gap_audit::gap_audit(&g, &judge, &s, &keys, run_nodes, max_depth, big, root_full) } else { cs_tactics::gap_audit::gap_audit(&g, &NoChange(judge), &s, &keys, run_nodes, max_depth, big, root_full) };
+    let Some(a) = r else { return Ok(py.None()) };
+    let ms = g.moves(&s);
+    let d = PyDict::new(py);
+    d.set_item("depth", a.depth)?;
+    d.set_item("value", a.value)?;
+    d.set_item("first", a.first.and_then(|i| ms.get(i)).map(|m| g.move_name(&s, m)))?;
+    d.set_item("run_nodes", a.run_nodes)?;
+    d.set_item("exact_cut", a.exact_cut)?;
+    let rows = PyList::empty(py);
+    for r in &a.rows {
+        let e = PyDict::new(py);
+        e.set_item("index", r.index)?;
+        e.set_item("name", ms.get(r.index).map(|m| g.move_name(&s, m)))?;
+        e.set_item("gain", r.gain)?;
+        e.set_item("exact", r.exact)?;
+        rows.append(e)?;
+    }
+    d.set_item("rows", rows)?;
+    Ok(d.into_any().unbind())
+}
+
 /// PLAN 78.85, the trace: `value_at(variant, moves, root_plies, worth, depth, ply, alpha, beta, null_move=True, late_reduce=True, fuse=20000000)` -> (the value of the position after `moves` read as a node at `ply`
 /// of a search whose side is the mover of the position after the first `root_plies` moves, the nodes spent, the names of the legal moves there). A fresh table; the record of positions is the moves before the root.
 #[pyfunction]
