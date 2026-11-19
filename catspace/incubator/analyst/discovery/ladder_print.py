@@ -33,6 +33,7 @@ reasons' order puts the reference move (the search at ten times the play clock, 
 the moves that take, the reference move and its place in both orders, the first five quiet moves of each order, and the strongest groups of the reference, of the static first and of the reasons' first in words. Writes cases.txt.
 PLAN 78.92 `--choice92 TAG` (`choice_cases`): THE TWENTY POSITIONS where the search's played move is under the reference's best (choice_measure.py `cases`: cases92.json under reasoner_choice_78_92/<tag>/; the reference is the same search with
 the late-move reduction and the null move off): the board, what each side has under attack, the played move, the reference's best and both values at the search's depth and two plies deeper. Writes cases.txt.
+PLAN 78.98 `--equal98 TAG` (`equal98_cases`): THE TRACE OF THE EQUAL MOVES (equal_trace.py, trace.jsonl under equal_78_98/<tag>/): the five named positions (trace.txt) or ten more stuck moves of kind all present (cases.txt): the board, the stuck move and a class-keeping move with what the root holds for each, the rule of equality, the lines the values come from and the units each side has at their end.
 PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
@@ -828,6 +829,56 @@ def room97_cases(tag: str = "full") -> Path:
     return root / "cases.txt"
 
 
+def equal98_cases(tag: str = "full", which: str = "named") -> Path:
+    """PLAN 78.98 `--equal98 TAG [--equal98-set named|rest]`: THE TRACE OF THE EQUAL MOVES (equal_trace.py: trace.jsonl under equal_78_98/<tag>/). `named`: the five positions of the plan, written to trace.txt; `rest`: ten more stuck moves of kind all present (the first ten
+    in the order of the trace, one per position), written to cases.txt. Each: the board, the stuck move and the class-keeping move in words, what the root holds for each (the value of the position, the gain, the answer of the rule, the
+    answer with the prunings off, the exact value), the rule by which they are held equal, the line each value comes from in words with the units given and taken and the units each side has at its end, and the cause. For the reader's judgement only; the reading of the judge is appended by hand."""
+    root = Path(paths.experiment("equal_78_98", tag))
+    rows = [json.loads(x) for x in (root / "trace.jsonl").read_text().splitlines() if x.strip()]
+    games = {}
+    from catspace.incubator.analyst.discovery import future_labels as FL
+    for g in FL.universe():
+        games[g["ord"]] = g
+    named = [r for r in rows if str(r.get("tag", "")).startswith("named")]
+    rest, seen = [], set()
+    for r in rows:
+        if r.get("tag") == "all present" and "error" not in r and r["id"] not in seen:
+            seen.add(r["id"])
+            rest.append(r)
+    shown = named if which == "named" else rest[:10]
+    out = ["THE TRACE OF THE EQUAL MOVES (plan 78.98). The rule of the code: a root move is held equal iff its null-window answer at the finished depth D is at least v, the value of the position at D (warm table, late-move reduction and null move on; margin zero). The judge's worths are the measured record "
+           "of the odds games; a unit given costs its worth, a unit taken adds it. For the reader's judgement only.", ""]
+    for k, r in enumerate(shown, 1):
+        if "error" in r:
+            continue
+        ord_, ply = r["id"].split("_")
+        moves = games[int(ord_)]["moves"][:int(ply)]
+        b = chess.Board()
+        for m in moves:
+            b.push_uci(m)
+
+        def nm(m, b=b):
+            return b.san(chess.Move.from_uci(m)) if m else "none"
+
+        def words(rd, b=b, m0=None):
+            if not rd or not rd.get("ok"):
+                return "unread"
+            return san_line(b, rd["names"], cap=12)
+        s, kp = r["stuck_row"], r.get("keeper_row") or {}
+        out += [f"=== CASE {k}: {r['id']}  [{r.get('tag')}]  band {r['band']}, ply {ply} ({'white' if b.turn else 'black'} to move); D {r['depth']}, value of the position at D {r['value']}; equal set {r['equal_set']} moves (verified without the prunings {r['verified_set']}); the answer was {'cut' if r['tie_cut'] else 'whole'}", str(b), "",
+                f"the stuck move {nm(r['stuck'])}: gain {s['gain']}; answer of the rule {s['warm']}; answer with the prunings off {s['plain']}; exact value {s['exact']}; held equal: {s['held']}",
+                f"  the line its value comes from: {words(r['stuck_line'])}; value of the line {r['stuck_line'].get('value')}; given {r['stuck_line'].get('exchange', {}).get('gave')} taken {r['stuck_line'].get('exchange', {}).get('took')} kind changes {r['stuck_line'].get('exchange', {}).get('changed')}; "
+                f"units at its settled end (side to move first, then the other side): {r['stuck_line'].get('inputs')}",
+                f"the class-keeping equal move {nm(r['keeper'])}: gain {kp.get('gain')}; answer of the rule {kp.get('warm')}; answer with the prunings off {kp.get('plain')}; exact value {kp.get('exact')}; held equal: {kp.get('held')}",
+                f"  the line its value comes from: {words(r.get('keeper_line'))}; value of the line {(r.get('keeper_line') or {}).get('value')}; given {(r.get('keeper_line') or {}).get('exchange', {}).get('gave')} taken {(r.get('keeper_line') or {}).get('exchange', {}).get('took')}; "
+                f"units at its settled end: {(r.get('keeper_line') or {}).get('inputs')}",
+                f"the prunings-off reading of the stuck move at D and at D+{2}: its value {(r.get('deep') or {}).get('other_d')} against the best {(r.get('deep') or {}).get('best_d')}, then {(r.get('deep') or {}).get('other')} against {(r.get('deep') or {}).get('best')}; the cause: {r['cause']}", ""]
+    name = "trace.txt" if which == "named" else "cases.txt"
+    (root / name).write_text(chr(10).join(out))
+    print(f"OBS ladder print: {len(shown)} positions written to {root / name}")
+    return root / name
+
+
 def _reading(b: chess.Board, r: dict, ans: set) -> list:
     """The stored reading of one run of one position, in words: the rung, the move the search chose at each clock, what it held equal, the deepest line with its events and its verdict. No reader is run."""
     def nm(m: str) -> str:
@@ -1016,6 +1067,8 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--future95", default=None, help="PLAN 78.95: thirty positions: goals that fall, frames of one threat, picks of the weighted chooser (future_78_95/<tag>)")
     ap.add_argument("--prior96", default=None, help="PLAN 78.96: twenty positions where the equal moves differ in keeping the oracle's class, the fitted prior against the pattern pick (prior_78_96/<tag>)")
     ap.add_argument("--room97", default=None, help="PLAN 78.97: twenty class-losing equal moves that stay equal at the longest clock, ten tactical and ten slow (room_78_97/<tag>)")
+    ap.add_argument("--equal98", default=None, help="PLAN 78.98: the trace of the equal moves (equal_78_98/<tag>): the five named positions (trace.txt) or ten more stuck moves (--equal98-set rest, cases.txt)")
+    ap.add_argument("--equal98-set", default="named", choices=["named", "rest"])
     ap.add_argument("--future94", default=None, help="PLAN 78.94: thirty positions with the oracle's class and frame, our goals and the judge's chances (future_78_94/<tag>)")
     ap.add_argument("--cut84", default=None, help="PLAN 78.84: the twenty flagged decisions of part one (symbols_play_78_84/<tag>)")
     ap.add_argument("--reread", action="store_true", help="PLAN 78.86: the twenty changed positions of ladder_78_86 beside the earlier run (ladder_78_77/selfplay_78_58_on)")
@@ -1081,6 +1134,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.room97:
         room97_cases(a.room97)
+        return 0
+    if a.equal98:
+        equal98_cases(a.equal98, a.equal98_set)
         return 0
     if a.records:
         records_cases(a.records, fixed_from=a.fixed_from)
