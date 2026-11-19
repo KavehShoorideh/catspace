@@ -37,6 +37,7 @@ PLAN 78.98 `--equal98 TAG` (`equal98_cases`): THE TRACE OF THE EQUAL MOVES (equa
 PLAN 78.99 `--record99 TAG` (`record99_cases`): THE JUDGED POSITIONS (record_measure.py `cases`, cases99.json under record_78_99/<tag>/): the five positions of 78.98 and ten room positions where the first move changes between the odds record and the human-result record, with the move the search plays under each measured record. Writes cases.txt.
 PLAN 79.00 `--stack79 TAG` (`stack79_cases`): THE TWENTY JUDGED POSITIONS of the new room (stack_measure.py `cases`, cases79.json under stack_79_00/<tag>/): room positions where the first move of the search under the stack (human-result record, verified choice) loses the oracle's class: the board, what each side has under attack, the first move, the pick, the oracle's line after the first move, the class after it and the equal moves that keep the class. Writes cases.txt (the reader's judgement is appended by hand).
 PLAN 79.01 `--leaf01 TAG` (`leaf01_cases`): THE FIFTEEN JUDGED POSITIONS of the firm room (leaf_measure.py `cases`, cases_leaf.json under leaf_79_01/<tag>/): positions where the equal move with the highest estimator chance at the end of the line is not the search's first move: the board, what each side has under attack, every equal move with its firm label, the oracle's two askings, the units each side has at the end of its line, the chances, and the line in words. Writes cases.txt (the reader's judgement is appended by hand).
+PLAN 79.04 `--heads04 TAG` (`heads04_cases`): THE FIFTEEN JUDGED POSITIONS of the heads (heads_measure.py `cases`, cases_heads.json under heads_79_04/<tag>/): firm-room positions where the head chosen on FIND, read from both sides' view, has a unique highest value on a move that is not the first move: the board, every equal move with its firm label, the oracle's two askings, the best head's value one move after the root and at the end of the line, the kinds head's, the line in words, and the columns that carried the head's pick over the first move. Writes cases.txt (the reader's judgement is appended by hand).
 PLAN 78.82 `--play82 TAG` (`play_cases`): THE THIRTY DECISIONS of the reasons' pick in play where it differed from the search's first move (symbols_play.py `cases`), each with the board and the reasons of both moves in words. Writes cases.txt under symbols_play_78_82/<tag>/.
 """
 
@@ -978,6 +979,40 @@ def leaf01_cases(tag: str = "full") -> Path:
     return root / "cases.txt"
 
 
+def heads04_cases(tag: str = "full") -> Path:
+    """PLAN 79.04 `--heads04 TAG`: THE FIFTEEN JUDGED POSITIONS OF THE HEADS (heads_measure.py `cases`: cases_heads.json under heads_79_04/<tag>/). Each: the board, what each side has under attack, the first move and the pick, and for every equal move its firm label (keeps / loses / neither the class), the oracle's class and number asked twice (the second asking in brackets), the best head's value for the
+    mover at the root one move after it and at the end of the line (both sides' view), the kinds head's, whether the leaf is quiet, and the line in words; then the columns that carried the head's pick over the first move. For the reader's judgement only (appended by hand); no oracle number is read by the engine."""
+    root = Path(paths.experiment("heads_79_04", tag))
+    cases = json.loads((root / "cases_heads.json").read_text())
+    cname = {1: "winning", 0: "neither", -1: "losing"}
+    lines = ["THE FIFTEEN JUDGED POSITIONS (plan 79.04): positions of the firm room where the head chosen on FIND, read from both sides' view so that the side to move's bonus cancels, has a unique highest value on a move that is not the search's first move. The class is the oracle's at depth 16 for the side that plays the move; "
+             "the values are for the mover at the root (a chance for a result head, an expected arrival difference for an arrival head); for the reader's judgement only.", ""]
+    for k, c in enumerate(cases, 1):
+        b = chess.Board()
+        for m in c["moves"]:
+            b.push_uci(m)
+        me = b.turn
+
+        def nm(m, b=b):
+            return b.san(chess.Move.from_uci(m)) if m else "none"
+        j0 = c["chosen"]
+        lines += [f"=== POSITION {k}: {c['id']}  part {c['part']}, band {c['band']} ({c['units']} units), ply {len(c['moves'])}  ({'white' if me else 'black'} to move); the position's class: {cname[c['cls']]}; depth of the search {c['depth']}; head {c['head']} read {c['reading']}", str(b), "",
+                  f"the mover's units under attack: {_attacked(b, me)}; the other side's: {_attacked(b, not me)}",
+                  f"the search's first move: {nm(c['first'])}; the pick: {nm(c['pick'])}; the equal set holds {len(c['tied'])} moves; the head's highest: {nm(c['tied'][j0])}; the columns that carried its difference from the first move (weight times value, root mover's view, in log-odds of a win against a loss or in arrival units): "
+                  + (", ".join(f"{n} {d:+.3f}" for n, d in c["carriers"]) or "none")]
+        for j, m in enumerate(c["tied"]):
+            ln = c["lines"][j]
+            tag_m = ("FIRST " if j == 0 else "") + ("PICK " if m == c["pick"] else "") + ("HIGHEST " if j == j0 else "")
+            cp = lambda x: "forced" if x is None else f"{x:+d}"
+            bv, kv = c["best_values"], c["kinds_values"]
+            lines.append(f"  {nm(m)} {tag_m}| {c['vec'][j] or 'neither'} (class {cname[c['cm'][j]]} [{cname[c['cls2'][j]]}], number {cp(c['cp'][j])} [{cp(c['cp2'][j])}]) | head one move after {bv['one'][j]:+.3f}, at the end {bv['end'][j]:+.3f}; kinds head {kv['one'][j]:+.3f}, {kv['end'][j]:+.3f} | quiet there {c['quiet'][j][0]}, {c['quiet'][j][1]} | line ({ln['settled']} plies, value {ln['value']}"
+                         + (", cut" if ln["cut"] else "") + f"): {san_line(b, ln['names'], 14)}")
+        lines.append("")
+    (root / "cases.txt").write_text(chr(10).join(lines))
+    print(f"OBS ladder print: {len(cases)} positions written to {root / 'cases.txt'}")
+    return root / "cases.txt"
+
+
 def cut02_cases(tag: str = "full") -> Path:
     """PLAN 79.02 `--cut02 TAG`: THE JUDGED POSITIONS OF THE CUT AND THE MEND (cut_mend.py `cases`: cases_cut.json under cut_79_02/<tag>/): 79.01's positions 2, 3 and 5 and twelve where the mend puts out a firmly losing move. Each: the board, the first move and the pick without the mend (A) and with it (M), and for every equal move of A's set its firm label, the oracle's
     class and number asked twice, the audit's answers at the search's depth (the pruned null-window answer the equal reading held it by, with the late-move reduction off, the null move off, both off, and the exact value, against the value of the position), by what kind of answer it was held, whether M put it out, and the line in words. For the reader's judgement only
@@ -1257,6 +1292,7 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--record99", default=None, help="PLAN 78.99: the judged positions, the search under each measured record (record_78_99/<tag>/cases99.json, written to cases.txt)")
     ap.add_argument("--stack79", default=None, help="PLAN 79.00: twenty room positions where the first move under the stack loses the class (stack_79_00/<tag>/cases79.json, written to cases.txt)")
     ap.add_argument("--leaf01", default=None, help="PLAN 79.01: fifteen firm-room positions where the highest end-of-line chance is not the first move (leaf_79_01/<tag>/cases_leaf.json, written to cases.txt)")
+    ap.add_argument("--heads04", default=None, help="PLAN 79.04: fifteen firm-room positions where the head chosen on FIND picks otherwise than the first move (heads_79_04/<tag>/cases_heads.json, written to cases.txt)")
     ap.add_argument("--cut02", default=None, help="PLAN 79.02: the judged positions of the cut and the mend (cut_79_02/<tag>/cases_cut.json, written to cases.txt)")
     ap.add_argument("--best03", default=None, help="PLAN 79.03: the fifteen positions where the best root move's own value at the depth is above the value the search reports (best_79_03/<tag>/cases_best.json, written to cases.txt)")
     ap.add_argument("--future94", default=None, help="PLAN 78.94: thirty positions with the oracle's class and frame, our goals and the judge's chances (future_78_94/<tag>)")
@@ -1336,6 +1372,9 @@ def main(argv: "list | None" = None) -> int:
         return 0
     if a.leaf01:
         leaf01_cases(a.leaf01)
+        return 0
+    if a.heads04:
+        heads04_cases(a.heads04)
         return 0
     if a.cut02:
         cut02_cases(a.cut02)
