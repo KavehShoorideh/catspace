@@ -51,9 +51,18 @@ def world():
     return model, facts, TC.Lines(REC, threads=1)
 
 
+def _bears(name):
+    """The Python names the goal unit's first fact `borne_on`; the amended build gives it the ordinary name `bears` (79.07 amendment: no fact special to the goal unit)."""
+    return "bears" if name == "borne_on" else name
+
+
+def _key_py(k):
+    return "|".join(sorted(_bears(x.split(":")[0]) + ":" + x.split(":", 1)[1] for x in k.split("|"))) if k else k
+
+
 def _fact_py(f):
     c = f["cause"]
-    return (f["name"], f["status"], None if c is None else (c["type"], tuple(c["stoppers"]), c["victim"], c["basis"]))
+    return (_bears(f["name"]), f["status"], None if c is None else (c["type"], tuple(c["stoppers"]), c["victim"], c["basis"]))
 
 
 def _fact_rust(f):
@@ -64,7 +73,7 @@ def _fact_rust(f):
 def _py_view(goals):
     out = []
     for g in goals:
-        out.append((g["target"], g["source"], tuple(g["unmet"]), g["key"], g["stake"], g["n_unmet"], tuple(g["stoppers"]), tuple(_fact_py(f) for f in g["facts"]),
+        out.append((g["target"], g["source"], tuple(_bears(x) for x in g["unmet"]), _key_py(g["key"]), g["stake"], g["n_unmet"], tuple(g["stoppers"]), tuple(_fact_py(f) for f in g["facts"]),
                     tuple((e["unit"], e["removable"], tuple(e["resolves"]), e["left"], e["left_stoppers"]) for e in g["fix_set"] if e["kind"] == "remove"), g["two_moves"], g["lead"]))
     return out
 
@@ -72,7 +81,9 @@ def _py_view(goals):
 def _rust_view(goals):
     out = []
     for g in goals:
-        assert not any(f["name"] == "outnumbers" for f in g["facts"]), "the cases chosen have no line onto the goal unit that one unit shuts: the new fact has no Python original"
+        assert not any(f["name"] in ("outnumbers", "borne_on") for f in g["facts"]), "no fact is special to the goal unit"
+        if g["source"] == "stopper":
+            continue                                                    # a subgoal (the recursion) has no Python original: the stopper's own goal
         out.append((g["target"], g["source"], tuple(g["unmet"]), g["key"], g["stake"], g["n_unmet"], tuple(g["stoppers"]), tuple(_fact_rust(f) for f in g["facts"]),
                     tuple((e["unit"], e["removable"], tuple(e["resolves"]), e["left"], e["left_stoppers"]) for e in g["fix_set"] if e["kind"] == "remove"), g["two_moves"], g["lead"]))
     return out
@@ -105,6 +116,7 @@ def test_the_rust_goals_are_the_python_goals_on_a_small_constructed_position(wor
     assert got["unasked"] == [], "a budget this large asks every unit"
     pv = _py_view(want)
     rv = _rust_view(got["goals"])
+    assert all(g["parent"] is None or g["depth"] >= 1 for g in got["goals"])
     assert [x[0] for x in rv] == [x[0] for x in pv], name
     for a, b in zip(rv, pv):
         assert a == b, (name, a, b)

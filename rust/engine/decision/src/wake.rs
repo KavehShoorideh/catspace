@@ -164,7 +164,7 @@ pub use crate::threats::{concrete_threats, ConcreteList, ThreatRow};
 
 /// STEP 3, the proposer (PLAN 79.07, ported): the facts, causes, fixes and goals, the goals of two threats, the moves that make two threats at once and `named_moves` live in `crate::goals` (one piece per module) and are named here as the wake's interface. Their types were declared here thin
 /// (`Fix`, `Fact`, `Goal` with strings and a count of moves) and are widened there with the reason stated in the 79.07 BUILT block: a fix must carry the legal moves that do it, a fact its cause and the units it is about, a goal its side, source and the fix set.
-pub use crate::goals::{double_threats, goals, named_moves, propose, two_threat_goals, DoubleThreat, Fact, Fix, FixKind, Goal, GoalParams, Proposal, TwoThreats};
+pub use crate::goals::{answers_against, goals, named_moves, propose, shared_fix_moves, two_threat_goals, Answer, SharedMove, Fact, Fix, FixKind, Goal, GoalParams, Proposal, TwoThreats};
 
 /// STEP 6, the reasons' pick among the moves the search holds equal (symbols_play.ReasonsReader.pick: the pattern counter is Rust already; the weights are a JSON record).
 pub fn reasons_pick<G: Game + Placed>(_st: &Static, _g: &G, _s: &G::State, _equal: &[String]) -> Result<Option<String>, Unported> { Err(Unported("reasons' pick")) }

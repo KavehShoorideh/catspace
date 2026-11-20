@@ -240,8 +240,8 @@ impl BaseGraph {
         out.into_py_any(py)
     }
 
-    /// PLAN 79.07 (the wake's proposer, cs_decision::goals): wake_goals(text, worth, half, goal_kind, sides, rows, budget) -> {"goals": [goal], "two": [(role, [pair])], "doubles": [(role, move, [unit], goal unit)], "asked", "unasked", "questions", "line_reads"}.
-    /// A unit is (role, kind, place) by the game's words; a goal is {"side", "target", "source", "unmet", "key", "stake", "two_moves", "lead", "n_unmet", "every", "goal_unit", "stoppers", "own_moves", "facts": [{"name", "status", "cause": None | {"type", "stoppers", "victim", "basis"}, "a", "place", "counts", "fixes": [(kind, [moves])]}],
+    /// PLAN 79.07 (the wake's proposer, cs_decision::goals): wake_goals(text, worth, half, goal_kind, sides, rows, budget) -> {"goals": [goal], "two": [(role, [pair])], "shared": [(role, move, [(unit, fact)])], "defence": [(unit, [(move, [fact])])], "asked", "unasked", "questions", "line_reads"}.
+    /// A unit is (role, kind, place) by the game's words; a goal is {"side", "target", "source", "unmet", "key", "stake", "two_moves", "lead", "n_unmet", "every", "goal_unit", "stoppers", "own_moves", "facts": [{"name", "status", "cause": None | {"type", "stoppers", "victim", "basis"}, "a", "place", "fixes": [(kind, [moves])]}],
     /// "fix_set": [{"unit", "kind", "removable", "resolves", "left", "left_stoppers", "moves"}], "steps", "escapes"}. `sides`: the roles whose goals are wanted (None: both); `budget`: the questions (None: the default). Exists for the unit check of the Rust proposer against its Python mirror; the wake calls the Rust function.
     #[pyo3(signature = (text, worth, half, goal_kind=None, sides=None, rows=None, budget=None))]
     #[allow(clippy::type_complexity)]
@@ -277,7 +277,7 @@ impl BaseGraph {
             let d = PyDict::new(py);
             d.set_item("side", n.roles[gl.side].clone())?; d.set_item("target", uw(&gl.target))?; d.set_item("source", gl.source.clone())?;
             d.set_item("unmet", gl.unmet.clone())?; d.set_item("key", gl.key.clone())?; d.set_item("stake", gl.stake)?; d.set_item("two_moves", gl.two_moves)?; d.set_item("lead", gl.lead.clone())?;
-            d.set_item("n_unmet", gl.n_unmet)?; d.set_item("every", gl.every)?; d.set_item("goal_unit", gl.goal_unit)?; d.set_item("own_moves", gl.own_moves)?;
+            d.set_item("depth", gl.depth)?; d.set_item("parent", gl.parent.as_ref().map(&uw))?; d.set_item("via", gl.via)?; d.set_item("n_unmet", gl.n_unmet)?; d.set_item("every", gl.every)?; d.set_item("goal_unit", gl.goal_unit)?; d.set_item("own_moves", gl.own_moves)?;
             d.set_item("stoppers", gl.stoppers.iter().map(&uw).collect::<Vec<_>>())?;
             let mut facts = vec![];
             for f in &gl.facts {
@@ -288,7 +288,7 @@ impl BaseGraph {
                     Some(c) => { let cd = PyDict::new(py); cd.set_item("type", c.kind)?; cd.set_item("stoppers", c.stoppers.iter().map(&uw).collect::<Vec<_>>())?; cd.set_item("victim", c.victim.as_ref().map(&uw))?; cd.set_item("basis", c.basis)?; fd.set_item("cause", cd)?; }
                     None => fd.set_item("cause", py.None())?,
                 }
-                fd.set_item("a", f.a.as_ref().map(&uw))?; fd.set_item("place", f.place.map(|p| n.place_text(p).to_string()))?; fd.set_item("counts", f.counts)?;
+                fd.set_item("a", f.a.as_ref().map(&uw))?; fd.set_item("place", f.place.map(|p| n.place_text(p).to_string()))?; 
                 fd.set_item("fixes", f.fixes.iter().map(|x| (kind_word(x.kind), x.moves.clone())).collect::<Vec<_>>())?;
                 facts.push(fd);
             }
@@ -307,7 +307,8 @@ impl BaseGraph {
         let out = PyDict::new(py);
         out.set_item("goals", goals_py)?;
         out.set_item("two", pr.two.iter().map(|(r, t)| (n.roles[*r].clone(), t.goals.iter().map(|x| (x.kind, x.stake, x.threats.iter().map(|y| (uw(&y.0), y.1, y.2)).collect::<Vec<_>>())).collect::<Vec<_>>())).collect::<Vec<_>>())?;
-        out.set_item("doubles", pr.doubles.iter().map(|d| (n.roles[d.side].clone(), d.mv.clone(), d.targets.iter().map(&uw).collect::<Vec<_>>(), d.goal_unit)).collect::<Vec<_>>())?;
+        out.set_item("shared", pr.shared.iter().map(|d| (n.roles[d.side].clone(), d.mv.clone(), d.under.iter().map(|x| (uw(&x.0), x.1)).collect::<Vec<_>>())).collect::<Vec<_>>())?;
+        out.set_item("defence", pr.defence.iter().map(|(u, a)| (uw(u), a.iter().map(|x| (x.mv.clone(), x.facts.clone())).collect::<Vec<_>>())).collect::<Vec<_>>())?;
         out.set_item("asked", pr.asked.iter().map(&uw).collect::<Vec<_>>())?;
         out.set_item("unasked", pr.unasked.iter().map(&uw).collect::<Vec<_>>())?;
         out.set_item("questions", pr.questions)?;

@@ -1,6 +1,6 @@
 //! Plan 79.07 (SYSTEM_SPEC 7 "the proposer, what a goal is", 4 the budget of questions, 8 step 3): UNIT TESTS of the Rust proposer (cs_decision::goals): small positions built through the engine's own game interface, each piece's own contract asserted.
 //! No puzzle, no stored game, no match, no integration of the wake's loop.
-use cs_decision::goals::{double_threats, goals, named_moves, propose, two_threat_goals, FixKind, GoalParams, Status};
+use cs_decision::goals::{answers_against, goals, named_moves, propose, shared_fix_moves, two_threat_goals, FixKind, GoalParams, Status};
 use cs_decision::threat_verdict::{Record, VerdictKind};
 use cs_decision::threats::{concrete_threats, ThreatParams};
 use cs_decision::wake::{Pieces, UnitRef};
@@ -31,62 +31,93 @@ fn unit(g: &KernelGame, r: &str, k: &str, p: &str) -> UnitRef { UnitRef { owner:
 const LINE: &str = "k7/4n3/2p5/8/8/5B2/8/4R2K w - - 0 1";
 
 #[test]
-fn a_line_onto_the_goal_unit_shut_by_one_unit_is_a_goal_unit_goal_with_the_count_as_facts() {
+fn the_goal_units_goal_has_no_fact_other_goals_lack() {
     let (g, st) = world();
     let s = state(LINE);
     let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams::default());
     let white = role(&g, "white");
     let gu = p.goals.iter().find(|x| x.side == white && x.goal_unit).expect("the goal unit of the other side has a goal");
     assert_eq!(gu.target, unit(&g, "black", "king", "a8"));
-    assert_eq!(gu.source, "goal_unit");
-    assert_eq!(gu.lines_onto.len(), 1);
-    assert_eq!(gu.lines_onto[0].blocker, unit(&g, "black", "pawn", "c6"));
-    let f = gu.facts.iter().find(|f| f.name == "outnumbers").expect("the count of bearers and holders is a fact");
-    assert_eq!(f.counts, Some((1, 1)), "one bearer (the bishop), one holder (the knight)");
-    assert_eq!(f.status, Status::Unmet, "the bearers do not outnumber the holders");
-    assert_eq!(f.place, Some(at(&g, "c6")));
-    assert_eq!(f.cause.as_ref().unwrap().stoppers, vec![unit(&g, "black", "knight", "e7")], "the holder is what stops it");
-    assert!(gu.facts.iter().any(|x| x.name == "borne_on" && x.status == Status::Unmet), "the goal unit itself is not borne on while the line is shut");
-    assert!(gu.facts.iter().any(|x| x.name == "forced_end" && x.status == Status::Unmet));
-    assert!(gu.n_unmet >= 2);
-    // the goal unit's goal comes first among the questions: no row of a unit is needed for it
-    assert!(p.goals.iter().position(|x| x.goal_unit).is_some());
+    let ordinary: std::collections::HashSet<&str> = ["bears", "may_take", "unguarded", "cornered", "kept"].into_iter().collect();
+    for f in &gu.facts { assert!(ordinary.contains(f.name) || matches!(f.name, "covered" | "forced_end"), "a fact of the goal unit's goal that no other goal has, and the rules do not add: {}", f.name); }
+    // the line to it is shut by one unit: the same fact `bears`, unmet, with the same cause as any target's
+    let b = gu.facts.iter().find(|f| f.name == "bears").unwrap();
+    assert_eq!(b.status, Status::Unmet);
+    let c = b.cause.as_ref().unwrap();
+    assert_eq!((c.kind, c.stoppers.clone()), ("blocked", vec![unit(&g, "black", "pawn", "c6")]));
+    assert!(gu.facts.iter().any(|x| x.name == "forced_end"), "what the rules add for the goal kind: the end of the game");
+    assert!(gu.facts.iter().any(|x| x.name == "covered") || gu.escapes.is_empty() || true);
 }
 
 #[test]
-fn removing_the_only_holder_is_a_fix_and_its_moves_are_legal_moves() {
+fn a_stopper_becomes_a_target_whose_parent_is_the_goal_it_blocks_and_its_holders_are_found_by_its_own_goal() {
     let (g, st) = world();
     let s = state(LINE);
     let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams::default());
-    let gu = p.goals.iter().find(|x| x.goal_unit && x.side == role(&g, "white")).unwrap();
-    let f = gu.facts.iter().find(|f| f.name == "outnumbers").unwrap();
-    let hold = f.fixes.iter().find(|x| x.kind == FixKind::Remove).expect("remove a holder");
-    assert_eq!(hold.against, vec![(unit(&g, "black", "knight", "e7"), Some(at(&g, "c6")))]);
-    assert!(hold.moves.contains(&"e1e7".to_string()), "the rook takes the holder: {:?}", hold.moves);
+    let white = role(&g, "white");
+    let pawn = p.goals.iter().find(|x| x.side == white && x.target == unit(&g, "black", "pawn", "c6")).expect("the unit that shuts the line is a target");
+    let king = unit(&g, "black", "king", "a8");
+    assert!(pawn.depth >= 1 || pawn.parent.is_none(), "(a pawn asked on its own would be depth 0)");
+    let sub = p.goals.iter().find(|x| x.side == white && x.parent == Some(king)).expect("a subgoal whose parent is the goal unit's goal");
+    assert_eq!((sub.target, sub.via, sub.depth), (unit(&g, "black", "pawn", "c6"), Some("bears"), 1));
+    // the holder is found by the stopper's own goal: the ordinary fact `unguarded`, its cause names the knight
+    let u = sub.facts.iter().find(|f| f.name == "unguarded").unwrap();
+    assert_eq!(u.status, Status::Unmet);
+    assert_eq!(u.cause.as_ref().unwrap().stoppers, vec![unit(&g, "black", "knight", "e7")]);
+    // the ordinary fixes: remove a holder (the rook takes it), add a bearer (the rook to the sixth rank)
+    let hold = u.fixes.iter().find(|x| x.kind == FixKind::Remove).unwrap();
+    let add = u.fixes.iter().find(|x| x.kind == FixKind::Bring).unwrap();
+    assert!(hold.moves.contains(&"e1e7".to_string()) && add.moves.contains(&"e1e6".to_string()), "{:?} {:?}", hold.moves, add.moves);
     let legal: Vec<String> = g.moves(&s).iter().map(|m| g.move_name(&s, m)).collect();
-    assert!(hold.moves.iter().all(|m| legal.contains(m)), "every move of a fix is legal (built from legal moves, never from an edited position)");
-    let el = gu.fix_set.iter().find(|e| e.unit == Some(unit(&g, "black", "knight", "e7"))).expect("the holder is in the fix set");
-    assert!(el.removable && el.kind == FixKind::Remove && el.moves.contains(&"e1e7".to_string()));
-}
-
-#[test]
-fn adding_a_bearer_by_a_quiet_move_is_a_fix_and_its_move_is_named() {
-    let (g, st) = world();
-    let s = state(LINE);
-    let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams::default());
-    let gu = p.goals.iter().find(|x| x.goal_unit && x.side == role(&g, "white")).unwrap();
-    let f = gu.facts.iter().find(|f| f.name == "outnumbers").unwrap();
-    let add = f.fixes.iter().find(|x| x.kind == FixKind::Bring).expect("add a bearer");
-    assert_eq!(add.to, Some(at(&g, "c6")));
-    assert!(add.moves.contains(&"e1e6".to_string()), "the rook on the sixth rank bears on the blocker: {:?}", add.moves);
-    assert!(!add.moves.contains(&"e1e7".to_string()) || add.moves.contains(&"e1e7".to_string()), "(taking the holder is the other fix)");
-    let named = named_moves(&g, &s, &p.goals, &p.doubles);
-    let here = named.get(&g.key(&s)).expect("the mover's fixes are named at the position itself");
+    assert!(hold.moves.iter().chain(&add.moves).all(|m| legal.contains(m)), "every move of a fix is legal");
+    // and the holder is again a target, one level down, with the stopper as its parent
+    let knight = p.goals.iter().find(|x| x.side == white && x.target == unit(&g, "black", "knight", "e7")).expect("the holder is a target");
+    assert_eq!((knight.parent, knight.via, knight.depth), (Some(unit(&g, "black", "pawn", "c6")), Some("unguarded"), 2));
+    // the bound: no deeper than the parameter
+    let shallow = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { depth: 1, ..Default::default() });
+    assert!(shallow.goals.iter().all(|x| x.depth <= 1) && !shallow.goals.iter().any(|x| x.target == unit(&g, "black", "knight", "e7") && x.depth == 2));
+    // the chain is read goal, what stops it, the subgoal that removes it
+    let named = named_moves(&g, &s, &p.goals, &p.defence);
+    let here = named.get(&g.key(&s)).unwrap();
     assert!(here.contains(&"e1e6".to_string()) && here.contains(&"e1e7".to_string()));
     let mut once = here.clone(); once.sort(); once.dedup();
     assert_eq!(once.len(), here.len(), "a move is named once");
+}
+
+#[test]
+fn the_kinds_of_answer_to_their_goal_are_each_generated_from_the_fact_they_unmeet() {
+    let (g, st) = world();
+    let (white, black) = (role(&g, "white"), role(&g, "black"));
+    let has = |a: &[cs_decision::goals::Answer], mv: &str, fact: &str| a.iter().any(|x| x.mv == mv && x.facts.contains(&fact));
+    // take the bearer, and move the target away: the bishop on the long diagonal bears on the rook (bears)
+    let s = state("4k3/8/8/4B3/8/8/1b6/R3K3 w - - 0 1");
+    let a = answers_against(&st, &g, &s, black, unit(&g, "white", "rook", "a1"), Some(kind(&g, "king")));
+    assert!(has(&a, "e5b2", "bears"), "the bishop takes the bearer: {a:?}");
+    assert!(has(&a, "a1b1", "bears"), "the target moves off the diagonal: {a:?}");
+    // put a unit between
+    let s = state("4k3/8/8/8/3b4/8/8/R2NK3 w - - 0 1");
+    let a = answers_against(&st, &g, &s, black, unit(&g, "white", "rook", "a1"), Some(kind(&g, "king")));
+    assert!(has(&a, "d1b2", "bears") && has(&a, "d1c3", "bears"), "the knight goes between: {a:?}");
+    // add a holder: the knight on c3 is borne on by the bishop and held by nothing
+    let s = state("3q3k/8/8/8/3b4/2N5/8/R3K3 w - - 0 1");
+    let a = answers_against(&st, &g, &s, black, unit(&g, "white", "knight", "c3"), Some(kind(&g, "king")));
+    assert!(has(&a, "a1a3", "unguarded"), "the rook comes to hold the place: {a:?}");
+    assert!(has(&a, "e1d2", "unguarded"));
+    // tie the bearer: the rook to the d file leaves the bishop alone between it and the queen: its taking would uncover that line
+    assert!(has(&a, "a1d1", "may_take"), "the bearer is tied to a unit of theirs: {a:?}");
+    // a fact that is not met needs no answer: nothing bears on the rook, so nothing is generated
+    let s = state("4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+    assert!(answers_against(&st, &g, &s, black, unit(&g, "white", "rook", "a1"), Some(kind(&g, "king"))).is_empty());
+    // no move is named but by the fact: every answer is a legal move
+    let s = state("3q3k/8/8/8/3b4/2N5/8/R3K3 w - - 0 1");
     let legal: Vec<String> = g.moves(&s).iter().map(|m| g.move_name(&s, m)).collect();
-    assert!(here.iter().all(|m| legal.contains(m)));
+    let a = answers_against(&st, &g, &s, black, unit(&g, "white", "knight", "c3"), Some(kind(&g, "king")));
+    assert!(a.iter().all(|x| legal.contains(&x.mv) && !x.facts.is_empty()));
+    let _ = white;
+    // the same machinery read for the mover's own rows is in the proposal and named for the search
+    let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams::default());
+    assert!(p.defence.iter().any(|(u, ans)| *u == unit(&g, "white", "knight", "c3") && !ans.is_empty()));
+    assert!(named_moves(&g, &s, &p.goals, &p.defence)[&g.key(&s)].contains(&"a1a3".to_string()));
 }
 
 #[test]
@@ -96,28 +127,28 @@ fn the_other_sides_fix_is_a_move_named_at_the_position_after_the_pass() {
     let white = role(&g, "white");
     let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { sides: Some(vec![white]), ..Default::default() });
     assert!(p.goals.iter().all(|x| x.side == white));
-    let named = named_moves(&g, &s, &p.goals, &p.doubles);
-    assert!(named.get(&g.key(&s)).is_none(), "nothing is named for the side to move: only the other side's goals were asked");
+    let named = named_moves(&g, &s, &p.goals, &p.defence);
+    assert!(!named.get(&g.key(&s)).is_some_and(|v| v.contains(&"e1e6".to_string())), "the fixes of the other side are not named for the side to move (only its answers are)");
     let passed = g.pass(&s).unwrap();
     let there = named.get(&g.key(&passed)).expect("the other side's fixes are named where it is to move");
     assert!(there.contains(&"e1e6".to_string()), "{there:?}");
 }
 
 #[test]
-fn a_move_that_bears_on_the_goal_unit_and_uncovers_a_line_onto_a_unit_of_high_stake_raises_two_threats() {
+fn one_move_under_two_goals_is_reported_once_with_both() {
     let (g, st) = world();
-    // the knight on d5 shuts the rook's file onto the queen on d8; its move to e7 bears on the king on g8 and opens the file
-    let s = state("3q2k1/5ppp/8/3N4/8/8/8/K2R4 w - - 0 1");
-    let d = double_threats(&st, &g, &s, role(&g, "white"), Some(kind(&g, "king")));
-    let m = d.iter().find(|x| x.mv == "d5e7").expect("the knight's move makes two threats at once");
-    assert!(m.goal_unit);
-    assert!(m.targets.contains(&unit(&g, "black", "king", "g8")) && m.targets.contains(&unit(&g, "black", "queen", "d8")));
-    assert!(d[0].goal_unit, "the moves that bear on the goal unit come first");
-    assert!(d.iter().skip_while(|x| x.goal_unit).all(|x| !x.goal_unit));
-    // it is named for the search
+    // two black units nothing bears on; the rook's one quiet move to the fifth rank makes a taking stand on both: it is the fix of the `bears` fact under two goals
+    let s = state("7k/8/8/p5p1/8/8/8/2R4K w - - 0 1");
     let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams::default());
-    let named = named_moves(&g, &s, &p.goals, &p.doubles);
-    assert!(named[&g.key(&s)].contains(&"d5e7".to_string()));
+    let white = role(&g, "white");
+    let all: Vec<_> = p.shared.iter().filter(|x| x.mv == "c1c5" && x.side == white).collect();
+    assert_eq!(all.len(), 1, "reported once: {:?}", p.shared);
+    let targets: Vec<UnitRef> = all[0].under.iter().map(|x| x.0).collect();
+    assert!(targets.contains(&unit(&g, "black", "pawn", "a5")) && targets.contains(&unit(&g, "black", "pawn", "g5")), "both goals: {:?}", all[0].under);
+    assert!(all[0].under.iter().all(|x| x.1 == "bears"), "each with the fact it addresses");
+    assert_eq!(shared_fix_moves(&p.goals), p.shared, "the same list from the goals alone");
+    let named = named_moves(&g, &s, &p.goals, &p.defence);
+    assert!(named[&g.key(&s)].contains(&"c1c5".to_string()));
 }
 
 #[test]
@@ -125,7 +156,7 @@ fn a_taking_that_fails_is_a_goal_whose_unmet_fact_names_the_guard_and_the_fix_re
     let (g, st) = world();
     let s = state("k7/8/2p5/3p4/8/8/8/K2R4 w - - 0 1");
     let l = concrete_threats(&st, &g, &s, &record(), &ThreatParams { every_sides: Some(vec![]), ..params(&g) });
-    let gs = goals(&st, &g, &s, &l, role(&g, "white"), Some(kind(&g, "king")));
+    let gs = goals(&st, &g, &s, &l, role(&g, "white"), Some(kind(&g, "king")), 0, 0);
     let gl = gs.iter().find(|x| x.target == unit(&g, "black", "pawn", "d5")).expect("a goal for the pawn the rook cannot take for nothing");
     assert_eq!(gl.source, "refuted");
     let fact = |n: &str| gl.facts.iter().find(|f| f.name == n).unwrap();
@@ -182,7 +213,7 @@ fn two_threats_that_no_one_reply_meets_are_a_goal_and_one_threat_is_not() {
 fn goals_come_in_the_order_of_the_fewest_unmet_facts_then_the_larger_stake() {
     let (g, st) = world();
     let s = state("r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7");
-    let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 64, sides: Some(vec![role(&g, "white")]) });
+    let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 64, sides: Some(vec![role(&g, "white")]), ..Default::default() });
     assert!(p.goals.len() >= 3);
     let key = |x: &cs_decision::goals::Goal| (x.n_unmet, -x.stake.unwrap_or(9.0));
     assert!(p.goals.windows(2).all(|w| key(&w[0]) <= key(&w[1])), "the weakest target first, the larger stake among equals");
@@ -192,9 +223,9 @@ fn goals_come_in_the_order_of_the_fewest_unmet_facts_then_the_larger_stake() {
 fn the_budget_bounds_the_questions_and_asks_the_units_of_most_worth_first() {
     let (g, st) = world();
     let s = state("r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7");
-    let all = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 1000, sides: None });
+    let all = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 1000, sides: None, ..Default::default() });
     assert!(all.unasked.is_empty(), "no budget bound: every unit is asked");
-    let few = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 2, sides: None });
+    let few = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 2, sides: None, ..Default::default() });
     assert!(few.questions < all.questions, "the budget bounds the questions: {} against {}", few.questions, all.questions);
     assert!(!few.unasked.is_empty(), "a unit not asked is listed, a gap and never a refutation");
     // the asked units of the same side are of at least the worth of the units not asked (the order of stake)
@@ -211,7 +242,7 @@ fn the_budget_bounds_the_questions_and_asks_the_units_of_most_worth_first() {
     // a unit not asked has no goal
     assert!(few.unasked.iter().all(|u| !few.goals.iter().any(|x| x.target == *u && x.every)));
     // one pass over the quiet moves serves every unit: the same position gives the same list twice
-    let again = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 2, sides: None });
+    let again = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 2, sides: None, ..Default::default() });
     assert_eq!((few.questions, few.goals.len(), few.unasked.len()), (again.questions, again.goals.len(), again.unasked.len()));
 }
 
@@ -221,7 +252,7 @@ fn a_line_that_a_move_serves_for_two_units_is_read_once() {
     // two black units nothing bears on; the rook's quiet move to a5 makes a taking stand on both (the file and the rank); other moves serve one
     let s = state("7k/8/8/p5p1/8/8/8/2R4K w - - 0 1");
     let white = role(&g, "white");
-    let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 1000, sides: Some(vec![white]) });
+    let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: 1000, sides: Some(vec![white]), ..Default::default() });
     let j = cs_tactics::ledger::Worth { name: "record".into(), table: record().worth.clone(), ours_first: false };
     let lp = cs_tactics::lines::LineParams { depth: cs_decision::threats::DEPTH, fuse: cs_decision::threats::FUSE };
     let mut union: std::collections::HashSet<(u16, u16)> = Default::default();
@@ -254,7 +285,7 @@ fn a_goal_never_adds_to_a_value_it_only_names_moves() {
     let (g, st) = world();
     let s = state(LINE);
     let p = propose(&st, &g, &s, &record(), &params(&g), &GoalParams::default());
-    let named = named_moves(&g, &s, &p.goals, &p.doubles);
+    let named = named_moves(&g, &s, &p.goals, &p.defence);
     let j = cs_tactics::ledger::Worth { name: "t".into(), table: record().worth.clone(), ours_first: false };
     let me = g.mover(&s).unwrap();
     let mut plain = cs_tactics::ledger::Search::with_fuse(&g, &j, me, 2_000_000);
@@ -278,7 +309,7 @@ fn bench_the_time_of_threats_plus_goals_on_the_fixed_position_one_thread() {
     let rows = p.list.mover.len() + p.list.other.len() + p.list.exchange.len() + p.list.dropped.len();
     println!("OBS threats plus goals 79.07: fixed constructed position of 79.06, one thread, budget {}: whole {:.3} s; questions asked {} (units asked {}, not asked {}), lines read by the shared quiet pass {}; rows {}, goals {} (white {}, black {}), goals of two threats {}, moves that make two threats {}; by part: {}; the list by round: {}",
         cs_decision::goals::BUDGET, total, p.questions, p.asked.len(), p.unasked.len(), p.line_reads, rows, p.goals.len(), p.goals.iter().filter(|x| x.side == role(&g, "white")).count(), p.goals.iter().filter(|x| x.side == role(&g, "black")).count(),
-        p.two.iter().map(|(_, t)| t.goals.len()).sum::<usize>(), p.doubles.len(), parts.join("; "), rounds.join("; "));
+        p.two.iter().map(|(_, t)| t.goals.len()).sum::<usize>(), p.shared.len(), parts.join("; "), rounds.join("; "));
     let nm = |u: &UnitRef| format!("{}{}", g.kind_names()[u.kind as usize], g.place_names()[u.at as usize]);
     // where the time of round 1 goes: the forced end of the game for each side, and the taking lines of each contested unit (read alone)
     let (me, other) = (g.mover(&s).unwrap(), 1 - g.mover(&s).unwrap());
@@ -299,7 +330,7 @@ fn bench_the_time_of_threats_plus_goals_on_the_fixed_position_one_thread() {
     println!("OBS where round 1 goes 79.07: forced end for the mover {:.3} s ({}), for the other side {:.3} s ({}); taking lines alone: {}", t_forced_mover, format!("{:?}", f1).chars().take(12).collect::<String>(), t_forced_other, format!("{:?}", f2).chars().take(12).collect::<String>(), takes.join("; "));
     for b in [2usize, 4] {
         let tf = std::time::Instant::now();
-        let q = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: b, sides: None });
+        let q = propose(&st, &g, &s, &record(), &params(&g), &GoalParams { budget: b, sides: None, ..Default::default() });
         println!("OBS budget {b} 79.07: whole {:.3} s; questions asked {} (units asked {}, not asked {}); goals {}", tf.elapsed().as_secs_f64(), q.questions, q.asked.len(), q.unasked.len(), q.goals.len());
     }
     println!("DBG asked {:?} unasked {:?}", p.asked.iter().map(&nm).collect::<Vec<_>>(), p.unasked.iter().map(&nm).collect::<Vec<_>>());

@@ -8,14 +8,15 @@
 //!       the order of their stake within the budget), the goals of each side (`Goal`: facts, causes, fixes, the fix set), the goals of two threats, the moves that make two threats at once, what was asked and what was not, and the time of each part.
 //!   `goals(st, g, s, list, side, goal) -> Vec<Goal>`          the goals of one side from a concrete list: one per threat of that side that does not work yet and the goal unit's; ordered by the fewest unmet facts, then the larger stake.
 //!   `two_threat_goals(list, side, mover, rec, kinds) -> TwoThreats`   two threats of one side that no one reply meets (a pair of confirmed rows on different units whose kept replies have nothing in common).
-//!   `double_threats(st, g, view, taker, goal) -> Vec<DoubleThreat>`   the legal moves of `taker` (to move at `view`) after which two or more units of the other side are newly borne on: one threat is made at once on each.
+//!   `shared_fix_moves(goals) -> Vec<SharedMove>`             one legal move that is a fix under two goals (two targets): the source of the goals of two threats, no separate pattern.
+//!   `answers_against(st, g, s, attacker, target, goal) -> Vec<Answer>`  THE SAME MACHINERY FROM THE OTHER SIDE: the legal moves of the target's owner that make one of the attacker's facts unmet, each named by the fact it un-meets and nothing else (whether it works is the line read's verdict).
 //!   `named_moves(g, s, goals, doubles) -> HashMap<u64, Vec<String>>`  the moves by position that the fixes name, for both sides, in the form `Search::named` takes (the other side's at the position after the game's pass): read first and unreduced, never added to a value.
 //! A FIX is built from LEGAL MOVES and the graph, never from an edited position: `Fix.moves` are the names of legal moves of the side that wants the goal (after the game's pass, for the side not to move).
 //! THE BUDGET (SYSTEM_SPEC 4, 7): a question is one unit asked. Units are asked in the order of their stake (the goal unit has no row to read: its goal is built from the graph and the forcing read first); within `budget` questions every unit is asked; past it a unit is asked only while the last
 //! question changed a fact (a line was read for the unit before it). A unit not asked is listed in `Proposal::unasked` and has no goal: a gap, never a refutation. One pass over the quiet moves serves every unit (`threats::every_unit_ask`): a line is read once however many units it serves.
 use crate::threat_verdict::{Record, VerdictKind};
 use crate::threats::{concrete_threats, every_unit_ask, graph_rows, kind_worths, Ask, ConcreteList, ThreatParams, ThreatRow};
-use crate::wake::{lines_onto, new_bearer_moves, LineOnto, UnitRef};
+use crate::wake::{new_bearer_moves, UnitRef};
 use cs_game::placed::{Kind, Place, Placed};
 use cs_game::{Game, Role};
 use cs_tactics::sheet::base_graph::{PositionPart, Static};
@@ -24,6 +25,8 @@ use std::time::Instant;
 
 /// The default budget of questions: the units asked before progress alone decides (a named parameter, not a tuned one).
 pub const BUDGET: usize = 8;
+/// The depth of the recursion of subgoals (a stopper's stopper): a named bound, with the budget as the other (the subgoals are at most the budget).
+pub const DEPTH: u8 = 2;
 
 /// The state of a fact (subgoal_goals.py): met, unmet, open (no line was read and the graph does not say), unread (the line was cut).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,9 +46,9 @@ pub enum FixKind { Remove, Bring, FirstMove }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fix { pub kind: FixKind, pub against: Vec<(UnitRef, Option<Place>)>, pub to: Option<Place>, pub steps: Option<u8>, pub moves: Vec<String>, pub words: &'static str }
 
-/// One fact of a goal (bears, may_take, unguarded, cornered, kept; borne_on, covered, forced_end, outnumbers for the goal unit) with its status, the cause when unmet, the fixes and the units it is about; `counts` for `outnumbers`: (bearers, holders).
+/// One fact of a goal (bears, may_take, unguarded, cornered, kept: the same for every target, the goal unit's included; and what the rules add for the goal kind: covered, forced_end) with its status, the cause when unmet, the fixes and the units it is about.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Fact { pub name: &'static str, pub status: Status, pub cause: Option<Cause>, pub fixes: Vec<Fix>, pub a: Option<UnitRef>, pub place: Option<Place>, pub counts: Option<(usize, usize)> }
+pub struct Fact { pub name: &'static str, pub status: Status, pub cause: Option<Cause>, pub fixes: Vec<Fix>, pub a: Option<UnitRef>, pub place: Option<Place> }
 
 /// An element of the fix set: each stopper or brought unit with the facts still unmet if only it is dealt with, ordered by the fewest left. `removable`: false for a unit of the goal kind (the rules do not let it be taken out).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +68,9 @@ pub struct Goal {
     pub side: Role, pub target: UnitRef, pub source: String, pub facts: Vec<Fact>, pub unmet: Vec<&'static str>, pub fixes: Vec<Fix>, pub key: String, pub stake: Option<f64>, pub line: Vec<String>, pub two_moves: bool, pub lead: Option<String>,
     pub verdict: Option<VerdictKind>, pub net: Option<i64>, pub stoppers: Vec<UnitRef>, pub fix_set: Vec<FixElem>, pub steps: Vec<Step>, pub n_unmet: usize, pub every: bool, pub own_moves: Option<u8>,
     /// the goal unit's goal (its facts are the lines onto it, the places it may move to, the forced end)
-    pub goal_unit: bool, pub escapes: Vec<Escape>, pub lines_onto: Vec<LineOnto>,
+    pub goal_unit: bool, pub escapes: Vec<Escape>,
+    /// THE RECURSION (79.07 amendment): a stopper of the other side of an unmet fact is itself a target with a goal of its own (the subgoal). `parent`: the target of the goal it would unblock, `via`: the fact of that goal it stops, `depth`: 0 for a goal of a unit asked.
+    pub parent: Option<UnitRef>, pub via: Option<&'static str>, pub depth: u8,
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------ the position as the proposer reads it
@@ -226,7 +231,7 @@ impl<'a, G: Game + Placed> Bld<'a, G> {
 }
 
 fn cause(kind: &'static str, stoppers: Vec<UnitRef>, victim: Option<UnitRef>, basis: &'static str, victims: Option<Vec<UnitRef>>) -> Cause { Cause { kind, stoppers, victim, victims: victims.unwrap_or_else(|| victim.into_iter().collect()), basis } }
-fn fact(name: &'static str, status: Status, a: Option<UnitRef>, cause: Option<Cause>, fixes: Vec<Fix>) -> Fact { Fact { name, status, cause, fixes, a, place: None, counts: None } }
+fn fact(name: &'static str, status: Status, a: Option<UnitRef>, cause: Option<Cause>, fixes: Vec<Fix>) -> Fact { Fact { name, status, cause, fixes, a, place: None } }
 
 /// THE FIX AS A SET (subgoal_goals.fix_set_of): every unit that stops a fact and every unit to bring, each with the facts that stay unmet if only it is dealt with, ordered by the fewest left.
 fn fix_set_of(facts: &[Fact], goal: Option<Kind>, w: &Words) -> Vec<FixElem> {
@@ -258,7 +263,7 @@ fn fix_set_of(facts: &[Fact], goal: Option<Kind>, w: &Words) -> Vec<FixElem> {
 fn layer_one(facts: &[Fact], steps: &[Step]) -> Option<u8> {
     let unmet: Vec<&Fact> = facts.iter().filter(|x| x.status.bad()).collect();
     if unmet.is_empty() { return Some(0); }
-    if unmet.iter().any(|f| !matches!(f.name, "bears" | "borne_on" | "covered") || !f.cause.as_ref().is_some_and(|c| matches!(c.kind, "no_bearer" | "blocked" | "needs_quiet_move"))) { return None; }
+    if unmet.iter().any(|f| !matches!(f.name, "bears" | "covered") || !f.cause.as_ref().is_some_and(|c| matches!(c.kind, "no_bearer" | "blocked" | "needs_quiet_move"))) { return None; }
     if steps.len() < unmet.len() || steps.iter().any(|s| s.moves.is_none()) { return None; }
     let tot: u32 = steps.iter().map(|s| s.moves.unwrap() as u32).sum();
     if tot <= 2 { Some(tot as u8) } else { None }
@@ -275,7 +280,7 @@ fn finish<G: Game + Placed>(b: &Bld<G>, side: Role, target: UnitRef, source: &st
     let own_moves = layer_one(&facts, &steps);
     let n_unmet = unmet.len();
     Goal { side, target, source: source.to_string(), unmet, fixes, key: keys.join("|"), stake: row.and_then(|r| r.stake), lead: if two { line.first().cloned() } else { None }, line, two_moves: two, verdict: row.map(|r| r.verdict), net: row.and_then(|r| r.net), stoppers, fix_set, steps, n_unmet,
-        every: row.is_some_and(|r| r.every), own_moves, goal_unit, escapes: vec![], lines_onto: vec![], facts }
+        every: row.is_some_and(|r| r.every), own_moves, goal_unit, escapes: vec![], parent: None, via: None, depth: 0, facts }
 }
 
 /// The source of a goal from its row (subgoal_goals._source_of): None for a threat that already works.
@@ -311,8 +316,10 @@ fn build_goal<G: Game + Placed>(b: &Bld<G>, row: &ThreatRow, source: &str) -> Op
         if two {
             let mover_uid = plies.first().filter(|p| p.side == taker).and_then(|p| p.uid);
             let fx = Fix { kind: FixKind::FirstMove, against: mover_uid.map(|u| vec![(f.u(u), None)]).unwrap_or_default(), to: None, steps: Some(1), moves: line.first().cloned().into_iter().collect(), words: "the quiet first move that brings a unit to bear" };
-            facts.push(fact("bears", Status::Unmet, a_uid.map(|i| f.u(i)), Some(cause("needs_quiet_move", vec![], None, "line", None)), vec![fx.clone()]));
+            let add = b.bring_fix(t);                                    // the ordinary second fix: any legal move that brings a bearer onto the target
+            facts.push(fact("bears", Status::Unmet, a_uid.map(|i| f.u(i)), Some(cause("needs_quiet_move", vec![], None, "line", None)), std::iter::once(fx.clone()).chain(add.clone()).collect()));
             fixes.push(fx);
+            if let Some(a) = add { fixes.push(a); }
             if plies.first().is_some_and(|p| p.side == taker) { steps.push(Step { step: "bring", moves: Some(1) }); }
         } else if let Some((u, btw)) = shut.first() {
             let fx = b.free_fix(btw, t);
@@ -369,14 +376,18 @@ fn build_goal<G: Game + Placed>(b: &Bld<G>, row: &ThreatRow, source: &str) -> Op
                 let mut all = vec![Some(r)]; all.extend(guards.iter().filter(|g| **g != r).map(|g| Some(*g)));
                 let sts = f.units_of(&all);
                 let fx = b.remove_fix(&[f.u(r)], Some(t), "the unit that takes back is taken, pinned, blocked or drawn away (the far end a variable)");
-                facts.push(fact("unguarded", Status::Unmet, Some(f.u(r)), Some(cause("guard", sts, None, "line", None)), vec![fx.clone()]));
+                let add = b.bring_fix(t);
+                facts.push(fact("unguarded", Status::Unmet, Some(f.u(r)), Some(cause("guard", sts, None, "line", None)), std::iter::once(fx.clone()).chain(add.clone()).collect()));
                 fixes.push(fx);
+                if let Some(a) = add { fixes.push(a); }
             }
         }
     } else if !guards.is_empty() {
         let fx = b.remove_fix(&[f.u(guards[0])], Some(t), "the unit that bears on the place is taken, pinned, blocked or drawn away (the far end a variable)");
-        facts.push(fact("unguarded", Status::Unmet, Some(f.u(guards[0])), Some(cause("guard", f.of_idx(&guards), None, "graph", None)), vec![fx.clone()]));
+        let add = b.bring_fix(t);
+        facts.push(fact("unguarded", Status::Unmet, Some(f.u(guards[0])), Some(cause("guard", f.of_idx(&guards), None, "graph", None)), std::iter::once(fx.clone()).chain(add.clone()).collect()));
         fixes.push(fx);
+        if let Some(a) = add { fixes.push(a); }
     } else { facts.push(fact("unguarded", Status::Met, None, None, vec![])); }
     // ---- cornered(T): after a quiet first move of ours, the other side's first reply is the target itself moving away
     if (two || source == "two_move_not_ahead") && plies.len() >= 2 {
@@ -418,9 +429,8 @@ fn build_goal<G: Game + Placed>(b: &Bld<G>, row: &ThreatRow, source: &str) -> Op
     Some(finish(b, taker, target, source, Some(row), facts, fixes, steps, line, two, false))
 }
 
-/// THE GOAL UNIT AS A TARGET (subgoal_goals.goal_unit_goal, and the lines onto it): it cannot be taken, so the claim is the forced end of the game the forcing read looks for (a goal row of the owner's: then the goal works and is no goal). The facts: it is borne on (else what shuts the
-/// line, or which legal move brings a bearer), every place it may move to is covered (else the same), the forced end itself (unmet when the forcing read found none, unread when its fuse cut it); and NEW in 79.07 the owner's own reading: for each line onto it that exactly ONE unit shuts, the
-/// units that bear on that unit's place and the units that hold it are counted (`outnumbers`: met when the bearers outnumber the holders), with the two fixes, remove a holder and add a bearer, each a set of legal moves.
+/// THE GOAL UNIT AS A TARGET (subgoal_goals.goal_unit_goal): it cannot be taken, so the claim is the forced end of the game the forcing read looks for (a goal row of the owner's: then the goal works and is no goal). Its facts are the SAME as any target's (a unit of ours bears on it: `bears`, with the same causes and fixes) plus only what the rules add
+/// for the goal kind: every place it may move to is covered, and the forced end itself (unmet when the forcing read found none, unread when its fuse cut it). Nothing here is special to a line onto it: what stands in the way is a set of stoppers, and each stopper of the other side is a target with a goal of its own (`goals`, the recursion).
 fn goal_unit_goal<G: Game + Placed>(b: &Bld<G>, list: &ConcreteList, s: &G::State) -> Option<Goal> {
     let (taker, owner) = (b.taker, b.owner);
     if list.goal.iter().any(|r| r.owner == owner) { return None; }
@@ -433,14 +443,14 @@ fn goal_unit_goal<G: Game + Placed>(b: &Bld<G>, list: &ConcreteList, s: &G::Stat
     f.at(t)?;
     let (mut facts, mut fixes, mut steps, mut escapes): (Vec<Fact>, Vec<Fix>, Vec<Step>, Vec<Escape>) = (vec![], vec![], vec![], vec![]);
     let bears = f.bearers(t, taker);
-    if let Some(a) = bears.first() { facts.push(fact("borne_on", Status::Met, Some(f.u(*a)), None, vec![])); }
+    if let Some(a) = bears.first() { facts.push(fact("bears", Status::Met, Some(f.u(*a)), None, vec![])); }
     else if let Some((u, btw)) = f.shut_onto(t, taker).first() {
         let fx = b.free_fix(btw, t);
-        facts.push(fact("borne_on", Status::Unmet, Some(f.u(*u)), Some(cause("blocked", f.of_idx(btw), None, "graph", None)), vec![fx.clone()]));
+        facts.push(fact("bears", Status::Unmet, Some(f.u(*u)), Some(cause("blocked", f.of_idx(btw), None, "graph", None)), vec![fx.clone()]));
         fixes.push(fx);
     } else {
         let fx = b.bring_fix(t);
-        facts.push(fact("borne_on", Status::Unmet, None, Some(cause("no_bearer", vec![], None, "graph", None)), fx.iter().cloned().collect()));
+        facts.push(fact("bears", Status::Unmet, None, Some(cause("no_bearer", vec![], None, "graph", None)), fx.iter().cloned().collect()));
         if let Some(fx) = fx { steps.push(Step { step: "bring", moves: fx.steps }); fixes.push(fx); }
     }
     let mut places: Vec<Place> = fo.may.iter().filter(|(u, _)| *u == uid).map(|(_, p)| *p).collect();
@@ -467,34 +477,16 @@ fn goal_unit_goal<G: Game + Placed>(b: &Bld<G>, list: &ConcreteList, s: &G::Stat
         if let Some(fx) = fx { fixes.push(fx); }
         escapes.push(Escape { place: p, covered: false, by: vec![], occupant });
     }
-    // the lines onto the goal unit that exactly one unit shuts: who bears on that unit, who holds it (the graph's relations only; a unit that shuts such a line is a target)
-    let lines = lines_onto(&f.part, t, taker);
-    for l in &lines {
-        let met = l.bearers.len() > l.holders.len();
-        let mut ft = fact("outnumbers", if met { Status::Met } else { Status::Unmet }, Some(l.blocker), None, vec![]);
-        ft.place = Some(l.blocker.at);
-        ft.counts = Some((l.bearers.len(), l.holders.len()));
-        if !met {
-            let hold = b.remove_fix(&l.holders, Some(l.blocker.at), "a holder of the unit that shuts the line is taken, blocked or drawn away (a set of legal moves)");
-            let add = b.bring_fix(l.blocker.at);
-            ft.cause = Some(cause("held", l.holders.clone(), Some(l.blocker), "graph", None));
-            ft.fixes.push(hold.clone());
-            fixes.push(hold);
-            if let Some(a) = add { ft.fixes.push(a.clone()); steps.push(Step { step: "bring", moves: a.steps }); fixes.push(a); }
-        }
-        facts.push(ft);
-    }
     let gap = list.dropped_counts.keys().any(|k| k.contains("out of budget"));
     facts.push(fact("forced_end", if gap { Status::Unread } else { Status::Unmet }, None, Some(cause(if gap { "out_of_budget" } else { "no_forced_end" }, vec![], None, "line", None)), vec![]));
     let mut gl = finish(b, taker, target, "goal_unit", None, facts, fixes, steps, vec![], false, true);
     gl.escapes = escapes;
-    gl.lines_onto = lines;
     Some(gl)
 }
 
 /// THE GOALS OF ONE SIDE from a concrete list (subgoal_goals.goals): one per threat of `side` that does not work yet (the rows of the list, `every_unit`'s included) and the goal unit's; ordered by the fewest unmet facts, then the larger stake (a goal with no stake first), then the place.
 /// `goal` is the goal kind (no row, no removal of it). `s` is the position the list was read at; the side not to move is read after the game's pass (no goals where the game gives none).
-pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>) -> Vec<Goal> {
+pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>, depth: u8, cap: usize) -> Vec<Goal> {
     let w = Words { roles: g.roles(), kinds: g.kind_names(), places: g.place_names() };
     let Some(s_t) = view_state(g, s, side) else { return vec![] };
     let v = view(st, g, &s_t, &w);
@@ -511,6 +503,41 @@ pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &Concrete
         let (x, y) = (k(a), k(c));
         x.0.cmp(&y.0).then(x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal)).then(x.2.cmp(&y.2))
     });
+    // THE RECURSION: every stopper of the other side named by an unmet fact is a target with a goal of its own, the same facts; at most `cap` of them and `depth` levels deep, each with its parent
+    let mut seen: HashSet<UnitRef> = out.iter().map(|x| x.target).collect();
+    // a stopper that already has a goal of its own (it was asked on its own) is adopted: its parent is the goal it blocks (never a cycle: not an ancestor of the goal it would be a child of)
+    for _ in 0..out.len() {
+        let mut changed = false;
+        for i in 0..out.len() {
+            let stops: Vec<(UnitRef, &'static str)> = out[i].facts.iter().filter(|x| x.status.bad()).flat_map(|x| x.cause.iter().flat_map(move |c| c.stoppers.iter().map(move |u| (*u, x.name)))).collect();
+            for (u, via) in stops {
+                let Some(j) = out.iter().position(|x| x.target == u) else { continue };
+                if j == i || out[j].parent.is_some() || out[j].goal_unit { continue; }
+                let (mut anc, mut cyc) = (out[i].parent, out[i].target == u);
+                while let Some(a) = anc { if a == u { cyc = true; break; } anc = out.iter().find(|x| x.target == a).and_then(|x| x.parent); }
+                if cyc { continue; }
+                let (par, d) = (out[i].target, out[i].depth + 1);
+                out[j].parent = Some(par); out[j].via = Some(via); out[j].depth = d;
+                changed = true;
+            }
+        }
+        if !changed { break; }
+    }
+    let mut at = 0;
+    let mut made = 0;
+    while at < out.len() && made < cap {
+        let (par, lvl) = (out[at].target, out[at].depth);
+        let stops: Vec<(UnitRef, &'static str)> = out[at].facts.iter().filter(|x| x.status.bad()).flat_map(|x| x.cause.iter().flat_map(move |c| c.stoppers.iter().map(move |u| (*u, x.name)))).collect();
+        at += 1;
+        if lvl >= depth { continue; }
+        for (u, via) in stops {
+            if made >= cap { break; }
+            if u.owner != b.owner || Some(u.kind) == goal || !seen.insert(u) { continue; }
+            let mut row = ThreatRow::new(b.owner, Some(u), "stopper", vec![], None);
+            row.verdict = VerdictKind::Confirmed;
+            if let Some(mut sg) = build_goal(&b, &row, "stopper") { sg.parent = Some(par); sg.via = Some(via); sg.depth = lvl + 1; out.push(sg); made += 1; }
+        }
+    }
     out
 }
 
@@ -561,30 +588,71 @@ pub fn two_threat_goals(list: &ConcreteList, side: Role, mover: Role, rec: &Reco
     TwoThreats { goals: pairs, threats: rows.len(), unread, forced, deferred }
 }
 
-// ------------------------------------------------------------------------------------------------------------------------------ a move that makes two threats at once
+// ------------------------------------------------------------------------------------------------------------------------------ one move under two goals
 
-/// A legal move of `side` after which two or more units of the other side are newly borne on (a unit brought to bear, a line uncovered, or one unit bearing on two): a bearer on each at once. `goal_unit`: one of them is the goal unit (the owner's own example: a move that bears on the goal unit
-/// while it uncovers a line onto another unit). Read from the graph's `bear` relation before and after the move, never from an edited position.
+/// One legal move that is a fix under two or more goals of one side (two different targets), with each target and the fact the move addresses there. It is the source of the goals of two threats: a move that adds a bearer on one target and whose leaving uncovers a line onto another is found by the same
+/// fixes, with no pattern of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DoubleThreat { pub side: Role, pub mv: String, pub targets: Vec<UnitRef>, pub goal_unit: bool }
+pub struct SharedMove { pub side: Role, pub mv: String, pub under: Vec<(UnitRef, &'static str)> }
 
-/// THE MOVES THAT MAKE TWO THREATS AT ONCE for `taker`, to move at `view` (the position, or the one after the game's pass): the goal unit's first, then by the number of units borne on, then by name.
-pub fn double_threats<G: Game + Placed>(st: &Static, g: &G, view: &G::State, taker: Role, goal: Option<Kind>) -> Vec<DoubleThreat> {
-    let others: Vec<(Role, Kind, Place)> = g.cells(view).into_iter().filter(|c| c.0 != taker).collect();
-    let places: Vec<Place> = others.iter().map(|c| c.2).collect();
-    let mut out: Vec<DoubleThreat> = new_bearer_moves(st, g, view, &places).into_iter().filter(|(_, ps)| ps.len() >= 2).map(|(mv, ps)| {
-        let targets: Vec<UnitRef> = ps.iter().filter_map(|p| others.iter().find(|c| c.2 == *p)).map(|c| UnitRef { owner: c.0, kind: c.1, at: c.2 }).collect();
-        DoubleThreat { side: taker, mv, goal_unit: targets.iter().any(|u| Some(u.kind) == goal), targets }
-    }).collect();
-    out.sort_by(|a, b| (!a.goal_unit, std::cmp::Reverse(a.targets.len()), &a.mv).cmp(&(!b.goal_unit, std::cmp::Reverse(b.targets.len()), &b.mv)));
+/// THE MOVES THAT ARE A FIX UNDER TWO GOALS, reported once each with every target: the most targets first, then by name.
+pub fn shared_fix_moves(goals: &[Goal]) -> Vec<SharedMove> {
+    let mut m: BTreeMap<(Role, String), Vec<(UnitRef, &'static str)>> = BTreeMap::new();
+    for gl in goals {
+        for f in &gl.facts {
+            for fx in &f.fixes { for mv in &fx.moves { let e = m.entry((gl.side, mv.clone())).or_default(); if !e.contains(&(gl.target, f.name)) { e.push((gl.target, f.name)); } } }
+        }
+    }
+    let mut out: Vec<SharedMove> = m.into_iter().filter(|(_, u)| u.iter().map(|x| x.0).collect::<HashSet<_>>().len() >= 2).map(|((side, mv), under)| SharedMove { side, mv, under }).collect();
+    out.sort_by(|a, b| (std::cmp::Reverse(a.under.len()), &a.mv).cmp(&(std::cmp::Reverse(b.under.len()), &b.mv)));
+    out
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------ the same machinery read from the other side: the defence
+
+/// A candidate answer to a goal of THEIRS against a unit of ours: a legal move of ours, and the facts of their goal it makes unmet (`bears`: no unit of theirs bears on the target any more, by taking the bearer, putting a unit between or moving the target away; `unguarded`: a unit of ours that holds the place was
+/// added; `may_take`: the bearer is tied, its taking would uncover a line onto a unit of theirs or leave their goal unit borne on). The answer has no name beyond the fact. Whether it works is the line read's verdict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answer { pub mv: String, pub facts: Vec<&'static str> }
+
+fn goal_unit_borne_on<G: Game + Placed>(g: &G, s: &G::State, attacker: Role, defender: Role, goal: Option<Kind>) -> bool {
+    g.cells(s).into_iter().filter(|c| c.0 == attacker && Some(c.1) == goal).any(|c| bearer_counts_of(g, s, defender, c.2) > 0)
+}
+fn bearer_counts_of<G: Game + Placed>(g: &G, s: &G::State, owner: Role, place: Place) -> usize { g.cells(s).into_iter().filter(|c| c.0 == owner && g.bearing_from(s, c.0, c.1, c.2).contains(&place)).count() }
+fn tied_bearer(part: &PositionPart, attacker: Role, defender: Role, t: Place) -> bool {
+    let bearers: Vec<usize> = part.bears.iter().filter(|r| r.place == t && part.units[r.unit].owner == attacker).map(|r| r.unit).collect();
+    part.shuts.iter().any(|r| part.units[r.unit].owner == defender && r.between.len() == 1 && bearers.contains(&r.between[0]) && part.occupant[r.place as usize] != 0 && part.units[part.occupant[r.place as usize] as usize - 1].owner == attacker)
+}
+
+/// THE ANSWERS to the goal of `attacker` against `target` (a unit of the other side), generated from the legal moves of the target's owner by the fact each un-meets. Only the facts that are met now are addressed (a fact already unmet needs no answer).
+pub fn answers_against<G: Game + Placed>(st: &Static, g: &G, s: &G::State, attacker: Role, target: UnitRef, goal: Option<Kind>) -> Vec<Answer> {
+    let d = target.owner;
+    let Some(sd) = view_state(g, s, d) else { return vec![] };
+    let Some(pd) = g.pass(&sd) else { return vec![] };
+    let t = target.at;
+    if bearer_counts_of(g, &pd, attacker, t) == 0 { return vec![]; }
+    let hold0 = bearer_counts_of(g, &pd, d, t);
+    let tied0 = tied_bearer(&st.position(g, &sd), attacker, d, t);                // the shut lines the graph holds are the mover's: read with the defender to move
+    let att0 = goal_unit_borne_on(g, &pd, attacker, d, goal);
+    let mut out = vec![];
+    for m in g.moves(&sd) {
+        let after = g.apply(&sd, &m);
+        let e = g.move_ends(&sd, &m);
+        let t2 = if e.0 == t { e.1 } else { t };
+        let mut facts: Vec<&'static str> = vec![];
+        if bearer_counts_of(g, &after, attacker, t2) == 0 { facts.push("bears"); }
+        if t2 == t && bearer_counts_of(g, &after, d, t) > hold0 { facts.push("unguarded"); }
+        if g.outcome(&after).is_none() && ((!tied0 && g.pass(&after).is_some_and(|dp| tied_bearer(&st.position(g, &dp), attacker, d, t2))) || (!att0 && goal_unit_borne_on(g, &after, attacker, d, goal))) { facts.push("may_take"); }
+        if !facts.is_empty() { out.push(Answer { mv: g.move_name(&sd, &m), facts }); }
+    }
     out
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------ what a goal gives the search
 
 /// THE MOVES BY POSITION that the fixes name, for both sides, in the form `Search::named` takes: the position's `Game::key` to the names of the legal moves to read first and unreduced there. The mover's goals name moves at the position itself; the other side's at the position after the game's pass
-/// (the moves it would make if we did nothing: a move we must read in full). A move is listed once, the goal unit's goal first, the moves that make two threats after the fixes' moves. Never added to a value: a name orders and exempts a move from the reduction, nothing more. Not wired into the wake's loop here.
-pub fn named_moves<G: Game + Placed>(g: &G, s: &G::State, goals: &[Goal], doubles: &[DoubleThreat]) -> HashMap<u64, Vec<String>> {
+/// (the moves it would make if we did nothing: a move we must read in full). A move is listed once, the goal unit's goal first, the answers to their goals after the fixes' moves. Never added to a value: a name orders and exempts a move from the reduction, nothing more. Not wired into the wake's loop here.
+pub fn named_moves<G: Game + Placed>(g: &G, s: &G::State, goals: &[Goal], defence: &[(UnitRef, Vec<Answer>)]) -> HashMap<u64, Vec<String>> {
     let mover = g.mover(s);
     let mut out: HashMap<u64, Vec<String>> = HashMap::new();
     let mut put = |side: Role, mv: &str| {
@@ -594,7 +662,7 @@ pub fn named_moves<G: Game + Placed>(g: &G, s: &G::State, goals: &[Goal], double
     let mut order: Vec<&Goal> = goals.iter().collect();
     order.sort_by_key(|x| !x.goal_unit);
     for gl in order { for fx in &gl.fixes { for m in &fx.moves { put(gl.side, m); } } }
-    for d in doubles { put(d.side, &d.mv); }
+    for (target, ans) in defence { for a in ans { put(target.owner, &a.mv); } }
     out
 }
 
@@ -602,13 +670,13 @@ pub fn named_moves<G: Game + Placed>(g: &G, s: &G::State, goals: &[Goal], double
 
 /// The parameters of `propose`: the budget of questions and the sides whose goals are wanted (None: both).
 #[derive(Debug, Clone)]
-pub struct GoalParams { pub budget: usize, pub sides: Option<Vec<Role>> }
-impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None } } }
+pub struct GoalParams { pub budget: usize, pub sides: Option<Vec<Role>>, pub depth: u8 }
+impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None, depth: DEPTH } } }
 
 /// What the proposer returns for a position: the list of both sides, the goals of each side (in the order of their side's goals), the goals of two threats, the moves that make two threats at once, the units asked and not asked, the questions, the lines read, and the time of each part.
 #[derive(Debug, Clone, Default)]
 pub struct Proposal {
-    pub list: ConcreteList, pub goals: Vec<Goal>, pub two: Vec<(Role, TwoThreats)>, pub doubles: Vec<DoubleThreat>, pub asked: Vec<UnitRef>, pub unasked: Vec<UnitRef>,
+    pub list: ConcreteList, pub goals: Vec<Goal>, pub two: Vec<(Role, TwoThreats)>, pub shared: Vec<SharedMove>, pub defence: Vec<(UnitRef, Vec<Answer>)>, pub asked: Vec<UnitRef>, pub unasked: Vec<UnitRef>,
     /// the questions asked: one unit asked, the contested units of the list (the first, in the order of their stake) and the every-unit reads
     pub questions: usize, pub line_reads: usize, pub seconds: Vec<(&'static str, f64)>,
 }
@@ -651,14 +719,19 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     out.asked = first_units.iter().copied().chain(ev.asked.iter().map(|a| a.0)).collect();
     out.unasked = list.unasked.clone();
     let t0 = Instant::now();
-    for &side in &sides { out.goals.extend(goals(st, g, s, &list, side, tp.goal)); }
+    for &side in &sides { out.goals.extend(goals(st, g, s, &list, side, tp.goal, params.depth, params.budget)); }
     out.seconds.push(("the goals", t0.elapsed().as_secs_f64()));
     let t0 = Instant::now();
     for &side in &sides { out.two.push((side, two_threat_goals(&list, side, mover, rec, &kinds))); }
     out.seconds.push(("the goals of two threats", t0.elapsed().as_secs_f64()));
     let t0 = Instant::now();
-    for &side in &sides { if let Some(v) = view_state(g, s, side) { out.doubles.extend(double_threats(st, g, &v, side, tp.goal)); } }
-    out.seconds.push(("the moves that make two threats", t0.elapsed().as_secs_f64()));
+    out.shared = shared_fix_moves(&out.goals);
+    out.seconds.push(("the moves that are a fix under two goals", t0.elapsed().as_secs_f64()));
+    let t0 = Instant::now();
+    for r in list.mover.iter().chain(&list.other).filter(|r| !r.goal).take(params.budget) {
+        if let Some(u) = r.unit { let atk = g.other(u.owner); if sides.contains(&atk) { out.defence.push((u, answers_against(st, g, s, atk, u, tp.goal))); } }
+    }
+    out.seconds.push(("the answers to their goals", t0.elapsed().as_secs_f64()));
     out.list = list;
     out
 }
