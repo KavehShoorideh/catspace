@@ -3,14 +3,16 @@
 //!
 //! THE RULE (his words, section 8): evaluate the threats of the other side; where there is no threat advance toward the subgoal; where there is a threat defend and advance toward the subgoal; a big threat of theirs makes refuting it the subgoal; among the answers those that also serve our subgoal first.
 //!   (a) THEIR threats that work now and are above the spread (a CONFIRMED row: its taking ends ahead by more than the record's resolution, or the end of the game) against OUR units: our ANSWERS are named: the responses the line read kept, and the moves the facts of their goal give (`answers_against`).
-//!   (b) OUR goals: the fixes of the goal with the FEWEST THINGS IN ITS WAY, the larger stake breaking a tie (PROPOSED order, section 13 item 26), are named; a far goal of high stake is never read as a line, it gives the reading its nearest stopper as the subgoal (the stopper is itself a goal of the same form, built by the
-//!       recursion of the proposer, so the goal with the fewest things in its way is often that stopper).
+//!   (b) PLAN 79.09 A: for EACH side the fixes named are taken CHAIN BY CHAIN IN ORDER OF STAKE (`named_fixes`): a chain is a goal and the subgoals below it; its stake is that of the target at its top (the record's worth of the kind, the goal kind above all); from each chain the fixes of its NEAREST goal (the fewest things in its way,
+//!       the stopper before the goal it stops). A far goal of high stake is never read as a line, it gives the reading its nearest stopper as the subgoal; the chain of the goal unit comes first only because its stake is the largest; the nearest goal of a small stake comes after, if the budget of line reads lasts.
 //!   (c) among the moves the search holds equal: one that answers their largest standing threat, then one that is a fix of our chosen goal, then the estimates (the reasons' pick, else the search's own first move). The estimates only choose among what the reading holds equal; nothing here adds to a value (rule 7).
 //!   (d) a named move is one whose LINE WAS READ and not refuted, within a budget of line reads (a cut is a gap, never a refutation): `keep_read`.
 //!
 //! INTERFACE (written before the bodies).
 //!   `things_in_the_way(goal) -> usize`            the distinct stoppers of its unmet facts, plus one for each unmet fact with no stopper named (something is missing).
-//!   `chosen_goal(goals, side, worth, kinds, goal_kind) -> Option<usize>`   the index of the goal of `side` with the fewest things in its way that has a move among its fixes; ties by the larger stake (the row's stake, else the record's worth of the target's kind, the goal kind the largest), then nearer the root.
+//!   `Stakes { worth, goal }`, `Stakes::read(g, s, rec, goals, goal)`   the worth of each kind of the targets, from the record, and the goal kind (the largest).
+//!   `stake_of(goals, i, &Stakes) -> f64`   the stake of a goal: that of the target at the top of its chain (`chain_top`).
+//!   `named_fixes(goals, side, &Stakes) -> Vec<ChainFix>`   the fixes of the nearest goal of each chain of `side`, the chains in order of stake; `fixes_among(chains, equal)` the ladder's fixes: those of the first chain with an equal move.
 //!   `their_threats(list, mover) -> Vec<&ThreatRow>`   the rows against the mover that work now, the largest net first (the end of the game first).
 //!   `fix_moves(goal) -> Vec<String>`              the moves of a goal's fix set, then of its other fixes, each once, in that order.
 //!   `keep_read(g, s, rec, mine, theirs, budget, p, share) -> KeptNames`   reads the line of each named move (ours at the position, theirs after the game's pass), in order, within `budget` reads a side; keeps those not refuted.
@@ -47,23 +49,65 @@ pub fn fix_moves(goal: &Goal) -> Vec<String> {
     out
 }
 
-/// The stake used ONLY to break a tie of the order of goals: the row's stake; else the record's worth of the target's kind (a number the record measured); the goal kind, which the record does not hold, is the end of the game and the largest.
-fn tie_stake(goal: &Goal, rec: &Record, kinds: &[String], goal_kind: Option<Kind>) -> f64 {
-    if let Some(s) = goal.stake { return s; }
-    if Some(goal.target.kind) == goal_kind { return f64::INFINITY; }
-    rec.worth.get(&kinds[goal.target.kind as usize]).map_or(0.0, |w| *w as f64)
+/// THE WORTHS OF THE KINDS the stake is read from (SYSTEM_SPEC 7, "the stake orders goals"): the record's worth of each kind (the record is keyed by the words of the game's ledger, so the word is read from what taking the unit off the board removes: `threats::kind_worths`), a number the record measured; no worth is assumed, a kind the record does not
+/// hold is worth 0; `goal` is the goal kind, which the record does not hold: it is the end of the game and the largest.
+#[derive(Debug, Clone, Default)]
+pub struct Stakes { pub worth: std::collections::HashMap<Kind, f64>, pub goal: Option<Kind> }
+
+impl Stakes {
+    /// The worths of the kinds of the targets of `goals` in the position `s` (the targets stand there).
+    pub fn read<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, goals: &[Goal], goal: Option<Kind>) -> Stakes {
+        let units: Vec<UnitRef> = goals.iter().map(|x| x.target).collect();
+        Stakes { worth: crate::threats::kind_worths(g, s, rec, &units), goal }
+    }
+    /// The stake of a target: the goal kind is above every worth.
+    pub fn of(&self, target: UnitRef) -> f64 { if Some(target.kind) == self.goal { f64::INFINITY } else { self.worth.get(&target.kind).copied().unwrap_or(0.0) } }
 }
 
-/// THE CHOSEN GOAL of a side (the order of section 13 item 26, PROPOSED): among its goals that have a move among their fixes, the fewest things in the way, then the larger stake, then the nearer the root of the recursion, then the place.
-pub fn chosen_goal(goals: &[Goal], side: Role, rec: &Record, kinds: &[String], goal_kind: Option<Kind>) -> Option<usize> {
-    let mut best: Option<(usize, (usize, f64, u8, u16))> = None;
+fn target_stake(target: UnitRef, sk: &Stakes) -> f64 { sk.of(target) }
+
+/// The index of the goal at the top of the chain of goal `i` (the goal whose subgoal it is, and so on up): the goal of the same side whose target is the parent, the one nearest the root of the recursion. A goal with no parent is its own top.
+pub fn chain_top(goals: &[Goal], i: usize) -> usize {
+    let mut at = i;
+    for _ in 0..goals.len() {
+        let Some(par) = goals[at].parent else { break };
+        match goals.iter().enumerate().filter(|(j, y)| y.target == par && y.side == goals[at].side && *j != at).min_by_key(|(_, y)| y.depth) { Some((j, _)) => at = j, None => break }
+    }
+    at
+}
+
+/// THE STAKE OF A GOAL (PLAN 79.09 A): the stake of the target of the goal at the top of its chain; a subgoal carries the stake of the goal it serves, so the chain of the goal unit stands above every chain of a smaller target.
+pub fn stake_of(goals: &[Goal], i: usize, sk: &Stakes) -> f64 { target_stake(goals[chain_top(goals, i)].target, sk) }
+
+/// The fixes of the nearest goal of one chain: the goal whose fixes these are (the nearest of its chain), the goal at the top of the chain, the stake of the chain, the moves.
+#[derive(Debug, Clone)]
+pub struct ChainFix { pub goal: usize, pub top: usize, pub stake: f64, pub moves: Vec<String> }
+
+/// THE FIXES NAMED FOR A SIDE, CHAIN BY CHAIN IN ORDER OF STAKE (PLAN 79.09 A; section 13 item 26 as written, both halves): the chains (a goal and the subgoals below it) of `side` are taken in order of the stake of their top, the greater first; from each chain the fixes of its NEAREST goal, the one with the fewest things in its way, the deeper
+/// (the stopper) breaking a tie, then the place. A far goal gives the reading only its nearest stopper; the chain of the largest stake is always asked first; a small chain comes after, within the budget of line reads (`keep_read`). Only goals with an unmet fact and a move among their fixes count. Chains of equal stake: the nearer goal first, then the place.
+pub fn named_fixes(goals: &[Goal], side: Role, sk: &Stakes) -> Vec<ChainFix> {
+    let mut by_top: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
     for (i, gl) in goals.iter().enumerate() {
         if gl.side != side || gl.unmet.is_empty() || fix_moves(gl).is_empty() { continue; }
-        let key = (things_in_the_way(gl), -tie_stake(gl, rec, kinds, goal_kind), gl.depth, gl.target.at);
-        let better = match &best { None => true, Some((_, k)) => key.0 < k.0 || (key.0 == k.0 && (key.1 < k.1 || (key.1 == k.1 && (key.2, key.3) < (k.2, k.3)))) };
-        if better { best = Some((i, key)); }
+        by_top.entry(chain_top(goals, i)).or_default().push(i);
     }
-    best.map(|b| b.0)
+    let mut out: Vec<(ChainFix, (usize, u16))> = vec![];
+    for (top, members) in by_top {
+        let near = members.iter().copied().min_by_key(|&i| (things_in_the_way(&goals[i]), std::cmp::Reverse(goals[i].depth), goals[i].target.at)).expect("a chain has a member");
+        let stake = target_stake(goals[top].target, sk);
+        out.push((ChainFix { goal: near, top, stake, moves: fix_moves(&goals[near]) }, (things_in_the_way(&goals[near]), goals[near].target.at)));
+    }
+    out.sort_by(|a, b| b.0.stake.partial_cmp(&a.0.stake).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
+    out.into_iter().map(|x| x.0).collect()
+}
+
+/// The moves among those the search holds equal that the FIRST chain with any of them names (the ladder of rule (c) goes down the chains in order of stake): the moves and the index of the chain; empty and None where no chain names an equal move.
+pub fn fixes_among(chains: &[ChainFix], equal: &[String]) -> (Vec<String>, Option<usize>) {
+    for (k, c) in chains.iter().enumerate() {
+        let hit: Vec<String> = c.moves.iter().filter(|m| equal.contains(m)).cloned().collect();
+        if !hit.is_empty() { return (hit, Some(k)); }
+    }
+    (vec![], None)
 }
 
 /// THEIR THREATS that work now (a confirmed row against the mover's units, the end of the game forced against the mover included), the end of the game first, then the larger net.

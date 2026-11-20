@@ -256,15 +256,18 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     for (k, r) in their.iter().enumerate() {
         for x in r.responses.iter().filter(|x| x.state == RespState::Kept) { if let Some(n) = x.names.first() { put(&mut mine, n); if k == 0 { put(&mut answers_largest, n); } } }
     }
-    let chosen_ix = rule::chosen_goal(&prop.goals, me, rec, &kinds, inp.goal);
-    let fixes: Vec<String> = chosen_ix.map(|i| rule::fix_moves(&prop.goals[i])).unwrap_or_default();
-    for m in &fixes { put(&mut mine, m); }
+    // PLAN 79.09 A: for each side the fixes are named chain by chain in order of stake, the nearest goal of each chain
+    let stakes = rule::Stakes::read(g, s, rec, &prop.goals, inp.goal);
+    let chains_mine = rule::named_fixes(&prop.goals, me, &stakes);
+    let chains_theirs = rule::named_fixes(&prop.goals, other, &stakes);
+    let chosen_ix = chains_mine.first().map(|c| c.goal);
+    for c in &chains_mine { for m in &c.moves { put(&mut mine, m); } }
     for (k, r) in their.iter().enumerate() {
         let Some(u) = r.unit else { continue };
         for (t, ans) in &prop.defence { if *t == u { for a in ans { put(&mut mine, &a.mv); if k == 0 { put(&mut answers_largest, &a.mv); } } } }
     }
     let mut theirs: Vec<String> = vec![];
-    if let Some(i) = rule::chosen_goal(&prop.goals, other, rec, &kinds, inp.goal) { for m in rule::fix_moves(&prop.goals[i]) { put(&mut theirs, &m); } }
+    for c in &chains_theirs { for m in &c.moves { put(&mut theirs, m); } }
     for r in prop.list.other.iter().filter(|r| r.verdict == crate::threat_verdict::VerdictKind::Confirmed && !r.two_moves) {
         for x in r.responses.iter().filter(|x| x.state == RespState::Kept) { if let Some(n) = x.names.first() { put(&mut theirs, n); } }
     }
@@ -307,6 +310,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
         _ => None,
     };
     let tie_digits = inp.reasons.as_ref().map_or(9, |r| r.tie_digits);
+    let (fixes, fix_chain) = rule::fixes_among(&chains_mine, &equal);
     let chosen = rule::choose(&equal, &answers_largest, &fixes, &|set: &[String]| sc.as_ref().and_then(|v| crate::pick::pick(v, set, tie_digits)));
     contributions.push(Contribution { piece: "the choice among the moves held equal (the rule, the estimates)", step: 6, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
     let mv = chosen.as_ref().map(|c| c.mv.clone()).or_else(|| ln.first.clone());
