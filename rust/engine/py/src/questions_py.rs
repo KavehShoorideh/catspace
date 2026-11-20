@@ -11,6 +11,7 @@ use cs_tactics::sheet::fates::{self, End};
 use cs_tactics::sheet::frames::{unit_id, ClaimKind, Cmp, Seed, Status};
 use cs_tactics::sheet::patterns::{self, Board, FxHashMap};
 use cs_tactics::sheet::questions::{self as q, QFrame, QReader, QStats};
+use cs_tactics::sheet::threat_frames::{rank, threat_frames, unit_class, FrameReadParams};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3::IntoPyObjectExt;
@@ -203,11 +204,6 @@ impl Agg {
 }
 
 pub struct MeasureParams { pub horizons: Vec<usize>, pub fuse: u64, pub row_fuse: u64, pub compose_every: usize, pub max_size: usize, pub conditional: bool, pub trap_fuse: u64, pub kv: Option<Vec<i64>>, pub rules: q::Rules, pub bands: Option<Vec<(i64, i64)>> }
-
-fn rank(a: Status, b: Status) -> Status {
-    let r = |s: Status| match s { Status::Forced => 4, Status::Threat => 3, Status::Waiting => 2, Status::Conditional => 1, Status::Not => 0 };
-    if r(b) > r(a) { b } else { a }
-}
 
 fn hist_bucket(n: u64) -> &'static str {
     match n { 0..=1 => "q<=1", 2..=3 => "q<=3", 4..=10 => "q<=10", 11..=30 => "q<=30", 31..=100 => "q<=100", 101..=300 => "q<=300", 301..=1000 => "q<=1000", _ => "q>1000" }
@@ -433,21 +429,6 @@ pub fn seeds_from(st: &Static, seeds: &[(Vec<String>, Vec<String>)]) -> Result<V
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------ plan 78.62 stage A
 
-/// The class and basis of member `id` (of the frame read in `rep`) owned by `owner`, as the unit record of `StateRec` states them. Shared by `state_game` (78.62) and `threat_game` (78.70).
-fn unit_class(rep: &q::QReport, id: usize, owner: usize) -> (u8, u8) {
-    let status_of = |id: usize, reading: usize, kinds: &[ClaimKind]| -> (Status, q::Fl) {
-        let mine: Vec<&q::QClaim> = rep.claims.iter().filter(|c| c.reading == reading && c.unit as usize == id && kinds.contains(&c.kind)).collect();
-        let best = mine.iter().map(|c| c.status).fold(Status::Not, rank);
-        (best, mine.iter().filter(|c| c.status == best).fold(0xFFFFu16, |a, c| a & c.flags))
-    };
-    let (free, ffl) = status_of(id, 1 - owner, &[ClaimKind::TakeFree]);
-    let (safe, sfl) = status_of(id, owner, &[ClaimKind::Safe]);
-    let class: u8 = if free == Status::Forced && safe == Status::Forced { 2 } else if free == Status::Forced { 0 } else if safe == Status::Forced { 1 }
-        else if rep.stats.unread > 0 { 3 } else if matches!(free, Status::Threat | Status::Waiting) { 4 } else if free == Status::Conditional { 5 } else { 6 };
-    let basis: u8 = match class { 0 => q::basis_rank(ffl), 1 => q::basis_rank(sfl), 2 => q::basis_rank(ffl).max(q::basis_rank(sfl)), _ => 255 };
-    (class, basis)
-}
-
 /// One member unit of a frame read at a position: [mover's own (1) or the other's (0), kind index, class, basis, trap word, observed fate within the horizon]. Class: 0 lost for its owner (the other side
 /// forces its taking), 1 safe, 2 both, 3 unread, 4 threat, 5 conditional, 6 contested. Basis (of a lost, safe or both class): 0 forced, 1 pruned, 2 estimate, 3 bound; 255 none. Trap: the index of the trap word
 /// (free, trapped, immobile, not_quiet, ended, unread), 255 when not asked. Fate: 0 not taken, 1 taken for nothing, 2 taken after taking, 255 not known.
@@ -555,60 +536,19 @@ fn threat_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wa
             s = g.apply(&s, &mv);
         }
     }
-    let levels: Vec<u8> = (0..patterns::LEVELS).collect();
+    // PLAN 79.08: the frame read of one position is cs_tactics::sheet::threat_frames (one piece, called by the wake too); this only turns it into the wire form
+    let fp = FrameReadParams { max_size: p.max_size, fuse: p.fuse, row_fuse: p.row_fuse, answer_fuse, conditional: p.conditional, kv: p.kv.clone(), bands: p.bands.clone(), rules: p.rules };
     for &t in wanted {
         if t >= states.len() { continue; }
         let s = &states[t];
         let Some(mover) = g.mover(s) else { continue };
         let mut cells = g.cells(s);
         cells.sort();
-        let part = st.position(&g, s);
-        let b = Board::new(st, &part, goal);
-        let seeds: Vec<Seed> = cs_tactics::sheet::frames::seeds_of_board(&b, &part, p.max_size, &levels, want).into_iter().map(|x| x.1).collect();
-        let mut row = ThreatRow { game: gid, ply: t, mover: mover as u8, board: cells.iter().map(|c| (c.0 as u8, c.1 as u8, c.2 as u16)).collect(), played: game.1.get(t).and_then(|text| g.find_move(s, text)).map(|m| { let e = g.move_ends(s, &m); (e.0 as u16, e.1 as u16) }), questions: 0, frames: vec![] };
-        if !seeds.is_empty() {
-            let built = q::build_frames_cap(st, &g, s, &seeds, p.rules.root_cap);
-            let mut row_q = 0u64;
-            for f0 in &built.frames {
-                // THE WIDENING (78.70 B): the frame as built, and the SMALLEST frame of the same seed (its units and what bears on them, the 78.60 F mode) when that is a strict part of it
-                let mut todo: Vec<(QFrame, bool)> = vec![(f0.clone(), false)];
-                if let Ok(sm) = QFrame::new_cap(st, &g, s, &f0.seed, q::ROOT_CAP - 1) {
-                    if sm.members.len() < f0.members.len() && sm.members.iter().all(|c| f0.members.contains(c)) { todo.push((sm, true)); }
-                }
-                for (f, small) in &todo {
-                if row_q >= p.row_fuse { continue; }
-                let kv = p.kv.clone().map(std::rc::Rc::new);
-                let bands = p.bands.clone().map(std::rc::Rc::new);
-                let rep = q::claims_q_rules(&g, st, f, s, p.conditional, p.fuse, kv.clone(), p.rules, bands.clone());
-                row_q += rep.stats.questions;
-                let mut rd = QReader::new(&g, st, f, s);
-                rd.fuse = answer_fuse;
-                rd.kv = kv;
-                rd.rules = p.rules;
-                rd.bands = bands;
-                let mut tf = ThreatFrame { id: format!("{}{}", f.id, if *small { "/small" } else { "" }), members: f.members.iter().map(|c| ((c.0 == mover) as u8, c.1 as u16, c.2 as u16)).collect(), places: f.places.iter().map(|x| *x as u16).collect(), unread: rep.stats.unread, claims: vec![] };
-                for (i, c) in f.members.iter().enumerate() {
-                    let owner = c.0.min(1);
-                    let (class, basis) = unit_class(&rep, i, owner);
-                    // what the taking of this unit by the other side rests on, whatever the class (255: no such claim holds)
-                    let take_basis = rep.claims.iter().filter(|x| x.reading == 1 - owner && x.unit as usize == i && x.kind == ClaimKind::TakeFree && x.status != Status::Not).map(|x| q::basis_rank(x.flags)).max().unwrap_or(255);
-                    let mut bearers: Vec<(u16, u16)> = part.bears.iter().filter(|r| r.place == c.2).filter(|r| part.units[r.unit].owner.min(1) != owner).map(|r| (part.units[r.unit].kind as u16, part.units[r.unit].at as u16)).collect();
-                    bearers.sort();
-                    if bearers.is_empty() && !matches!(class, 0 | 2 | 4 | 5) { continue; }
-                    let mut ans = (vec![], 0u32, 0u32);
-                    if class != 0 && row_q < p.row_fuse {
-                        let before = rd.stats.questions;
-                        if let Some(a) = rd.answers(s, owner, rd.member_id(i)) {
-                            ans = (a.moves.iter().map(|m| (m.ends.0 as u16, m.ends.1 as u16, m.how, m.unit_moves as u8)).collect(), a.tried, a.unread);
-                        }
-                        row_q += rd.stats.questions - before;
-                    }
-                    tf.claims.push(ThreatClaim { member: i as u16, class, basis, take_basis, bearers, answers: ans.0, tried: ans.1, unread: ans.2 });
-                }
-                row.questions += rep.stats.questions + rd.stats.questions;
-                row.frames.push(tf);
-                }
-            }
+        let read = threat_frames(st, &g, s, goal, want, &fp);
+        let mut row = ThreatRow { game: gid, ply: t, mover: mover as u8, board: cells.iter().map(|c| (c.0 as u8, c.1 as u8, c.2 as u16)).collect(), played: game.1.get(t).and_then(|text| g.find_move(s, text)).map(|m| { let e = g.move_ends(s, &m); (e.0 as u16, e.1 as u16) }), questions: read.questions, frames: vec![] };
+        for f in read.frames {
+            let claims = f.claims.iter().map(|c| ThreatClaim { member: c.member, class: c.class, basis: c.basis, take_basis: c.take_basis, bearers: c.bearers.iter().map(|b| (b.0 as u16, b.1 as u16)).collect(), answers: c.answers.iter().map(|a| (a.0 as u16, a.1 as u16, a.2, a.3 as u8)).collect(), tried: c.tried, unread: c.unread }).collect();
+            row.frames.push(ThreatFrame { id: f.id, members: f.members.iter().map(|m| (m.0 as u8, m.1 as u16, m.2 as u16)).collect(), places: f.places.iter().map(|x| *x as u16).collect(), unread: f.unread, claims });
         }
         out.push(row);
     }

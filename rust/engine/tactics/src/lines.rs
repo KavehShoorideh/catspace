@@ -138,6 +138,15 @@ fn changes_in(lost: &[(Role, String)], me: Role) -> Vec<(bool, String, String)> 
 
 pub fn read_line<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: &G::Move, me: Role, p: LineParams) -> LineRead {
     let mut sr = Search::with_fuse(g, judge, me, p.fuse);
+    read_line_in(&mut sr, s, m, me, p)
+}
+
+/// PLAN 79.08 (repair 2): `read_line` on a search the caller keeps, so that the lines read from one position share one table (the sub-positions they have in common are read once). The line has its own node fuse (`p.fuse` from here), its own count of nodes, and the
+/// table kept; with a fresh search it is exactly `read_line`. The search must be for `me`.
+pub fn read_line_in<G: Game + Placed, J: Judge>(sr: &mut Search<'_, G, J>, s: &G::State, m: &G::Move, me: Role, p: LineParams) -> LineRead {
+    let (g, judge) = (sr.g, sr.judge);
+    sr.rebudget(p.fuse);
+    let n0 = sr.nodes;
     let d0 = sr.gain(s, m);
     let mut events: Vec<(bool, String)> = g.captured(s, m).into_iter().map(|(o, k)| (o == me, k)).collect();
     let mut changes = changes_of(g, s, m, me);
@@ -169,7 +178,7 @@ pub fn read_line<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: 
     // (value -WIN plus the gain) and judged by its events alone. The end of the game is read against half of WIN, as the ledger's own numbers are (WIN less the plies, the sum of a ledger is far below it).
     let end = if value >= WIN / 2 { END_WON } else if value <= -WIN / 2 { END_LOST } else { END_QUIET };
     let settled = settled_len(g, s, &names);
-    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, changes, value, end, depth, nodes: sr.nodes, cut, settled, unsettled, tail_end }
+    LineRead { prefix: vec![], lead: None, first: (first.0, first.1), names, events, changes, value, end, depth, nodes: sr.nodes - n0, cut, settled, unsettled, tail_end }
 }
 
 pub fn takings_on<G: Game + Placed>(g: &G, s: &G::State, place: Place) -> Vec<G::Move> {
@@ -178,6 +187,12 @@ pub fn takings_on<G: Game + Placed>(g: &G, s: &G::State, place: Place) -> Vec<G:
 
 pub fn read_takings<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, place: Place, me: Role, p: LineParams) -> Vec<LineRead> {
     takings_on(g, s, place).iter().map(|m| read_line(g, judge, s, m, me, p)).collect()
+}
+
+/// PLAN 79.08 (repair 2): `read_takings` on a shared search (one table for the lines of one position).
+pub fn read_takings_in<G: Game + Placed, J: Judge>(sr: &mut Search<'_, G, J>, s: &G::State, place: Place, me: Role, p: LineParams) -> Vec<LineRead> {
+    let g = sr.g;
+    takings_on(g, s, place).iter().map(|m| read_line_in(sr, s, m, me, p)).collect()
 }
 
 pub fn read_first<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, from: Place, to: Place, me: Role, p: LineParams) -> Vec<LineRead> {
@@ -194,7 +209,14 @@ pub fn read_all<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me: 
 pub struct After { pub whole: LineRead, pub takes: Vec<LineRead> }
 
 pub fn read_after<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: &G::Move, place: Place, me: Role, p: LineParams) -> After {
-    let whole = read_line(g, judge, s, m, me, p);
+    let mut sr = Search::with_fuse(g, judge, me, p.fuse);
+    read_after_in(&mut sr, s, m, place, me, p)
+}
+
+/// PLAN 79.08 (repair 2): `read_after` on a shared search.
+pub fn read_after_in<G: Game + Placed, J: Judge>(sr: &mut Search<'_, G, J>, s: &G::State, m: &G::Move, place: Place, me: Role, p: LineParams) -> After {
+    let (g, judge) = (sr.g, sr.judge);
+    let whole = read_line_in(sr, s, m, me, p);
     let ends = g.move_ends(s, m);
     let c = g.apply(s, m);
     let now = if ends.0 == place { ends.1 } else { place };
@@ -204,7 +226,7 @@ pub fn read_after<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m:
     let ch0 = changes_of(g, s, m, me);
     let name0 = g.move_name(s, m);
     let takes = if g.outcome(&c).is_some() { vec![] } else {
-        read_takings(g, judge, &c, now, me, p).into_iter().map(|mut r| {
+        read_takings_in(sr, &c, now, me, p).into_iter().map(|mut r| {
             r.value += d0;
             let mut ev = ev0.clone();
             ev.extend(r.events);
@@ -241,6 +263,13 @@ pub fn read_best<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me:
 /// line with the other side's best replies (the move, the reply, ...): the threat is kept only if the line still ends ahead for `me` (the caller's verdict), so a move the other side simply answers by taking
 /// the attacker is no threat. Returns the lines of the moves that make a threat, best first; `lead` is the move's ends.
 pub fn read_two_moves<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, place: Place, me: Role, p: LineParams) -> Vec<LineRead> {
+    let mut sr = Search::with_fuse(g, judge, me, p.fuse);
+    read_two_moves_in(&mut sr, s, place, me, p)
+}
+
+/// PLAN 79.08 (repair 2): `read_two_moves` on a shared search.
+pub fn read_two_moves_in<G: Game + Placed, J: Judge>(sr: &mut Search<'_, G, J>, s: &G::State, place: Place, me: Role, p: LineParams) -> Vec<LineRead> {
+    let g = sr.g;
     let mut out: Vec<LineRead> = vec![];
     for m in g.moves(s) {
         if !g.captured(s, &m).is_empty() { continue; }
@@ -248,7 +277,7 @@ pub fn read_two_moves<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State
         if g.outcome(&c).is_some() { continue; }
         let Some(cq) = g.pass(&c) else { continue };
         if takings_on(g, &cq, place).is_empty() { continue; }
-        let mut r = read_line(g, judge, s, &m, me, p);
+        let mut r = read_line_in(sr, s, &m, me, p);
         let e = g.move_ends(s, &m);
         r.lead = Some((e.0, e.1));
         out.push(r);

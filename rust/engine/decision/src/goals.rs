@@ -192,9 +192,15 @@ fn line_story(f: &View, taker: Role, t: Place, plies: &[Ply]) -> Story {
 struct Bld<'a, G: Game + Placed> {
     st: &'a Static, g: &'a G, w: &'a Words, goal: Option<Kind>, taker: Role, owner: Role, s_t: G::State, v: View,
     afters: std::cell::OnceCell<Vec<(String, G::State, Vec<(Role, Kind, Place)>)>>, bring_memo: std::cell::RefCell<HashMap<Place, Vec<String>>>,
+    /// the legal moves of the side as (from, to, takes): read once, for `takes_legally`
+    legal: std::cell::OnceCell<Vec<(Place, Place, bool)>>,
 }
 
 impl<'a, G: Game + Placed> Bld<'a, G> {
+    /// PLAN 79.08 repair 1: does a LEGAL move of the side take on `to` from `from`? (The graph's may-move relation does not read whether the mover leaves its own goal unit borne on or uncovers a line onto it; the game's moves do.)
+    fn takes_legally(&self, from: Place, to: Place) -> bool {
+        self.legal.get_or_init(|| self.g.moves(&self.s_t).iter().map(|m| { let e = self.g.move_ends(&self.s_t, m); (e.0, e.1, !self.g.captured(&self.s_t, m).is_empty()) }).collect()).iter().any(|x| x.0 == from && x.1 == to && x.2)
+    }
     fn afters(&self) -> &Vec<(String, G::State, Vec<(Role, Kind, Place)>)> {
         self.afters.get_or_init(|| self.g.moves(&self.s_t).iter().map(|m| { let a = self.g.apply(&self.s_t, m); let c = self.g.cells(&a); (self.g.move_name(&self.s_t, m), a, c) }).collect())
     }
@@ -335,22 +341,28 @@ fn build_goal<G: Game + Placed>(b: &Bld<G>, row: &ThreatRow, source: &str) -> Op
     // ---- may_take(A, T)
     if !bearers.is_empty() {
         if f.mover != Some(taker) { facts.push(fact("may_take", Status::Open, a_uid.map(|i| f.u(i)), None, vec![])); }
-        else if let Some(l) = bearers.iter().find(|u| f.may.contains(&(**u, t))) { facts.push(fact("may_take", Status::Met, Some(f.u(*l)), None, vec![])); }
+        else if let Some(l) = bearers.iter().find(|u| b.takes_legally(f.part.units[**u].at, t)) { facts.push(fact("may_take", Status::Met, Some(f.u(*l)), None, vec![])); }          // (PLAN 79.08 repair 1: the game's own legal moves, so a tied bearer is not free; the graph's `may` relation does not read the safety of the goal unit)
         else {
             let mut a0 = bearers[0];
-            let (mut tied, mut victim): (Vec<usize>, Option<usize>) = (vec![], None);
-            for u in &bearers {
-                let mut items: Vec<(&(usize, Place), &Vec<usize>)> = f.shut.iter().collect();
-                items.sort_by(|x, y| (&f.ids[x.0 .0], x.0 .1).cmp(&(&f.ids[y.0 .0], y.0 .1)));
-                for ((x, p), btw) in items {
-                    if f.owner(*x) == owner && btw.len() == 1 && btw[0] == *u && f.at(*p).is_some_and(|k| f.owner(k) == taker) {
-                        tied.push(*x);
-                        if victim.is_none() { victim = f.at(*p); a0 = *u; }
+            let (mut tied, mut victim): (Vec<UnitRef>, Option<usize>) = (vec![], None);
+            // PLAN 79.08 repair 1: the lines the other side's units have through a bearer are the graph's shut relation read with THEM to move (the graph holds the mover's lines): the position after the game's pass
+            let pass_view = b.g.pass(&b.s_t).map(|q| view(b.st, b.g, &q, b.w));
+            if let Some(pv) = &pass_view {
+                for u in &bearers {
+                    let bearer = f.u(*u);
+                    let mut items: Vec<(&(usize, Place), &Vec<usize>)> = pv.shut.iter().collect();
+                    items.sort_by(|x, y| (&pv.ids[x.0 .0], x.0 .1).cmp(&(&pv.ids[y.0 .0], y.0 .1)));
+                    for ((x, p), btw) in items {
+                        if pv.owner(*x) == owner && btw.len() == 1 && pv.u(btw[0]) == bearer && pv.at(*p).is_some_and(|k| pv.owner(k) == taker) {
+                            let xr = pv.u(*x);
+                            if !tied.contains(&xr) { tied.push(xr); }
+                            if victim.is_none() { victim = f.at(*p); a0 = *u; }
+                        }
                     }
                 }
             }
             let (c, fx) = if !tied.is_empty() {
-                let sts = f.of_idx(&tied);
+                let sts = tied.clone();
                 (cause("tied", sts.clone(), victim.map(|v| f.u(v)), "graph", None), Some(b.remove_fix(&sts, None, "the unit of theirs that holds the bearer is taken, blocked or drawn away (the far end a variable)")))
             } else {
                 let mine = f.goal_units(taker, b.goal);
@@ -359,7 +371,7 @@ fn build_goal<G: Game + Placed>(b: &Bld<G>, row: &ThreatRow, source: &str) -> Op
                 let sts = f.of_idx(&att);
                 let victim = mine.first().map(|u| f.u(*u));
                 let fx = if att.is_empty() { None } else { Some(b.remove_fix(&sts, mine.first().map(|u| f.part.units[*u].at), "the unit of theirs that attacks our goal-kind unit is taken, blocked or drawn away (the far end a variable)")) };
-                (cause("goal_unit_attacked", sts, victim, "graph", None), fx)
+                if att.is_empty() { (cause("no_legal_take", vec![], None, "graph", None), None) } else { (cause("goal_unit_attacked", sts, victim, "graph", None), fx) }
             };
             facts.push(fact("may_take", Status::Unmet, Some(f.u(a0)), Some(c), fx.iter().cloned().collect()));
             if let Some(fx) = fx { fixes.push(fx); }
@@ -490,7 +502,7 @@ pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &Concrete
     let w = Words { roles: g.roles(), kinds: g.kind_names(), places: g.place_names() };
     let Some(s_t) = view_state(g, s, side) else { return vec![] };
     let v = view(st, g, &s_t, &w);
-    let b = Bld { st, g, w: &w, goal, taker: side, owner: g.other(side), s_t, v, afters: Default::default(), bring_memo: Default::default() };
+    let b = Bld { st, g, w: &w, goal, taker: side, owner: g.other(side), s_t, v, afters: Default::default(), bring_memo: Default::default(), legal: Default::default() };
     let mut out = vec![];
     for r in list.mover.iter().chain(&list.other).chain(&list.exchange).chain(&list.dropped) {
         if r.goal || r.owner == side { continue; }
@@ -670,8 +682,10 @@ pub fn named_moves<G: Game + Placed>(g: &G, s: &G::State, goals: &[Goal], defenc
 
 /// The parameters of `propose`: the budget of questions and the sides whose goals are wanted (None: both).
 #[derive(Debug, Clone)]
-pub struct GoalParams { pub budget: usize, pub sides: Option<Vec<Role>>, pub depth: u8 }
-impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None, depth: DEPTH } } }
+pub struct GoalParams { pub budget: usize, pub sides: Option<Vec<Role>>, pub depth: u8,
+    /// PLAN 79.08 B (the carry): rows of the last decision whose read set did not change; put into the list as they were, not read again
+    pub held: Vec<crate::carry::CarriedRow> }
+impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None, depth: DEPTH, held: vec![] } } }
 
 /// What the proposer returns for a position: the list of both sides, the goals of each side (in the order of their side's goals), the goals of two threats, the moves that make two threats at once, the units asked and not asked, the questions, the lines read, and the time of each part.
 #[derive(Debug, Clone, Default)]
@@ -705,8 +719,9 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
         c.sort_by_key(|r| (r.unit.owner, r.unit.at));
         rows = Some(c);
     }
-    let tp = ThreatParams { depth: threats.depth, fuse: threats.fuse, sweep_depth: threats.sweep_depth, sweep_fuse: threats.sweep_fuse, end_plies: threats.end_plies, end_fuse: threats.end_fuse, goal: threats.goal, rows, every_sides: Some(vec![]), stake: threats.stake };
+    let tp = ThreatParams { depth: threats.depth, fuse: threats.fuse, sweep_depth: threats.sweep_depth, sweep_fuse: threats.sweep_fuse, end_plies: threats.end_plies, end_fuse: threats.end_fuse, goal: threats.goal, rows, every_sides: Some(vec![]), stake: threats.stake, share_table: threats.share_table };
     let mut list = concrete_threats(st, g, s, rec, &tp);
+    crate::carry::merge_held(&mut list, &params.held);
     out.seconds.push(("the concrete list of the contested units and the forced end", t0.elapsed().as_secs_f64()));
     // progress after the contested reads: the last unit asked (the least stake) ended with a line read
     let progress = first_units.last().map_or(true, |u| list.mover.iter().chain(&list.other).chain(&list.exchange).chain(&list.dropped).any(|r| r.unit == Some(*u) && r.net.is_some()));

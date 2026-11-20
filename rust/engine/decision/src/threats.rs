@@ -18,7 +18,7 @@ use crate::threat_verdict::{best_taking, verdict_of, Record, Verdict, VerdictKin
 use crate::wake::UnitRef;
 use cs_game::placed::{Kind, Place, Placed};
 use cs_game::{Game, Role};
-use cs_tactics::ledger::Worth;
+use cs_tactics::ledger::{Search, Worth};
 use cs_tactics::lines::{self as L, After, Forced, LineParams, LineRead};
 use cs_tactics::sheet::base_graph::Static;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -44,10 +44,12 @@ pub struct FrameRow { pub unit: UnitRef, pub class: String, pub by: Vec<UnitRef>
 pub struct ThreatParams<'a> {
     pub depth: i32, pub fuse: u64, pub sweep_depth: i32, pub sweep_fuse: u64, pub end_plies: u32, pub end_fuse: u64,
     pub goal: Option<Kind>, pub rows: Option<Vec<FrameRow>>, pub every_sides: Option<Vec<Role>>, pub stake: Option<&'a dyn Fn(&str, bool) -> Option<f64>>,
+    /// PLAN 79.08 repair 2: the lines read from one position share one table (`cs_tactics::lines::*_in`), one search a (position, side). false (the default) is each line with a table of its own, as 79.06 read them.
+    pub share_table: bool,
 }
 
 impl<'a> Default for ThreatParams<'a> {
-    fn default() -> Self { ThreatParams { depth: DEPTH, fuse: FUSE, sweep_depth: SWEEP_DEPTH, sweep_fuse: SWEEP_FUSE, end_plies: END_PLIES, end_fuse: END_FUSE, goal: None, rows: None, every_sides: None, stake: None } }
+    fn default() -> Self { ThreatParams { depth: DEPTH, fuse: FUSE, sweep_depth: SWEEP_DEPTH, sweep_fuse: SWEEP_FUSE, end_plies: END_PLIES, end_fuse: END_FUSE, goal: None, rows: None, every_sides: None, stake: None, share_table: false } }
 }
 
 /// What each side is left with after a line (the taker's units lost and taken, and what is left once like for like cancels).
@@ -108,32 +110,41 @@ impl ConcreteList {
 
 // ------------------------------------------------------------------------------------------------------------------------------ the readings (one reader per position)
 
-/// The line reader of ONE position: the position, its pass, the judge made from the record. Every call is one query of the Python's modes; the counters are the cost.
-struct Rd<'a, G: Game + Placed> { g: &'a G, s: &'a G::State, passed: Option<G::State>, judge: Worth, mover: Role, queries: u64, nodes: u64 }
+/// The line reader of ONE position: the position, its pass, the judge made from the record. Every call is one query of the Python's modes; the counters are the cost. With `share` the lines read for one (position, side) go through one `Search` and so one table (PLAN 79.08 repair 2).
+struct Rd<'a, G: Game + Placed> { g: &'a G, s: &'a G::State, passed: Option<G::State>, judge: &'a Worth, mover: Role, queries: u64, nodes: u64, share: bool, shared: HashMap<(bool, Role), Search<'a, G, Worth>> }
 
 impl<'a, G: Game + Placed> Rd<'a, G> {
-    fn new(g: &'a G, s: &'a G::State, rec: &Record) -> Rd<'a, G> {
-        Rd { g, s, passed: g.pass(s), judge: Worth { name: "record".into(), table: rec.worth.clone(), ours_first: false }, mover: g.mover(s).unwrap_or(0), queries: 0, nodes: 0 }
+    fn new(g: &'a G, s: &'a G::State, judge: &'a Worth, share: bool) -> Rd<'a, G> {
+        Rd { g, s, passed: g.pass(s), judge, mover: g.mover(s).unwrap_or(0), queries: 0, nodes: 0, share, shared: HashMap::new() }
     }
     /// The position the query is asked at: the position itself, or the one after the mover passes once (None where the game gives no pass).
     fn at(&self, pass: bool) -> Option<&G::State> { if pass { self.passed.as_ref() } else { Some(self.s) } }
     fn lines(&mut self, v: &[LineRead]) { self.queries += 1; self.nodes += v.iter().map(|r| r.nodes).sum::<u64>(); }
     fn takings(&mut self, pass: bool, place: Place, p: LineParams) -> Option<Vec<LineRead>> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = L::read_takings(self.g, &self.judge, p0, place, me, p); self.lines(&r); Some(r)
+        let r = if self.share { let (g, j) = (self.g, self.judge); let sr = self.shared.entry((pass, me)).or_insert_with(|| Search::with_fuse(g, j, me, 1)); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_takings_in(sr, p0, place, me, p) } else { L::read_takings(self.g, self.judge, p0, place, me, p) };
+        self.lines(&r); Some(r)
     }
     fn two_moves(&mut self, pass: bool, place: Place, p: LineParams) -> Option<Vec<LineRead>> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = L::read_two_moves(self.g, &self.judge, p0, place, me, p); self.lines(&r); Some(r)
+        let r = if self.share { let (g, j) = (self.g, self.judge); let sr = self.shared.entry((pass, me)).or_insert_with(|| Search::with_fuse(g, j, me, 1)); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_two_moves_in(sr, p0, place, me, p) } else { L::read_two_moves(self.g, self.judge, p0, place, me, p) };
+        self.lines(&r); Some(r)
     }
     fn best(&mut self, pass: bool, p: LineParams) -> Option<LineRead> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = L::read_best(self.g, &self.judge, p0, me, p); self.lines(std::slice::from_ref(&r)); Some(r)
+        let r = L::read_best(self.g, self.judge, p0, me, p); self.lines(std::slice::from_ref(&r)); Some(r)
     }
     /// The moves of the mover of the position (after the pass or not) that start and end as `ends` (all moves when None), each read two ways for the OTHER side, as the taker of the unit on `place`.
     fn afters(&mut self, pass: bool, ends: Option<(Place, Place)>, place: Place, p: LineParams) -> Option<Vec<After>> {
         let p0 = self.at(pass)?; let me = self.g.other(self.g.mover(p0)?);
-        let r: Vec<After> = self.g.moves(p0).iter().filter(|m| ends.map_or(true, |e| self.g.move_ends(p0, m) == e)).map(|m| L::read_after(self.g, &self.judge, p0, m, place, me, p)).collect();
+        let g = self.g;
+        let moves: Vec<G::Move> = g.moves(p0).into_iter().filter(|m| ends.map_or(true, |e| g.move_ends(p0, m) == e)).collect();
+        let r: Vec<After> = if self.share {
+            let j = self.judge;
+            let p0 = if pass { self.passed.as_ref()? } else { self.s };
+            let sr = self.shared.entry((pass, me)).or_insert_with(|| Search::with_fuse(g, j, me, 1));
+            moves.iter().map(|m| L::read_after_in(sr, p0, m, place, me, p)).collect()
+        } else { moves.iter().map(|m| L::read_after(g, self.judge, p0, m, place, me, p)).collect() };
         self.queries += 1; self.nodes += r.iter().map(|a| a.whole.nodes + a.takes.iter().map(|t| t.nodes).sum::<u64>()).sum::<u64>(); Some(r)
     }
     fn forced(&mut self, pass: bool, end_plies: u32, end_fuse: u64) -> Option<Forced> {
@@ -149,7 +160,7 @@ impl<'a, G: Game + Placed> Rd<'a, G> {
 // ------------------------------------------------------------------------------------------------------------------------------ verdict words and the response
 
 /// How the line ended and why, in the words of the Python (`verdict_of`'s `ended` and `reason`).
-fn describe(v: &Verdict) -> (&'static str, String) {
+pub(crate) fn describe(v: &Verdict) -> (&'static str, String) {
     if v.kind == VerdictKind::Unread { return (ENDED[3], "out of budget: the fuse cut the line; no forced claim is made from it".into()); }
     let tail = if v.end_in_tail { " (reached in the tail of the line)" } else { "" };
     if v.end == L::END_WON { return (ENDED[0], format!("the end of the game, won by the taker, decides it{tail}")); }
@@ -211,7 +222,7 @@ struct Work { row: ThreatRow, taker_p: bool, owner_p: bool, st: St, notake: bool
 fn side_is_mover(owner: Role, mover: Role) -> bool { owner == mover }
 
 /// The order of a list: the goal rows first, then the greater stake, then the place.
-fn sort_rows(v: &mut [ThreatRow]) {
+pub(crate) fn sort_rows(v: &mut [ThreatRow]) {
     v.sort_by(|a, b| {
         let key = |r: &ThreatRow| (if r.goal { 0 } else { 1 }, -(r.stake.unwrap_or(-9.0)), r.unit.map_or(-1i64, |u| u.at as i64));
         let (x, y) = (key(a), key(b));
@@ -227,7 +238,8 @@ fn drop_row(list: &mut ConcreteList, why: &str, row: Option<(&ThreatRow, &'stati
 /// THE CONCRETE THREAT LIST of both sides (see the module doc). Rounds of line reads over all the rows; the rows come from `params.rows` (the frame read) or from the graph; then `every_unit` for `params.every_sides`.
 pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record, params: &ThreatParams) -> ConcreteList {
     let mut list = ConcreteList::default();
-    let mut rd = Rd::new(g, s, rec);
+    let judge = Worth { name: "record".into(), table: rec.worth.clone(), ours_first: false };
+    let mut rd = Rd::new(g, s, &judge, params.share_table);
     let mover = rd.mover;
     let kinds = g.kind_names();
     let lp = LineParams { depth: params.depth, fuse: params.fuse };
@@ -454,7 +466,8 @@ fn quiet_list<G: Game + Placed>(g: &G, p0: &G::State) -> QuietList<G::Move> {
 
 pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut ConcreteList, sides: &[Role], rec: &Record, params: &ThreatParams, ask: &Ask) -> EveryOut {
     let t0 = Instant::now();
-    let mut rd = Rd::new(g, s, rec);
+    let judge = Worth { name: "record".into(), table: rec.worth.clone(), ours_first: false };
+    let mut rd = Rd::new(g, s, &judge, params.share_table);
     let mover = rd.mover;
     let kinds = g.kind_names();
     let part = st.position(g, s);
@@ -511,7 +524,7 @@ pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: 
                             let mut rs: Vec<LineRead> = vec![];
                             for (k, (m, e, ends)) in ql.iter().enumerate() {
                                 if !ends.contains(&place) { continue; }
-                                if !lines.contains_key(&(*taker_p, k)) { let r = L::read_line(g, &rd.judge, p0, m, me, lp); fresh += r.nodes; out.line_reads += 1; lines.insert((*taker_p, k), r); }
+                                if !lines.contains_key(&(*taker_p, k)) { let r = L::read_line(g, rd.judge, p0, m, me, lp); fresh += r.nodes; out.line_reads += 1; lines.insert((*taker_p, k), r); }
                                 let mut r = lines[&(*taker_p, k)].clone();
                                 r.lead = Some(*e);
                                 rs.push(r);
