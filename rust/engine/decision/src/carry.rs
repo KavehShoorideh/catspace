@@ -27,7 +27,16 @@ pub struct Carried { pub rows: Vec<CarriedRow>,
     /// PLAN 79.14 B: the side to move and the atoms of the position that decision read (a position's digest), so that what the two plies since touched can be read from the graph
     pub digest: Option<(usize, cs_tactics::sheet::delta::Digest)>,
     /// PLAN 79.14 B: what the frame read of that decision left for the next (the seeds found, the frames read to the end), with the carry on
-    pub memo: Option<cs_tactics::sheet::threat_frames::FrameMemo> }
+    pub memo: Option<cs_tactics::sheet::threat_frames::FrameMemo>,
+    /// PLAN 79.17 D: the measure held as a goal beyond the search's horizon (SYSTEM_SPEC 7): carried from move to move with the open tactics
+    pub held: Option<HeldGoal> }
+
+/// PLAN 79.17 PART D (SYSTEM_SPEC 7, the measure of progress as a goal held across moves; ledger rows 13, 24, 35): THE HELD GOAL. The term (its text), the value it had when it was last lowered, the plies since, the number of subgoals reached so far (each a lowering of the value), the class of the position it
+/// was taken up in (the units of each side by kind, as numbers, sorted: a change of class ends the goal) and, once dropped, the cause. It is a goal and never a value: it orders what the search reads and chooses among moves the calculation holds equal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldGoal { pub term: String, pub value: Vec<i64>, pub since: u32, pub reached: u32, pub class: Vec<(bool, u8)>,
+    /// the cause the goal was dropped for (None: held); a dropped goal is not taken up again in the game
+    pub dropped: Option<String> }
 
 impl Carried {
     /// The rows of `list` that have a read set (the frame read made them).
@@ -38,7 +47,7 @@ impl Carried {
                 if let Some(rs) = r.unit.and_then(|u| read_sets.get(&u)) { rows.push(CarriedRow { bucket: b, row: r.clone(), read_set: rs.clone() }); }
             }
         }
-        Carried { rows, digest: None, memo: None }
+        Carried { rows, digest: None, memo: None, held: None }
     }
     /// PLAN 79.14 B: the rows of the last list INCLUDING the rows of the every-unit reading, each with its read set (`every_sets`: the unit's neighbourhood in the position's atoms), and the digest of the position.
     pub fn of_every(list: &ConcreteList, read_sets: &BTreeMap<UnitRef, ReadSet>, every_sets: &BTreeMap<UnitRef, ReadSet>, digest: Option<(usize, cs_tactics::sheet::delta::Digest)>) -> Carried {

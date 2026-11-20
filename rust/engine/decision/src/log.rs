@@ -67,7 +67,15 @@ pub struct DecisionLog {
     pub first_diag: Option<FirstDiag>,
     /// PLAN 79.16 A: the search's reading on of a failed first move (None: the first move was not asked again: it finished its depth and held, the switch is off, or the game was decided)
     pub failed_first: Option<FailedFirstLog>,
+    /// PLAN 79.17 D: the held goal of the measure of progress in this decision (None: no goal given)
+    pub measure: Option<MeasureLog>,
 }
+
+/// PLAN 79.17 D (SYSTEM_SPEC 7; ledger rows 13, 24): what the held goal did in one decision. `value_now` the term's value in the position, `held_before` the lowest value held before it, `reached` the event of ledger row 24 (the value is lower than held: a subgoal reached, logged with the position's key), `first` the first move of a line
+/// within `d` of our moves after which the term is lower against every reply (None: none, or the clock cut the question), `moves` how many of our moves that line takes, `played_toward` whether that move was played (it is played only where the calculation holds it equal), `dropped` the cause the goal was dropped for in this decision.
+#[derive(Debug, Clone, Default)]
+pub struct MeasureLog { pub term: String, pub d: u32, pub value_now: Vec<i64>, pub held_before: Option<Vec<i64>>, pub held_after: Option<Vec<i64>>, pub reached: bool, pub key: u64, pub reached_total: u32, pub since: u32,
+    pub first: Option<String>, pub moves: Option<u32>, pub game_end: bool, pub cut: bool, pub nodes: u64, pub seconds: f64, pub played_toward: bool, pub dropped: Option<String>, pub said: String }
 
 /// PLAN 79.16 A: the reading on of a first move that the clock stopped at depth `depth` (the answer of `from_depth` is the one asked about): the first move's null-window answer at `depth` (None: cut before it ended), the value it was asked to hold, how it ended ("first_held", "other_held", "all_failed", "cut"), what it cost and what it was allowed.
 #[derive(Debug, Clone, Default)]
@@ -87,6 +95,13 @@ fn kept(v: &[(String, String, i64, String)]) -> Value { json!(v.iter().map(|k| j
 fn goal_json(x: &GoalLog) -> Value {
     json!({"side": x.side, "target": x.target, "source": x.source, "depth": x.depth, "parent": x.parent, "via": x.via, "unmet": x.unmet, "stoppers": x.stoppers,
            "fixes": x.fixes.iter().map(|f| json!({"kind": f.0, "moves": f.1})).collect::<Vec<_>>(), "in_the_way": x.in_the_way, "chance": x.chance.as_ref().map(|c| json!({"chance": c.0, "n": c.1, "source": c.2})), "chosen": x.chosen, "goal_unit": x.goal_unit})
+}
+
+fn measure_json(m: &MeasureLog) -> Value {
+    let mut v = json!({"term": m.term, "d": m.d, "value_now": m.value_now, "held_before": m.held_before, "held_after": m.held_after, "reached": m.reached, "key": m.key.to_string(), "reached_total": m.reached_total, "since": m.since});
+    let w = json!({"first": m.first, "moves": m.moves, "game_end": m.game_end, "cut": m.cut, "nodes": m.nodes, "seconds": m.seconds, "played_toward": m.played_toward, "dropped": m.dropped, "said": m.said});
+    if let (Some(a), Some(b)) = (v.as_object_mut(), w.as_object()) { for (k, x) in b { a.insert(k.clone(), x.clone()); } }
+    v
 }
 
 impl DecisionLog {
@@ -109,6 +124,7 @@ impl DecisionLog {
             "depth_reads": self.depth_reads.iter().map(|x| json!({"depth": x.0, "finished": x.1, "nodes": x.2, "seconds": x.3})).collect::<Vec<_>>(),
             "first_diag": self.first_diag.as_ref().map(|d| json!({"probe": d.probe, "value": d.value, "unreduced_holds": d.unreduced_holds, "deeper": d.deeper.iter().map(|x| json!({"depth": x.0, "probe": x.1})).collect::<Vec<_>>()})),
             "failed_first": self.failed_first.as_ref().map(|f| json!({"from_depth": f.from_depth, "depth": f.depth, "first_value": f.first_value, "goal": f.goal, "outcome": f.outcome, "seconds": f.seconds, "nodes": f.nodes, "allowed": f.allowed})),
+            "measure": self.measure.as_ref().map(measure_json),
             "step_seconds": self.step_seconds.iter().map(|x| json!({"step": x.0, "piece": x.1, "seconds": x.2})).collect::<Vec<_>>(),
             "chooser": self.chooser.as_ref().map(|c| json!({"mode": c.mode, "seed": c.seed, "inputs": c.inputs, "candidates": c.candidates.iter().map(|x| json!({"move": x.0, "row": x.1, "sum": x.2})).collect::<Vec<_>>(),
                 "fixed_pick": c.fixed_pick, "played": c.played, "propensity": c.propensity, "applied": c.applied})),

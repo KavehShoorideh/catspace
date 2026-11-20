@@ -18,6 +18,8 @@ use std::collections::HashMap;
 pub struct BaseGraph {
     variant: String,
     st: Static,
+    /// PLAN 79.17: what the board gives once for the measure of progress (cs_tactics::measure)
+    geo: cs_tactics::measure::Geometry,
     /// 78.58: the worth of each kind (by kind index) the exchange reads, set from the estimator's record; None: no exchange.
     kv: Option<Vec<i64>>,
     /// 78.60: the band (low, high) of the worth of each kind, from the estimator record; and the rules of a line's end (all off until set).
@@ -138,7 +140,50 @@ impl BaseGraph {
         let names = Names::new(g.place_names(), g.kind_names(), g.roles());
         let steps = g.steps(description, &static_relations, &objects).map_err(bad)?;
         let st = Static::new(&steps, &names).map_err(bad)?;
-        Ok(BaseGraph { variant: variant.to_string(), st, kv: None, bands: None, rules: Default::default(), carry: Default::default() })
+        let geo = cs_tactics::measure::Geometry::new(&st);
+        Ok(BaseGraph { variant: variant.to_string(), st, geo, kv: None, bands: None, rules: Default::default(), carry: Default::default() })
+    }
+
+    /// kinds() -> the game's own words for its kinds, in the order of the numbers the measure's groups use.
+    fn kinds(&self) -> Vec<String> { self.st.names.kinds.clone() }
+
+    /// PLAN 79.17 (the measure of progress, cs_tactics::measure). measure_groups(text, side) -> [(theirs, kind)]: the groups of units present (the measure's side is the role number `side`). The kinds are numbers, the names are the game's own (`kinds()`).
+    fn measure_groups(&self, text: &str, side: usize) -> PyResult<Vec<(bool, u8)>> {
+        let (g, s) = self.game(text)?;
+        Ok(cs_tactics::measure::groups_of(&g, &s, side).into_iter().map(|x| (x.theirs, x.kind)).collect())
+    }
+
+    /// measure_library(groups) -> [atom name]: every atom the groups and the board's line families give.
+    fn measure_library(&self, groups: Vec<(bool, u8)>) -> Vec<String> {
+        let gs: Vec<cs_tactics::measure::Group> = groups.into_iter().map(|(theirs, kind)| cs_tactics::measure::Group { theirs, kind }).collect();
+        cs_tactics::measure::library(&gs, &self.geo).iter().map(|a| a.name()).collect()
+    }
+
+    /// measure_atoms(texts, side, atoms) -> [[value of each atom]] a position (the batch is read on the calling thread, a Pool of processes spreads it).
+    fn measure_atoms(&self, py: Python<'_>, texts: Vec<String>, side: usize, atoms: Vec<String>) -> PyResult<Vec<Vec<i64>>> {
+        let at: Vec<cs_tactics::measure::Atom> = atoms.iter().map(|a| cs_tactics::measure::Atom::parse(a)).collect::<Result<_, _>>().map_err(bad)?;
+        let games: Vec<(KernelGame, <KernelGame as Game>::State)> = texts.iter().map(|t| self.game(t)).collect::<PyResult<_>>()?;
+        let geo = &self.geo;
+        Ok(py.allow_threads(|| games.iter().map(|(g, s)| cs_tactics::measure::atom_values(&at, &cs_tactics::measure::Reader::new(g, geo, s, side))).collect()))
+    }
+
+    /// measure_value(text, side, term) -> the tuple of numbers of a term in a position.
+    fn measure_value(&self, text: &str, side: usize, term: &str) -> PyResult<Vec<i64>> {
+        let t = cs_tactics::measure::Term::parse(term).map_err(bad)?;
+        let (g, s) = self.game(text)?;
+        Ok(cs_tactics::measure::value(&t, &cs_tactics::measure::Reader::new(&g, &self.geo, &s, side)))
+    }
+
+    /// measure_lowers(text, side, term, held, d, seconds, history) -> (first move or None, our moves the line takes, the end of the game is what was found, the clock cut the question, nodes): October's criterion at one position: a move of ours after which, within `d` of our moves and against every reply, the term is below `held` (or the end of the game is ours).
+    #[pyo3(signature = (text, side, term, held, d, seconds, history=None))]
+    fn measure_lowers(&self, py: Python<'_>, text: &str, side: usize, term: &str, held: Vec<i64>, d: u32, seconds: f64, history: Option<Vec<u64>>) -> PyResult<(Option<String>, u32, bool, bool, u64)> {
+        let t = cs_tactics::measure::Term::parse(term).map_err(bad)?;
+        let (g, s) = self.game(text)?;
+        let hist: std::collections::HashSet<u64> = history.unwrap_or_default().into_iter().collect();
+        let geo = &self.geo;
+        let r = py.allow_threads(|| { let mut b = cs_tactics::Budget::new(seconds, 400_000_000); let (f, cut) = cs_tactics::measure::lowering(&g, geo, &s, side, &t, &held, d, &hist, &mut b); (f, cut, b.nodes) });
+        let name = r.0.as_ref().map(|l| g.move_name(&s, &g.moves(&s)[l.first]));
+        Ok((name, r.0.as_ref().map_or(0, |l| l.moves), r.0.as_ref().is_some_and(|l| l.game_end), r.1, r.2))
     }
 
     /// static_part() -> {nodes: [(type, id)], links: [(type, a, b, via, value)], directions, lines: [[places]]}: the part that is the game's and not the position's.
@@ -198,10 +243,10 @@ impl BaseGraph {
     /// log in words). `pieces`: any of "carried", "frames", "threats", "goals", "two_threat_goals", "reasons_pick", "heads", and (PLAN 79.10) "after_move", "direct_names"; none is the old player. `keys`: the learned seeds of the frame read (None: the rows are the graph's); `frame_fuses`: (largest seed, fuse, row fuse, answer fuse); `chances`: (by key, by facts, (goals,
     /// reached) in all, floor), each cell (name, goals, reached); `reasons`: (pattern keys, [(column, side "mover"/"other", direction "up"/"down", weight)], largest seed, levels, tie digits). The frame read reads the kind values, bands and rules this graph was given (`set_kind_values`, `set_kind_bands`, `set_rules`) and its learned profile.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None, carry_slot=None, chooser=None, goal_table=None, pre_share_scale=None))]
+    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None, carry_slot=None, chooser=None, goal_table=None, pre_share_scale=None, measure=None))]
     fn wake_decide(&self, py: Python<'_>, text: &str, history: Vec<u64>, seconds: f64, depth: i32, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, pieces: Vec<String>, budget: usize, named_budget: usize,
                    keys: Option<Vec<u64>>, frame_fuses: Option<(usize, u64, u64, u64)>, chances: Option<(Vec<(String, u32, u32)>, Vec<(String, u32, u32)>, (u32, u32), u32)>,
-                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>, carry_slot: Option<String>, chooser: Option<(String, HashMap<String, f64>, u64)>, goal_table: Option<(u32, u32, Vec<(Vec<String>, Vec<(String, u32, u32)>)>, (u32, u32))>, pre_share_scale: Option<f64>) -> PyResult<String> {
+                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>, carry_slot: Option<String>, chooser: Option<(String, HashMap<String, f64>, u64)>, goal_table: Option<(u32, u32, Vec<(Vec<String>, Vec<(String, u32, u32)>)>, (u32, u32))>, pre_share_scale: Option<f64>, measure: Option<(String, u32)>) -> PyResult<String> {
         use cs_decision::estimate::ChanceTable;
         use cs_decision::frame_rows::FrameRead;
         use cs_decision::pick::{Dir, Reason, Reasons, Side};
@@ -244,7 +289,7 @@ impl BaseGraph {
             }
         };
         let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, goal_table, carry_graph, chance_order, gain_mend, diag_first, read_on } };
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, goal_table, carry_graph, chance_order, gain_mend, diag_first, read_on, measure: match measure { Some((term, d)) => Some(cs_decision::wake::MeasureGoal { term: cs_tactics::measure::Term::parse(&term).map_err(bad)?, d }), None => None } } };
         let st = &self.st;
         let d = py.allow_threads(|| decide(st, &g, &s, &history, &judge, &params));
         if let (Some(k), Some(c)) = (&carry_slot, &d.carried) { self.carry.borrow_mut().insert(k.clone(), c.clone()); }

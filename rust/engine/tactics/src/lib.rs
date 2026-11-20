@@ -9,6 +9,7 @@ pub mod equal_audit;
 pub mod gap_audit;
 pub mod ledger;
 pub mod lines;
+pub mod measure;
 pub mod operators;
 pub mod reason;
 pub mod scenario;

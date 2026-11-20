@@ -148,6 +148,13 @@ impl<'a, G: Game, O: LeafOracle<G>> Run<'a, G, O> {
 /// `role` to move at `s` (the root): the class of every root move, deepened from one ply to `max_depth` while the budget lasts. `history`: the keys of the positions the game's
 /// record already holds (a position met again is the rules' draw). The root itself is never asked of the oracle: a claim speaks of positions the line REACHES.
 pub fn toward<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &HashSet<u64>, max_depth: u32, b: &mut Budget) -> Toward {
+    toward_with(g, s, role, oracle, history, max_depth, Some(SILENT_DEPTH), b)
+}
+
+/// PLAN 79.17 (SYSTEM_SPEC 7, the measure of progress; piece: the measure): the same search with the stop at a silent depth as a parameter. `silent_at` None: the search is never stopped for having heard nothing (a leaf oracle that speaks only at some leaves, such as "the measure is
+/// lower here", is silent at depth two and must still be read deeper); `Some(d)`: as `toward`. Nothing else differs.
+#[allow(clippy::too_many_arguments)]
+pub fn toward_with<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &HashSet<u64>, max_depth: u32, silent_at: Option<u32>, b: &mut Budget) -> Toward {
     let mut out = Toward::default();
     let moves = g.moves(s);
     out.root = (0..moves.len()).map(|i| (i, Class::Unknown, UNKNOWN)).collect();
@@ -172,7 +179,7 @@ pub fn toward<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle
         out.root = now;
         out.exact = !r.horizon;
         if out.exact || out.root.iter().any(|x| x.1 == Class::Win) { break; }
-        if d == SILENT_DEPTH && !r.spoke && !r.outcome { out.silent = true; break; }          // every line read to a result, or a win is found (the earlier iteration was the shorter)
+        if silent_at == Some(d) && !r.spoke && !r.outcome { out.silent = true; break; }          // every line read to a result, or a win is found (the earlier iteration was the shorter)
         if !b.left() { out.cut = true; break; }
     }
     out.nodes = b.nodes;
