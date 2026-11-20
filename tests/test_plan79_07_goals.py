@@ -117,8 +117,19 @@ def test_the_rust_goals_are_the_python_goals_on_a_small_constructed_position(wor
     pv = _py_view(want)
     rv = _rust_view(got["goals"])
     assert all(g["parent"] is None or g["depth"] >= 1 for g in got["goals"])
+    if name.startswith("a bearer that may not take"):
+        # PLAN 79.08 repair 1: the pinned bearer is not free to take, so the goal on the pinned unit has one more unmet fact and comes later in the order (fewest unmet first); the goals themselves are the same set
+        rv, pv = sorted(rv, key=lambda x: x[0]), sorted(pv, key=lambda x: x[0])
     assert [x[0] for x in rv] == [x[0] for x in pv], name
     for a, b in zip(rv, pv):
+        if name.startswith("a bearer that may not take") and tuple(a[0]) == ("black", "pawn", "d3"):
+            # PLAN 79.08 repair 1 (a listed difference): the Rust reads the game's legal moves, so the pinned bearer is NOT free to take, and the unit that pins it (read with the other side to move) is the stopper;
+            # the Python's graph relation (may_move) does not read the safety of the goal unit. Everything else of the goal is the same.
+            assert (a[0], a[1]) == (b[0], b[1])
+            g = [x for x in got["goals"] if x["source"] != "stopper" and x["target"] == a[0]][0]
+            mt = [f for f in g["facts"] if f["name"] == "may_take"][0]
+            assert mt["status"] == "unmet" and mt["cause"]["type"] == "tied" and any("rook" in str(s) for s in mt["cause"]["stoppers"]), mt
+            continue
         assert a == b, (name, a, b)
     assert len(rv) >= 1
 

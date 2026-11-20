@@ -191,6 +191,37 @@ impl BaseGraph {
     /// PLAN 79.06 (the wake's threat list, cs_decision::threats): wake_threats(text, worth, half, goal_kind, rows, every_sides) -> {"mover","other","exchange","dropped","goal": [row], "dropped_counts", "cost": [(round, seconds, queries, nodes)]}.
     /// `worth`/`half`: the measured record (the game's words for the kinds). `rows`: None (the graph's candidates) or the frame read's rows as (role, kind, place, class, by [(role, kind, place)], response_ix [(from, to, how, unit moves)], stake).
     /// `every_sides`: None (the mover) or the roles whose goals are wanted. A unit is (role, kind, place) by the game's words. Exists for the unit check of the Rust list against its Python mirror; the wake calls the Rust function.
+    /// PLAN 79.08 THE WHOLE WAKE, ONE BINDING (SYSTEM_SPEC 8): `wake_decide(text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons)` -> the decision as a JSON string (the move, the chain of claims, the time of each step, the moves named and held equal, the decision
+    /// log in words). `pieces`: any of "carried", "frames", "threats", "goals", "two_threat_goals", "reasons_pick", "heads"; none is the old player. `keys`: the learned seeds of the frame read (None: the rows are the graph's); `frame_fuses`: (largest seed, fuse, row fuse, answer fuse); `chances`: (by key, by facts, (goals,
+    /// reached) in all, floor), each cell (name, goals, reached); `reasons`: (pattern keys, [(column, side "mover"/"other", direction "up"/"down", weight)], largest seed, levels, tie digits). The frame read reads the kind values, bands and rules this graph was given (`set_kind_values`, `set_kind_bands`, `set_rules`) and its learned profile.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None))]
+    fn wake_decide(&self, py: Python<'_>, text: &str, history: Vec<u64>, seconds: f64, depth: i32, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, pieces: Vec<String>, budget: usize, named_budget: usize,
+                   keys: Option<Vec<u64>>, frame_fuses: Option<(usize, u64, u64, u64)>, chances: Option<(Vec<(String, u32, u32)>, Vec<(String, u32, u32)>, (u32, u32), u32)>,
+                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>) -> PyResult<String> {
+        use cs_decision::estimate::ChanceTable;
+        use cs_decision::frame_rows::FrameRead;
+        use cs_decision::pick::{Dir, Reason, Reasons, Side};
+        use cs_decision::threat_verdict::Record;
+        use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
+        let (g, s) = self.game(text)?;
+        let goal = self.goal_of(&goal_kind)?;
+        let mut pc = Pieces::old_player();
+        for w in &pieces {
+            match w.as_str() {
+                "carried" => pc.carried = true, "frames" => pc.frames = true, "threats" => pc.threats = true, "goals" => pc.goals = true, "two_threat_goals" => pc.two_threat_goals = true, "reasons_pick" => pc.reasons_pick = true, "heads" => pc.heads = true, "graph_reads" => pc.graph_reads = true,
+                other => return Err(bad(format!("no such piece of the wake: {other}"))),
+            }
+        }
+        let frame = keys.map(|k| { let f = frame_fuses.unwrap_or((3, 1500, 30_000, 1500)); FrameRead { want: k, params: cs_tactics::sheet::threat_frames::FrameReadParams { max_size: f.0, fuse: f.1, row_fuse: f.2, answer_fuse: f.3, conditional: true, kv: self.kv.clone(), bands: self.bands.clone(), rules: self.rules } } });
+        let chances = chances.map(|c| ChanceTable { by_key: c.0.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), by_facts: c.1.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), total: c.2, floor: c.3 });
+        let reasons = reasons.map(|r| Reasons { keys: r.0, reasons: r.1.into_iter().map(|x| Reason { column: x.0, side: if x.1 == "mover" { Side::Mover } else { Side::Other }, dir: if x.2 == "up" { Dir::Up } else { Dir::Down }, weight: x.3 }).collect(), max_size: r.2, levels: r.3, tie_digits: r.4 });
+        let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: None, chances, reasons, share_table: true, ledger_share } };
+        let d = py.allow_threads(|| decide(&self.st, &g, &s, &history, &judge, &params));
+        Ok(d.to_json().to_string())
+    }
+
     #[pyo3(signature = (text, worth, half, goal_kind=None, rows=None, every_sides=None))]
     #[allow(clippy::type_complexity)]
     fn wake_threats(&self, py: Python<'_>, text: &str, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, rows: Option<Vec<(String, String, String, String, Vec<(String, String, String)>, Vec<(String, String, u8, bool)>, Option<f64>)>>, every_sides: Option<Vec<String>>) -> PyResult<PyObject> {

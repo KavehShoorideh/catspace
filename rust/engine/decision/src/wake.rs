@@ -55,9 +55,11 @@ pub struct WakeInputs {
     pub chances: Option<ChanceTable>, pub reasons: Option<Reasons>,
     /// the lines read from one position share a table (repair 2)
     pub share_table: bool,
+    /// the share of the clock the search keeps whatever the steps before it cost, and from which the equal reading's clock follows (None: `LEDGER_SHARE`); the old player's share when the two are compared at one clock
+    pub ledger_share: Option<f64>,
 }
 
-impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true } } }
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -203,7 +205,7 @@ pub use crate::pick::{pick, scores, Reasons};
 // ------------------------------------------------------------------------------------------------------------------------------ THE WHOLE DECISION (PLAN 79.08 C)
 
 /// The share of the decision's clock that the equal reading keeps back from the search, as the old player keeps it (`LEDGER_SHARE`, `TIE_SHARE`): the search is never given less than the old player's share of the whole clock, whatever the steps before it cost.
-fn tie_seconds(total: f64) -> f64 { (total * (1.0 - crate::LEDGER_SHARE) * crate::TIE_SHARE).max(0.01) }
+fn tie_seconds(total: f64, share: f64) -> f64 { (total * (1.0 - share) * crate::TIE_SHARE).max(0.01) }
 
 /// THE WHOLE DECISION, by the steps of SYSTEM_SPEC 8 and the rule for choosing a move (rule.rs): (1) the carry, (2) the frames and the rows of the threat list, (3) the threat list and the goals of both sides in order of stake within the budget, (4) THEIR goals that work: our answers; OUR goal with the fewest things in its way:
 /// its fixes; only the moves whose own line was read and not refuted are named, (5) the search reads with the named moves first and in full, ours at the root and theirs at the ply after ours; the judge's value is untouched, (6) among the moves the search holds equal: an answer to their largest standing threat, then a fix of
@@ -274,7 +276,8 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     // ---- step 5: the search, with the named moves first and in full
     let t0 = std::time::Instant::now();
     let used = t_all.elapsed().as_secs_f64();
-    let search_secs = (params.seconds - used).max(params.seconds * crate::LEDGER_SHARE);
+    let share = inp.ledger_share.unwrap_or(crate::LEDGER_SHARE);
+    let search_secs = (params.seconds - used).max(params.seconds * share);
     let mut ls = Search::new(g, judge, me, search_secs);
     ls.history = history.iter().copied().collect();
     ls.verify_ties = true;
@@ -287,7 +290,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let mut probes: Vec<(usize, i64)> = vec![];
     let mut equal_ix: Vec<usize> = vec![];
     if !decided && own.is_some() {
-        ls.resume(tie_seconds(params.seconds));
+        ls.resume(tie_seconds(params.seconds, share));
         probes = ls.probes(s, ln.depth, ln.value, None);
         let first: Vec<usize> = probes.iter().filter(|(_, v)| *v >= ln.value).map(|(i, _)| *i).collect();
         equal_ix = if ls.cut() || first.is_empty() { if ls.cut() { vec![] } else { first } } else { ls.verify(s, ln.depth, ln.value, &first) };
@@ -366,4 +369,16 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let carried_next = frames.as_ref().map(|f| Carried::of(&prop.list, &f.read_sets));
     contributions.push(Contribution { piece: "the whole decision", step: 0, seconds: t_all.elapsed().as_secs_f64(), named: vec![], note: String::new() });
     WakeDecision { mv, value: ln.value, depth: ln.depth, nodes: ln.nodes, chain, contributions, unported: params.pieces.unported(), log, proposal: Some(prop), carried: carried_next, named_mine, named_theirs, equal }
+}
+
+impl WakeDecision {
+    /// The decision as JSON, in words (the caller writes it where it wants): the move, the search's value, depth and nodes, the chain of claims with the reason each line ended, the time of each step, the pieces not ported, the moves named and held equal, and the decision log.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "move": self.mv, "value": self.value, "depth": self.depth, "nodes": self.nodes, "unported": self.unported, "named_mine": self.named_mine, "named_theirs": self.named_theirs, "equal": self.equal,
+            "chain": self.chain.iter().map(|c| serde_json::json!({"line": c.line, "ended": c.ended, "by": c.by})).collect::<Vec<_>>(),
+            "steps": self.contributions.iter().map(|c| serde_json::json!({"piece": c.piece, "step": c.step, "seconds": c.seconds, "note": c.note, "named": c.named})).collect::<Vec<_>>(),
+            "log": self.log.to_json(),
+        })
+    }
 }
