@@ -81,7 +81,9 @@ pub fn stake_of(goals: &[Goal], i: usize, sk: &Stakes) -> f64 { target_stake(goa
 
 /// The fixes of one chain: the goal whose fixes come first (the nearest of its chain), the goal at the top of the chain, the stake of the chain, the moves of the nearest goal, and (PLAN 79.10 B) the goals after it in the order of their nearness, each with the moves of its fixes that no nearer goal of the chain already holds.
 #[derive(Debug, Clone)]
-pub struct ChainFix { pub goal: usize, pub top: usize, pub stake: f64, pub moves: Vec<String>, pub later: Vec<(usize, Vec<String>)> }
+pub struct ChainFix { pub goal: usize, pub top: usize, pub stake: f64, pub moves: Vec<String>, pub later: Vec<(usize, Vec<String>)>,
+    /// PLAN 79.14 C: the chance of the nearest goal where the order was by chance (None: by stake alone, as before), and whether that goal has every fact met
+    pub chance: Option<f64>, pub met: bool }
 
 impl ChainFix {
     /// Every move the chain names, the nearest goal's first.
@@ -91,15 +93,19 @@ impl ChainFix {
 /// THE FIXES NAMED FOR A SIDE, CHAIN BY CHAIN IN ORDER OF STAKE (PLAN 79.09 A; section 13 item 26 as written, both halves; PLAN 79.10 B): the chains (a goal and the subgoals below it) of `side` are taken in order of the stake of their top, the greater first; from each chain the fixes of its NEAREST goal, the one with the fewest things in its way, the deeper
 /// (the stopper) breaking a tie, then the place; AND the goals of the chain after it in the same order, which are asked when the nearest goal's fixes do not hold ("can I remove one of the defenders? if not, can I add one more attacker?": the next goal of the chain is the next question). A goal with no move among its fixes is passed over to the next. Only goals with an unmet fact count.
 /// A far goal gives the reading only its nearest stopper; the chain of the largest stake is always asked first; a small chain comes after. Chains of equal stake: the nearer goal first, then the place.
-pub fn named_fixes(goals: &[Goal], side: Role, sk: &Stakes) -> Vec<ChainFix> {
+pub fn named_fixes(goals: &[Goal], side: Role, sk: &Stakes) -> Vec<ChainFix> { named_fixes_by(goals, side, sk, None) }
+
+/// PLAN 79.14 C: THE CHAINS IN THE ORDER OF STAKE TIMES CHANCE. `chance`: the chance of a goal, from the table of play (None: `named_fixes` as before, the order of stake alone). With it the chains are taken in the order of the stake of their top times the chance of the nearest goal of the chain (a goal kind, whose stake is above every worth, comes
+/// before every finite product, the greater chance first among them), a goal whose every fact is met is not left out (it is the nearest of all: nothing is in its way) and its chain is named FIRST, whatever its product; equal products: the nearer goal, then the place, as before. Nothing here is a value: it orders what is read.
+pub fn named_fixes_by(goals: &[Goal], side: Role, sk: &Stakes, chance: Option<&dyn Fn(&Goal) -> f64>) -> Vec<ChainFix> {
     let mut by_top: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
     for (i, gl) in goals.iter().enumerate() {
-        if gl.side != side || gl.unmet.is_empty() || fix_moves(gl).is_empty() { continue; }
+        if gl.side != side || (gl.unmet.is_empty() && !(chance.is_some() && gl.met)) || fix_moves(gl).is_empty() { continue; }
         by_top.entry(chain_top(goals, i)).or_default().push(i);
     }
     let mut out: Vec<(ChainFix, (usize, u16))> = vec![];
     for (top, mut members) in by_top {
-        members.sort_by_key(|&i| (things_in_the_way(&goals[i]), std::cmp::Reverse(goals[i].depth), goals[i].target.at));
+        members.sort_by_key(|&i| (!(chance.is_some() && goals[i].met), things_in_the_way(&goals[i]), std::cmp::Reverse(goals[i].depth), goals[i].target.at));
         let near = members[0];
         let stake = target_stake(goals[top].target, sk);
         let mut seen: Vec<String> = fix_moves(&goals[near]);
@@ -110,9 +116,16 @@ pub fn named_fixes(goals: &[Goal], side: Role, sk: &Stakes) -> Vec<ChainFix> {
             seen.extend(ms.iter().cloned());
             later.push((i, ms));
         }
-        out.push((ChainFix { goal: near, top, stake, moves: fix_moves(&goals[near]), later }, (things_in_the_way(&goals[near]), goals[near].target.at)));
+        let c = chance.map(|f| f(&goals[near]));
+        out.push((ChainFix { goal: near, top, stake, moves: fix_moves(&goals[near]), later, chance: c, met: goals[near].met }, (things_in_the_way(&goals[near]), goals[near].target.at)));
     }
-    out.sort_by(|a, b| b.0.stake.partial_cmp(&a.0.stake).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
+    if chance.is_some() {
+        // met first; then the goal kind by its chance, then stake times chance; then as before
+        let score = |x: &ChainFix| -> (u8, f64) { if x.stake.is_infinite() { (1, x.chance.unwrap_or(0.0)) } else { (0, x.stake * x.chance.unwrap_or(0.0)) } };
+        out.sort_by(|a, b| b.0.met.cmp(&a.0.met).then_with(|| { let (x, y) = (score(&a.0), score(&b.0)); y.0.cmp(&x.0).then(y.1.partial_cmp(&x.1).unwrap_or(std::cmp::Ordering::Equal)) }).then(a.1.cmp(&b.1)));
+    } else {
+        out.sort_by(|a, b| b.0.stake.partial_cmp(&a.0.stake).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
+    }
     out.into_iter().map(|x| x.0).collect()
 }
 

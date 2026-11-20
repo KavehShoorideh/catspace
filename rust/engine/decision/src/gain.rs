@@ -5,6 +5,7 @@
 //! INTERFACE (written before the bodies; who calls: `after.rs` for each position it reads, `wake::decide`, the unit tests).
 //!   `ChainValue { finite, goal }`                      finite: the sum of stake times chance over the chains whose top stake is a worth; goal: the sum of the chances of the chains whose top is the goal kind.
 //!   `chain_value(goals, side, stakes, chance)`         the value of the chains of `side` among `goals` (a goal counts when it has an unmet fact, as in `rule::named_fixes`); `chance(goal, stakes)` is the chance of a goal.
+//!   `chain_value_mended(goals, side, stakes, chance)`  (PLAN 79.14 D) the same where a goal with every fact met counts as reached (chance 1).
 //!   `ChainValue::less(&self, other)`                   self minus other, field by field: the gain from a position to another.
 use crate::goals::Goal;
 use crate::rule::{chain_top, Stakes};
@@ -27,6 +28,21 @@ pub fn chain_value(goals: &[Goal], side: Role, stakes: &Stakes, chance: &dyn Fn(
     for t in tops {
         let g = &goals[t];
         let c = chance(g, stakes);
+        let stake = stakes.of(g.target);
+        if stake.is_finite() { v.finite += stake * c; } else { v.goal += c; }
+    }
+    v
+}
+
+/// PLAN 79.14 D, THE GAIN MENDED (the two faults 79.13 found): a goal whose every fact is met COUNTS AS REACHED, its stake in full for the side (chance 1: the threat can be carried out; the move that meets the last fact of a goal no longer lowers the value because the goal left the list), the others as `chain_value`. The chains are those of the goals given, which
+/// the caller reads on every target (after.rs `their_goals_with`), not on the goal unit alone.
+pub fn chain_value_mended(goals: &[Goal], side: Role, stakes: &Stakes, chance: &dyn Fn(&Goal, &Stakes) -> f64) -> ChainValue {
+    let tops: BTreeSet<usize> = goals.iter().enumerate().filter(|(_, x)| x.side == side).map(|(i, _)| chain_top(goals, i)).collect();
+    let mut v = ChainValue::default();
+    for t in tops {
+        let g = &goals[t];
+        let reached = goals.iter().enumerate().any(|(i, x)| x.side == side && x.met && chain_top(goals, i) == t);
+        let c = if reached { 1.0 } else { chance(g, stakes) };
         let stake = stakes.of(g.target);
         if stake.is_finite() { v.finite += stake * c; } else { v.goal += c; }
     }

@@ -69,9 +69,13 @@ pub struct WakeInputs {
     pub goal_table: Option<crate::goal_table::GoalTable>,
     /// PLAN 79.14 B: the carry asks again only what the graph says the two plies since touched (the seeds, the frames, the rows of the threat list); every answer carried is marked carried in the log. false (the default): the carry of 79.08, the frame read asked as it was.
     pub carry_graph: bool,
+    /// PLAN 79.14 C: with a goal table, the named moves go to the search in the order of stake times the table's chance of the goal they fix, ours and theirs, a goal whose every fact is met named first (rule::named_fixes_by); no table, or false: the order of stake alone, as on main.
+    pub chance_order: bool,
+    /// PLAN 79.14 D: the gain of mode Gain counts a goal the move meets as reached (its stake in full) and reads the chains after a move on every target (gain.rs, after.rs); false: the gain of 79.13.
+    pub gain_mend: bool,
 }
 
-impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, goal_table: None, carry_graph: false } } }
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, goal_table: None, carry_graph: false, chance_order: false, gain_mend: false } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -264,8 +268,8 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let mut after = crate::after::AfterRead::default();
     if p.after_move {
         let order = Search::new(g, judge, me, 0.1).deepening_order(s);
-        let value = |tg: &crate::after::TheirGoals, side: cs_game::Role| crate::gain::chain_value(&tg.goals, side, &tg.stakes, &|gl: &Goal, sk: &rule::Stakes| table_chance(gl, sk).map_or(0.0, |e| e.chance));
-        after = crate::after::goals_after(st, g, s, rec, inp.goal, &order, count, Some(until(pre_end, AFTER_OF_PRE)), if gain_on { Some(&value) } else { None });
+        let value = |tg: &crate::after::TheirGoals, side: cs_game::Role| { let ch = |gl: &Goal, sk: &rule::Stakes| table_chance(gl, sk).map_or(0.0, |e| e.chance); if inp.gain_mend { crate::gain::chain_value_mended(&tg.goals, side, &tg.stakes, &ch) } else { crate::gain::chain_value(&tg.goals, side, &tg.stakes, &ch) } };
+        after = crate::after::goals_after_with(st, g, s, rec, inp.goal, &order, count, Some(until(pre_end, AFTER_OF_PRE)), if gain_on { Some(&value) } else { None }, inp.gain_mend && gain_on);
         contributions.push(Contribution { piece: "their goals after each move of ours", step: 3, seconds: after.seconds, named: vec![], note: format!("{} positions read, {} not reached by the clock{}", after.rows.len(), after.not_asked.len(), if gain_on { format!("; ours read too, {:.4} s of it", after.ours_seconds) } else { String::new() }) });
     }
     // ---- PLAN 79.14 B: what the two plies since the last decision touched, from the graph (the digest of this position is kept for the next decision)
@@ -300,7 +304,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let tp = ThreatParams { goal: inp.goal, rows, share_table: inp.share_table, deadline: Some(until(pre_end, LIST_OF_PRE)), ..Default::default() };
     // PLAN 79.14 B: the units of the last decision's every-unit reading whose neighbourhood nothing touched are not asked again
     let held_units = match (inp.carry_graph && p.carried, &inp.previous, &touch_now) { (true, Some(prev), Some(t)) => Some((prev.rows.iter().filter(|r| r.row.every).cloned().collect::<Vec<_>>(), t.clone())), _ => None };
-    let gp = GoalParams { budget: if inp.budget > 0 { inp.budget } else { crate::goals::BUDGET }, held: carried_out.as_ref().map(|c| c.held.clone()).unwrap_or_default(), held_units, ..Default::default() };
+    let gp = GoalParams { budget: if inp.budget > 0 { inp.budget } else { crate::goals::BUDGET }, held: carried_out.as_ref().map(|c| c.held.clone()).unwrap_or_default(), held_units, keep_met: inp.chance_order && inp.goal_table.is_some(), ..Default::default() };
     let prop = propose(st, g, s, rec, &tp, &gp);
     contributions.push(Contribution { piece: "threat list of both sides", step: 3, seconds: prop.list.seconds(), named: vec![], note: format!("{} rows against us, {} against them, {} dropped, {} questions; not asked: {}", prop.list.mover.len(), prop.list.other.len(), prop.list.dropped.len(), prop.questions, if prop.list.not_asked.is_empty() { "nothing".to_string() } else { prop.list.not_asked.join("; ") }) });
     for c in &prop.list.cost { contributions.push(Contribution { piece: "part of the threat list: a round of line reads", step: 23, seconds: c.seconds, named: vec![], note: format!("{}: {} queries, {} nodes", c.name, c.queries, c.nodes) }); }
@@ -316,8 +320,10 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     }
     // PLAN 79.09 A: for each side the fixes are named chain by chain in order of stake, the nearest goal of each chain
     let stakes = rule::Stakes::read(g, s, rec, &prop.goals, inp.goal);
-    let chains_mine = rule::named_fixes(&prop.goals, me, &stakes);
-    let chains_theirs = rule::named_fixes(&prop.goals, other, &stakes);
+    let by_chance = |gl: &Goal| table_chance(gl, &stakes).map_or(0.0, |e| e.chance);
+    let ordered: Option<&dyn Fn(&Goal) -> f64> = if inp.chance_order && inp.goal_table.is_some() { Some(&by_chance) } else { None };
+    let chains_mine = rule::named_fixes_by(&prop.goals, me, &stakes, ordered);
+    let chains_theirs = rule::named_fixes_by(&prop.goals, other, &stakes, ordered);
     // (with direct names the count is applied once, below, so that what it cuts is listed)
     let chain_cap = if p.direct_names { usize::MAX } else { count };
     for m in rule::names_of(&chains_mine, chain_cap) { put(&mut mine, &m); }
