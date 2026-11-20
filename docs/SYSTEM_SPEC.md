@@ -804,6 +804,16 @@ nesting, until a need is shown. UNDER DISCUSSION, nothing built. His sharpening 
 state about the belief state of my opponent?" So it is never their state itself, which we cannot read: it is a belief of ours,
 with its own probability and count, about what they hold.
 
+**Two memories** (Kaveh 2026-11-20): "we need two types of memory. One is a long-term memory belonging to the game of chess.
+This is where we store lemmas and shortcuts, and this is where we store any trained models that we have, which basically become
+interfaces. They have to have their own interfaces. But then we have this other memory, which belongs to the game at hand."
+READING of the main agent, to be confirmed: THE LONG-TERM MEMORY belongs to the game as such: lemmas, shortcuts, mined measures,
+tables of counts, trained models; written only in sleep, read only in the wake; each trained model is reached through an
+interface of its own (what it takes, what it returns, its standing as a belief), never by reaching into it. THE MEMORY OF THE
+GAME AT HAND belongs to one game: the statements that stand in it with what they read, the goal held, the open tactics, our
+belief about this opponent; written by the wake, emptied at the game's end, and what surprised it is handed to sleep. Both hold
+statements of the one form of layer 1. UNDER DISCUSSION, nothing built.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1134,5 +1144,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The small endings as the test of means and ends; the October measure of progress was not brought into the new engine (DIRECTION, Kaveh; ANSWER and READING, main agent) | 2026-11-20 | 7 (last block before section 8), ledger row 35 |
 | The go on the small endings: the order of the build; the table in sleep and in the measure only (READING) | 2026-11-20 | 7 (last block before section 8), 13 item 36 |
 | Plan 79.17: the measure of progress in the new engine, mined, held by the wake; two faults that stand | 2026-11-20 | 12, 13 item 37 |
-| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last four blocks), 13 items 38 and 39 |
+| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last five blocks), 13 items 38 and 39 |
 | What was replaced | 2026-11-16 | 14 |
