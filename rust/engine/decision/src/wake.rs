@@ -65,9 +65,11 @@ pub struct WakeInputs {
     pub pre_share: Option<f64>,
     /// PLAN 79.12 B: the last layer among the moves held equal (None: the rule of rule.rs decides, as before). With a spec the rows of the candidates are written to the log in every mode; Weights and Explore choose.
     pub chooser: Option<crate::chooser::ChooserSpec>,
+    /// PLAN 79.13 C: the table of the chance of a goal counted from play (goal_table.rs). Given, it replaces `chances` wherever a goal's chance is read (the log, the fix's chance, the move's chance); and, with a chooser and `after_move`, our goals are read after each move of ours so that the chooser gets the gain in stake times chance (gain.rs). None: nothing of this is read and the wake is what it was.
+    pub goal_table: Option<crate::goal_table::GoalTable>,
 }
 
-impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None, chooser: None } } }
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, goal_table: None } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -252,11 +254,17 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let mut log = DecisionLog::default();
     // ---- PLAN 79.10 A, first, because it needs nothing of the steps after it and costs about a thousandth of a second a position: their goals on the position after each move of ours, in the search's own order, within its share of the steps before the search; their fixes named at that child
     let count = if inp.named_budget > 0 { inp.named_budget } else { rule::NAMED_BUDGET };
+    // PLAN 79.13 C: the chance of a goal: the table counted from play where given, else the old table; a goal's rank is the rank of its target's stake among the record's worths
+    let worths: Vec<i64> = rec.worth.values().copied().collect();
+    let table_chance = |gl: &Goal, sk: &rule::Stakes| -> Option<Estimate> { inp.goal_table.as_ref().map(|t| t.chance(&crate::goal_table::GoalFacts::of(gl, gl.side == me, crate::goal_table::rank_of(sk.of(gl.target), &worths)))) };
+    let goal_chance = |gl: &Goal, sk: &rule::Stakes| -> Option<Estimate> { table_chance(gl, sk).or_else(|| inp.chances.as_ref().map(|t| t.chance(gl))) };
+    let gain_on = p.after_move && inp.goal_table.is_some() && inp.chooser.is_some();
     let mut after = crate::after::AfterRead::default();
     if p.after_move {
         let order = Search::new(g, judge, me, 0.1).deepening_order(s);
-        after = crate::after::their_goals_after(st, g, s, rec, inp.goal, &order, count, Some(until(pre_end, AFTER_OF_PRE)));
-        contributions.push(Contribution { piece: "their goals after each move of ours", step: 3, seconds: after.seconds, named: vec![], note: format!("{} positions read, {} not reached by the clock", after.rows.len(), after.not_asked.len()) });
+        let value = |tg: &crate::after::TheirGoals, side: cs_game::Role| crate::gain::chain_value(&tg.goals, side, &tg.stakes, &|gl: &Goal, sk: &rule::Stakes| table_chance(gl, sk).map_or(0.0, |e| e.chance));
+        after = crate::after::goals_after(st, g, s, rec, inp.goal, &order, count, Some(until(pre_end, AFTER_OF_PRE)), if gain_on { Some(&value) } else { None });
+        contributions.push(Contribution { piece: "their goals after each move of ours", step: 3, seconds: after.seconds, named: vec![], note: format!("{} positions read, {} not reached by the clock{}", after.rows.len(), after.not_asked.len(), if gain_on { format!("; ours read too, {:.4} s of it", after.ours_seconds) } else { String::new() }) });
     }
     // ---- steps 1 and 2: the frames and the carry
     let mut frames: Option<FrameRows> = None;
@@ -393,10 +401,11 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
                 let i = moves.iter().position(|m| &g.move_name(s, m) == name);
                 let fix = prop.goals.iter().enumerate().filter(|(_, x)| x.side == me && !x.unmet.is_empty() && rule::fix_moves(x).contains(name))
                     .min_by_key(|(_, x)| (rule::things_in_the_way(x), std::cmp::Reverse(x.depth), x.target.at))
-                    .map(|(gi, x)| crate::chooser::FixFacts::new(rule::stake_of(&prop.goals, gi, &stakes), rule::things_in_the_way(x), rule::things_in_the_way(&prop.goals[rule::chain_top(&prop.goals, gi)]), inp.chances.as_ref().map(|t| t.chance(x).chance)));
+                    .map(|(gi, x)| crate::chooser::FixFacts::new(rule::stake_of(&prop.goals, gi, &stakes), rule::things_in_the_way(x), rule::things_in_the_way(&prop.goals[rule::chain_top(&prop.goals, gi)]), goal_chance(x, &stakes).map(|e| e.chance)));
                 let taking = i.and_then(|i| { let to = g.move_ends(s, &moves[i]).1; cells.iter().find(|(o, _, at)| *at == to && *o != me).map(|(o, k, at)| { let u = UnitRef { owner: *o, kind: *k, at: *at }; if Some(*k) == inp.goal { f64::INFINITY } else { crate::threats::kind_worths(g, s, rec, &[u]).get(k).copied().unwrap_or(0.0) } }) });
                 let af = after.rows.iter().find(|r| &r.mv == name).and_then(|r| r.fact.as_ref()).map(|f| crate::chooser::AfterFacts { before: f.in_the_way_before, after: f.in_the_way_after, took_out: f.took_out.len(), put_in: f.put_in.len() });
-                crate::chooser::MoveFacts { is_first: Some(name) == ln.first.as_ref(), first_held: first_held != Some(false), answers_threat: answers_largest.contains(name), threat_stake, fix, reasons_score: sc.as_ref().and_then(|v| v.iter().find(|x| &x.mv == name)).map(|x| x.score), after: af, taking }
+                let gain = after.rows.iter().find(|r| &r.mv == name).and_then(|r| r.gain).zip(after.before).map(|(a, b)| { let (o, t) = (a.ours.less(&b.ours), a.theirs.less(&b.theirs)); crate::chooser::GainFacts { ours: o.finite, theirs: t.finite, ours_goal: o.goal, theirs_goal: t.goal } });
+                crate::chooser::MoveFacts { is_first: Some(name) == ln.first.as_ref(), first_held: first_held != Some(false), answers_threat: answers_largest.contains(name), threat_stake, fix, reasons_score: sc.as_ref().and_then(|v| v.iter().find(|x| &x.mv == name)).map(|x| x.score), after: af, taking, gain }
             }).collect();
             let rows: Vec<Vec<f64>> = facts.iter().map(crate::chooser::inputs_of).collect();
             let fixed_ix = cands.iter().position(|c| Some(c) == mv.as_ref());
@@ -406,6 +415,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
             if moved {
                 override_why = Some(match spec.mode {
                     crate::chooser::Mode::Explore => (rule::Decided::Chooser, format!("explore: one of the {} moves the search holds equal, drawn at random from the seed (propensity 1 in {}); the rule would pick {}", cands.len(), cands.len(), mv.clone().unwrap_or_default())),
+                    crate::chooser::Mode::Gain => (rule::Decided::Chooser, format!("the gain: among the {} moves the search holds equal{}, the largest gain of our chains' stake times chance less theirs ({:.4}); the rule would pick {}", cands.len(), if cands.iter().any(|c| answers_largest.contains(c)) { " that answer the standing threat" } else { "" }, ap.sums[ap.index], mv.clone().unwrap_or_default())),
                     _ => (rule::Decided::Chooser, format!("the chooser: the largest weighted sum of its inputs among the {} moves the search holds equal ({:.4}); the rule would pick {}", cands.len(), ap.sums[ap.index], mv.clone().unwrap_or_default())),
                 });
             }
@@ -479,10 +489,10 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let goal_log = |x: &Goal, chosen: bool| GoalLog {
         side: roles[x.side].clone(), target: text(&x.target), source: x.source.clone(), depth: x.depth, parent: x.parent.as_ref().map(&text), via: x.via.map(|v| v.to_string()), unmet: x.unmet.iter().map(|u| u.to_string()).collect(), stoppers: x.stoppers.iter().map(&text).collect(),
         fixes: x.fixes.iter().map(|f| (format!("{:?}", f.kind), f.moves.iter().take(8).cloned().collect())).collect(), in_the_way: rule::things_in_the_way(x),
-        chance: inp.chances.as_ref().map(|t| { let e = t.chance(x); (e.chance, e.n, e.source.to_string()) }), chosen, goal_unit: x.goal_unit,
+        chance: goal_chance(x, &stakes).map(|e| (e.chance, e.n, e.source.to_string())), chosen, goal_unit: x.goal_unit,
     };
     log.goals = prop.goals.iter().enumerate().map(|(i, x)| goal_log(x, Some(i) == chosen_ix)).collect();
-    if inp.chances.is_none() && p.goals { log.notes.push("no table of the chance of a goal given: no estimate per goal".into()); }
+    if inp.chances.is_none() && inp.goal_table.is_none() && p.goals { log.notes.push("no table of the chance of a goal given: no estimate per goal".into()); }
     log.notes.push("no table of frames given: no estimate per frame".into());
     log.chosen_goal = chosen_ix.map(|i| goal_log(&prop.goals[i], true));
     // (PLAN 79.11: the climb to the far goal takes at most one step a goal: two goals that name each other as the parent made it loop for ever, and a game in play hung on it)
@@ -504,7 +514,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
         let mut serves: Vec<String> = vec![];
         let mut chance: Option<f64> = None;
         for gl in prop.goals.iter().filter(|x| x.side == me) {
-            for f in &gl.facts { if f.fixes.iter().any(|fx| fx.moves.contains(&name)) { serves.push(format!("fix of {} ({})", text(&gl.target), f.name)); if let Some(t) = &inp.chances { let c = t.chance(gl).chance; chance = Some(chance.map_or(c, |o: f64| o.max(c))); } } }
+            for f in &gl.facts { if f.fixes.iter().any(|fx| fx.moves.contains(&name)) { serves.push(format!("fix of {} ({})", text(&gl.target), f.name)); if let Some(e) = goal_chance(gl, &stakes) { let c = e.chance; chance = Some(chance.map_or(c, |o: f64| o.max(c))); } } }
         }
         serves.dedup();
         let mut ans: Vec<String> = vec![];
