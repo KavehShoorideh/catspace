@@ -784,6 +784,15 @@ prediction of the future; 6 goals and subgoals with the techniques; then the opp
 with him the same day (section 13 item 39): how (a) stands with the rule that subgoals enter through the order and the choice
 and never the value; and where the frames found by learning live.
 
+**What the representation layer must be able to say** (Kaveh 2026-11-20, correcting the main agent's reading of "claims"): "the
+representation layer ought to be able to represent facts and conjectures and probabilities and beliefs and things like that." So
+layer 1 is not only the position: it is the language in which every other layer writes what it knows, with the standing of each
+statement kept apart. READING of the main agent, to be confirmed: one form of statement (a pattern over the graph with
+placeholders, and what it says of it), carrying its standing: a FACT (follows from the rules at this position), a PROVED claim
+(Lean), a CONJECTURE (held on a sample, not proved), a BELIEF with a probability (counted from results, with the count), and
+for each what it read, so that it falls when that changes. Layers above write and read such statements and never invent a second
+form. UNDER DISCUSSION, nothing built.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1114,5 +1123,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The small endings as the test of means and ends; the October measure of progress was not brought into the new engine (DIRECTION, Kaveh; ANSWER and READING, main agent) | 2026-11-20 | 7 (last block before section 8), ledger row 35 |
 | The go on the small endings: the order of the build; the table in sleep and in the measure only (READING) | 2026-11-20 | 7 (last block before section 8), 13 item 36 |
 | Plan 79.17: the measure of progress in the new engine, mined, held by the wake; two faults that stand | 2026-11-20 | 12, 13 item 37 |
-| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last two blocks), 13 items 38 and 39 |
+| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last three blocks), 13 items 38 and 39 |
 | What was replaced | 2026-11-16 | 14 |
