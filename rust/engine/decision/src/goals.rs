@@ -684,8 +684,10 @@ pub fn named_moves<G: Game + Placed>(g: &G, s: &G::State, goals: &[Goal], defenc
 #[derive(Debug, Clone)]
 pub struct GoalParams { pub budget: usize, pub sides: Option<Vec<Role>>, pub depth: u8,
     /// PLAN 79.08 B (the carry): rows of the last decision whose read set did not change; put into the list as they were, not read again
-    pub held: Vec<crate::carry::CarriedRow> }
-impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None, depth: DEPTH, held: vec![] } } }
+    pub held: Vec<crate::carry::CarriedRow>,
+    /// PLAN 79.14 B: the rows of the last decision's every-unit reading and what the two plies since touched: a unit whose row stands is not asked again (None: every unit is asked)
+    pub held_units: Option<(Vec<crate::carry::CarriedRow>, cs_tactics::sheet::delta::Touch)> }
+impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None, depth: DEPTH, held: vec![], held_units: None } } }
 
 /// What the proposer returns for a position: the list of both sides, the goals of each side (in the order of their side's goals), the goals of two threats, the moves that make two threats at once, the units asked and not asked, the questions, the lines read, and the time of each part.
 #[derive(Debug, Clone, Default)]
@@ -728,7 +730,8 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     // progress after the contested reads: the last unit asked (the least stake) ended with a line read
     let progress = first_units.last().map_or(true, |u| list.mover.iter().chain(&list.other).chain(&list.exchange).chain(&list.dropped).any(|r| r.unit == Some(*u) && r.net.is_some()));
     let t0 = Instant::now();
-    let ev = every_unit_ask(st, g, s, &mut list, &sides, rec, &tp, &Ask { budget: Some(params.budget), used: first_units.len(), progress });
+    let held = params.held_units.as_ref().map(|(rows, touch)| crate::threats::Held { rows, touch });
+    let ev = crate::threats::every_unit_ask_with(st, g, s, &mut list, &sides, rec, &tp, &Ask { budget: Some(params.budget), used: first_units.len(), progress }, held);
     out.seconds.push(("every unit of the other side, by stake within the budget", t0.elapsed().as_secs_f64()));
     list.unasked.extend(rest.iter().copied());
     // (a contested unit the clock skipped was not asked: it is in the list's `unasked`)
@@ -736,7 +739,7 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     let first_asked: Vec<UnitRef> = first_units.iter().copied().filter(|u| !skipped.contains(u)).collect();
     out.questions = first_asked.len() + ev.questions;
     out.line_reads = ev.line_reads;
-    out.asked = first_asked.iter().copied().chain(ev.asked.iter().map(|a| a.0)).collect();
+    out.asked = first_asked.iter().copied().chain(ev.asked.iter().map(|a| a.0)).chain(ev.carried.iter().copied()).collect();
     out.unasked = list.unasked.clone();
     let t0 = Instant::now();
     for &side in &sides { out.goals.extend(goals(st, g, s, &list, side, tp.goal, params.depth, params.budget)); }

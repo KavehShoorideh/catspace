@@ -87,12 +87,14 @@ pub struct ThreatRow {
     pub why: Option<&'static str>, pub dropped_verdict: Option<VerdictKind>,
     /// PLAN 79.09 B: the clock stopped before the responses of this row were read (they are not known, which is not the same as none)
     pub responses_unasked: bool,
+    /// PLAN 79.14 B: the row was carried from the last decision (its read set untouched by the two plies since), not read again
+    pub carried: bool,
 }
 
 impl ThreatRow {
     pub fn new(owner: Role, unit: Option<UnitRef>, class: &str, by: Vec<UnitRef>, stake: Option<f64>) -> ThreatRow {
         ThreatRow { owner, unit, goal: false, every: false, class: class.to_string(), by, stake, verdict: VerdictKind::Unread, ended: ENDED[3], reason: String::new(), net: None, line: vec![], lead: None, first: None, two_moves: false, depth: 0, outcome: None, resolution: 0.0, pv_disagrees: false, nodes: 0,
-            responses: vec![], resp_read: 0, resp_unread: 0, resp_unread_moves: vec![], resp_states: BTreeMap::new(), deferred: false, response_ix: vec![], why: None, dropped_verdict: None, responses_unasked: false }
+            responses: vec![], resp_read: 0, resp_unread: 0, resp_unread_moves: vec![], resp_states: BTreeMap::new(), deferred: false, response_ix: vec![], why: None, dropped_verdict: None, responses_unasked: false, carried: false }
     }
 }
 
@@ -472,7 +474,16 @@ impl Ask { pub fn all() -> Ask { Ask { budget: None, used: 0, progress: true } }
 
 /// What `every_unit_ask` did: the units read, the units asked (with whether the quiet-move read was needed), the units not asked, the questions, the distinct lines read, their nodes.
 #[derive(Debug, Clone, Default)]
-pub struct EveryOut { pub read: usize, pub asked: Vec<(UnitRef, bool)>, pub unasked: Vec<UnitRef>, pub questions: usize, pub line_reads: usize, pub nodes: u64 }
+pub struct EveryOut { pub read: usize, pub asked: Vec<(UnitRef, bool)>, pub unasked: Vec<UnitRef>, pub questions: usize, pub line_reads: usize, pub nodes: u64,
+    /// PLAN 79.14 B: the units whose row was carried (counted against the budget as a question answered, not asked again)
+    pub carried: Vec<UnitRef> }
+
+/// PLAN 79.14 B: the rows of the last decision's every-unit reading and what the two plies since touched (`cs_tactics::sheet::delta::Touch`): a unit whose row was read under a read set that nothing touched keeps its row.
+#[derive(Clone, Copy)]
+pub struct Held<'a> { pub rows: &'a [crate::carry::CarriedRow], pub touch: &'a cs_tactics::sheet::delta::Touch }
+
+/// Whether a question that ended as this row ended leaves the next unit worth asking past the budget (the `progress` of the reading): a taking was found, or a two-move threat was; not where nothing could be taken or the game gives no pass.
+fn progress_of(row: &ThreatRow) -> bool { !(matches!(row.why, Some("no_bearer_no_move") | Some("no_taking_legal")) || (row.verdict == VerdictKind::Unread && row.net.is_none() && row.line.is_empty())) }
 
 /// ONE PASS OVER THE QUIET MOVES SERVES EVERY UNIT (PLAN 79.07): for each taker the quiet moves are listed once with the places a taking would stand on after the other side's pass; the whole line of a move is read at most once however many units it serves
 /// (the Python reads it again for each unit: the same lines, the same order, so the rows agree).
@@ -493,7 +504,11 @@ fn quiet_list<G: Game + Placed>(g: &G, p0: &G::State) -> QuietList<G::Move> {
     out
 }
 
-pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut ConcreteList, sides: &[Role], rec: &Record, params: &ThreatParams, ask: &Ask) -> EveryOut {
+pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut ConcreteList, sides: &[Role], rec: &Record, params: &ThreatParams, ask: &Ask) -> EveryOut { every_unit_ask_with(st, g, s, list, sides, rec, params, ask, None) }
+
+/// PLAN 79.14 B: `every_unit_ask` that does not ask again a unit whose row of the last decision stands (`held`). The unit counts as a question used, as if asked, so that the budget is the same; its row is the row the last decision read, marked carried.
+#[allow(clippy::too_many_arguments)]
+pub fn every_unit_ask_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut ConcreteList, sides: &[Role], rec: &Record, params: &ThreatParams, ask: &Ask, held: Option<Held>) -> EveryOut {
     let t0 = Instant::now();
     let judge = Worth { name: "record".into(), table: rec.worth.clone(), ours_first: false };
     let mut rd = Rd::new(g, s, &judge, params.share_table, params.deadline);
@@ -536,6 +551,18 @@ pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: 
         let (row, taker_p) = &mut rows[i];
         let uref = row.unit.expect("a unit row");
         if !allowed { state[i] = 3; out.unasked.push(uref); continue; }
+        // a row of the last decision whose read set nothing touched stands: it is not asked again
+        if let Some(h) = held {
+            if let Some(c) = h.rows.iter().find(|c| c.row.every && c.row.unit == Some(uref) && !h.touch.hits(&c.read_set.members, &c.read_set.places)) {
+                let mut r = c.row.clone();
+                r.carried = true;
+                state[i] = if r.why.is_some() { 2 } else { 1 };
+                progress = progress_of(&r);
+                *row = r;
+                used += 1; out.carried.push(uref);
+                continue;
+            }
+        }
         used += 1; out.questions += 1;
         let place = uref.at;
         match rd.takings(*taker_p, place, lp) {

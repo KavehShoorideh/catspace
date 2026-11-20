@@ -231,6 +231,77 @@ impl Board {
         }).collect()
     }
 
+    /// PLAN 79.14 B (SYSTEM_SPEC 11, "a piece that costs too much is made cheaper"): THE HASH AND SIGN OF THE KEY AT EACH OF `levels` (at most four), the same as `keys` gives, with no allocation: the encodings are built in arrays on the stack. Used by the enumeration of the seeds of a position, which asks tens of
+    /// thousands of sets and needs only the hash (to look it up) and the sign. The test of tests/delta.rs checks it against `keys` on every set of a position.
+    pub fn key_hashes(&self, its: &[usize], levels: &[u8]) -> [(u64, i8); 4] {
+        const E: usize = 6 * 4;
+        struct C { enc: [u8; E], units: [u16; 8], nu: usize }
+        let k = its.len();
+        let mut out = [(0u64, 0i8); 4];
+        let mut cs: [C; 24] = std::array::from_fn(|_| C { enc: [0; E], units: [0; 8], nu: 0 });
+        let mut keep = [0usize; 24];
+        let mut nk = 0usize;
+        let np = PERMS[k].len();
+        for (pi, perm) in PERMS[k].iter().enumerate() {
+            let (mut uv, mut pv, mut lv) = ([0i64; 8], [0i64; 4], [0i64; 4]);
+            let (mut nu, mut npl, mut nl) = (0usize, 0usize, 0usize);
+            let mut n = 0usize;
+            let mut var = |list: &mut [i64], len: &mut usize, id: i64| -> u8 { match list[..*len].iter().position(|x| *x == id) { Some(i) => i as u8, None => { list[*len] = id; *len += 1; (*len - 1) as u8 } } };
+            let c = &mut cs[pi];
+            for &ix in perm.iter() {
+                let it = &self.items[its[ix]];
+                c.enc[n] = it.ty; n += 1;
+                c.enc[n] = var(&mut uv, &mut nu, it.actor as i64); n += 1;
+                match it.target {
+                    Obj::Unit(u) => { c.enc[n] = 0; c.enc[n + 1] = var(&mut uv, &mut nu, u as i64); n += 2; }
+                    Obj::Place(p) => { c.enc[n] = 1; c.enc[n + 1] = var(&mut pv, &mut npl, p as i64); n += 2; }
+                }
+                c.enc[n] = if it.line >= 0 { var(&mut lv, &mut nl, it.line as i64) } else { NONE }; n += 1;
+                c.enc[n] = if it.between >= 0 { var(&mut uv, &mut nu, it.between as i64) } else { NONE }; n += 1;
+            }
+            for i in 0..nu { c.units[i] = uv[i] as u16; }
+            c.nu = nu;
+            match nk {
+                0 => { keep[0] = pi; nk = 1; }
+                _ => match cs[pi].enc[..n].cmp(&cs[keep[0]].enc[..n]) {
+                    std::cmp::Ordering::Less => { keep[0] = pi; nk = 1; }
+                    std::cmp::Ordering::Equal => { keep[nk] = pi; nk += 1; }
+                    _ => {}
+                },
+            }
+        }
+        let _ = np;
+        let n_enc = 6 * k;
+        for (li, &level) in levels.iter().enumerate().take(4) {
+            let mut win = [0u8; 2 + E + 3 * 8];
+            let mut win_len = 0usize;
+            let (mut plain, mut swapped) = (false, false);
+            for &ci in &keep[..nk] {
+                let c = &cs[ci];
+                for swap in [false, true] {
+                    let mut full = [0u8; 2 + E + 3 * 8];
+                    full[0] = level; full[1] = k as u8;
+                    full[2..2 + n_enc].copy_from_slice(&c.enc[..n_enc]);
+                    let mut n = 2 + n_enc;
+                    for &u in &c.units[..c.nu] { full[n] = (self.mine[u as usize] == swap) as u8; n += 1; }
+                    if level >= 1 { for &u in &c.units[..c.nu] { full[n] = self.goal[u as usize] as u8; n += 1; } }
+                    if level == 2 { for &u in &c.units[..c.nu] { full[n] = self.edge[u as usize] as u8; n += 1; } }
+                    if level == 3 { for &u in &c.units[..c.nu] { full[n] = self.kind[u as usize]; n += 1; } }
+                    if win_len == 0 { win = full; win_len = n; plain = !swap; swapped = swap; continue; }
+                    match full[..n].cmp(&win[..win_len]) {
+                        std::cmp::Ordering::Greater => {}
+                        std::cmp::Ordering::Equal => { if swap { swapped = true } else { plain = true } }
+                        std::cmp::Ordering::Less => { win = full; win_len = n; plain = !swap; swapped = swap; }
+                    }
+                }
+            }
+            let mut h = FxHasher::default();
+            h.write(&win[..win_len]);
+            out[li] = (h.finish(), if plain && swapped { 0 } else if plain { 1 } else { -1 });
+        }
+        out
+    }
+
     fn hash_at(&self, its: &[usize], level: u8) -> (u64, i8) { let k = self.keys(its, &[level]).pop().unwrap(); (k.hash, k.sign) }
 }
 

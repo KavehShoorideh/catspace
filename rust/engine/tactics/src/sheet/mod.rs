@@ -12,6 +12,7 @@
 pub mod base_graph;
 pub mod base_statements;
 pub mod cf;
+pub mod delta;
 pub mod exchange;
 pub mod fates;
 pub mod forcing;
