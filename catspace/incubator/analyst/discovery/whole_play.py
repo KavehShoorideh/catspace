@@ -39,6 +39,7 @@ import gzip
 import json
 import os
 import time
+import zlib
 from pathlib import Path
 
 import cs_engine as CE
@@ -54,7 +55,8 @@ KIND_OLD = TM.KIND["control"]
 PIECES = list(W10.PIECES)                           # every piece of the whole on (the heads that read counts summed over the whole position are not ported, SYSTEM_SPEC 7)
 MIN_PAIRS = RP.MIN_PAIRS
 PLAYERS = ("wake", "old")
-REASONS = ("forced_end", "own_line_wins", "answers_threat", "fixes_goal", "estimate", "search_only", "none")
+REASONS = ("forced_end", "own_line_wins", "answers_threat", "fixes_goal", "estimate", "search_only", "none",
+           "first_lowered", "only_own_line", "only_answers", "only_fixes", "explore", "chooser")        # PLAN 79.12: the last six name what separated the move played from the search's first move, or the last layer
 WATCHDOG = 300.0                                    # seconds a game may take before its worker is ended with its traceback kept (PLAN 79.11: one game of the first match hung in an engine call)
 _WORLD = None
 CTX: dict = {}                                      # the game being played in this process: {"gid", "log_dir"}
@@ -82,7 +84,10 @@ def reason_of(why: str) -> str:
     """The class of the sentence the decision log gives as its reason (rule.rs `why_of` and `choose`): which of the reasons decided the move."""
     w = (why or "").strip()
     for prefix, name in (("the end of the game is forced", "forced_end"), ("its own line wins", "own_line_wins"), ("answers the threat", "answers_threat"), ("a fix of the", "fixes_goal"),
-                         ("no threat of theirs and no goal decides it: the reasons' score", "estimate"), ("no threat of theirs and no goal decides it", "search_only")):
+                         ("no threat of theirs and no goal decides it: the reasons' score", "estimate"), ("no threat of theirs and no goal decides it", "search_only"),
+                         ("the equal reading put the search's first move lower", "first_lowered"), ("only its own line wins", "only_own_line"), ("only it answers the threat", "only_answers"), ("only it fixes the", "only_fixes"),
+                         ("nothing separates it from the search's first move but the estimates", "estimate"), ("nothing separates it from the search's first move", "search_only"),
+                         ("explore:", "explore"), ("the chooser:", "chooser")):
         if w.startswith(prefix):
             return name
     return "none"
@@ -96,6 +101,7 @@ class MoverWhole(TM.Mover67):
         self.gid, _, seat = seed.rpartition(":")
         self.seat = int(seat)
         self.slot = seed                                                          # the game and the seat: the binding keeps this slot's open tactics for the next decision
+        self.chooser = spec.get("chooser")                                        # PLAN 79.12 B: None, or {"mode": "fixed" | "weights" | "explore", "weights": {input: weight}, "seed": base seed}
         self.log_file = None
         if self.kind == KIND_WAKE and CTX.get("log_dir"):
             self.log_file = Path(CTX["log_dir"]) / f"{self.gid.replace(':', '_')}.jsonl.gz"
@@ -103,6 +109,13 @@ class MoverWhole(TM.Mover67):
         for r in REASONS:
             self.stats["by_" + r] = 0                                             # decisions whose move differed from the search's first move, by the reason given
         self.stats["differs"] = 0
+
+    def chooser_arg(self, ply: int) -> "tuple | None":
+        """The last layer's argument for the binding: (mode, weights, the seed of THIS decision), the seed from the base seed, the game, the seat and the ply (a game replayed gives the same draws)."""
+        c = self.chooser
+        if not c:
+            return None
+        return (c["mode"], dict(c.get("weights") or {}), zlib.crc32(f"{c.get('seed', 0)}:{self.seed}:{ply}".encode()))
 
     def write(self, rec: dict) -> None:
         if self.log_file is None:
@@ -117,7 +130,7 @@ class MoverWhole(TM.Mover67):
         t0 = time.perf_counter()
         pos = CE.state(OM.VARIANT, text, list(moves))[0]
         history = [CE.state(OM.VARIANT, text, list(moves[:k]))[4] for k in range(len(moves))]
-        out = json.loads(w.model.wake_decide(pos, history, self.seconds, 64, dict(self.worth), {}, w.goal, PIECES, 0, 0, w.keys, fuses(), w.chances, w.reasons, TM.LEDGER_SHARE, self.slot))
+        out = json.loads(w.model.wake_decide(pos, history, self.seconds, 64, dict(self.worth), {}, w.goal, PIECES, 0, 0, w.keys, fuses(), w.chances, w.reasons, TM.LEDGER_SHARE, self.slot, self.chooser_arg(len(moves))))
         wall = time.perf_counter() - t0
         eq = out["equal"]
         first = eq[0] if eq else None                                             # the search's own move leads the moves it holds equal (wake.rs)
@@ -163,17 +176,21 @@ def play11(spec: dict) -> dict:
 
 # ------------------------------------------------------------------------------------------------------------------------------ the players and the matches
 
-def player_spec(name: str, seconds: "float | None" = None) -> dict:
+def player_spec(name: str, seconds: "float | None" = None, chooser: "dict | None" = None) -> dict:
     spec = {"kind": KIND_WAKE if name == "wake" else KIND_OLD, "worth": RP.worth_of("human"), "charge": False}
     if seconds is not None:
         spec["seconds"] = float(seconds)
+    if chooser is not None:
+        spec["chooser"] = chooser                                                 # PLAN 79.12 B (only the wake has a last layer)
     return spec
 
 
-def match_specs(a: str, b: str, set_name: str, pairs: int, seconds: float, scratch: Path, log_dir: Path, clock_a: "float | None" = None, clock_b: "float | None" = None, label: str = "") -> list:
-    pa, pb = player_spec(a, clock_a), player_spec(b, clock_b)
+def match_specs(a: str, b: str, set_name: str, pairs: int, seconds: float, scratch: Path, log_dir: Path, clock_a: "float | None" = None, clock_b: "float | None" = None, label: str = "",
+                chooser_a: "dict | None" = None, chooser_b: "dict | None" = None, openings: "list | None" = None) -> list:
+    """`chooser_a`, `chooser_b` (PLAN 79.12): the last layer of a wake player; `openings` [(seed, moves)]: given in place of the named set (the spec's start is then `set_name` + the seed)."""
+    pa, pb = player_spec(a, clock_a, chooser_a), player_spec(b, clock_b, chooser_b)
     specs = []
-    for seed, opening in TM.openings(set_name, pairs):
+    for seed, opening in (openings if openings is not None else TM.openings(set_name, pairs)):
         for colour in (0, 1):
             specs.append({"gid": f"{label or a + '_v_' + b}:{set_name}{seed}:{colour}", "start": f"{set_name}{seed}", "colour": colour, "text": None, "opening": opening,
                           "players": [pa, pb] if colour == 0 else [pb, pa], "seconds": seconds, "max_plies": TM.PLY_CAP, "scratch": str(scratch), "log_dir": str(log_dir)})
