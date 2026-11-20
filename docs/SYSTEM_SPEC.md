@@ -814,6 +814,14 @@ GAME AT HAND belongs to one game: the statements that stand in it with what they
 belief about this opponent; written by the wake, emptied at the game's end, and what surprised it is handed to sleep. Both hold
 statements of the one form of layer 1. UNDER DISCUSSION, nothing built.
 
+**The go on layer 1** (Kaveh 2026-11-20: "Okay, fix all of this then. Unify the long-term versus the short-term memories, and the
+scratch memory of one layer should stay in that layer ... If it's something that we do want to save, then we either add it to the
+current thing using the representation ... maybe we need some sort of a mutation API on our representation layer"). DECIDED: one
+form of statement with its standing, its holder and what it read; the long-term memory and the memory of the game at hand both
+hold it; a layer's scratch that is not to be kept stays in that layer; what is to be kept is written through a way of changing
+the memories that the representation layer owns (add, replace, retract, fall by change). Plan 79.19 builds it on `cs_memory`,
+which already has the language with variables, the matcher and the snapshots. The layers above 1 are still under discussion.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1144,5 +1152,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The small endings as the test of means and ends; the October measure of progress was not brought into the new engine (DIRECTION, Kaveh; ANSWER and READING, main agent) | 2026-11-20 | 7 (last block before section 8), ledger row 35 |
 | The go on the small endings: the order of the build; the table in sleep and in the measure only (READING) | 2026-11-20 | 7 (last block before section 8), 13 item 36 |
 | Plan 79.17: the measure of progress in the new engine, mined, held by the wake; two faults that stand | 2026-11-20 | 12, 13 item 37 |
-| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last five blocks), 13 items 38 and 39 |
+| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last six blocks; layer 1 DECIDED, plan 79.19), 13 items 38 and 39 |
 | What was replaced | 2026-11-16 | 14 |
