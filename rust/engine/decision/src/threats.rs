@@ -131,12 +131,12 @@ impl<'a, G: Game + Placed> Rd<'a, G> {
     fn lines(&mut self, v: &[LineRead]) { self.queries += 1; self.nodes += v.iter().map(|r| r.nodes).sum::<u64>(); }
     fn takings(&mut self, pass: bool, place: Place, p: LineParams) -> Option<Vec<LineRead>> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = if self.share { let (g, j) = (self.g, self.judge); let stop = self.stop; let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x }); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_takings_in(sr, p0, place, me, p) } else { L::read_takings(self.g, self.judge, p0, place, me, p) };
+        let r = if self.share { let (g, j) = (self.g, self.judge); let stop = self.stop; let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::lean_with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x }); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_takings_in(sr, p0, place, me, p) } else { L::read_takings(self.g, self.judge, p0, place, me, p) };
         self.lines(&r); Some(r)
     }
     fn two_moves(&mut self, pass: bool, place: Place, p: LineParams) -> Option<Vec<LineRead>> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = if self.share { let (g, j) = (self.g, self.judge); let stop = self.stop; let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x }); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_two_moves_in(sr, p0, place, me, p) } else { L::read_two_moves(self.g, self.judge, p0, place, me, p) };
+        let r = if self.share { let (g, j) = (self.g, self.judge); let stop = self.stop; let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::lean_with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x }); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_two_moves_in(sr, p0, place, me, p) } else { L::read_two_moves(self.g, self.judge, p0, place, me, p) };
         self.lines(&r); Some(r)
     }
     fn best(&mut self, pass: bool, p: LineParams) -> Option<LineRead> {
@@ -152,7 +152,7 @@ impl<'a, G: Game + Placed> Rd<'a, G> {
             let j = self.judge;
             let p0 = if pass { self.passed.as_ref()? } else { self.s };
             let stop = self.stop;
-            let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x });
+            let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::lean_with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x });
             moves.iter().map(|m| L::read_after_in(sr, p0, m, place, me, p)).collect()
         } else { moves.iter().map(|m| L::read_after(g, self.judge, p0, m, place, me, p)).collect() };
         self.queries += 1; self.nodes += r.iter().map(|a| a.whole.nodes + a.takes.iter().map(|t| t.nodes).sum::<u64>()).sum::<u64>(); Some(r)
@@ -578,7 +578,7 @@ pub fn every_unit_ask_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, l
                         Some((p0, me)) => {
                             let ql = quiet.entry(*taker_p).or_insert_with(|| Some(quiet_list(g, p0))).as_ref().unwrap();
                             let mut rs: Vec<LineRead> = vec![];
-                            let mut sr = Search::with_fuse(g, rd.judge, me, 1);
+                            let mut sr = Search::lean_with_fuse(g, rd.judge, me, 1);
                             if let Some(t) = params.deadline { sr.stop_at(t); }
                             for (k, (m, e, ends)) in ql.iter().enumerate() {
                                 if !ends.contains(&place) { continue; }

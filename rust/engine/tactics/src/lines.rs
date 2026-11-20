@@ -77,20 +77,19 @@ fn lost_kind(text: &str) -> Option<&str> { text.strip_prefix("lose ") }
 /// middle of an exchange when a fuse stops it). PLAN 78.87: it is a READING by the judge, not a run of takings: the end of the game is counted (`WIN` less the plies), so a taking after which the other side ends the game is
 /// worse than standing and is not played, and the side to move stands whenever every taking leaves it worse by the judge's own count (a move that takes nothing and changes no kind is not read, as in the search's own horizon).
 pub fn settle_tail<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State) -> (Vec<G::Move>, bool) {
-    fn go<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State, depth: u32, mut alpha: i64, mut beta: i64, hit: &mut bool, nodes: &mut u32) -> (i64, Vec<G::Move>) {
+    fn go<G: Game, J: Judge>(g: &G, probe: &Search<G, J>, me: Role, s: &G::State, depth: u32, mut alpha: i64, mut beta: i64, hit: &mut bool, nodes: &mut u32) -> (i64, Vec<G::Move>) {
         if let Some(v) = g.outcome(s) {                                  // (PLAN 78.87: the end of the game is counted as the search counts it: above or below every ledger, the sooner the larger)
             return (if won(&v, me) { WIN - depth as i64 } else if (0..v.len()).any(|i| i != me && won(&v, i)) { -WIN + depth as i64 } else { 0 }, vec![]);
         }
         *nodes += 1;
         if depth >= crate::ledger::QUIET_FUSE || *nodes > TAIL_NODES { *hit = true; return (0, vec![]); }
         let maxing = g.mover(s) == Some(me);
-        let probe = Search::with_fuse(g, judge, me, 1);
         let mut best: (i64, Vec<G::Move>) = (0, vec![]);                 // standing: nothing more is taken
         if maxing { if best.0 >= beta { return best; } alpha = alpha.max(best.0); } else { if best.0 <= alpha { return best; } beta = beta.min(best.0); }
         for m in g.moves(s) {
             let d = probe.gain(s, &m);
             if d == 0 { continue; }                                      // (captures and kind changes that add to the ledger only)
-            let (v, mut rest) = go(g, judge, me, &g.apply(s, &m), depth + 1, alpha - d, beta - d, hit, nodes);
+            let (v, mut rest) = go(g, probe, me, &g.apply(s, &m), depth + 1, alpha - d, beta - d, hit, nodes);
             let v = d + v;
             if (maxing && v > best.0) || (!maxing && v < best.0) { rest.insert(0, m); best = (v, rest); }
             if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }
@@ -100,7 +99,8 @@ pub fn settle_tail<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State) 
     }
     let mut hit = false;
     let mut nodes = 0u32;
-    let (_, tail) = go(g, judge, me, s, 0, i64::MIN / 2, i64::MAX / 2, &mut hit, &mut nodes);
+    let probe = Search::with_fuse(g, judge, me, 1);
+    let (_, tail) = go(g, &probe, me, s, 0, i64::MIN / 2, i64::MAX / 2, &mut hit, &mut nodes);
     (tail, hit)
 }
 
@@ -137,7 +137,7 @@ fn changes_in(lost: &[(Role, String)], me: Role) -> Vec<(bool, String, String)> 
 }
 
 pub fn read_line<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: &G::Move, me: Role, p: LineParams) -> LineRead {
-    let mut sr = Search::with_fuse(g, judge, me, p.fuse);
+    let mut sr = Search::lean_with_fuse(g, judge, me, p.fuse);
     read_line_in(&mut sr, s, m, me, p)
 }
 
@@ -209,7 +209,7 @@ pub fn read_all<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me: 
 pub struct After { pub whole: LineRead, pub takes: Vec<LineRead> }
 
 pub fn read_after<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, m: &G::Move, place: Place, me: Role, p: LineParams) -> After {
-    let mut sr = Search::with_fuse(g, judge, me, p.fuse);
+    let mut sr = Search::lean_with_fuse(g, judge, me, p.fuse);
     read_after_in(&mut sr, s, m, place, me, p)
 }
 
@@ -221,7 +221,7 @@ pub fn read_after_in<G: Game + Placed, J: Judge>(sr: &mut Search<'_, G, J>, s: &
     let c = g.apply(s, m);
     let now = if ends.0 == place { ends.1 } else { place };
     // the move's own taking counts in every taking line after it: the lines are read from the position after the move, so its gain and its ledger are added to each
-    let d0 = Search::with_fuse(g, judge, me, 1).gain(s, m);
+    let d0 = sr.gain(s, m);
     let ev0: Vec<(bool, String)> = g.captured(s, m).into_iter().map(|(o, k)| (o == me, k)).collect();
     let ch0 = changes_of(g, s, m, me);
     let name0 = g.move_name(s, m);
@@ -247,7 +247,7 @@ pub fn read_best<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me:
 
 /// PLAN 79.09 B: `read_best` that stops at `stop` (a line the clock cuts is `cut`: a gap, never a refutation).
 pub fn read_best_by<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me: Role, p: LineParams, stop: Option<std::time::Instant>) -> LineRead {
-    let mut sr = Search::with_fuse(g, judge, me, p.fuse * 4);          // (the baseline of every response: read once, with more fuse than a line)
+    let mut sr = Search::lean_with_fuse(g, judge, me, p.fuse * 4);          // (the baseline of every response: read once, with more fuse than a line)
     if let Some(t) = stop { sr.stop_at(t); }
     let line = sr.run(s, p.depth + 1);
     let first = line.first_index.and_then(|i| g.moves(s).get(i).map(|m| g.move_ends(s, m))).unwrap_or((0, 0));
@@ -267,7 +267,7 @@ pub fn read_best_by<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, 
 /// line with the other side's best replies (the move, the reply, ...): the threat is kept only if the line still ends ahead for `me` (the caller's verdict), so a move the other side simply answers by taking
 /// the attacker is no threat. Returns the lines of the moves that make a threat, best first; `lead` is the move's ends.
 pub fn read_two_moves<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, place: Place, me: Role, p: LineParams) -> Vec<LineRead> {
-    let mut sr = Search::with_fuse(g, judge, me, p.fuse);
+    let mut sr = Search::lean_with_fuse(g, judge, me, p.fuse);
     read_two_moves_in(&mut sr, s, place, me, p)
 }
 
@@ -303,7 +303,7 @@ pub fn forced_end<G: Game + Placed>(g: &G, s: &G::State, me: Role, max_plies: u3
 /// PLAN 79.09 B: `forced_end` that stops at `stop` (the clock of the steps before the search): a search the clock cuts before the plies asked is a `Gap`, a gap never a refutation.
 pub fn forced_end_by<G: Game + Placed>(g: &G, s: &G::State, me: Role, max_plies: u32, fuse: u64, stop: Option<std::time::Instant>) -> Forced {
     let judge = crate::ledger::Nothing;
-    let mut sr = Search::with_fuse(g, &judge, me, fuse);
+    let mut sr = Search::lean_with_fuse(g, &judge, me, fuse);
     if let Some(t) = stop { sr.stop_at(t); }
     let line = sr.run(s, max_plies as i32);
     if line.value >= WIN - 1000 {
@@ -346,7 +346,7 @@ pub fn end_answers_by<G: Game + Placed>(g: &G, s: &G::State, attacker: Role, max
         let ends = g.move_ends(s, &r);
         let name = g.move_name(s, &r);
         let v = if let Some(o) = g.outcome(&c) { if won(&o, attacker) { 3 } else { 0 } } else if stop.is_some_and(|t| std::time::Instant::now() >= t) { 2 } else {
-            let mut sr = Search::with_fuse(g, &judge, attacker, fuse);
+            let mut sr = Search::lean_with_fuse(g, &judge, attacker, fuse);
             if let Some(t) = stop { sr.stop_at(t); }
             let line = sr.run(&c, max_plies.saturating_sub(1).max(1) as i32);
             if line.value >= WIN - 1000 { 1 } else if sr.cut() && line.depth < max_plies.saturating_sub(1).max(1) as i32 { 2 } else { 0 }

@@ -52,19 +52,32 @@ pub fn fix_moves(goal: &Goal) -> Vec<String> {
 /// THE WORTHS OF THE KINDS the stake is read from (SYSTEM_SPEC 7, "the stake orders goals"): the record's worth of each kind (the record is keyed by the words of the game's ledger, so the word is read from what taking the unit off the board removes: `threats::kind_worths`), a number the record measured; no worth is assumed, a kind the record does not
 /// hold is worth 0; `goal` is the goal kind, which the record does not hold: it is the end of the game and the largest.
 #[derive(Debug, Clone, Default)]
-pub struct Stakes { pub worth: std::collections::HashMap<Kind, f64>, pub goal: Option<Kind> }
+pub struct Stakes { pub worth: std::collections::HashMap<Kind, f64>, pub goal: Option<Kind>,
+    /// PLAN 79.16 D: the largest worth the record measured (0 where it holds none): the least the goal kind's stake can be, "above every worth", used only where a stake is multiplied by a chance (`rank_key`)
+    pub ceiling: f64 }
 
 impl Stakes {
     /// The worths of the kinds of the targets of `goals` in the position `s` (the targets stand there).
     pub fn read<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, goals: &[Goal], goal: Option<Kind>) -> Stakes {
         let units: Vec<UnitRef> = goals.iter().map(|x| x.target).collect();
-        Stakes { worth: crate::threats::kind_worths(g, s, rec, &units), goal }
+        Stakes { worth: crate::threats::kind_worths(g, s, rec, &units), goal, ceiling: rec.worth.values().copied().max().unwrap_or(0) as f64 }
     }
     /// The stake of a target: the goal kind is above every worth.
     pub fn of(&self, target: UnitRef) -> f64 { if Some(target.kind) == self.goal { f64::INFINITY } else { self.worth.get(&target.kind).copied().unwrap_or(0.0) } }
 }
 
 fn target_stake(target: UnitRef, sk: &Stakes) -> f64 { sk.of(target) }
+
+/// PLAN 79.16 D (SYSTEM_SPEC 8 the rule for choosing a move, 7 point 2 the estimate per goal; piece: the wake): THE ONE ORDER OF FIXES BY STAKE TIMES CHANCE, for the names (`named_fixes_by`), the fixes among the moves held equal (`fixes_among` works down the chains in this order) and the reason a move is given (`serves_ranked`).
+/// `stake` the stake of the chain's top (the goal kind: infinite), `chance` the chance of its goal from the table of play (None: nought), `ceiling` the largest worth of the record. The goal kind's stake is above every worth and no number is assumed for it: here it counts as the largest worth, the least it can be, so that a goal
+/// on the goal unit outranks a likelier goal on a smaller unit only when its chance is at least as large, and a fix of a goal whose chance is near nought no longer outranks a fix that is likely. Nothing here is a value: it orders what is read and what is said.
+pub fn rank_key(stake: f64, chance: Option<f64>, ceiling: f64) -> f64 { (if stake.is_infinite() { ceiling } else { stake }) * chance.unwrap_or(0.0) }
+
+/// PLAN 79.16 D: the order of two chains `a` before `b` by `rank_key` (the greater first), a goal on the goal kind before a finite goal of an equal key.
+pub fn rank_cmp(a: (f64, f64), b: (f64, f64), ceiling: f64) -> std::cmp::Ordering {
+    let (ka, kb) = (rank_key(a.0, Some(a.1), ceiling), rank_key(b.0, Some(b.1), ceiling));
+    kb.partial_cmp(&ka).unwrap_or(std::cmp::Ordering::Equal).then(b.0.is_infinite().cmp(&a.0.is_infinite()))
+}
 
 /// The index of the goal at the top of the chain of goal `i` (the goal whose subgoal it is, and so on up): the goal of the same side whose target is the parent, the one nearest the root of the recursion. A goal with no parent is its own top.
 pub fn chain_top(goals: &[Goal], i: usize) -> usize {
@@ -120,9 +133,9 @@ pub fn named_fixes_by(goals: &[Goal], side: Role, sk: &Stakes, chance: Option<&d
         out.push((ChainFix { goal: near, top, stake, moves: fix_moves(&goals[near]), later, chance: c, met: goals[near].met }, (things_in_the_way(&goals[near]), goals[near].target.at)));
     }
     if chance.is_some() {
-        // met first; then the goal kind by its chance, then stake times chance; then as before
-        let score = |x: &ChainFix| -> (u8, f64) { if x.stake.is_infinite() { (1, x.chance.unwrap_or(0.0)) } else { (0, x.stake * x.chance.unwrap_or(0.0)) } };
-        out.sort_by(|a, b| b.0.met.cmp(&a.0.met).then_with(|| { let (x, y) = (score(&a.0), score(&b.0)); y.0.cmp(&x.0).then(y.1.partial_cmp(&x.1).unwrap_or(std::cmp::Ordering::Equal)) }).then(a.1.cmp(&b.1)));
+        // met first; then stake times chance by the one function `rank_cmp` (PLAN 79.16 D; the goal kind counts as the largest worth); then as before
+        let ceiling = sk.ceiling;
+        out.sort_by(|a, b| b.0.met.cmp(&a.0.met).then_with(|| rank_cmp((a.0.stake, a.0.chance.unwrap_or(0.0)), (b.0.stake, b.0.chance.unwrap_or(0.0)), ceiling)).then(a.1.cmp(&b.1)));
     } else {
         out.sort_by(|a, b| b.0.stake.partial_cmp(&a.0.stake).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
     }
@@ -183,7 +196,7 @@ pub fn keep_read_by<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, mine: &
     let passed = g.pass(s);
     for (names, who) in [(mine, false), (theirs, true)] {
         let (pos, me) = if who { match &passed { Some(q) => (q, g.other(mover)), None => { for n in names { out.unlisted.push((n.clone(), true)); } continue; } } } else { (s, mover) };
-        let mut shared = Search::with_fuse(g, &judge, me, 1);
+        let mut shared = Search::lean_with_fuse(g, &judge, me, 1);
         if let Some(t) = stop { shared.stop_at(t); }
         let mut seen: HashSet<&String> = HashSet::new();
         let mut n = 0;

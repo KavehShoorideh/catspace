@@ -64,11 +64,12 @@ fn c_the_chains_come_in_the_order_of_stake_times_chance_and_the_goal_kind_above_
     let smallest = finite.iter().map(|c| c.stake).fold(f64::INFINITY, f64::min);
     let chance = |gl: &Goal| -> f64 { if sk.of(gl.target) == smallest { 0.95 } else { 0.05 } };
     let by_chance = named_fixes_by(&p.goals, w, &sk, Some(&chance));
-    let score = |c: &cs_decision::rule::ChainFix| if c.stake.is_infinite() { (1u8, c.chance.unwrap()) } else { (0u8, c.stake * c.chance.unwrap()) };
+    // (PLAN 79.16 D: the one order, `rank_key`: the goal kind counts as the largest worth, so it no longer stands above every product; 79.14's test asserted the goal kind above every product)
+    let score = |c: &cs_decision::rule::ChainFix| cs_decision::rule::rank_key(c.stake, c.chance, sk.ceiling);
     let non_met: Vec<_> = by_chance.iter().filter(|c| !c.met).collect();
     for pair in non_met.windows(2) {
         let (x, y) = (score(pair[0]), score(pair[1]));
-        assert!(x.0 > y.0 || (x.0 == y.0 && x.1 >= y.1), "the chains are in the order of stake times chance: {x:?} then {y:?}");
+        assert!(x >= y, "the chains are in the order of stake times chance: {x:?} then {y:?}");
     }
     let order_stake: Vec<usize> = by_stake.iter().map(|c| c.top).collect();
     let order_chance: Vec<usize> = by_chance.iter().map(|c| c.top).collect();
@@ -190,3 +191,56 @@ fn c_through_the_wake_a_table_given_changes_what_is_named_first_and_never_the_va
 }
 
 fn s_moves(g: &KernelGame, s: &St) -> Vec<String> { g.moves(s).iter().map(|m| g.move_name(s, m)).collect() }
+
+// ---- PLAN 79.16 D (SYSTEM_SPEC 8 the rule for choosing a move, 7 point 2; piece: the wake): THE RULE RANKS A FIX BY STAKE TIMES CHANCE; the one function `rank_key` / `rank_cmp`, numbers only first.
+use cs_decision::rule::{rank_cmp, rank_key};
+use std::cmp::Ordering;
+
+#[test]
+fn d_the_goal_kind_counts_as_the_largest_worth_and_a_goal_of_chance_near_nought_no_longer_outranks_a_likely_one() {
+    let ceiling = 3583.0;
+    let (goal, queen, pawn) = (f64::INFINITY, 3583.0, 475.0);
+    // a goal on the goal unit at chance 0.02 against a goal on a pawn at chance 0.5: the pawn's goal is first (main put the goal unit first at any chance)
+    assert_eq!(rank_cmp((goal, 0.02), (pawn, 0.5), ceiling), Ordering::Greater, "a fix of a goal with a chance near nought is ranked under a likely one");
+    assert_eq!(rank_cmp((pawn, 0.5), (goal, 0.02), ceiling), Ordering::Less);
+    // the same chance: the goal kind first (its stake is above every worth)
+    assert_eq!(rank_cmp((goal, 0.3), (queen, 0.3), ceiling), Ordering::Less);
+    assert_eq!(rank_cmp((goal, 0.3), (pawn, 0.3), ceiling), Ordering::Less);
+    // a larger chance of the goal kind: first
+    assert_eq!(rank_cmp((goal, 0.4), (queen, 0.3), ceiling), Ordering::Less);
+    // finite stakes by the product
+    assert_eq!(rank_cmp((queen, 0.1), (pawn, 0.5), ceiling), Ordering::Less);
+    assert_eq!(rank_cmp((queen, 0.05), (pawn, 0.5), ceiling), Ordering::Greater);
+    // no chance given counts as nought; the key is a number for every chain, so the order is a total order (no cycle)
+    assert_eq!(rank_key(goal, None, ceiling), 0.0);
+    let chains = [(goal, 0.3), (queen, 0.1), (pawn, 0.5), (goal, 0.02), (queen, 0.2)];
+    let mut v = chains.to_vec();
+    v.sort_by(|a, b| rank_cmp(*a, *b, ceiling));
+    for w in v.windows(2) { assert!(rank_key(w[0].0, Some(w[0].1), ceiling) >= rank_key(w[1].0, Some(w[1].1), ceiling)); }
+}
+
+#[test]
+fn d_the_names_the_fixes_among_the_equal_moves_and_the_reason_are_ordered_by_the_one_function() {
+    let (g, st) = world();
+    let s = state(MID);
+    let p = propose(&st, &g, &s, &record(), &ThreatParams { goal: king(&g), rows: Some(vec![]), share_table: true, ..Default::default() }, &GoalParams { budget: 40, ..Default::default() });
+    let sk = Stakes::read(&g, &s, &record(), &p.goals, king(&g));
+    assert_eq!(sk.ceiling, 3583.0, "the ceiling is the largest worth of the record");
+    let w = white(&g);
+    // a chance of 0.01 for every goal on the goal unit and 0.4 for the rest: the chain of the goal unit is not first
+    let chance = |gl: &Goal| -> f64 { if sk.of(gl.target).is_infinite() { 0.01 } else { 0.4 } };
+    let by = named_fixes_by(&p.goals, w, &sk, Some(&chance));
+    let first_goal_unit = by.iter().position(|c| c.stake.is_infinite());
+    let first_finite = by.iter().position(|c| c.stake.is_finite());
+    if let (Some(a), Some(b)) = (first_goal_unit, first_finite) { assert!(b < a, "a fix of a goal on the goal unit at chance 0.01 is named after a likely fix of a smaller unit: {b} then {a}"); }
+    // fixes_among works down the chains in this order: the first chain that names an equal move
+    let all: Vec<String> = by.iter().flat_map(|c| c.all_moves()).collect();
+    if all.len() >= 2 {
+        let (hit, k) = cs_decision::rule::fixes_among(&by, &all);
+        assert_eq!(k, Some(0), "the first chain of the order is asked first");
+        assert!(!hit.is_empty());
+    }
+    // with no table the order is main's (the stake alone): the goal unit's chain first
+    let plain = named_fixes_by(&p.goals, w, &sk, None);
+    if let Some(first) = plain.first() { assert!(plain.iter().all(|c| c.stake <= first.stake)); }
+}
