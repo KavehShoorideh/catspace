@@ -524,6 +524,15 @@ over? ... that was critical in getting close to the end."
   from move to move is the memory. With one rook the end is far beyond the search, so that ending is the true test; with two rooks the
   end may lie inside the search already, which is to be measured first, not assumed.
 
+**The go on the small endings** (Kaveh 2026-11-20, "ok go", to the order the main agent proposed; plan 79.17). The order: (1) the
+present engine is measured on the two classes before anything is built; (2) the measure is brought into the new engine as a
+game-free piece built from the base graph; (3) it is mined from two sets of games, good and bad, and checked by October's
+criterion (a drop exists against every reply); (4) the wake holds it as a goal, searches for the next drop, logs each drop as a
+subgoal reached, drops the goal only for a stated cause; (5) the classes are played again. The measure orders and chooses among
+moves the calculation holds equal and never enters a line's value. READING of the main agent, kept until Kaveh says otherwise
+(section 13 item 36): his go covers the use of the endgame table in sleep and in the measure, as the label of a position as won
+and as the defender, under the oracle rule of 2026-11-19; the wake never reads it.
+
 ## 8. Wake
 
 1. Bring forward the open tactics carried from the last move, and update only those whose facts changed.
@@ -908,6 +917,9 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     the ledger `docs/SPEC_LEDGER.md` and its six rules of use; that the next plans are taken from its rows 5, 13, 23, 24, 25 before
     anything else. QUESTIONS: (a) "from our own play" and "from master games": the reading taken is both, human games by rating;
     say if one comes first. (b) What rating counts as master for the accurate work, given that the human file is of all ratings.
+36. From Kaveh's go of 2026-11-20 on the small endings (section 7, last block before section 8). READING of the main agent: the go
+    covers the endgame table in sleep and in the measure (the label of a position as won; the defender in the test), never in the
+    wake. Say if the table may not be used so.
 28. From plan 79.09 (2026-11-19). Choices the builder made where the spec is silent, kept until you say otherwise: the steps before the
     search get what the search and its equal reading leave of the clock; a line cut by the clock is a gap and never a refutation; an
     estimate that did not reach a move does not decide. Three readings of your words that plan 79.10 builds on, mine: when every fix of
@@ -1055,4 +1067,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Stopped for Kaveh: the goals made lie inside the search's horizon; goals mined from games, read toward, held, and counted at a line's end (DIAGNOSIS and PROPOSED, main agent) | 2026-11-20 | 13 item 34 |
 | Goals beyond the search's horizon broken down into it; a reached subgoal is a training signal; subgoals mined as the tactics whose existence leads to gain; human data by rating; the ledger against forgetting | 2026-11-20 | 7 (before section 8), 13 item 35, docs/SPEC_LEDGER.md |
 | The small endings as the test of means and ends; the October measure of progress was not brought into the new engine (DIRECTION, Kaveh; ANSWER and READING, main agent) | 2026-11-20 | 7 (last block before section 8), ledger row 35 |
+| The go on the small endings: the order of the build; the table in sleep and in the measure only (READING) | 2026-11-20 | 7 (last block before section 8), 13 item 36 |
 | What was replaced | 2026-11-16 | 14 |
