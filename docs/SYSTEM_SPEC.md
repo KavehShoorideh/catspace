@@ -501,6 +501,29 @@ how two threats are found. Plan 79.07 as amended.
   because material follows it. Both our own games and human games are read, the human games by rating.
 - THE SYSTEM AGAINST FORGETTING: `docs/SPEC_LEDGER.md`, one row a decision with its state in the playing engine.
 
+**The small endings as the test of means and ends, and a measure of progress** (DIRECTION given by Kaveh 2026-11-20; a build is not yet
+agreed). "Maybe we need to understand this, mining these sub-goals in the context of like a two-rook mate ... this is a good test of
+our means ends reasoning. Can we mate? Can we find a simple mate?" If not, a prior that gets better at it in games against itself, and
+beside it "this sub goal learner, which is a separate thing, looking at it and seeing, okay, what moves did I do that won?" Or: "we want
+two sets of games ... some perfectly played games and ... some badly played games. And we want to figure out what makes a bad game
+bad, what makes a good game good." With one rook: "can we understand the idea of pushing the person back?" And: "we need some sort of
+a measure to basically measure our progress towards goal ... back in October, we had this progress measurement ... Did you bring that
+over? ... that was critical in getting close to the end."
+- THE ANSWER (main agent): it was NOT brought over. October has, in the older system: the proved Lean theorem forced_by_measure
+  (lean/ideas/Ideas/Core/ForcedByMeasure.lean: if from every position of a class some play of ours of at most k moves lowers a
+  measure against every reply, the goal is forced); a miner of such measures from generic atoms (plan 73.5b, technique_miner.py), which
+  found one for king and rook against king with no failing position and mated in its play-outs where the engine without it repeated
+  positions; mined measures for two rooks against a rook (Ideas/Generated/Measures.lean); the goal judge and the clock of the chase in
+  agenda.py. The engine of plans 78 and 79 (rust/engine) has none of it: its only word of progress is that a taking restarts the count
+  of quiet plies in a line. Ledger row 35.
+- A LESSON OF OCTOBER TO KEEP (plan 73.5b): perfect play is a poor teacher of a measure. The table's fastest line takes shortcuts every
+  measure counts as going backward. What a measure must do is ADMIT a drop within a few of our moves against every reply, not fall on
+  every move of a perfect game.
+- READING (main agent, PROPOSED): a measure of progress is the missing link of the block above. The far goal (the end of the game) is
+  beyond the search; "the measure one step lower" is a subgoal inside it; reaching it is the dense training event; holding the measure
+  from move to move is the memory. With one rook the end is far beyond the search, so that ending is the true test; with two rooks the
+  end may lie inside the search already, which is to be measured first, not assumed.
+
 ## 8. Wake
 
 1. Bring forward the open tactics carried from the last move, and update only those whose facts changed.
@@ -1031,4 +1054,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The whole is judged at a clock where every piece finishes; unused time goes to the search; the search reads on when its first move fails; fixes ranked by stake times chance (READINGS, main agent) | 2026-11-20 | 13 item 33 |
 | Stopped for Kaveh: the goals made lie inside the search's horizon; goals mined from games, read toward, held, and counted at a line's end (DIAGNOSIS and PROPOSED, main agent) | 2026-11-20 | 13 item 34 |
 | Goals beyond the search's horizon broken down into it; a reached subgoal is a training signal; subgoals mined as the tactics whose existence leads to gain; human data by rating; the ledger against forgetting | 2026-11-20 | 7 (before section 8), 13 item 35, docs/SPEC_LEDGER.md |
+| The small endings as the test of means and ends; the October measure of progress was not brought into the new engine (DIRECTION, Kaveh; ANSWER and READING, main agent) | 2026-11-20 | 7 (last block before section 8), ledger row 35 |
 | What was replaced | 2026-11-16 | 14 |
