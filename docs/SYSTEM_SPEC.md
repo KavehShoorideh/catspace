@@ -769,6 +769,21 @@ trying to accomplish. His questions: do we have these interfaces between the lay
 is done; is anything missing. The main agent's answer of the same day is in the conversation and in section 13 item 38; the
 layers of section 2 stand until he decides.
 
+**The layers, second pass** (Kaveh 2026-11-20, still thinking out loud; UNDER DISCUSSION, nothing built). His words in short:
+(a) the measure of progress and value are the same thing ("when you have a really high value, that means you've made a lot of
+progress"); it is layer 3, on top of the rules; it needs statistical information; the tactical layer is not statistical but
+needs the values to work, so the measure is the more fundamental and "the tactics is the tool by which we advance the measure of
+progress". (b) The estimate at a line's end is again the measure of progress; there has to be a prediction of the future, a
+layer on top of which goals are defined. (c) Memory is part of representation ("in order to represent, you need memory").
+(d) Claims belong to representation too: it must be able to speak with wildcards, any unit here, any place there, an edge or
+not, placeholders from which frames are built, "like chemistry has functional groups, the notion of R", said in the language of
+the graph. (e) The opponent and the strategic layer come last and are not decided. (f) Wake and sleep are two parts of this, and
+the whole stack is in Rust and runs very fast. READING of the main agent, to be confirmed: 1 representation (space, time,
+material, memory, claims with placeholders); 2 rules; 3 the measure of progress, which is value; 4 the tactical layer; 5 the
+prediction of the future; 6 goals and subgoals with the techniques; then the opponent, then the strategic layer. OPEN, raised
+with him the same day (section 13 item 39): how (a) stands with the rule that subgoals enter through the order and the choice
+and never the value; and where the frames found by learning live.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -943,6 +958,13 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     frames and the search in one crate; cs_decision holds goals, the rule for choosing and the wake in one crate; memory is its own
     crate; the opponent and the strategic layer have no crate). No layer has a test that says "this layer is done". Missing from his
     list, to be placed: value (results, worth), the estimator, sleep (learning), and the measure of what the whole does. His to decide.
+39. From Kaveh's second pass on the layers (2026-11-20, section 11, last block). Two questions of the main agent. (i) "Value is
+    the measure of progress": today the value is the chance of the game's result, fitted on results, and a subgoal or a measure may
+    order and choose but never enters a line's value (AGENTS rule 7; plan 79.17). PROPOSED reading that keeps both: one layer holds
+    every measure of progress, each toward a stated goal; value is the one whose goal is the result of the game; a measure toward a
+    subgoal still enters by the order and the choice. Say if instead a subgoal's measure may now enter a line's value. (ii) The
+    language of frames (placeholders) is representation; do the frames found by learning live in layer 3 with the statistics, or
+    in a layer of their own.
 28. From plan 79.09 (2026-11-19). Choices the builder made where the spec is silent, kept until you say otherwise: the steps before the
     search get what the search and its equal reading leave of the clock; a line cut by the clock is a gap and never a refutation; an
     estimate that did not reach a move does not decide. Three readings of your words that plan 79.10 builds on, mine: when every fix of
@@ -1092,5 +1114,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The small endings as the test of means and ends; the October measure of progress was not brought into the new engine (DIRECTION, Kaveh; ANSWER and READING, main agent) | 2026-11-20 | 7 (last block before section 8), ledger row 35 |
 | The go on the small endings: the order of the build; the table in sleep and in the measure only (READING) | 2026-11-20 | 7 (last block before section 8), 13 item 36 |
 | Plan 79.17: the measure of progress in the new engine, mined, held by the wake; two faults that stand | 2026-11-20 | 12, 13 item 37 |
-| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last block), 13 item 38 |
+| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last two blocks), 13 items 38 and 39 |
 | What was replaced | 2026-11-16 | 14 |
