@@ -28,7 +28,7 @@ from catspace.incubator.analyst.discovery import whole_play as WP
 
 MEASURE_ONE = ("whole_79_17", "full", "measure_one.json")
 MEASURE_TWO = ("whole_79_17", "full", "measure_two.json")
-SECONDS, DEPTH = 30.0, 4
+SECONDS, DEPTH = 600.0, 4
 HELD_PLIES = 6
 CARRIED_PLIES = 6
 CHAIN = "abcd"

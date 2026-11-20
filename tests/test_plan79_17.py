@@ -49,7 +49,7 @@ def test_the_measure_scripts_name_no_game_object_and_only_the_oracle_of_the_meas
 
 def test_the_wake_with_no_goal_given_does_not_know_the_oracle_and_the_old_player_is_unchanged():
     wake = (ROOT / "rust" / "engine" / "decision" / "src" / "wake.rs").read_text()
-    assert "measure: None" in wake
+    assert "memory: crate::memory::WakeMemory::default()" in wake          # plan 79.19: no goal given is a memory that holds nothing (the field `measure` moved into the two memories; `hold` is None by default)
     assert "MeasureGoal" in wake
 
 

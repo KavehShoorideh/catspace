@@ -18,6 +18,16 @@ use cs_tactics::sheet::Names;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// counts the allocations of this test binary (part D: a table read through the memory allocates nothing)
+struct Counting;
+thread_local! { static ALLOCS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }          // per thread: the other tests of this binary run beside this one
+unsafe impl std::alloc::GlobalAlloc for Counting {
+    unsafe fn alloc(&self, l: std::alloc::Layout) -> *mut u8 { ALLOCS.with(|c| c.set(c.get() + 1)); unsafe { std::alloc::System.alloc(l) } }
+    unsafe fn dealloc(&self, p: *mut u8, l: std::alloc::Layout) { unsafe { std::alloc::System.dealloc(p, l) } }
+}
+#[global_allocator]
+static COUNTING: Counting = Counting;
+
 fn world() -> (KernelGame, Static) {
     let g = KernelGame::new("chess", 518).unwrap();
     let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../rules/chess.gdl")).unwrap();
@@ -147,4 +157,28 @@ fn a_position_recreated_from_its_text_has_the_same_part_of_the_base_graph() {
     }
     println!("OBS 79.19 A1 base graph part: {n} positions recreated from their text, the part of the base graph equal in {same}");
     assert_eq!(n, same);
+}
+
+#[test]
+fn part_d_reading_a_table_through_the_memory_costs_a_type_check_and_no_allocation() {
+    // the old field was read by a reference; the memory's reader gives a reference too (the Arc is held, never cloned on a read): the cost of a read is the lookup by name and a type check, counted here
+    let m = WakeMemory::of(key(), parts(), None);
+    let n = 2_000_000u32;
+    let before = ALLOCS.with(|c| c.get());
+    let t0 = std::time::Instant::now();
+    let mut seen = 0u64;
+    for _ in 0..n {
+        seen += m.goal_table().map_or(0, |t| t.total.0 as u64) + m.record().map_or(0, |r| r.worth.len() as u64) + m.chances().map_or(0, |c| c.floor as u64) + m.previous().is_some() as u64;
+        std::hint::black_box(&m);
+    }
+    let per = t0.elapsed().as_nanos() as f64 / (n as f64 * 4.0);
+    let allocs = ALLOCS.with(|c| c.get()) - before;
+    let mut held = WakeMemory::of(key(), parts(), None);
+    held.hold = Some("measure".to_string());
+    let b2 = ALLOCS.with(|c| c.get());
+    let goal = held.measure();
+    let for_goal = ALLOCS.with(|c| c.get()) - b2;
+    println!("OBS 79.19 D read through the memory: {per:.1} ns a read (four reads a round, {n} rounds, sum {seen}); allocations during those reads: {allocs}; reading the goal to hold (parsing its term, once a decision, only when a goal is given): {for_goal} allocations, goal read {}", goal.is_some());
+    assert_eq!(allocs, 0, "a table read through the memory allocates nothing");
+    assert!(seen > 0);
 }

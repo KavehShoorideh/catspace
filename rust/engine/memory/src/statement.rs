@@ -223,6 +223,14 @@ mod tests {
         assert!(s.falls_by(&Change { keys: vec!["key:7".into()], ..Default::default() }) && !s.falls_by(&Change { keys: vec!["key:8".into()], ..Default::default() }));
     }
     #[test]
+    fn a_lemma_is_a_statement_whose_body_is_its_pattern_and_whose_head_is_what_it_says() {
+        let l = crate::lemma::Lemma { name: "l".into(), body: vec![Lit::pos("cell", &["?f", "?r", "us", "?k"])], response: Response { removed: vec![Lit::pos("cell", &["?f", "?r", "us", "?k"])], added: vec![Lit::pos("cell", &["?x", "?y", "us", "?k"])] }, stats: json!({}), meta: json!({}), suggest: false };
+        let s = Statement::from_lemma(&l, Standing::Proved("a_theorem".into()));
+        assert_eq!((s.id.as_str(), &s.pattern, &s.says, s.holder), ("l", &l.body, &Says::Proposes(l.response.clone()), Holder::Ours));
+        assert!(s.validate().is_ok());
+        assert_eq!(Statement::from_json(&s.to_json()).unwrap(), s);
+    }
+    #[test]
     fn the_position_text_round_trips() {
         let f = vec![Fact::new("cell", &["b", "(sq 1 2)", "us", "x y"]), Fact::new("cell", &["a", "1", "them", "k"])];
         let back = decode_facts(&encode_facts(&f)).unwrap();
