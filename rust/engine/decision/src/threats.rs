@@ -46,10 +46,13 @@ pub struct ThreatParams<'a> {
     pub goal: Option<Kind>, pub rows: Option<Vec<FrameRow>>, pub every_sides: Option<Vec<Role>>, pub stake: Option<&'a dyn Fn(&str, bool) -> Option<f64>>,
     /// PLAN 79.08 repair 2: the lines read from one position share one table (`cs_tactics::lines::*_in`), one search a (position, side). false (the default) is each line with a table of its own, as 79.06 read them.
     pub share_table: bool,
+    /// PLAN 79.09 B (SYSTEM_SPEC 7, the budget is questions; piece: the wake): the clock of this step (None: the fuses only, as before). With it every line read goes through a shared search that stops at it (a line it cuts is UNREAD, a gap, never a refutation), the rows are read in the order given (the caller's order of stake),
+    /// the forced end of the game, the unit of the largest stake, is read first, and what the clock did not reach is listed (`ConcreteList::unasked`, `not_asked`, `ThreatRow::responses_unasked`).
+    pub deadline: Option<Instant>,
 }
 
 impl<'a> Default for ThreatParams<'a> {
-    fn default() -> Self { ThreatParams { depth: DEPTH, fuse: FUSE, sweep_depth: SWEEP_DEPTH, sweep_fuse: SWEEP_FUSE, end_plies: END_PLIES, end_fuse: END_FUSE, goal: None, rows: None, every_sides: None, stake: None, share_table: false } }
+    fn default() -> Self { ThreatParams { depth: DEPTH, fuse: FUSE, sweep_depth: SWEEP_DEPTH, sweep_fuse: SWEEP_FUSE, end_plies: END_PLIES, end_fuse: END_FUSE, goal: None, rows: None, every_sides: None, stake: None, share_table: false, deadline: None } }
 }
 
 /// What each side is left with after a line (the taker's units lost and taken, and what is left once like for like cancels).
@@ -82,12 +85,14 @@ pub struct ThreatRow {
     pub outcome: Option<Outcome>, pub resolution: f64, pub pv_disagrees: bool, pub nodes: u64,
     pub responses: Vec<Response>, pub resp_read: usize, pub resp_unread: usize, pub resp_unread_moves: Vec<String>, pub resp_states: BTreeMap<&'static str, usize>, pub deferred: bool, pub response_ix: Vec<(Place, Place, u8, bool)>,
     pub why: Option<&'static str>, pub dropped_verdict: Option<VerdictKind>,
+    /// PLAN 79.09 B: the clock stopped before the responses of this row were read (they are not known, which is not the same as none)
+    pub responses_unasked: bool,
 }
 
 impl ThreatRow {
     pub fn new(owner: Role, unit: Option<UnitRef>, class: &str, by: Vec<UnitRef>, stake: Option<f64>) -> ThreatRow {
         ThreatRow { owner, unit, goal: false, every: false, class: class.to_string(), by, stake, verdict: VerdictKind::Unread, ended: ENDED[3], reason: String::new(), net: None, line: vec![], lead: None, first: None, two_moves: false, depth: 0, outcome: None, resolution: 0.0, pv_disagrees: false, nodes: 0,
-            responses: vec![], resp_read: 0, resp_unread: 0, resp_unread_moves: vec![], resp_states: BTreeMap::new(), deferred: false, response_ix: vec![], why: None, dropped_verdict: None }
+            responses: vec![], resp_read: 0, resp_unread: 0, resp_unread_moves: vec![], resp_states: BTreeMap::new(), deferred: false, response_ix: vec![], why: None, dropped_verdict: None, responses_unasked: false }
     }
 }
 
@@ -100,7 +105,7 @@ pub struct RoundCost { pub name: &'static str, pub seconds: f64, pub queries: u6
 pub struct ConcreteList {
     pub mover: Vec<ThreatRow>, pub other: Vec<ThreatRow>, pub exchange: Vec<ThreatRow>, pub dropped: Vec<ThreatRow>, pub goal: Vec<ThreatRow>,
     /// PLAN 79.07: the units the budget of questions did not ask (no row: a gap, never a refutation).
-    pub unasked: Vec<UnitRef>, pub dropped_counts: BTreeMap<String, usize>, pub resp_read: usize, pub resp_dropped: usize, pub resp_sweeps: usize, pub resp_reread: usize, pub unread_rows: usize, pub cost: Vec<RoundCost>,
+    pub unasked: Vec<UnitRef>, pub not_asked: Vec<String>, pub dropped_counts: BTreeMap<String, usize>, pub resp_read: usize, pub resp_dropped: usize, pub resp_sweeps: usize, pub resp_reread: usize, pub unread_rows: usize, pub cost: Vec<RoundCost>,
 }
 
 impl ConcreteList {
@@ -111,28 +116,30 @@ impl ConcreteList {
 // ------------------------------------------------------------------------------------------------------------------------------ the readings (one reader per position)
 
 /// The line reader of ONE position: the position, its pass, the judge made from the record. Every call is one query of the Python's modes; the counters are the cost. With `share` the lines read for one (position, side) go through one `Search` and so one table (PLAN 79.08 repair 2).
-struct Rd<'a, G: Game + Placed> { g: &'a G, s: &'a G::State, passed: Option<G::State>, judge: &'a Worth, mover: Role, queries: u64, nodes: u64, share: bool, shared: HashMap<(bool, Role), Search<'a, G, Worth>> }
+struct Rd<'a, G: Game + Placed> { g: &'a G, s: &'a G::State, passed: Option<G::State>, judge: &'a Worth, mover: Role, queries: u64, nodes: u64, share: bool, shared: HashMap<(bool, Role), Search<'a, G, Worth>>, stop: Option<Instant> }
 
 impl<'a, G: Game + Placed> Rd<'a, G> {
-    fn new(g: &'a G, s: &'a G::State, judge: &'a Worth, share: bool) -> Rd<'a, G> {
-        Rd { g, s, passed: g.pass(s), judge, mover: g.mover(s).unwrap_or(0), queries: 0, nodes: 0, share, shared: HashMap::new() }
+    fn new(g: &'a G, s: &'a G::State, judge: &'a Worth, share: bool, stop: Option<Instant>) -> Rd<'a, G> {
+        Rd { g, s, passed: g.pass(s), judge, mover: g.mover(s).unwrap_or(0), queries: 0, nodes: 0, share: share || stop.is_some(), shared: HashMap::new(), stop }
     }
+    /// the clock of the step has run out
+    fn expired(&self) -> bool { self.stop.is_some_and(|t| Instant::now() >= t) }
     /// The position the query is asked at: the position itself, or the one after the mover passes once (None where the game gives no pass).
     fn at(&self, pass: bool) -> Option<&G::State> { if pass { self.passed.as_ref() } else { Some(self.s) } }
     fn lines(&mut self, v: &[LineRead]) { self.queries += 1; self.nodes += v.iter().map(|r| r.nodes).sum::<u64>(); }
     fn takings(&mut self, pass: bool, place: Place, p: LineParams) -> Option<Vec<LineRead>> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = if self.share { let (g, j) = (self.g, self.judge); let sr = self.shared.entry((pass, me)).or_insert_with(|| Search::with_fuse(g, j, me, 1)); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_takings_in(sr, p0, place, me, p) } else { L::read_takings(self.g, self.judge, p0, place, me, p) };
+        let r = if self.share { let (g, j) = (self.g, self.judge); let stop = self.stop; let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x }); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_takings_in(sr, p0, place, me, p) } else { L::read_takings(self.g, self.judge, p0, place, me, p) };
         self.lines(&r); Some(r)
     }
     fn two_moves(&mut self, pass: bool, place: Place, p: LineParams) -> Option<Vec<LineRead>> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = if self.share { let (g, j) = (self.g, self.judge); let sr = self.shared.entry((pass, me)).or_insert_with(|| Search::with_fuse(g, j, me, 1)); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_two_moves_in(sr, p0, place, me, p) } else { L::read_two_moves(self.g, self.judge, p0, place, me, p) };
+        let r = if self.share { let (g, j) = (self.g, self.judge); let stop = self.stop; let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x }); let p0 = if pass { self.passed.as_ref()? } else { self.s }; L::read_two_moves_in(sr, p0, place, me, p) } else { L::read_two_moves(self.g, self.judge, p0, place, me, p) };
         self.lines(&r); Some(r)
     }
     fn best(&mut self, pass: bool, p: LineParams) -> Option<LineRead> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = L::read_best(self.g, self.judge, p0, me, p); self.lines(std::slice::from_ref(&r)); Some(r)
+        let r = L::read_best_by(self.g, self.judge, p0, me, p, self.stop); self.lines(std::slice::from_ref(&r)); Some(r)
     }
     /// The moves of the mover of the position (after the pass or not) that start and end as `ends` (all moves when None), each read two ways for the OTHER side, as the taker of the unit on `place`.
     fn afters(&mut self, pass: bool, ends: Option<(Place, Place)>, place: Place, p: LineParams) -> Option<Vec<After>> {
@@ -142,18 +149,19 @@ impl<'a, G: Game + Placed> Rd<'a, G> {
         let r: Vec<After> = if self.share {
             let j = self.judge;
             let p0 = if pass { self.passed.as_ref()? } else { self.s };
-            let sr = self.shared.entry((pass, me)).or_insert_with(|| Search::with_fuse(g, j, me, 1));
+            let stop = self.stop;
+            let sr = self.shared.entry((pass, me)).or_insert_with(|| { let mut x = Search::with_fuse(g, j, me, 1); if let Some(t) = stop { x.stop_at(t); } x });
             moves.iter().map(|m| L::read_after_in(sr, p0, m, place, me, p)).collect()
         } else { moves.iter().map(|m| L::read_after(g, self.judge, p0, m, place, me, p)).collect() };
         self.queries += 1; self.nodes += r.iter().map(|a| a.whole.nodes + a.takes.iter().map(|t| t.nodes).sum::<u64>()).sum::<u64>(); Some(r)
     }
-    fn forced(&mut self, pass: bool, end_plies: u32, end_fuse: u64) -> Option<Forced> {
+    fn forced(&mut self, pass: bool, end_plies: u32, end_fuse: u64, until: Option<Instant>) -> Option<Forced> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = L::forced_end(self.g, p0, me, end_plies, end_fuse); self.queries += 1; Some(r)
+        let r = L::forced_end_by(self.g, p0, me, end_plies, end_fuse, until); self.queries += 1; Some(r)
     }
     fn answers(&mut self, pass: bool, end_plies: u32, end_fuse: u64) -> Option<Vec<((Place, Place), String, u8)>> {
         let p0 = self.at(pass)?; let me = self.g.mover(p0)?;
-        let r = L::end_answers(self.g, p0, self.g.other(me), end_plies, end_fuse); self.queries += 1; Some(r)
+        let r = L::end_answers_by(self.g, p0, self.g.other(me), end_plies, end_fuse, self.stop); self.queries += 1; Some(r)
     }
 }
 
@@ -216,7 +224,7 @@ pub fn graph_rows<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Opti
     out
 }
 
-enum St { Pending, Dropped, Done }
+enum St { Pending, Dropped, Done, Skipped }
 struct Work { row: ThreatRow, taker_p: bool, owner_p: bool, st: St, notake: bool, pending: Vec<(u8, Vec<After>)>, resp: Vec<Response>, place: Place }
 
 fn side_is_mover(owner: Role, mover: Role) -> bool { owner == mover }
@@ -235,11 +243,26 @@ fn drop_row(list: &mut ConcreteList, why: &str, row: Option<(&ThreatRow, &'stati
     if let Some((r, code)) = row { let mut r = r.clone(); r.why = Some(code); list.dropped.push(r); }
 }
 
+/// The share of what is left of the clock that one forced-end read of a side may take (a named share, not tuned: two reads leave the rows more than two fifths).
+pub const FORCED_SHARE: f64 = 1.0 / 3.0;
+
+/// The forced end of the game for each side (the mover's reading first): a search cut by the clock is a gap and is listed as one.
+fn read_forced<G: Game + Placed>(rd: &mut Rd<G>, list: &mut ConcreteList, params: &ThreatParams, hits: &mut Vec<(bool, Forced)>) {
+    for p in [false, true] {
+        let until = params.deadline.map(|d| { let now = Instant::now(); if d <= now { now } else { now + (d - now).mul_f64(FORCED_SHARE) } });
+        match rd.forced(p, params.end_plies, params.end_fuse, until) {
+            Some(f @ (Forced::Proved { .. } | Forced::Suspected { .. })) => hits.push((p, f)),
+            Some(Forced::Gap { .. }) => drop_row(list, "a forced end of the game read out of budget (a gap, not a refutation)", None),
+            _ => {}
+        }
+    }
+}
+
 /// THE CONCRETE THREAT LIST of both sides (see the module doc). Rounds of line reads over all the rows; the rows come from `params.rows` (the frame read) or from the graph; then `every_unit` for `params.every_sides`.
 pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record, params: &ThreatParams) -> ConcreteList {
     let mut list = ConcreteList::default();
     let judge = Worth { name: "record".into(), table: rec.worth.clone(), ours_first: false };
-    let mut rd = Rd::new(g, s, &judge, params.share_table);
+    let mut rd = Rd::new(g, s, &judge, params.share_table, params.deadline);
     let mover = rd.mover;
     let kinds = g.kind_names();
     let lp = LineParams { depth: params.depth, fuse: params.fuse };
@@ -253,9 +276,12 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
         Work { row, taker_p: owner_is_mover, owner_p: !owner_is_mover, st: St::Pending, notake: false, pending: vec![], resp: vec![], place: c.unit.at }
     }).collect();
 
-    // ---- round 1: the taking lines of every row and the forced end of the game for each side
+    // ---- round 1: the taking lines of every row and the forced end of the game for each side (with a clock: the forced end first, it is the unit of the largest stake; then the rows in the order given, the clock stopping the reading: the rows not reached are listed, never refuted)
     let t0 = Instant::now(); let (q0, n0) = (rd.queries, rd.nodes);
+    let mut goal_hits: Vec<(bool, Forced)> = vec![];
+    if params.deadline.is_some() { read_forced(&mut rd, &mut list, params, &mut goal_hits); }
     for w in works.iter_mut() {
+        if rd.expired() { w.st = St::Skipped; if let Some(u) = w.row.unit { list.unasked.push(u); } continue; }
         match rd.takings(w.taker_p, w.place, lp) {
             None => { w.row.verdict = VerdictKind::Unread; w.row.ended = ENDED[3]; w.row.reason = "the side to move must answer: the game gives no pass, so what the other side would take cannot be read".into(); w.row.net = None; w.st = St::Done; }
             Some(reads) => match best_taking(&reads, rec) {
@@ -264,20 +290,14 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
             },
         }
     }
-    let mut goal_hits: Vec<(bool, Forced)> = vec![];
-    for p in [false, true] {
-        match rd.forced(p, params.end_plies, params.end_fuse) {
-            Some(f @ (Forced::Proved { .. } | Forced::Suspected { .. })) => goal_hits.push((p, f)),
-            Some(Forced::Gap { .. }) => drop_row(&mut list, "a forced end of the game read out of budget (a gap, not a refutation)", None),
-            _ => {}
-        }
-    }
+    if params.deadline.is_none() { read_forced(&mut rd, &mut list, params, &mut goal_hits); }
     list.add_cost("round 1: the taking lines and the forced end", t0, rd.queries - q0, rd.nodes - n0);
 
     // ---- round 2: threats in two moves (no taking move), the responses of CONFIRMED rows, the answers to a forced end of the game
     let t0 = Instant::now(); let (q0, n0) = (rd.queries, rd.nodes);
     let mut passed_value: HashMap<bool, Option<LineRead>> = HashMap::new();
     for w in works.iter_mut() {
+        if w.notake && rd.expired() { w.st = St::Skipped; if let Some(u) = w.row.unit { list.unasked.push(u); } continue; }
         if w.notake {
             let best = rd.two_moves(w.taker_p, w.place, lp).and_then(|rs| { let all: u64 = rs.iter().map(|r| r.nodes).sum(); best_taking(&rs, rec).map(|b| (b, all)) });
             match best {
@@ -291,6 +311,7 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
                 }
             }
         } else if matches!(w.st, St::Done) && w.row.verdict == VerdictKind::Confirmed && !w.row.two_moves {
+            if rd.expired() { w.row.responses_unasked = true; continue; }
             if !passed_value.contains_key(&w.taker_p) { let b = rd.best(w.taker_p, lp); passed_value.insert(w.taker_p, b); }
             for (fr, to, how, _um) in w.row.response_ix.clone() {
                 if let Some(afters) = rd.afters(w.owner_p, Some((fr, to)), w.place, LineParams { depth: params.depth, fuse: params.fuse }) { w.pending.push((how, afters)); }
@@ -321,6 +342,7 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
         *shared.entry((w.owner_p, w.place)).or_insert(0) += 1;
     }
     for &i in &plan3 {
+        if rd.expired() { works[i].row.responses_unasked = true; continue; }
         let (owner_p, taker_p, place) = (works[i].owner_p, works[i].taker_p, works[i].place);
         if !sweeps.contains_key(&(owner_p, place)) { let a = rd.afters(owner_p, None, place, sp); sweeps.insert((owner_p, place), a); }
         if !base.contains_key(&taker_p) { let b = rd.best(taker_p, sp); base.insert(taker_p, b); }
@@ -341,6 +363,7 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
     let t0 = Instant::now(); let (q0, n0) = (rd.queries, rd.nodes);
     let mut again_at: HashMap<(bool, (Place, Place), Place), Option<Vec<After>>> = HashMap::new();
     for &i in &plan3 {
+        if rd.expired() { works[i].row.responses_unasked = true; continue; }
         let (owner_p, taker_p, place) = (works[i].owner_p, works[i].taker_p, works[i].place);
         for k in 0..works[i].resp.len() {
             if works[i].resp[k].source != Source::Sweep || works[i].resp[k].state != RespState::Unread { continue; }
@@ -357,10 +380,11 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
     }
     list.add_cost("round 4: the cut moves read again", t0, rd.queries - q0, rd.nodes - n0);
 
+    let works_unasked_responses = works.iter().filter(|w| w.row.responses_unasked).count();
     // ---- assemble
     for w in works {
         let Work { mut row, st, resp, .. } = w;
-        if matches!(st, St::Dropped) { continue; }
+        if matches!(st, St::Dropped | St::Skipped) { continue; }
         if matches!(st, St::Pending) { drop_row(&mut list, "no reading", None); continue; }
         let v = row.verdict;
         if v == VerdictKind::Confirmed && row.two_moves { row.responses = vec![]; row.deferred = true; }
@@ -388,6 +412,11 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
             VerdictKind::Refuted | VerdictKind::Quiet => drop_row(&mut list, "the taker ends behind: the claim is refuted", Some((&row, "refuted"))),
             _ => { if v == VerdictKind::Unread { list.unread_rows += 1; } if side_is_mover(row.owner, mover) { list.mover.push(row) } else { list.other.push(row) } }
         }
+    }
+    if works_unasked_responses > 0 || !list.unasked.is_empty() {
+        let skipped = list.unasked.len();
+        let cut = works_unasked_responses;
+        list.not_asked.push(format!("the clock of the step ran out: {skipped} units not asked, the responses of {cut} rows not read"));
     }
     // ---- the goal rows (the end of the game forced, for either side)
     for (p, f, ans) in goal_resp {
@@ -467,7 +496,7 @@ fn quiet_list<G: Game + Placed>(g: &G, p0: &G::State) -> QuietList<G::Move> {
 pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut ConcreteList, sides: &[Role], rec: &Record, params: &ThreatParams, ask: &Ask) -> EveryOut {
     let t0 = Instant::now();
     let judge = Worth { name: "record".into(), table: rec.worth.clone(), ours_first: false };
-    let mut rd = Rd::new(g, s, &judge, params.share_table);
+    let mut rd = Rd::new(g, s, &judge, params.share_table, params.deadline);
     let mover = rd.mover;
     let kinds = g.kind_names();
     let part = st.position(g, s);
@@ -503,7 +532,7 @@ pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: 
     let mut lines: HashMap<(bool, usize), LineRead> = HashMap::new();
     let (mut used, mut progress) = (ask.used, ask.progress);
     for &i in &order {
-        let allowed = ask.budget.map_or(true, |b| used < b) || progress;
+        let allowed = (ask.budget.map_or(true, |b| used < b) || progress) && !rd.expired();
         let (row, taker_p) = &mut rows[i];
         let uref = row.unit.expect("a unit row");
         if !allowed { state[i] = 3; out.unasked.push(uref); continue; }
@@ -522,9 +551,12 @@ pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: 
                         Some((p0, me)) => {
                             let ql = quiet.entry(*taker_p).or_insert_with(|| Some(quiet_list(g, p0))).as_ref().unwrap();
                             let mut rs: Vec<LineRead> = vec![];
+                            let mut sr = Search::with_fuse(g, rd.judge, me, 1);
+                            if let Some(t) = params.deadline { sr.stop_at(t); }
                             for (k, (m, e, ends)) in ql.iter().enumerate() {
                                 if !ends.contains(&place) { continue; }
-                                if !lines.contains_key(&(*taker_p, k)) { let r = L::read_line(g, rd.judge, p0, m, me, lp); fresh += r.nodes; out.line_reads += 1; lines.insert((*taker_p, k), r); }
+                                if rd.stop.is_some_and(|t| Instant::now() >= t) { break; }
+                                if !lines.contains_key(&(*taker_p, k)) { let r = if params.deadline.is_some() { L::read_line_in(&mut sr, p0, m, me, lp) } else { L::read_line(g, rd.judge, p0, m, me, lp) }; fresh += r.nodes; out.line_reads += 1; lines.insert((*taker_p, k), r); }
                                 let mut r = lines[&(*taker_p, k)].clone();
                                 r.lead = Some(*e);
                                 rs.push(r);
@@ -554,6 +586,7 @@ pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: 
         else if side_is_mover(row.owner, mover) { list.mover.push(row) } else { list.other.push(row) }
     }
     list.unasked.extend(out.unasked.iter().copied());
+    if rd.expired() && !out.unasked.is_empty() { list.not_asked.push(format!("the clock of the step ran out in the reading of every unit: {} units not asked", out.unasked.len())); }
     out.read = n - out.unasked.len();
     out.nodes = rd.nodes;
     list.add_cost("every unit of the other side", t0, rd.queries, rd.nodes);

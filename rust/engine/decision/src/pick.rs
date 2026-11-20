@@ -57,10 +57,13 @@ fn events(before: &FxHashMap<usize, (u32, u32)>, after: &FxHashMap<usize, (u32, 
 }
 
 /// THE REASONS OF EACH NAMED MOVE and its score (the sum of the weights of the reasons it carries, in the reasons' own order).
-pub fn scores<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String]) -> Vec<MoveReasons> {
+pub fn scores<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String]) -> Vec<MoveReasons> { scores_by(st, g, s, goal, r, moves, None) }
+
+/// PLAN 79.09 B: `scores` in the order the moves are given, stopping at `stop` (the clock of the whole decision): the moves not reached have no score (the caller lists them: a gap, the estimate is not made, never a zero).
+pub fn scores_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String], stop: Option<std::time::Instant>) -> Vec<MoveReasons> {
     let want: FxHashMap<u64, usize> = r.keys.iter().enumerate().map(|(i, k)| (*k, i)).collect();
     let before = counts(st, g, s, goal, r, &want);
-    moves.iter().map(|name| {
+    moves.iter().take_while(|_| !stop.is_some_and(|t| std::time::Instant::now() >= t)).map(|name| {
         let Some(m) = g.find_move(s, name) else { return MoveReasons { mv: name.clone(), carried: vec![], score: 0.0 } };
         let a = g.apply(s, &m);
         let after = counts(st, g, &a, goal, r, &want);

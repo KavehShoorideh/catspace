@@ -50,7 +50,7 @@ fn keys_of(st: &Static, g: &KernelGame, s: &<KernelGame as Game>::State) -> Vec<
 fn frame_params(g: &KernelGame) -> FrameReadParams {
     let worth: HashMap<&str, i64> = [("p", 475), ("n", 1216), ("b", 1301), ("r", 1945), ("q", 3583)].into_iter().collect();
     let kv: Vec<i64> = g.kind_names().iter().map(|k| worth.get(k.as_str()).copied().unwrap_or(10_000)).collect();
-    FrameReadParams { max_size: 3, fuse: 1_500, row_fuse: 30_000, answer_fuse: 1_500, conditional: true, kv: Some(kv), bands: None, rules: Rules { settle: true, progress: true, cause: true, band: true, root_cap: 0 } }
+    FrameReadParams { max_size: 3, fuse: 1_500, row_fuse: 30_000, answer_fuse: 1_500, conditional: true, kv: Some(kv), bands: None, rules: Rules { settle: true, progress: true, cause: true, band: true, root_cap: 0 }, deadline: None }
 }
 
 // ---------------------------------------------------------------- B1 the frame read
@@ -65,7 +65,7 @@ fn b1_the_rows_of_a_hand_built_frame_read_follow_the_threat_list_rule() {
     let small = ThreatFrame { id: "f1".into(), members: vec![(false, n, c4), (true, b, e2)], places: vec![c4, e2], unread: 0, claims: vec![ThreatClaim { member: 0, class: 4, basis: 255, take_basis: 255, bearers: vec![(b, e2)], answers: vec![], tried: 0, unread: 0 }] };
     let wide = ThreatFrame { id: "f2".into(), members: vec![(false, n, c4), (true, b, e2), (false, p, a7)], places: vec![c4, e2, a7], unread: 0,
         claims: vec![ThreatClaim { member: 0, class: 4, basis: 255, take_basis: 255, bearers: vec![(b, e2)], answers: vec![(c4, a7, 1, true)], tried: 3, unread: 0 }, ThreatClaim { member: 2, class: 1, basis: 0, take_basis: 255, bearers: vec![], answers: vec![], tried: 0, unread: 0 }] };
-    let raw = ThreatFrames { frames: vec![small, wide], questions: 7 };
+    let raw = ThreatFrames { frames: vec![small, wide], questions: 7, unread_frames: vec![], unbuilt_seeds: 0 };
     let out = rows_of(&raw, me, other, g.kind_names().len(), None, &g.kind_names());
     assert_eq!(out.rows.len(), 1, "a unit read safe in every frame makes no row");
     let r = &out.rows[0];

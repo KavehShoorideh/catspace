@@ -374,17 +374,25 @@ pub fn q_in_contact(a: &QFrame, b: &QFrame, part: &PositionPart) -> bool {
 
 /// FRAMES OF SEVERAL SEEDS, joined where in contact, split where a join is too large, and none read with a unit in common: [(frame, seeds joined)], with the count of frames dropped for a shared unit
 /// and of joins refused (split instead).
-pub struct Built { pub frames: Vec<QFrame>, pub refused: Vec<String>, pub split_joins: u32, pub dropped_shared: u32 }
+pub struct Built { pub frames: Vec<QFrame>, pub refused: Vec<String>, pub split_joins: u32, pub dropped_shared: u32,
+    /// PLAN 79.09 B: the seeds the clock did not reach (no frame built for them: a gap)
+    pub unbuilt: usize }
 
 pub fn build_frames<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &[Seed]) -> Built { build_frames_cap(st, g, s, seeds, ROOT_CAP) }
 
 /// `build_frames` with the cap of members at the root (78.60 F). Below ROOT_CAP a seed too large for the cap is SPLIT into one frame per seed unit (each read with what bears on it, or refused as too large).
-pub fn build_frames_cap<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &[Seed], cap: usize) -> Built {
+pub fn build_frames_cap<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &[Seed], cap: usize) -> Built { build_frames_by(st, g, s, seeds, cap, None) }
+
+/// PLAN 79.09 B: `build_frames_cap` that stops at `deadline` (the clock of the step): the seeds are built in the order given and the joining stops; the seeds not built are counted in `unbuilt`.
+pub fn build_frames_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &[Seed], cap: usize, deadline: Option<std::time::Instant>) -> Built {
+    let expired = || deadline.is_some_and(|d| std::time::Instant::now() >= d);
+    let mut unbuilt = 0usize;
     let part = st.position(g, s);
     let mut frames: Vec<QFrame> = vec![];
     let mut refused = vec![];
     let small = cap != 0 && cap < ROOT_CAP;
     for sd in seeds {
+        if expired() { unbuilt += 1; continue; }
         match QFrame::new_cap(st, g, s, sd, cap) {
             Ok(f) => { if !frames.iter().any(|x| x.id == f.id) { frames.push(f) } }
             Err(FrameErr::TooLarge(n)) if small && sd.units.len() > 1 => {
@@ -401,6 +409,7 @@ pub fn build_frames_cap<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seed
     let mut stuck_pairs: FxHashSet<(String, String)> = FxHashSet::default();
     'again: loop {
         for i in 0..frames.len() {
+            if expired() { break 'again; }
             for j in i + 1..frames.len() {
                 if stuck_pairs.contains(&(frames[i].id.clone(), frames[j].id.clone())) { continue; }
                 if q_in_contact(&frames[i], &frames[j], &part) {
@@ -424,7 +433,7 @@ pub fn build_frames_cap<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seed
     for f in frames {
         if out.iter().any(|o| o.members.iter().any(|c| f.members.contains(c))) { dropped_shared += 1; } else { out.push(f); }
     }
-    Built { frames: out, refused, split_joins, dropped_shared }
+    Built { frames: out, refused, split_joins, dropped_shared, unbuilt }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------ the reading
@@ -524,6 +533,8 @@ pub struct QReader<'a, G: Game + Placed> {
     pub quiet: u8,
     pub ext: i8,
     nodes_left: u64,
+    /// PLAN 79.09 B: the clock of the steps before the search (None: no clock but the fuse): a question asked after it is UNREAD, a gap, never a refutation.
+    pub deadline: Option<std::time::Instant>,
     parts: FxHashMap<u64, Rc<PositionPart>>,
     exp: FxHashMap<(u64, u64, u64), Rc<Exp<G>>>,
     memo: FxHashMap<MKey, Rc<Vec<QP>>>,
@@ -563,7 +574,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         for (c, id) in &ident { omask[c.0.min(1)] |= 1u64 << id; }
         let seed_ids: Vec<u8> = frame.seed.units.iter().filter_map(|c| id_at(&ident, c)).collect();
         let root_p = PlaceSet::from_places(np, frame.places.iter().copied());
-        QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np, kv: None, rules: Rules::default(), bands: None, vmode: frame.mode, path: vec![], trap_memo: FxHashMap::default(), causes: vec![] }
+        QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, deadline: None, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np, kv: None, rules: Rules::default(), bands: None, vmode: frame.mode, path: vec![], trap_memo: FxHashMap::default(), causes: vec![] }
     }
 
     /// The identity of a root member (index into `frame.members`).
@@ -777,7 +788,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
     fn solve_inner(&mut self, s: &G::State, ident: &Ident, jm: u64, xr: Role, left: i8, quiet: u8, owed: u8, cr: QPair, goal: Goal) -> Rc<Vec<QP>> {
         let mk: MKey = (self.g.key(s), hash_ident(ident), xr as u8, left, quiet, owed, credit_key(cr), goal.code(), jm);
         if let Some(v) = self.memo.get(&mk) { return v.clone(); }
-        if self.nodes_left == 0 { self.stats.unread += 1; return Rc::new(vec![QP { p: QPair::BOTTOM, fl: F_UNREAD, c: 0 }]); }
+        if self.nodes_left == 0 || self.deadline.is_some_and(|d| std::time::Instant::now() >= d) { self.stats.unread += 1; return Rc::new(vec![QP { p: QPair::BOTTOM, fl: F_UNREAD, c: 0 }]); }
         self.nodes_left -= 1;
         self.spent += 1;
         self.stats.questions += 1;
@@ -1085,8 +1096,13 @@ pub fn claims_q_with<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G
 
 /// `claims_q_with` and the rules of 78.60 (settled ends, progress, named causes, the band of the estimate). With every rule off this is the 78.58 read.
 #[allow(clippy::too_many_arguments)]
-pub fn claims_q_rules<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64, kv: Option<Rc<Vec<Val>>>, rules: Rules, bands: Option<Rc<Vec<(Val, Val)>>>) -> QReport {
+pub fn claims_q_rules<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64, kv: Option<Rc<Vec<Val>>>, rules: Rules, bands: Option<Rc<Vec<(Val, Val)>>>) -> QReport { claims_q_rules_by(g, st, frame, s, conditional, fuse, kv, rules, bands, None) }
+
+/// PLAN 79.09 B: `claims_q_rules` that stops at `deadline` (the clock of the steps before the search): the questions after it are unread.
+#[allow(clippy::too_many_arguments)]
+pub fn claims_q_rules_by<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64, kv: Option<Rc<Vec<Val>>>, rules: Rules, bands: Option<Rc<Vec<(Val, Val)>>>, deadline: Option<std::time::Instant>) -> QReport {
     let mut rd = QReader::new(g, st, frame, s);
+    rd.deadline = deadline;
     rd.fuse = fuse;
     rd.kv = kv;
     rd.rules = rules;

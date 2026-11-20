@@ -243,8 +243,12 @@ pub fn read_after_in<G: Game + Placed, J: Judge>(sr: &mut Search<'_, G, J>, s: &
 }
 
 /// The best line of the mover of `s` (the ledger search from `s` itself, one ply deeper than a line read after its first move): what `me` can count on if the position is its to play.
-pub fn read_best<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me: Role, p: LineParams) -> LineRead {
+pub fn read_best<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me: Role, p: LineParams) -> LineRead { read_best_by(g, judge, s, me, p, None) }
+
+/// PLAN 79.09 B: `read_best` that stops at `stop` (a line the clock cuts is `cut`: a gap, never a refutation).
+pub fn read_best_by<G: Game + Placed, J: Judge>(g: &G, judge: &J, s: &G::State, me: Role, p: LineParams, stop: Option<std::time::Instant>) -> LineRead {
     let mut sr = Search::with_fuse(g, judge, me, p.fuse * 4);          // (the baseline of every response: read once, with more fuse than a line)
+    if let Some(t) = stop { sr.stop_at(t); }
     let line = sr.run(s, p.depth + 1);
     let first = line.first_index.and_then(|i| g.moves(s).get(i).map(|m| g.move_ends(s, m))).unwrap_or((0, 0));
     let mut events: Vec<(bool, String)> = line.lost.iter().filter_map(|(o, e)| lost_kind(e).map(|k| (*o == me, k.to_string()))).collect();
@@ -294,9 +298,13 @@ pub enum Forced { Proved { depth: u32, first: (Place, Place), line: Vec<String> 
 
 /// Does `me`, to move at `s`, force the end of the game within `max_plies` plies? The search that counts nothing (`ledger::Nothing`: only the game's own end has a value, 78.61) is deepened ply by ply; a
 /// win found is then confirmed by the exact forcing read on its first move.
-pub fn forced_end<G: Game + Placed>(g: &G, s: &G::State, me: Role, max_plies: u32, fuse: u64) -> Forced {
+pub fn forced_end<G: Game + Placed>(g: &G, s: &G::State, me: Role, max_plies: u32, fuse: u64) -> Forced { forced_end_by(g, s, me, max_plies, fuse, None) }
+
+/// PLAN 79.09 B: `forced_end` that stops at `stop` (the clock of the steps before the search): a search the clock cuts before the plies asked is a `Gap`, a gap never a refutation.
+pub fn forced_end_by<G: Game + Placed>(g: &G, s: &G::State, me: Role, max_plies: u32, fuse: u64, stop: Option<std::time::Instant>) -> Forced {
     let judge = crate::ledger::Nothing;
     let mut sr = Search::with_fuse(g, &judge, me, fuse);
+    if let Some(t) = stop { sr.stop_at(t); }
     let line = sr.run(s, max_plies as i32);
     if line.value >= WIN - 1000 {
         let plies = line.depth as u32;
@@ -306,7 +314,7 @@ pub fn forced_end<G: Game + Placed>(g: &G, s: &G::State, me: Role, max_plies: u3
         let Some(m) = first else { return Forced::Gap { depth: plies } };
         let ends = g.move_ends(s, &m);
         let c = g.apply(s, &m);
-        let mut b = Budget::new(1e9, fuse);
+        let mut b = Budget::new(stop.map_or(1e9, |t| t.saturating_duration_since(std::time::Instant::now()).as_secs_f64()), fuse);
         let sure = match g.outcome(&c) {
             Some(v) => Ok(won(&v, me)),
             None => (|| -> Result<bool, crate::Cut> {
@@ -327,15 +335,19 @@ pub fn forced_end<G: Game + Placed>(g: &G, s: &G::State, me: Role, max_plies: u3
 
 /// The moves of the mover of `s` after which the other side (`attacker`) no longer forces the end within `max_plies` plies (the same search): (ends, name, verdict) with verdict 0 = answers it, 1 = still
 /// forced, 2 = the fuse cut the reading (unread), 3 = the move itself ends the game against the mover.
-pub fn end_answers<G: Game + Placed>(g: &G, s: &G::State, attacker: Role, max_plies: u32, fuse: u64) -> Vec<((Place, Place), String, u8)> {
+pub fn end_answers<G: Game + Placed>(g: &G, s: &G::State, attacker: Role, max_plies: u32, fuse: u64) -> Vec<((Place, Place), String, u8)> { end_answers_by(g, s, attacker, max_plies, fuse, None) }
+
+/// PLAN 79.09 B: `end_answers` that stops at `stop`: the moves not reached are `2` (unread), a gap.
+pub fn end_answers_by<G: Game + Placed>(g: &G, s: &G::State, attacker: Role, max_plies: u32, fuse: u64, stop: Option<std::time::Instant>) -> Vec<((Place, Place), String, u8)> {
     let judge = crate::ledger::Nothing;
     let mut out = vec![];
     for r in g.moves(s) {
         let c = g.apply(s, &r);
         let ends = g.move_ends(s, &r);
         let name = g.move_name(s, &r);
-        let v = if let Some(o) = g.outcome(&c) { if won(&o, attacker) { 3 } else { 0 } } else {
+        let v = if let Some(o) = g.outcome(&c) { if won(&o, attacker) { 3 } else { 0 } } else if stop.is_some_and(|t| std::time::Instant::now() >= t) { 2 } else {
             let mut sr = Search::with_fuse(g, &judge, attacker, fuse);
+            if let Some(t) = stop { sr.stop_at(t); }
             let line = sr.run(&c, max_plies.saturating_sub(1).max(1) as i32);
             if line.value >= WIN - 1000 { 1 } else if sr.cut() && line.depth < max_plies.saturating_sub(1).max(1) as i32 { 2 } else { 0 }
         };

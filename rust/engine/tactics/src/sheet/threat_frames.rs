@@ -34,7 +34,9 @@ pub fn unit_class(rep: &q::QReport, id: usize, owner: usize) -> (u8, u8) {
 
 /// The parameters of the frame read: the largest seed (`max_size`), the fuse of a frame's questions and of a row (`fuse`, `row_fuse`), of the answers (`answer_fuse`), whether conditional claims are read, the learned kind values and bands (None: no exchange), the rules of a line's end.
 #[derive(Debug, Clone, Default)]
-pub struct FrameReadParams { pub max_size: usize, pub fuse: u64, pub row_fuse: u64, pub answer_fuse: u64, pub conditional: bool, pub kv: Option<Vec<i64>>, pub bands: Option<Vec<(i64, i64)>>, pub rules: q::Rules }
+pub struct FrameReadParams { pub max_size: usize, pub fuse: u64, pub row_fuse: u64, pub answer_fuse: u64, pub conditional: bool, pub kv: Option<Vec<i64>>, pub bands: Option<Vec<(i64, i64)>>, pub rules: q::Rules,
+    /// PLAN 79.09 B: the clock of this step (None: the fuses only). With it the frames are read in the order of the learned worth of their largest member (`kv`), the greater first, and the read stops at it: what it did not reach is listed in `ThreatFrames::unread_frames` (a gap, never a refutation).
+    pub deadline: Option<std::time::Instant> }
 
 /// One claim of the threat list: a member of a frame that the other side bears on (or that the read holds lost, both, a threat or conditional): [member index, class, basis], the take basis, the units that bear on it as (kind, place), the answers found as (from, to, how, the unit moves), the candidates tried and the unread.
 #[derive(Debug, Clone)]
@@ -44,7 +46,9 @@ pub struct ThreatClaim { pub member: u16, pub class: u8, pub basis: u8, pub take
 pub struct ThreatFrame { pub id: String, pub members: Vec<(bool, Kind, Place)>, pub places: Vec<Place>, pub unread: u64, pub claims: Vec<ThreatClaim> }
 /// The frames read at one position and the questions asked.
 #[derive(Debug, Clone, Default)]
-pub struct ThreatFrames { pub frames: Vec<ThreatFrame>, pub questions: u64 }
+pub struct ThreatFrames { pub frames: Vec<ThreatFrame>, pub questions: u64,
+    /// PLAN 79.09 B: the frames the clock did not reach (their ids), and the members of the frames it cut part way (claims read after it are unread)
+    pub unread_frames: Vec<String>, pub unbuilt_seeds: usize }
 
 /// THE FRAME READ OF ONE POSITION (the body of `questions_threats`, plan 78.70 A and B: the frame as built, and the smallest frame of the same seed when that is a strict part of it). Empty when the learned seeds name nothing on the board.
 pub fn threat_frames<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, want: &FxHashMap<u64, u32>, p: &FrameReadParams) -> ThreatFrames {
@@ -53,11 +57,20 @@ pub fn threat_frames<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: O
     let part = st.position(g, s);
     let b = Board::new(st, &part, goal);
     let levels: Vec<u8> = (0..patterns::LEVELS).collect();
-    let seeds: Vec<Seed> = super::frames::seeds_of_board(&b, &part, p.max_size, &levels, want).into_iter().map(|x| x.1).collect();
+    let (found, cut) = super::frames::seeds_of_board_until(&b, &part, p.max_size, &levels, want, p.deadline);
+    out.unbuilt_seeds = usize::from(cut);
+    let seeds: Vec<Seed> = found.into_iter().map(|x| x.1).collect();
     if seeds.is_empty() { return out; }
-    let built = q::build_frames_cap(st, g, s, &seeds, p.rules.root_cap);
+    let mut seeds = seeds;
+    let worth = |c: &(usize, cs_game::placed::Kind, Place)| p.kv.as_ref().and_then(|kv| kv.get(c.1 as usize).copied()).unwrap_or(0);
+    if p.deadline.is_some() { seeds.sort_by_key(|sd| std::cmp::Reverse(sd.units.iter().map(&worth).max().unwrap_or(0))); }
+    let mut built = q::build_frames_by(st, g, s, &seeds, p.rules.root_cap, p.deadline);
+    out.unbuilt_seeds += built.unbuilt;
+    if p.deadline.is_some() { built.frames.sort_by_key(|f| std::cmp::Reverse(f.members.iter().map(&worth).max().unwrap_or(0))); }
+    let expired = || p.deadline.is_some_and(|d| std::time::Instant::now() >= d);
     let mut row_q = 0u64;
     for f0 in &built.frames {
+        if expired() { out.unread_frames.push(f0.id.clone()); continue; }
         // THE WIDENING (78.70 B): the frame as built, and the SMALLEST frame of the same seed (its units and what bears on them, the 78.60 F mode) when that is a strict part of it
         let mut todo: Vec<(QFrame, bool)> = vec![(f0.clone(), false)];
         if let Ok(sm) = QFrame::new_cap(st, g, s, &f0.seed, q::ROOT_CAP - 1) {
@@ -67,10 +80,11 @@ pub fn threat_frames<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: O
             if row_q >= p.row_fuse { continue; }
             let kv = p.kv.clone().map(Rc::new);
             let bands = p.bands.clone().map(Rc::new);
-            let rep = q::claims_q_rules(g, st, f, s, p.conditional, p.fuse, kv.clone(), p.rules, bands.clone());
+            let rep = q::claims_q_rules_by(g, st, f, s, p.conditional, p.fuse, kv.clone(), p.rules, bands.clone(), p.deadline);
             row_q += rep.stats.questions;
             let mut rd = QReader::new(g, st, f, s);
             rd.fuse = p.answer_fuse;
+            rd.deadline = p.deadline;
             rd.kv = kv;
             rd.rules = p.rules;
             rd.bands = bands;
@@ -84,7 +98,7 @@ pub fn threat_frames<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: O
                 bearers.sort();
                 if bearers.is_empty() && !matches!(class, 0 | 2 | 4 | 5) { continue; }
                 let mut ans = (vec![], 0u32, 0u32);
-                if class != 0 && row_q < p.row_fuse {
+                if class != 0 && row_q < p.row_fuse && !expired() {
                     let before = rd.stats.questions;
                     if let Some(a) = rd.answers(s, owner, rd.member_id(i)) {
                         ans = (a.moves.iter().map(|m| (m.ends.0, m.ends.1, m.how, m.unit_moves)).collect(), a.tried, a.unread);

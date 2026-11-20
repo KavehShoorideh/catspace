@@ -45,7 +45,7 @@ fn keys_of(st: &Static, g: &KernelGame, s: &<KernelGame as Game>::State) -> Vec<
 fn frame_read(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State) -> FrameRead {
     let worth: HashMap<&str, i64> = [("p", 475), ("n", 1216), ("b", 1301), ("r", 1945), ("q", 3583)].into_iter().collect();
     let kv: Vec<i64> = g.kind_names().iter().map(|k| worth.get(k.as_str()).copied().unwrap_or(10_000)).collect();
-    FrameRead { want: keys_of(st, g, s), params: FrameReadParams { max_size: 3, fuse: 1_500, row_fuse: 30_000, answer_fuse: 1_500, conditional: true, kv: Some(kv), bands: None, rules: Rules { settle: true, progress: true, cause: true, band: true, root_cap: 0 } } }
+    FrameRead { want: keys_of(st, g, s), params: FrameReadParams { max_size: 3, fuse: 1_500, row_fuse: 30_000, answer_fuse: 1_500, conditional: true, kv: Some(kv), bands: None, rules: Rules { settle: true, progress: true, cause: true, band: true, root_cap: 0 }, deadline: None } }
 }
 fn reasons_of(st: &Static, g: &KernelGame, s: &<KernelGame as Game>::State) -> Reasons {
     let keys = keys_of(st, g, s);
@@ -166,10 +166,12 @@ fn d_obs_the_time_of_the_whole_decision_by_step() {
     for (fen, secs) in [(POSITIONS[0], 0.2), (POSITIONS[1], 0.2), (POSITIONS[0], 2.0)] {
         let s = state(fen);
         let j = judge();
+        let params = whole(&g, &st, &s, secs, 64);
         let t0 = std::time::Instant::now();
-        let d = decide(&st, &g, &s, &[], &j, &whole(&g, &st, &s, secs, 64));
+        let d = decide(&st, &g, &s, &[], &j, &params);
+        let wall = t0.elapsed().as_secs_f64();
         let steps: Vec<String> = d.contributions.iter().map(|c| format!("step {} {} {:.3} s ({})", c.step, c.piece, c.seconds, c.note)).collect();
-        println!("OBS whole decision 79.08: clock {secs} s, one thread, wall {:.3} s, move {:?}, depth {}, {} nodes; by step: {}", t0.elapsed().as_secs_f64(), d.mv, d.depth, d.nodes, steps.join("; "));
+        println!("OBS whole decision 79.09: clock {secs} s, one thread, wall {:.3} s, move {:?}, depth {}, {} nodes; by step: {}", wall, d.mv, d.depth, d.nodes, steps.join("; "));
         let old = {
             let me = g.mover(&s).unwrap();
             let t1 = std::time::Instant::now();
@@ -177,7 +179,24 @@ fn d_obs_the_time_of_the_whole_decision_by_step() {
             let l = ls.run(&s, 64);
             (l.first, l.depth, t1.elapsed().as_secs_f64())
         };
-        println!("OBS old player 79.08: clock {secs} s: move {:?}, depth {}, {:.3} s", old.0, old.1, old.2);
+        println!("OBS old player 79.09: clock {secs} s: move {:?}, depth {}, {:.3} s", old.0, old.1, old.2);
         assert!(d.mv.is_some());
+        // PLAN 79.09 B: the clock is held, here with every key of the board as a learned seed (far more than the learned twelve): the frame read stops at its share
+        assert!(wall <= secs * 1.25 + 0.03, "the whole decision ran past its clock");
+        assert!(d.contributions.iter().any(|c| c.step == 2 && c.note.contains("not reached")), "and the frame read says what it did not reach");
     }
+}
+
+#[test]
+fn d_the_chain_of_the_goal_kind_is_asked_first_and_the_log_says_which_goal_is_the_subgoal_and_why() {
+    let (g, st) = world();
+    let s = state(POSITIONS[1]);
+    let d = decide(&st, &g, &s, &[], &judge(), &whole(&g, &st, &s, 5.0, 4));
+    let l = &d.log;
+    let cg = l.chosen_goal.as_ref().expect("a goal of ours is the subgoal of the moment: a named move serves it");
+    assert!(cg.chosen && cg.fixes.iter().flat_map(|f| f.1.iter()).any(|m| d.named_mine.contains(m)), "and a named move serves it");
+    // the chain of the goal kind is the first: the subgoal is the nearest goal of the chain whose top is the goal unit (a stopper below it, or the goal unit itself)
+    assert!(cg.goal_unit || l.far_goal.as_ref().is_some_and(|f| f.contains("king")), "{:?} {:?}", cg.target, l.far_goal);
+    assert!(!d.chain.is_empty() && d.chain.iter().all(|c| !c.ended.trim().is_empty()), "no claim without the reason it ended");
+    println!("OBS chain first 79.09: subgoal {} (parent {:?}); far goal {:?}; why: {}", cg.target, cg.parent, l.far_goal, l.why);
 }
