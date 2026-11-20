@@ -71,6 +71,8 @@ pub struct Goal {
     pub goal_unit: bool, pub escapes: Vec<Escape>,
     /// THE RECURSION (79.07 amendment): a stopper of the other side of an unmet fact is itself a target with a goal of its own (the subgoal). `parent`: the target of the goal it would unblock, `via`: the fact of that goal it stops, `depth`: 0 for a goal of a unit asked.
     pub parent: Option<UnitRef>, pub via: Option<&'static str>, pub depth: u8,
+    /// PLAN 79.14 C: every fact the reading could decide is met (none is unmet or open; a fact the clock cut, which no line decided, does not stop it): the threat can be carried out now
+    pub met: bool,
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------ the position as the proposer reads it
@@ -286,7 +288,7 @@ fn finish<G: Game + Placed>(b: &Bld<G>, side: Role, target: UnitRef, source: &st
     let own_moves = layer_one(&facts, &steps);
     let n_unmet = unmet.len();
     Goal { side, target, source: source.to_string(), unmet, fixes, key: keys.join("|"), stake: row.and_then(|r| r.stake), lead: if two { line.first().cloned() } else { None }, line, two_moves: two, verdict: row.map(|r| r.verdict), net: row.and_then(|r| r.net), stoppers, fix_set, steps, n_unmet,
-        every: row.is_some_and(|r| r.every), own_moves, goal_unit, escapes: vec![], parent: None, via: None, depth: 0, facts }
+        every: row.is_some_and(|r| r.every), own_moves, goal_unit, escapes: vec![], parent: None, via: None, depth: 0, met: !facts.iter().any(|x| matches!(x.status, Status::Unmet | Status::Open)) && !facts.is_empty(), facts }
 }
 
 /// The source of a goal from its row (subgoal_goals._source_of): None for a threat that already works.
@@ -498,7 +500,11 @@ fn goal_unit_goal<G: Game + Placed>(b: &Bld<G>, list: &ConcreteList, s: &G::Stat
 
 /// THE GOALS OF ONE SIDE from a concrete list (subgoal_goals.goals): one per threat of `side` that does not work yet (the rows of the list, `every_unit`'s included) and the goal unit's; ordered by the fewest unmet facts, then the larger stake (a goal with no stake first), then the place.
 /// `goal` is the goal kind (no row, no removal of it). `s` is the position the list was read at; the side not to move is read after the game's pass (no goals where the game gives none).
-pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>, depth: u8, cap: usize) -> Vec<Goal> {
+pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>, depth: u8, cap: usize) -> Vec<Goal> { goals_with(st, g, s, list, side, goal, depth, cap, false) }
+
+/// PLAN 79.14 C: `goals` that, with `keep_met`, gives a goal whose every fact is met a fix of its own: the legal moves of the side that take its target (the move that carries the threat out), so that the goal is named like any other, and nearest of all (nothing is in its way). `keep_met` false: `goals`.
+#[allow(clippy::too_many_arguments)]
+pub fn goals_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>, depth: u8, cap: usize, keep_met: bool) -> Vec<Goal> {
     let w = Words { roles: g.roles(), kinds: g.kind_names(), places: g.place_names() };
     let Some(s_t) = view_state(g, s, side) else { return vec![] };
     let v = view(st, g, &s_t, &w);
@@ -548,6 +554,12 @@ pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &Concrete
             let mut row = ThreatRow::new(b.owner, Some(u), "stopper", vec![], None);
             row.verdict = VerdictKind::Confirmed;
             if let Some(mut sg) = build_goal(&b, &row, "stopper") { sg.parent = Some(par); sg.via = Some(via); sg.depth = lvl + 1; out.push(sg); made += 1; }
+        }
+    }
+    if keep_met {
+        for gl in out.iter_mut().filter(|x| x.met && x.fixes.is_empty()) {
+            let takes: Vec<String> = g.moves(&b.s_t).iter().filter(|m| g.move_ends(&b.s_t, m).1 == gl.target.at && !g.captured(&b.s_t, m).is_empty()).map(|m| g.move_name(&b.s_t, m)).collect();
+            if !takes.is_empty() { gl.fixes = vec![Fix { kind: FixKind::FirstMove, against: vec![], to: None, steps: Some(0), moves: takes, words: "carry the threat out: take the target" }]; }
         }
     }
     out
@@ -684,8 +696,12 @@ pub fn named_moves<G: Game + Placed>(g: &G, s: &G::State, goals: &[Goal], defenc
 #[derive(Debug, Clone)]
 pub struct GoalParams { pub budget: usize, pub sides: Option<Vec<Role>>, pub depth: u8,
     /// PLAN 79.08 B (the carry): rows of the last decision whose read set did not change; put into the list as they were, not read again
-    pub held: Vec<crate::carry::CarriedRow> }
-impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None, depth: DEPTH, held: vec![] } } }
+    pub held: Vec<crate::carry::CarriedRow>,
+    /// PLAN 79.14 B: the rows of the last decision's every-unit reading and what the two plies since touched: a unit whose row stands is not asked again (None: every unit is asked)
+    pub held_units: Option<(Vec<crate::carry::CarriedRow>, cs_tactics::sheet::delta::Touch)>,
+    /// PLAN 79.14 C: a goal whose every fact is met is kept and given the move that carries it out (`goals_with`)
+    pub keep_met: bool }
+impl Default for GoalParams { fn default() -> GoalParams { GoalParams { budget: BUDGET, sides: None, depth: DEPTH, held: vec![], held_units: None, keep_met: false } } }
 
 /// What the proposer returns for a position: the list of both sides, the goals of each side (in the order of their side's goals), the goals of two threats, the moves that make two threats at once, the units asked and not asked, the questions, the lines read, and the time of each part.
 #[derive(Debug, Clone, Default)]
@@ -728,7 +744,8 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     // progress after the contested reads: the last unit asked (the least stake) ended with a line read
     let progress = first_units.last().map_or(true, |u| list.mover.iter().chain(&list.other).chain(&list.exchange).chain(&list.dropped).any(|r| r.unit == Some(*u) && r.net.is_some()));
     let t0 = Instant::now();
-    let ev = every_unit_ask(st, g, s, &mut list, &sides, rec, &tp, &Ask { budget: Some(params.budget), used: first_units.len(), progress });
+    let held = params.held_units.as_ref().map(|(rows, touch)| crate::threats::Held { rows, touch });
+    let ev = crate::threats::every_unit_ask_with(st, g, s, &mut list, &sides, rec, &tp, &Ask { budget: Some(params.budget), used: first_units.len(), progress }, held);
     out.seconds.push(("every unit of the other side, by stake within the budget", t0.elapsed().as_secs_f64()));
     list.unasked.extend(rest.iter().copied());
     // (a contested unit the clock skipped was not asked: it is in the list's `unasked`)
@@ -736,10 +753,10 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     let first_asked: Vec<UnitRef> = first_units.iter().copied().filter(|u| !skipped.contains(u)).collect();
     out.questions = first_asked.len() + ev.questions;
     out.line_reads = ev.line_reads;
-    out.asked = first_asked.iter().copied().chain(ev.asked.iter().map(|a| a.0)).collect();
+    out.asked = first_asked.iter().copied().chain(ev.asked.iter().map(|a| a.0)).chain(ev.carried.iter().copied()).collect();
     out.unasked = list.unasked.clone();
     let t0 = Instant::now();
-    for &side in &sides { out.goals.extend(goals(st, g, s, &list, side, tp.goal, params.depth, params.budget)); }
+    for &side in &sides { out.goals.extend(goals_with(st, g, s, &list, side, tp.goal, params.depth, params.budget, params.keep_met)); }
     out.seconds.push(("the goals", t0.elapsed().as_secs_f64()));
     let t0 = Instant::now();
     for &side in &sides { out.two.push((side, two_threat_goals(&list, side, mover, rec, &kinds))); }

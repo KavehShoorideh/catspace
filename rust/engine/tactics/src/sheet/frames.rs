@@ -215,6 +215,34 @@ pub fn union_seed(a: &Seed, b: &Seed) -> Seed {
 pub fn seeds_of_board(b: &Board, part: &PositionPart, max_size: usize, levels: &[u8], want: &FxHashMap<u64, u32>) -> Vec<(u32, Seed)> { seeds_of_board_until(b, part, max_size, levels, want, None).0 }
 
 /// PLAN 79.09 B: `seeds_of_board` that stops matching keys at `stop` (the clock of the step); the second value says the clock cut the matching (the seeds after it were not looked for: a gap).
+/// PLAN 79.14 B: the concept matches of ONE connected set of atoms `its` (the body of `seeds_of_board_until`'s loop, one place): every key of the set at the `levels` that is wanted and not its own swap gives (concept, seed); the seeds not seen before go into `out`, and every match of the set is returned
+/// (so that a caller that carries matches keeps the ones another embedding of the same seed already found).
+pub fn seeds_of_set(b: &Board, part: &PositionPart, its: &[usize], levels: &[u8], want: &FxHashMap<u64, u32>, seen: &mut FxHashSet<(u32, Vec<Cell>, Vec<Place>)>, out: &mut Vec<(u32, Seed)>) -> Vec<(u32, Seed)> {
+    let mut all = vec![];
+    // (the hash and the sign without a heap allocation when the levels are at most four, the same values as `keys`)
+    let quick = levels.len() <= 4;
+    let (arr, slow): ([(u64, i8); 4], Vec<(u64, i8)>) = if quick { (b.key_hashes(its, levels), vec![]) } else { ([(0, 0); 4], b.keys(its, levels).iter().map(|k| (k.hash, k.sign)).collect()) };
+    let hs: &[(u64, i8)] = if quick { &arr[..levels.len()] } else { &slow };
+    for &(hash, sign) in hs {
+        if sign == 0 { continue; }
+        let Some(&c) = want.get(&hash) else { continue };
+        let (mut us, mut ps): (Vec<usize>, Vec<Place>) = (vec![], vec![]);
+        for &ix in its {
+            let it = &b.items[ix];
+            us.push(it.actor as usize);
+            match it.target { Obj::Unit(u) => us.push(u as usize), Obj::Place(p) => ps.push(p) }
+            if it.between >= 0 { us.push(it.between as usize); }
+        }
+        us.sort_unstable(); us.dedup(); ps.sort_unstable(); ps.dedup();
+        let cells: Vec<Cell> = { let mut v: Vec<Cell> = us.iter().map(|&i| cell_of(part, i)).collect(); v.sort(); v };
+        let sd = Seed { units: cells.clone(), places: ps.clone() };
+        if seen.insert((c, cells, ps)) { out.push((c, sd.clone())); }
+        all.push((c, sd));
+    }
+    all
+}
+
+/// PLAN 79.09 B: `seeds_of_board` that stops matching keys at `stop` (the clock of the step); the second value says the clock cut the matching (the seeds after it were not looked for: a gap).
 pub fn seeds_of_board_until(b: &Board, part: &PositionPart, max_size: usize, levels: &[u8], want: &FxHashMap<u64, u32>, stop: Option<std::time::Instant>) -> (Vec<(u32, Seed)>, bool) {
     let mut cut = false;
     let mut out: Vec<(u32, Seed)> = vec![];
@@ -222,20 +250,7 @@ pub fn seeds_of_board_until(b: &Board, part: &PositionPart, max_size: usize, lev
     for size in 1..=max_size {
         b.connected_sets(size, &mut |its| {
             if cut || stop.is_some_and(|t| std::time::Instant::now() >= t) { cut = true; return; }
-            for key in b.keys(its, levels) {
-                if key.sign == 0 { continue; }
-                let Some(&c) = want.get(&key.hash) else { continue };
-                let (mut us, mut ps): (Vec<usize>, Vec<Place>) = (vec![], vec![]);
-                for &ix in its {
-                    let it = &b.items[ix];
-                    us.push(it.actor as usize);
-                    match it.target { Obj::Unit(u) => us.push(u as usize), Obj::Place(p) => ps.push(p) }
-                    if it.between >= 0 { us.push(it.between as usize); }
-                }
-                us.sort_unstable(); us.dedup(); ps.sort_unstable(); ps.dedup();
-                let cells: Vec<Cell> = { let mut v: Vec<Cell> = us.iter().map(|&i| cell_of(part, i)).collect(); v.sort(); v };
-                if seen.insert((c, cells.clone(), ps.clone())) { out.push((c, Seed { units: cells, places: ps })); }
-            }
+            seeds_of_set(b, part, its, levels, want, &mut seen, &mut out);
         });
     }
     (out, cut)

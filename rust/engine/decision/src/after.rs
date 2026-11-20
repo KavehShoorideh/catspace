@@ -26,8 +26,22 @@ pub struct ChainView { pub top: UnitRef, pub stake: f64, pub in_the_way: usize, 
 pub struct TheirGoals { pub goals: Vec<Goal>, pub chains: Vec<rule::ChainFix>, pub views: Vec<ChainView>, pub stakes: Stakes }
 
 /// THE GOALS OF `side` ON `s` FROM THE GRAPH ALONE (an empty list: no line is read; the goal unit's goal and the recursion of the stoppers come from the relations of the position). `s` is the position as it stands: for the side not to move the goals are read after the game's pass.
-pub fn their_goals<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, side: Role) -> TheirGoals {
-    let gs = goals(st, g, s, &ConcreteList::default(), side, goal, goals::DEPTH, goals::BUDGET);
+pub fn their_goals<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, side: Role) -> TheirGoals { their_goals_with(st, g, s, rec, goal, side, false) }
+
+/// PLAN 79.14 D: `their_goals`, and with `every` the goals are read on EVERY TARGET the proposer gives (one row of the other side for each of its units but the goal kind, no line read, the graph alone) and a goal whose every fact is met is kept, not on the goal unit alone.
+pub fn their_goals_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, side: Role, every: bool) -> TheirGoals {
+    let mut list = ConcreteList::default();
+    if every {
+        let owner = g.other(side);
+        let mut cells = g.cells(s);
+        cells.sort();
+        for (o, k, at) in cells.into_iter().filter(|(o, k, _)| *o == owner && Some(*k) != goal) {
+            let mut row = crate::threats::ThreatRow::new(owner, Some(UnitRef { owner: o, kind: k, at }), "unit", vec![], None);
+            row.every = true;
+            list.other.push(row);
+        }
+    }
+    let gs = goals::goals_with(st, g, s, &list, side, goal, goals::DEPTH, goals::BUDGET, every);
     let stakes = Stakes::read(g, s, rec, &gs, goal);
     let chains = rule::named_fixes(&gs, side, &stakes);
     let views = chains.iter().map(|c| {
@@ -78,17 +92,21 @@ pub fn their_goals_after<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::S
 
 /// PLAN 79.13 C: `their_goals_after`, and where `value` is given our goals after each move are read as well (the same graph-only reading), the value of both sides' chains after the move put in the row and before it in `AfterRead::before`. The seconds spent on ours are in `ours_seconds`.
 #[allow(clippy::too_many_arguments)]
-pub fn goals_after<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, order: &[usize], count: usize, stop: Option<std::time::Instant>, value: Option<ValueFn>) -> AfterRead {
+pub fn goals_after<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, order: &[usize], count: usize, stop: Option<std::time::Instant>, value: Option<ValueFn>) -> AfterRead { goals_after_with(st, g, s, rec, goal, order, count, stop, value, false) }
+
+/// PLAN 79.14 D: `goals_after` with `mend`: both sides' goals are read on every target and a goal with every fact met is kept (their_goals_with); the caller's `value` then counts the met goal as reached (gain::chain_value_mended). `mend` false: `goals_after`.
+#[allow(clippy::too_many_arguments)]
+pub fn goals_after_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, order: &[usize], count: usize, stop: Option<std::time::Instant>, value: Option<ValueFn>, mend: bool) -> AfterRead {
     let t0 = std::time::Instant::now();
     let mut out = AfterRead::default();
     let Some(me) = g.mover(s) else { return out };
     let other = g.other(me);
     let moves = g.moves(s);
-    let before_theirs = their_goals(st, g, s, rec, goal, other);
+    let before_theirs = their_goals_with(st, g, s, rec, goal, other, mend);
     let before = before_theirs.views.clone();
     if let Some(v) = value {
         let t1 = std::time::Instant::now();
-        let ours = their_goals(st, g, s, rec, goal, me);
+        let ours = their_goals_with(st, g, s, rec, goal, me, mend);
         out.before = Some(GainPair { ours: v(&ours, me), theirs: v(&before_theirs, other) });
         out.ours_seconds += t1.elapsed().as_secs_f64();
     }
@@ -98,11 +116,11 @@ pub fn goals_after<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static,
         if stop.is_some_and(|t| std::time::Instant::now() >= t) { out.not_asked.push(name); continue; }
         let child = g.apply(s, m);
         if g.outcome(&child).is_some() || g.mover(&child) != Some(other) { continue; }
-        let tg = their_goals(st, g, &child, rec, goal, other);
+        let tg = their_goals_with(st, g, &child, rec, goal, other, mend);
         let e = g.move_ends(s, m);
         let gain = value.map(|v| {
             let t1 = std::time::Instant::now();
-            let ours = their_goals(st, g, &child, rec, goal, me);
+            let ours = their_goals_with(st, g, &child, rec, goal, me, mend);
             let pair = GainPair { ours: v(&ours, me), theirs: v(&tg, other) };
             out.ours_seconds += t1.elapsed().as_secs_f64();
             pair
