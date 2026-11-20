@@ -23,6 +23,8 @@ pub struct BaseGraph {
     /// 78.60: the band (low, high) of the worth of each kind, from the estimator record; and the rules of a line's end (all off until set).
     bands: Option<Vec<(i64, i64)>>,
     rules: cs_tactics::sheet::questions::Rules,
+    /// PLAN 79.11 B: the open tactics of the last decision of a caller's slot (a name the caller gives), taken by the next `wake_decide` of the same slot and put back after it. The binding holds them so that the caller carries nothing across the language boundary.
+    carry: std::cell::RefCell<HashMap<String, cs_decision::wake::Carried>>,
 }
 
 type NodeWire = (String, String);
@@ -136,7 +138,7 @@ impl BaseGraph {
         let names = Names::new(g.place_names(), g.kind_names(), g.roles());
         let steps = g.steps(description, &static_relations, &objects).map_err(bad)?;
         let st = Static::new(&steps, &names).map_err(bad)?;
-        Ok(BaseGraph { variant: variant.to_string(), st, kv: None, bands: None, rules: Default::default() })
+        Ok(BaseGraph { variant: variant.to_string(), st, kv: None, bands: None, rules: Default::default(), carry: Default::default() })
     }
 
     /// static_part() -> {nodes: [(type, id)], links: [(type, a, b, via, value)], directions, lines: [[places]]}: the part that is the game's and not the position's.
@@ -195,10 +197,10 @@ impl BaseGraph {
     /// log in words). `pieces`: any of "carried", "frames", "threats", "goals", "two_threat_goals", "reasons_pick", "heads", and (PLAN 79.10) "after_move", "direct_names"; none is the old player. `keys`: the learned seeds of the frame read (None: the rows are the graph's); `frame_fuses`: (largest seed, fuse, row fuse, answer fuse); `chances`: (by key, by facts, (goals,
     /// reached) in all, floor), each cell (name, goals, reached); `reasons`: (pattern keys, [(column, side "mover"/"other", direction "up"/"down", weight)], largest seed, levels, tie digits). The frame read reads the kind values, bands and rules this graph was given (`set_kind_values`, `set_kind_bands`, `set_rules`) and its learned profile.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None))]
+    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None, carry_slot=None))]
     fn wake_decide(&self, py: Python<'_>, text: &str, history: Vec<u64>, seconds: f64, depth: i32, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, pieces: Vec<String>, budget: usize, named_budget: usize,
                    keys: Option<Vec<u64>>, frame_fuses: Option<(usize, u64, u64, u64)>, chances: Option<(Vec<(String, u32, u32)>, Vec<(String, u32, u32)>, (u32, u32), u32)>,
-                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>) -> PyResult<String> {
+                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>, carry_slot: Option<String>) -> PyResult<String> {
         use cs_decision::estimate::ChanceTable;
         use cs_decision::frame_rows::FrameRead;
         use cs_decision::pick::{Dir, Reason, Reasons, Side};
@@ -217,8 +219,10 @@ impl BaseGraph {
         let chances = chances.map(|c| ChanceTable { by_key: c.0.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), by_facts: c.1.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), total: c.2, floor: c.3 });
         let reasons = reasons.map(|r| Reasons { keys: r.0, reasons: r.1.into_iter().map(|x| Reason { column: x.0, side: if x.1 == "mover" { Side::Mover } else { Side::Other }, dir: if x.2 == "up" { Dir::Up } else { Dir::Down }, weight: x.3 }).collect(), max_size: r.2, levels: r.3, tie_digits: r.4 });
         let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: None, chances, reasons, share_table: true, ledger_share, pre_share: None } };
-        let d = py.allow_threads(|| decide(&self.st, &g, &s, &history, &judge, &params));
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: None } };
+        let st = &self.st;
+        let d = py.allow_threads(|| decide(st, &g, &s, &history, &judge, &params));
+        if let (Some(k), Some(c)) = (&carry_slot, &d.carried) { self.carry.borrow_mut().insert(k.clone(), c.clone()); }
         Ok(d.to_json().to_string())
     }
 
