@@ -188,6 +188,58 @@ impl BaseGraph {
         d.into_py_any(py)
     }
 
+    /// PLAN 79.06 (the wake's threat list, cs_decision::threats): wake_threats(text, worth, half, goal_kind, rows, every_sides) -> {"mover","other","exchange","dropped","goal": [row], "dropped_counts", "cost": [(round, seconds, queries, nodes)]}.
+    /// `worth`/`half`: the measured record (the game's words for the kinds). `rows`: None (the graph's candidates) or the frame read's rows as (role, kind, place, class, by [(role, kind, place)], response_ix [(from, to, how, unit moves)], stake).
+    /// `every_sides`: None (the mover) or the roles whose goals are wanted. A unit is (role, kind, place) by the game's words. Exists for the unit check of the Rust list against its Python mirror; the wake calls the Rust function.
+    #[pyo3(signature = (text, worth, half, goal_kind=None, rows=None, every_sides=None))]
+    #[allow(clippy::type_complexity)]
+    fn wake_threats(&self, py: Python<'_>, text: &str, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, rows: Option<Vec<(String, String, String, String, Vec<(String, String, String)>, Vec<(String, String, u8, bool)>, Option<f64>)>>, every_sides: Option<Vec<String>>) -> PyResult<PyObject> {
+        use cs_decision::threat_verdict::Record;
+        use cs_decision::threats::{concrete_threats, FrameRow, ThreatParams, ThreatRow};
+        use cs_decision::wake::UnitRef;
+        let (g, s) = self.game(text)?;
+        let n = &self.st.names;
+        let u = |t: &(String, String, String)| -> Result<UnitRef, String> { Ok(UnitRef { owner: n.role(&t.0)?, kind: n.kind(&t.1)?, at: n.place(&t.2)? }) };
+        let mut p = ThreatParams::default();
+        p.goal = match &goal_kind { Some(k) => Some(n.kind(k).map_err(bad)?), None => None };
+        if let Some(rs) = rows {
+            let mut v = vec![];
+            for r in &rs {
+                let unit = u(&(r.0.clone(), r.1.clone(), r.2.clone())).map_err(bad)?;
+                let by = r.4.iter().map(&u).collect::<Result<Vec<_>, _>>().map_err(bad)?;
+                let ix = r.5.iter().map(|a| Ok((n.place(&a.0)?, n.place(&a.1)?, a.2, a.3))).collect::<Result<Vec<_>, String>>().map_err(bad)?;
+                v.push(FrameRow { unit, class: r.3.clone(), by, response_ix: ix, stake: r.6 });
+            }
+            p.rows = Some(v);
+        }
+        if let Some(sd) = every_sides { p.every_sides = Some(sd.iter().map(|r| n.role(r)).collect::<Result<Vec<_>, _>>().map_err(bad)?); }
+        let rec = Record { worth, half };
+        let l = concrete_threats(&self.st, &g, &s, &rec, &p);
+        let uw = |x: &UnitRef| (n.roles[x.owner].clone(), n.kind_text(x.kind).to_string(), n.place_text(x.at).to_string());
+        let row_d = |r: &ThreatRow| -> PyResult<PyObject> {
+            let d = PyDict::new(py);
+            d.set_item("owner", n.roles[r.owner].clone())?;
+            d.set_item("unit", r.unit.as_ref().map(&uw))?;
+            d.set_item("goal", r.goal)?; d.set_item("every", r.every)?; d.set_item("class", r.class.clone())?;
+            d.set_item("verdict", format!("{:?}", r.verdict).to_uppercase())?;
+            d.set_item("net", r.net)?; d.set_item("line", r.line.clone())?; d.set_item("two_moves", r.two_moves)?;
+            d.set_item("lead", r.lead.map(|x| (n.place_text(x.0).to_string(), n.place_text(x.1).to_string())))?;
+            d.set_item("ended", r.ended)?; d.set_item("why", r.why)?; d.set_item("deferred", r.deferred)?;
+            d.set_item("resp_read", r.resp_read)?; d.set_item("resp_unread", r.resp_unread)?;
+            d.set_item("outcome", r.outcome.as_ref().map(|o| (o.taker_lost.clone(), o.taker_won.clone(), o.left_lost.clone(), o.left_won.clone(), o.cancelled)))?;
+            let resp: Vec<(Vec<String>, i64, &'static str, String)> = r.responses.iter().map(|x| (x.names.clone(), x.net, x.state.word(), format!("{:?}", x.source))).collect();
+            d.set_item("responses", resp)?;
+            d.into_py_any(py)
+        };
+        let out = PyDict::new(py);
+        for (k, v) in [("mover", &l.mover), ("other", &l.other), ("exchange", &l.exchange), ("dropped", &l.dropped), ("goal", &l.goal)] {
+            out.set_item(k, v.iter().map(&row_d).collect::<PyResult<Vec<_>>>()?)?;
+        }
+        out.set_item("dropped_counts", l.dropped_counts.clone())?;
+        out.set_item("cost", l.cost.iter().map(|c| (c.name, c.seconds, c.queries, c.nodes)).collect::<Vec<_>>())?;
+        out.into_py_any(py)
+    }
+
     /// dump(text) -> text: the position's nodes, one per line, with their links.
     fn dump(&self, text: &str) -> PyResult<String> {
         let (g, s) = self.game(text)?;
