@@ -94,7 +94,7 @@ def outcome_lines(name: str, games: list) -> list:
     return [f"OBS whole_79_12 {name}: games {n}, unfinished {unf} (counted as draws), white's score over the finished {sum(white) / max(1, len(white)):.4f}, mean plies {plies:.1f}, decisions {dec}, mean wall a decision {wall / max(1, dec):.4f} s"]
 
 
-def run(name: str, specs: list, workers: int, tag: str, say, stop=None, quiet: bool = True) -> list:
+def run(name: str, specs: list, workers: int, tag: str, say, stop=None, quiet: bool = True, sides: "tuple | None" = None) -> list:
     root = out_root(tag)
     (root / "matches").mkdir(parents=True, exist_ok=True)
     load0, busy = TM.wait_quiet(say) if quiet else (os.getloadavg()[0], 0.0)
@@ -103,6 +103,9 @@ def run(name: str, specs: list, workers: int, tag: str, say, stop=None, quiet: b
     say(f"OBS whole_79_12 {name}: load average at start {load0:.2f}, cores busy {busy:.2f}, workers {workers}, wall {time.perf_counter() - t0:.0f} s")
     for x in outcome_lines(name, games):
         say(x)
+    if sides:                                                                   # a match: the score of the first player, W D L, the band by bootstrap over opening pairs (78.67's lines, as 79.11 printed them)
+        for x in TM.match_lines(sides[0], sides[1], sides[2], games, load0, busy, time.perf_counter() - t0, 0.2, workers):
+            say(x.replace("OBS tiebreak match", f"OBS whole_79_12 {name}", 1))
     return games
 
 
@@ -117,7 +120,8 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--name", default="")
     ap.add_argument("--set", default="A", choices=JUDGE_SETS)
     ap.add_argument("--weights", default="")
-    ap.add_argument("--vs", default="fixed", choices=("fixed", "old"))
+    ap.add_argument("--vs", default="fixed", choices=("fixed", "old"), help="judge: the wake with the weights against the wake in mode Fixed, or a wake against the old player at equal mean wall")
+    ap.add_argument("--player", default="weights", choices=("weights", "fixed"), help="judge with --vs old: which wake plays the old player")
     a = ap.parse_args(argv)
     root = out_root(a.tag)
     root.mkdir(parents=True, exist_ok=True)
@@ -144,8 +148,9 @@ def main(argv: "list | None" = None) -> int:
         if a.vs == "fixed":
             specs = WP.match_specs("wake", "wake", a.set, a.pairs, a.seconds, root / "scratch", root / "logs" / name, label=name, chooser_a=mine, chooser_b=chooser_spec("fixed"))
         else:
-            specs = WP.match_specs("wake", "old", a.set, a.pairs, a.seconds, root / "scratch", root / "logs" / name, clock_b=sc * a.seconds, label=name, chooser_a=mine)
-        run(name, specs, a.workers, a.tag, say, stop=lambda g: TM.settled(g, min_pairs=WP.MIN_PAIRS))
+            specs = WP.match_specs("wake", "old", a.set, a.pairs, a.seconds, root / "scratch", root / "logs" / name, clock_b=sc * a.seconds, label=name, chooser_a=mine if a.player == "weights" else chooser_spec("fixed"))
+        sides = ("wake_weights", "wake_fixed", a.set) if a.vs == "fixed" else (f"wake_{a.player}", "old", a.set)
+        run(name, specs, a.workers, a.tag, say, stop=lambda g: TM.settled(g, min_pairs=WP.MIN_PAIRS), sides=sides)
     return 0
 
 

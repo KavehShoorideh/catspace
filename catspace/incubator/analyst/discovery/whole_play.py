@@ -24,7 +24,9 @@ INTERFACE (written before the bodies).
   mean_wall(games, who) -> float                  the mean wall time a move of side `who` (0: a, 1: b).
   scale_of(games) -> float                        the scale of part C from a sanity match of the wake against the old player at one clock.
   differed(games, who) -> dict                    {reason: count} of the decisions in which the wake's move differed from the search's first move, and the decisions.
-  reason_of(why) -> str                           the class of the sentence the log gives as its reason.
+  reason_of(why) -> str                           the class of the sentence the log gives as its reason (PLAN 79.12: the classes that name what separated the move from the search's first move, and the last layer's `explore` and `chooser`).
+  MoverWhole.chooser_arg(ply) -> tuple | None     PLAN 79.12 B: (mode, weights, the seed of this decision) for the binding, from the spec's "chooser" {"mode": fixed|weights|explore, "weights": {input: weight}, "seed"}; None: no last layer, the rule decides.
+                                                  The log's decision line then carries, under wake.log, "chooser" (the candidates' rows and weighted sums, the rule's pick, the move played, the propensity), "first_held", "first_lowered_by" and "step_seconds".
   Called by: the command line (`sanity`, `match`), whole_79_11_print.py (reads the logs), the tests.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.whole_play sanity | match --name m1|m2 --set A|B  [--tag T] [--workers W] [--pairs K] [--seconds S]
