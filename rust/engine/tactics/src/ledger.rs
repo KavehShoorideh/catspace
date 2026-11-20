@@ -164,6 +164,9 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// PLAN 79.05 (SYSTEM_SPEC 8, the wake): MOVES NAMED BY POSITION. `named[key]` are the names (`Game::move_name`) of moves a caller wants read FIRST and UNREDUCED at the position whose `Game::key` is `key`, at the root and below it. An order and an exemption from the late-move
     /// reduction, never a verdict and never an addition to the value: an exact search returns the same value whatever the order. Empty (the default everywhere) is the search exactly as it was.
     pub named: FxHashMap<u64, Vec<String>>,
+    /// PLAN 79.08 (the wake, repair 3): MOVES NAMED BY PLY. `named_ply[p]` are the names of moves read FIRST and UNREDUCED at every node of ply `p` (0: the root, 1: the reply of the other side), wherever the move is legal: the other side's moves are named for the ply after ours, by the move's name,
+    /// and not by a position the search never visits. The same order-only meaning as `named`; empty (the default) is the search as it was.
+    pub named_ply: FxHashMap<i32, Vec<String>>,
     /// The deepening steps of the runs so far, as measured (the granular cost of the search).
     pub reads: Vec<DepthRead>,
 }
@@ -213,13 +216,13 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
         Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true,
-                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), reads: vec![] }
+                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![] }
     }
 
     /// Plan 78.51: read the root moves in `order` (indices of the root's legal moves, first read first; each at most once). `strict`: see `root_pos`. An empty order is no order.
@@ -534,8 +537,10 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let mut order = self.ordered_at(s, maxing, hint, ply);
         // PLAN 79.05: the moves a caller named at this position are read first (stable among themselves) and are not read shallow first; nothing is done when none is named (the default)
         let mut pins: Vec<bool> = vec![];
-        if let Some(ns) = self.named.get(&key) {
-            pins = order.iter().map(|(_, m, _)| { let nm = self.g.move_name(s, m); ns.iter().any(|x| *x == nm) }).collect();
+        let by_ply = self.named_ply.get(&ply);
+        if self.named.contains_key(&key) || by_ply.is_some() {
+            let (a, b) = (self.named.get(&key), by_ply);
+            pins = order.iter().map(|(_, m, _)| { let nm = self.g.move_name(s, m); a.is_some_and(|ns| ns.iter().any(|x| *x == nm)) || b.is_some_and(|ns| ns.iter().any(|x| *x == nm)) }).collect();
             if pins.iter().any(|p| *p) {
                 let mut z: Vec<_> = order.into_iter().zip(pins).collect();
                 z.sort_by_key(|(_, p)| !*p);
