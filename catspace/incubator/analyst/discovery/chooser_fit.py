@@ -10,7 +10,7 @@ THE WEIGHTS WRITTEN: the inputs clear on held-out, refit on ALL games (with the 
 INTERFACE (written before the bodies).
   load(tag, runs) -> Data                      rows, targets, game index, seat, the white score of each game, the names.
   fit_weights(X, y, w, c) -> array             the standardised weights of one penalised fit (rows weighted by w, the penalty c).
-  analyse(data, ...) -> dict                   the whole of part D: the fit, the bands, the held-out check, the shuffled comparison; the lines to print.
+  analyse(data, ...) -> dict                   the whole of part D: the fit, the bands, the held-out test, the shuffled comparison; the lines to print.
   Called by: the command line and tests/test_plan79_12.py.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.chooser_fit TAG [--runs a,b] [--boot N] [--shuffles N]
