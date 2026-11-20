@@ -52,7 +52,17 @@ pub struct DecisionLog {
     pub notes: Vec<String>,
     /// PLAN 79.10 A: the moves of ours whose child position the clock did not reach (their goals after them were not read: a gap)
     pub after_not_asked: Vec<String>,
+    /// PLAN 79.12 A: the equal reading kept the search's first move (None: the reading did not run: the game was decided, the clock cut it, or no move was first) and, where it did not, what its null-window reading was and by how much the best was above it (None: unknown)
+    pub first_held: Option<bool>, pub first_lowered_by: Option<i64>,
+    /// PLAN 79.12 A: the wall of each step of the decision (step, what it was, seconds), in the order they ran
+    pub step_seconds: Vec<(u8, String, f64)>,
+    /// PLAN 79.12 B: the last layer's rows (None: no chooser given)
+    pub chooser: Option<ChooserLog>,
 }
+
+/// PLAN 79.12 B: what the last layer saw and did in one decision: the mode, the seed, the names of the inputs, the candidates (the moves held equal that the layer may pick among) with their rows and weighted sums, the move the rule would pick, the move played, the propensity of the move played.
+#[derive(Debug, Clone, Default)]
+pub struct ChooserLog { pub mode: String, pub seed: u64, pub inputs: Vec<String>, pub candidates: Vec<(String, Vec<f64>, f64)>, pub fixed_pick: Option<String>, pub played: Option<String>, pub propensity: f64, pub applied: bool }
 
 fn kept(v: &[(String, String, i64, String)]) -> Value { json!(v.iter().map(|k| json!({"move": k.0, "verdict": k.1, "net": k.2, "ended": k.3})).collect::<Vec<_>>()) }
 
@@ -76,6 +86,10 @@ impl DecisionLog {
             "refuted": self.refuted.iter().map(|r| json!({"move": r.0, "theirs": r.1, "ended": r.2})).collect::<Vec<_>>(),
             "unlisted": self.unlisted.iter().map(|r| json!({"move": r.0, "theirs": r.1})).collect::<Vec<_>>(),
             "notes": self.notes, "after_not_asked": self.after_not_asked,
+            "first_held": self.first_held, "first_lowered_by": self.first_lowered_by,
+            "step_seconds": self.step_seconds.iter().map(|x| json!({"step": x.0, "piece": x.1, "seconds": x.2})).collect::<Vec<_>>(),
+            "chooser": self.chooser.as_ref().map(|c| json!({"mode": c.mode, "seed": c.seed, "inputs": c.inputs, "candidates": c.candidates.iter().map(|x| json!({"move": x.0, "row": x.1, "sum": x.2})).collect::<Vec<_>>(),
+                "fixed_pick": c.fixed_pick, "played": c.played, "propensity": c.propensity, "applied": c.applied})),
         })
     }
 }

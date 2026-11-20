@@ -8,6 +8,7 @@
 pub mod after;
 pub mod batch;
 pub mod cards;
+pub mod chooser;
 pub mod carry;
 pub mod claim_op;
 pub mod estimate;
