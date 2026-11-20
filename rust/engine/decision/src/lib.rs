@@ -7,12 +7,18 @@
 //! is another `Controller`, and plugs in here without touching the operators.
 pub mod batch;
 pub mod cards;
+pub mod carry;
 pub mod claim_op;
+pub mod estimate;
+pub mod frame_rows;
 pub mod goals;
 pub mod graph;
 pub mod graph_net;
 pub mod graph_prior;
 pub mod lemma_prior;
+pub mod log;
+pub mod pick;
+pub mod rule;
 pub mod threat_verdict;
 pub mod threats;
 pub mod wake;
