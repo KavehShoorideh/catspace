@@ -119,6 +119,11 @@ class MoverWhole(TM.Mover67):
             return None
         return (c["mode"], dict(c.get("weights") or {}), zlib.crc32(f"{c.get('seed', 0)}:{self.seed}:{ply}".encode()))
 
+    def chooser_kw(self, ply: int) -> dict:
+        """The keyword for the binding: {"chooser": ...} where a last layer is given, else nothing (the call is then the call of 79.11)."""
+        a = self.chooser_arg(ply)
+        return {} if a is None else {"chooser": a}
+
     def write(self, rec: dict) -> None:
         if self.log_file is None:
             return
@@ -132,7 +137,7 @@ class MoverWhole(TM.Mover67):
         t0 = time.perf_counter()
         pos = CE.state(OM.VARIANT, text, list(moves))[0]
         history = [CE.state(OM.VARIANT, text, list(moves[:k]))[4] for k in range(len(moves))]
-        out = json.loads(w.model.wake_decide(pos, history, self.seconds, 64, dict(self.worth), {}, w.goal, PIECES, 0, 0, w.keys, fuses(), w.chances, w.reasons, TM.LEDGER_SHARE, self.slot, self.chooser_arg(len(moves))))
+        out = json.loads(w.model.wake_decide(pos, history, self.seconds, 64, dict(self.worth), {}, w.goal, PIECES, 0, 0, w.keys, fuses(), w.chances, w.reasons, TM.LEDGER_SHARE, self.slot, **self.chooser_kw(len(moves))))
         wall = time.perf_counter() - t0
         eq = out["equal"]
         first = eq[0] if eq else None                                             # the search's own move leads the moves it holds equal (wake.rs)
