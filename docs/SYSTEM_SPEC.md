@@ -476,6 +476,31 @@ theirs are the moves that make one of its facts unmet (take the bearer, tie it, 
 named by the fact and by nothing else; whether one works is the line read's verdict. A move that is a fix under two goals at once is
 how two threats are found. Plan 79.07 as amended.
 
+**Goals beyond the search's horizon, broken down into it; a reached subgoal as a training signal; where the subgoals come from**
+(DECIDED 2026-11-20, his words, after the main agent's read of plans 79.11 to 79.16).
+- THE CHAIN ENDS INSIDE THE HORIZON. "We definitely want goals that are outside the search's horizon, and then we want to break it down
+  into sub-goals ... and eventually you want to reach a sub-goal that is in the search's horizon ... So that you can search and get to
+  that sub-goal. But the sub-goal has to ... be like a step to reaching the next sub-goal and the next one ... we do not want our final
+  sub goal to be outside of the search's horizon because we can never get there then."
+- A REACHED SUBGOAL IS A TRAINING SIGNAL. "A reached sub goal actually should be a training signal, and we're not doing that at all. We
+  should basically use the reaching of a sub goal to make our reward signal more dense rather than just win and loss of games."
+- MEMORY. "Nothing is held from move to move. We talked about this, like we want memory and we want things to be invalidated, and we
+  have the whole event-driven system." This restates sections 1 and 4; it was decided and not built in the wake.
+- WHERE SUBGOALS COME FROM. "We need to mine the sub-goals from our own data, essentially from our own play, and we need to pick out
+  which existence of which tactics lead to improvements ... the existence of those tactics should be the sub goals. Like ... put the
+  rook ... on the 7th rank, because rook on the 7th rank leads to better tactics because the king is boxed in ... The king being boxed
+  in itself is not valuable ... But once the king is boxed in, then the tactic that wins us some material somewhere, that's valuable.
+  ... The mate is ultimately the goal, but the material is the sub-goal to get to that mate."
+- THE DATA. "We have to get it from master games. And if we don't get it from master games, we have to condition on ELO. And we should
+  not use the low ELO trained stuff when solving puzzles, like when doing accurate stuff. We should only use the low ELO stuff when
+  we're dealing with low ELO people in a probabilistic way."
+- READING (main agent, PROPOSED, not his word). The chain is read backward from what is valued: the end of the game; a gain of
+  material; a tactic that exists (a confirmed row of the threat list, a frame that ends well); the facts of the graph whose holding
+  makes such tactics come to exist. Each link is an event that can be counted in games, so each is both a subgoal and a training
+  target. Nothing in the chain is given a worth by hand: a fact is a subgoal only because tactics follow it, and a tactic only
+  because material follows it. Both our own games and human games are read, the human games by rating.
+- THE SYSTEM AGAINST FORGETTING: `docs/SPEC_LEDGER.md`, one row a decision with its state in the playing engine.
+
 ## 8. Wake
 
 1. Bring forward the open tactics carried from the last move, and update only those whose facts changed.
@@ -705,6 +730,8 @@ The three inventories (the repo against these pieces; the earlier frame and inte
 library against the game-free graph) are in docs/SYSTEM_SPEC_HISTORY.md, sections 9.1, 12.1 and 12.2, as made on
 2026-11-14 and 2026-11-15. One correction to the third: Reach.lean is chess-bound, not generic.
 
+THE LIST OF DECISIONS WITH THEIR STATE, one row each, is `docs/SPEC_LEDGER.md` (2026-11-20); read it before this table.
+
 State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md hold the runs and the plans):
 
 | Piece | State |
@@ -828,6 +855,9 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     place left to act except the end of the search's lines, where today only the count of worths stands. Rule 7 and section 8's wall
     say subgoals never enter the value. Say if an estimate per goal may stand at a line's end where the calculation stops, or how
     else you mean the estimate and the calculation to be decided together there.
+    ANSWERED BY THE SPEC ITSELF, the main agent's error (2026-11-20): section 6 ("the estimate scores a leaf") and section 8 step 5
+    decided on 2026-11-15 and 2026-11-16 that the chances are read where a line ends; what stays out of the value is a subgoal
+    BONUS. The wake does not do it (ledger row 5). The question should not have been asked.
 32. From plan 79.14 and for plan 79.15 (2026-11-20). Choices of the builder where the spec is silent, kept until you say otherwise: the
     switches carry_graph, chance_order and gain_mend sit in the wake's inputs and are off by default; a carried row counts against the
     question budget as used; a goal is met when no fact is unmet and none open. READINGS of the main agent: (a) the wall of section 8
@@ -851,6 +881,10 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     (78.80 began this and found signal with artefacts), read against the board; (2) a reading toward one such goal: our own moves
     that reach it, their best reply checked at each step; (3) the goal held across moves until refuted; (4) a line's end judged by
     goals reached, as an estimate fitted on results only, which needs your word because of rule 7.
+35. From Kaveh's words of 2026-11-20 (section 7, last block before section 8). PROPOSED by the main agent, kept until you say otherwise:
+    the ledger `docs/SPEC_LEDGER.md` and its six rules of use; that the next plans are taken from its rows 5, 13, 23, 24, 25 before
+    anything else. QUESTIONS: (a) "from our own play" and "from master games": the reading taken is both, human games by rating;
+    say if one comes first. (b) What rating counts as master for the accurate work, given that the human file is of all ratings.
 28. From plan 79.09 (2026-11-19). Choices the builder made where the spec is silent, kept until you say otherwise: the steps before the
     search get what the search and its equal reading leave of the clock; a line cut by the clock is a gap and never a refutation; an
     estimate that did not reach a move does not decide. Three readings of your words that plan 79.10 builds on, mine: when every fix of
@@ -996,4 +1030,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The wall covers the probe: a lowered first move is not played; an unequal carry stays off; the steps' share is chosen by play of the whole (READINGS, main agent) | 2026-11-20 | 13 item 32 |
 | The whole is judged at a clock where every piece finishes; unused time goes to the search; the search reads on when its first move fails; fixes ranked by stake times chance (READINGS, main agent) | 2026-11-20 | 13 item 33 |
 | Stopped for Kaveh: the goals made lie inside the search's horizon; goals mined from games, read toward, held, and counted at a line's end (DIAGNOSIS and PROPOSED, main agent) | 2026-11-20 | 13 item 34 |
+| Goals beyond the search's horizon broken down into it; a reached subgoal is a training signal; subgoals mined as the tactics whose existence leads to gain; human data by rating; the ledger against forgetting | 2026-11-20 | 7 (before section 8), 13 item 35, docs/SPEC_LEDGER.md |
 | What was replaced | 2026-11-16 | 14 |

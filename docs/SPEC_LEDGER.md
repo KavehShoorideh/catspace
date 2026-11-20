@@ -1,0 +1,75 @@
+# SPEC LEDGER: what Kaveh decided, and whether it is in the engine that plays
+
+Made 2026-11-20 at Kaveh's word ("we need a system where these things are not forgotten ... we're kind of going in
+circles and looping, and we don't have a kind of structure to our build"). The design is `docs/SYSTEM_SPEC.md`; this
+file is only the list of its decisions with their state, one row each, short enough to read whole.
+
+HOW IT IS USED (main agent; PROPOSED until Kaveh confirms):
+1. It is read first: at the start of a session, after any summary of the context, before any plan is written.
+2. A plan names the rows it moves and says why those before the other rows not built. A plan that moves no row says so.
+   The next plan is chosen from this list, never from the last run's numbers alone.
+3. A READ ends by changing the state of the rows it moved, here, in the same commit.
+4. A report to Kaveh says which rows moved.
+5. A new decision of his gets a row the same turn it is written into the spec.
+6. A row is IN only when the playing engine does it by default and a named test would fail if it stopped.
+
+STATES. IN: the wake does it by default, tested. PART: some of it is in the wake; what is missing is said.
+OFF: built, behind a switch that is off. MEASURED: built once as a measurement outside the wake. NOT: not built.
+
+State on main at c4275c44 (after plan 79.16). First version: rows 31 to 34 are from the status table of section 12, the
+sections 2, 3, 9 and 10 were not reread for it and are owed a pass.
+
+## The wake, step by step (SYSTEM_SPEC 8)
+
+| Row | Decided | Spec | State | What is missing, or the proof |
+|---|---|---|---|---|
+| 1 | Open tactics are carried from move to move and updated only where what they read changed | 4, 8 step 1 | PART | carry.rs keeps open tactics a game; the carry by what the graph says was touched is OFF (79.14: not equal to asking afresh) |
+| 2 | The position is split into frames; those with no bearing dropped | 8 step 2 | PART | Built; about 0.6 frames a decision at 0.2 s and 1.2 at 2.0 s (79.16), the read does not finish |
+| 3 | Questions inside the frames, ordered by hints, stake and chance, with the lemmas and statistics of sleep; new facts reorder them | 8 step 3, 4 | PART | Ordered by stake; nothing from sleep is read but the worths and the goal table; new facts do not reorder |
+| 4 | A confirmed tactic is used | 8 step 4 | IN | Named moves read first and in full (79.10); tests of cs_decision |
+| 5 | Where a line ends, the chances of each side are read (the estimate scores a leaf), after every open tactic above the spread is checked | 6, 8 step 5 | NOT | A line's end is the count of worths and nothing else. The heads were left out of the wake (79.08) because they read whole-position counts |
+| 6 | Where nothing is forced, subgoals order what is tried, the chances decide among what was reached, the subgoal is named | 8 step 6 | PART | Goals order the names; every goal made is the taking of a unit one or two moves deep (79.16 read) |
+| 7 | The reasons as a chain of claims, each line with why it ended | 8 step 7 | IN | Logged every decision; about half the reasons are not a player's (79.11 to 79.16 reads) |
+| 8 | The rule for choosing a move: their threats first; answer and advance toward our subgoal; a counter-threat is an answer | 8 | IN | rule.rs, tests |
+| 9 | The threat list of both sides with stake and response, four bands | 8 | PART | Built in Rust; does not finish at the play clock; takings only |
+| 10 | The wall: no oracle number in the wake; never a move the calculation holds worse | 8 | IN | wall.rs, tests wall.rs (79.15) |
+| 11 | The whole is judged, every piece folded in, none turned off | 8 | PART | Off today: carry by graph, chance order, gain, the chooser's learned modes; the heads are out; rows 5, 13, 19 are not in the whole at all |
+| 12 | Everything in the hot path in Rust and very fast | 11 | PART | In Rust; the steps before the search need about 0.3 s read to their end; the game's calls generate the moves three times a node (79.16) |
+
+## Subgoals and the policy (SYSTEM_SPEC 1, 7)
+
+| Row | Decided | Spec | State | What is missing, or the proof |
+|---|---|---|---|---|
+| 13 | A subgoal is held across moves, said, and dropped only for a stated cause | 1, 7 | NOT | Goals are proposed afresh every move; "a goal was held about one decision" (78.75), nothing since |
+| 14 | A goal is any set of facts of the graph with units as variables; no name needed | 7 | PART | Five fixed relations; one target shape (a unit to be taken) |
+| 15 | A problem, a proposed fix, and the fix becomes the subgoal; one way of asking for every goal | 7 | IN | goals.rs (79.07) |
+| 16 | Reachable has two layers: my moves only, then the other side's veto | 7 | PART | Layer one crude and undefined for most goals (78.78), not in the wake; layer two is the chance table of 79.13 |
+| 17 | Subgoals are graded: worth having, the right fix, reachable, the best use of the moves | 7 | NOT | Only the chance of reaching (79.13) |
+| 18 | Maxims come out, not in: symbols that go with winning, found by two tests | 7 | MEASURED | 78.80 to 78.91; not in the wake; what passed was not what a player names |
+| 19 | The future imagination layer: imagined futures rich in threats, both sides; a goal is two threats no one reply meets; the budget is questions; a goal too far is broken into a closer one | 7 | MEASURED | 78.94, 78.95; not in the wake; the breaking down NOT built |
+| 20 | A future judge learned from human trajectories; winning frames labelled in sleep; predict whether they can be reached | 7 | MEASURED | 78.94; not in the wake |
+| 21 | Among equal moves, the one that brings our goals nearer | 7 | IN | rule.rs; with row 14 as it is, it has takings only to work with |
+| 22 | Calculate what is near; estimate per frame and per goal, several estimates; a learned last layer trained on results | 7 | PART | Per goal: the chance table (79.13). Per frame: NOT. Last layer built, its fit found nothing (79.12), the fixed rule plays |
+| 23 | The chain of goals must end inside the search's horizon: a far goal is broken down until the nearest subgoal is one the search can reach, each a step to the next | 7 (2026-11-20) | NOT | New row |
+| 24 | A subgoal reached is a training signal, to make the reward denser than the result of the game | 7, 9 (2026-11-20) | NOT | goal_reach.py counts the event (79.13); nothing is trained on it but the table |
+| 25 | Subgoals are mined: which tactics, by existing, lead to a gain; which facts lead to those tactics; material is the subgoal on the way to the end of the game | 7, 9 (2026-11-20) | NOT | 78.80 and 78.94 are the nearest work |
+| 26 | Human data is conditioned on rating: high rating for accurate work; low rating only as a model of a low-rated opponent | 6, 10 (2026-11-20) | NOT | Samples so far were not split by rating for this purpose; to be checked |
+
+## The estimator, value, sleep, memory (SYSTEM_SPEC 4, 5, 6, 9)
+
+| Row | Decided | Spec | State | What is missing, or the proof |
+|---|---|---|---|---|
+| 27 | The estimator reads frames, not the whole position; several heads; the one preferred is the prediction of future tactical opportunities for each side | 6 | MEASURED | Heads exist over whole-position counts, weak; none per frame; none in the wake |
+| 28 | Events come from the rules and no horizon is put in | 6 | PART | The heads: yes. The goal table of 79.13 uses fixed windows of plies (a departure to mend or to have decided) |
+| 29 | The chance depends on the opponent | 6 | NOT | |
+| 30 | No worth of a unit is assumed | 5 | IN | The human-result record; which record is the default is section 13 item 18 |
+| 31 | Asleep, an agent studies what surprised the wake and hands back lemmas, statistics and a better policy | 1, 9 | PART | The loop was built and parked; the wake reads nothing it made |
+| 32 | The menu of sleep, compression, the rolling measure across sleeps | 9 | NOT | |
+| 33 | Lean is the source of truth for frames and lemmas | 3, AGENTS 11 | PART | Core built; three results not reached; no lemma is read by the wake |
+| 34 | An event-driven memory in which a claim stands until something it read changes | 4 (and the October design) | PART | The October event loop is Python and not in the wake; a claim's read set held about half the time (78.72); the line's own read set not built |
+
+## What this list says (main agent, 2026-11-20)
+
+Plans 79.11 to 79.16 moved rows 4, 7, 8, 10 and 21 and the cost of rows 2, 9 and 12. They did not touch rows 5, 13, 14,
+17, 19, 23, 24, 25, which are the half of the goal that says "have subgoals and navigate toward them". The main agent
+also asked Kaveh (section 13 item 31) a question that row 5 had answered on 2026-11-15.
