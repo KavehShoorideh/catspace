@@ -14,7 +14,13 @@
 //!   `new_bearer_moves`  (ported, step 3) the legal moves after which a unit of the mover bears on a given place where fewer did before (the bearer a move brings, a discovered line included; no edited position is needed).
 use cs_game::placed::{Kind, Place, Placed};
 use cs_game::{Game, Role};
-use cs_tactics::ledger::{Judge, Search};
+use crate::log::{DecisionLog, GoalLog, MoveLog, RowLog};
+use crate::pick::MoveReasons;
+use crate::rule;
+use crate::threat_verdict::Record;
+use crate::threats::{RespState, ThreatParams};
+use cs_tactics::ledger::{Judge, Search, WIN};
+use cs_tactics::lines::LineParams;
 use cs_tactics::sheet::base_graph::{PositionPart, Static, UnitRec};
 use std::collections::HashSet;
 
@@ -27,15 +33,31 @@ impl Pieces {
     pub fn old_player() -> Pieces { Pieces::default() }
     /// Every piece on.
     pub fn all() -> Pieces { Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: true, reasons_pick: true, heads: true } }
-    /// The names of the pieces asked for that are NOT ported into this module yet (the Python mirrors exist; see docs/ANALYST_PLAN.md 79.05 BUILT).
+    /// The names of the pieces asked for that are NOT ported: only the heads that read counts summed over the whole position, which the owner's decision of 2026-11-19 (SYSTEM_SPEC 7, point 2) says not to port and not to call; the estimates of the wake are per goal (estimate.rs) and per move (pick.rs).
     pub fn unported(&self) -> Vec<&'static str> {
         let mut v = vec![];
-        for (on, name) in [(self.carried, "carried open tactics"), (self.frames, "frames and the question read"), (self.reasons_pick, "reasons' pick"), (self.heads, "heads")] {
-            if on { v.push(name); }
-        }
+        if self.heads { v.push("heads over whole-position counts (not ported, not called: SYSTEM_SPEC 7)"); }
         v
     }
 }
+
+/// What the whole wake reads besides the position (all of it data the caller gives; none of it learned here): the measured record of worths, the goal kind, the budgets, the learned seeds of the frame read, the last decision's open tactics, the table of the chance of a goal, the reasons and their weights.
+#[derive(Debug, Clone)]
+pub struct WakeInputs {
+    pub record: Record, pub goal: Option<Kind>,
+    /// the budget of questions of the proposer (0: `goals::BUDGET`) and of line reads for naming moves (0: `rule::NAMED_BUDGET`)
+    pub budget: usize, pub named_budget: usize,
+    /// the frame read's learned seeds and parameters (None: the threat list's rows come from the graph)
+    pub frame: Option<FrameRead>,
+    /// the open tactics of the last decision (None: nothing to carry)
+    pub previous: Option<Carried>,
+    /// the table of the chance of a goal by what stops it, and the reasons with their weights (None: no estimate of that kind, and the log says so)
+    pub chances: Option<ChanceTable>, pub reasons: Option<Reasons>,
+    /// the lines read from one position share a table (repair 2)
+    pub share_table: bool,
+}
+
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -46,11 +68,13 @@ pub struct WakeParams {
     pub depth: i32,
     /// The pieces that are on.
     pub pieces: Pieces,
-    /// The places the graph reads ask about (the places of the unmet facts of the goals; none: the graph reads name no move). Filled by the goals when that piece is ported.
+    /// The places the graph reads ask about (the places of the unmet facts of the goals; none: the graph reads name no move). Used by the search-only path.
     pub places: Vec<Place>,
+    /// What the whole wake reads (see `WakeInputs`).
+    pub inputs: WakeInputs,
 }
 
-impl Default for WakeParams { fn default() -> WakeParams { WakeParams { seconds: 0.2, depth: crate::LEDGER_DEPTH, pieces: Pieces::old_player(), places: vec![] } } }
+impl Default for WakeParams { fn default() -> WakeParams { WakeParams { seconds: 0.2, depth: crate::LEDGER_DEPTH, pieces: Pieces::old_player(), places: vec![], inputs: WakeInputs::default() } } }
 
 /// One line of the chain of claims: the moves, and the reason it ended (section 4's four reasons, in the words of this build), and the piece that made it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,11 +82,15 @@ pub struct Claim { pub line: Vec<String>, pub ended: String, pub by: &'static st
 
 /// What one piece contributed to the decision: the step of section 8 it serves, its seconds, the moves it named (read first and unreduced).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Contribution { pub piece: &'static str, pub step: u8, pub seconds: f64, pub named: Vec<String> }
+pub struct Contribution { pub piece: &'static str, pub step: u8, pub seconds: f64, pub named: Vec<String>, pub note: String }
 
-/// The wake's answer.
+/// The wake's answer: the move, the search's value, depth and nodes, the chain of claims with the reason each line ended, what each piece contributed (step, seconds, moves named), the pieces asked for and not ported, and, for the whole wake, the decision log, the proposal (threat list and goals), the
+/// open tactics to carry to the next decision, the moves named to the search (ours at the root, theirs at the ply after ours) and the moves the search held equal.
 #[derive(Debug, Clone)]
-pub struct WakeDecision { pub mv: Option<String>, pub value: i64, pub depth: i32, pub nodes: u64, pub chain: Vec<Claim>, pub contributions: Vec<Contribution>, pub unported: Vec<&'static str> }
+pub struct WakeDecision {
+    pub mv: Option<String>, pub value: i64, pub depth: i32, pub nodes: u64, pub chain: Vec<Claim>, pub contributions: Vec<Contribution>, pub unported: Vec<&'static str>,
+    pub log: DecisionLog, pub proposal: Option<Proposal>, pub carried: Option<Carried>, pub named_mine: Vec<String>, pub named_theirs: Vec<String>, pub equal: Vec<String>,
+}
 
 /// A unit as the graph names it: owner, kind, place (numbers the game gave).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -133,23 +161,23 @@ pub fn new_bearer_moves<G: Game + Placed>(_st: &Static, g: &G, s: &G::State, pla
 }
 
 /// THE WHOLE DECISION (see the module doc). Ported so far: the graph reads (`new_bearer_moves` over `params.places`) that name moves read first and unreduced; the search is `cs_tactics::ledger::Search`. A piece asked for and not ported is listed in `unported`.
-pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, history: &[u64], judge: &J, params: &WakeParams) -> WakeDecision {
+fn decide_search<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, history: &[u64], judge: &J, params: &WakeParams) -> WakeDecision {
     let me = g.mover(s).unwrap_or(0);
     let mut contributions = vec![];
     let mut named: Vec<String> = vec![];
     if params.pieces.graph_reads && !params.places.is_empty() {
         let t0 = std::time::Instant::now();
         named = new_bearer_moves(st, g, s, &params.places).into_iter().map(|(m, _)| m).collect();
-        contributions.push(Contribution { piece: "graph reads: bearers a move brings", step: 3, seconds: t0.elapsed().as_secs_f64(), named: named.clone() });
+        contributions.push(Contribution { piece: "graph reads: bearers a move brings", step: 3, seconds: t0.elapsed().as_secs_f64(), named: named.clone(), note: String::new() });
     }
     let t0 = std::time::Instant::now();
     let mut ls = Search::new(g, judge, me, params.seconds);
     ls.history = history.iter().copied().collect();
     if !named.is_empty() { ls.named.insert(g.key(s), named); }
     let ln = ls.run(s, params.depth);
-    contributions.push(Contribution { piece: "search with the count of worths at its end", step: 5, seconds: t0.elapsed().as_secs_f64(), named: vec![] });
+    contributions.push(Contribution { piece: "search with the count of worths at its end", step: 5, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
     let ended = if ln.value.abs() >= 1_000_000 { "the game itself ends in the line (concrete)".to_string() } else { format!("the settled end: no capture is left to either side after the depth read in full ({} plies)", ln.depth) };
-    WakeDecision { mv: ln.first.clone(), value: ln.value, depth: ln.depth, nodes: ln.nodes, chain: vec![Claim { line: ln.line.clone(), ended, by: "search" }], contributions, unported: params.pieces.unported() }
+    WakeDecision { mv: ln.first.clone(), value: ln.value, depth: ln.depth, nodes: ln.nodes, chain: vec![Claim { line: ln.line.clone(), ended, by: "search" }], contributions, unported: params.pieces.unported(), log: DecisionLog::default(), proposal: None, carried: None, named_mine: vec![], named_theirs: vec![], equal: vec![] }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------ THE INTERFACES OF THE PIECES STILL TO BE PORTED (written before their bodies; each body answers `Unported`)
@@ -166,11 +194,176 @@ pub use crate::threats::{concrete_threats, ConcreteList, ThreatRow};
 /// (`Fix`, `Fact`, `Goal` with strings and a count of moves) and are widened there with the reason stated in the 79.07 BUILT block: a fix must carry the legal moves that do it, a fact its cause and the units it is about, a goal its side, source and the fix set.
 pub use crate::goals::{answers_against, goals, named_moves, propose, shared_fix_moves, two_threat_goals, Answer, SharedMove, Fact, Fix, FixKind, Goal, GoalParams, Proposal, TwoThreats};
 
-/// STEP 6, the reasons' pick among the moves the search holds equal (symbols_play.ReasonsReader.pick: the pattern counter is Rust already; the weights are a JSON record).
-pub fn reasons_pick<G: Game + Placed>(_st: &Static, _g: &G, _s: &G::State, _equal: &[String]) -> Result<Option<String>, Unported> { Err(Unported("reasons' pick")) }
+/// STEP 6, the reasons' pick (PLAN 79.08, ported): `pick::scores` and `pick::pick` (the pattern counter is Rust; the weights are a parameter). STEP 1, the carry (PLAN 79.08, ported): `carry::carry`. STEP 2, the frame read as the source of the rows: `frame_rows::frame_read`. The estimates: `estimate::ChanceTable`.
+pub use crate::carry::{carry, Carried, Carry};
+pub use crate::estimate::{ChanceTable, Estimate};
+pub use crate::frame_rows::{frame_read, FrameRead, FrameRows};
+pub use crate::pick::{pick, scores, Reasons};
 
-/// STEP 6, the heads read at the equal moves (heads_read.py: the kinds, the 26 statements and the concepts of the position after each move, then the fitted head from the record).
-pub fn heads_pick<G: Game + Placed>(_st: &Static, _g: &G, _s: &G::State, _equal: &[String]) -> Result<Option<String>, Unported> { Err(Unported("heads")) }
+// ------------------------------------------------------------------------------------------------------------------------------ THE WHOLE DECISION (PLAN 79.08 C)
 
-/// STEP 1, the open tactics carried from the last decision (threat_concrete.same_read_set: a claim whose read set did not change is kept).
-pub fn carry(_previous: &ConcreteList, _now_read_sets: &[Vec<Place>]) -> Result<ConcreteList, Unported> { Err(Unported("carried open tactics")) }
+/// The share of the decision's clock that the equal reading keeps back from the search, as the old player keeps it (`LEDGER_SHARE`, `TIE_SHARE`): the search is never given less than the old player's share of the whole clock, whatever the steps before it cost.
+fn tie_seconds(total: f64) -> f64 { (total * (1.0 - crate::LEDGER_SHARE) * crate::TIE_SHARE).max(0.01) }
+
+/// THE WHOLE DECISION, by the steps of SYSTEM_SPEC 8 and the rule for choosing a move (rule.rs): (1) the carry, (2) the frames and the rows of the threat list, (3) the threat list and the goals of both sides in order of stake within the budget, (4) THEIR goals that work: our answers; OUR goal with the fewest things in its way:
+/// its fixes; only the moves whose own line was read and not refuted are named, (5) the search reads with the named moves first and in full, ours at the root and theirs at the ply after ours; the judge's value is untouched, (6) among the moves the search holds equal: an answer to their largest standing threat, then a fix of
+/// our chosen goal, then the estimates, (7) the chain of claims and the decision log. With no piece of the whole on this is `decide_search`, the old player. The clock: steps 1 to 4 take what they take (their cost is reported by step); the search is given what is left of `params.seconds` and never less than the old player's share of it.
+pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, history: &[u64], judge: &J, params: &WakeParams) -> WakeDecision {
+    let p = params.pieces;
+    if !(p.carried || p.frames || p.threats || p.goals || p.two_threat_goals || p.reasons_pick) { return decide_search(st, g, s, history, judge, params); }
+    let t_all = std::time::Instant::now();
+    let me = g.mover(s).unwrap_or(0);
+    let other = g.other(me);
+    let inp = &params.inputs;
+    let rec = &inp.record;
+    let (kinds, roles, places) = (g.kind_names(), g.roles(), g.place_names());
+    let text = |u: &UnitRef| format!("{} {} on {}", roles[u.owner], kinds[u.kind as usize], places[u.at as usize]);
+    let mut contributions: Vec<Contribution> = vec![];
+    let mut log = DecisionLog::default();
+    // ---- steps 1 and 2: the frames and the carry
+    let mut frames: Option<FrameRows> = None;
+    if p.frames {
+        match &inp.frame {
+            Some(fr) => { let f = frame_read(st, g, s, inp.goal, fr, None); contributions.push(Contribution { piece: "frames and the question read", step: 2, seconds: f.seconds, named: vec![], note: format!("{} frames, {} rows, {} questions", f.frames, f.rows.len(), f.questions) }); frames = Some(f); }
+            None => log.notes.push("frames asked for and no learned seeds given: the rows of the threat list are the graph's".into()),
+        }
+    }
+    let mut carried_out: Option<Carry> = None;
+    if p.carried {
+        let t0 = std::time::Instant::now();
+        match (&inp.previous, &frames) {
+            (Some(prev), Some(f)) => { let c = carry(prev, f); contributions.push(Contribution { piece: "carried open tactics", step: 1, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: format!("{} rows held, {} read again", c.held.len(), c.read.len()) }); carried_out = Some(c); }
+            (None, _) => log.notes.push("carry asked for and there is no last decision: nothing is carried".into()),
+            (_, None) => log.notes.push("carry asked for and the frame read gave no read sets: nothing is carried".into()),
+        }
+    }
+    // ---- step 3: the threat list and the goals
+    let t0 = std::time::Instant::now();
+    let rows = frames.as_ref().map(|f| carried_out.as_ref().map_or_else(|| f.rows.clone(), |c| c.read.clone()));
+    let tp = ThreatParams { goal: inp.goal, rows, share_table: inp.share_table, ..Default::default() };
+    let gp = GoalParams { budget: if inp.budget > 0 { inp.budget } else { crate::goals::BUDGET }, held: carried_out.as_ref().map(|c| c.held.clone()).unwrap_or_default(), ..Default::default() };
+    let prop = propose(st, g, s, rec, &tp, &gp);
+    contributions.push(Contribution { piece: "threat list of both sides", step: 3, seconds: prop.list.seconds(), named: vec![], note: format!("{} rows against us, {} against them, {} dropped, {} questions", prop.list.mover.len(), prop.list.other.len(), prop.list.dropped.len(), prop.questions) });
+    contributions.push(Contribution { piece: "goals, subgoals, answers to their goals", step: 3, seconds: t0.elapsed().as_secs_f64() - prop.list.seconds(), named: vec![], note: format!("{} goals", prop.goals.len()) });
+    // ---- step 4: what is named
+    let t0 = std::time::Instant::now();
+    let their = rule::their_threats(&prop.list);
+    let mut answers_largest: Vec<String> = vec![];
+    let mut mine: Vec<String> = vec![];
+    let put = |v: &mut Vec<String>, m: &String| { if !v.contains(m) { v.push(m.clone()); } };
+    for (k, r) in their.iter().enumerate() {
+        for x in r.responses.iter().filter(|x| x.state == RespState::Kept) { if let Some(n) = x.names.first() { put(&mut mine, n); if k == 0 { put(&mut answers_largest, n); } } }
+    }
+    let chosen_ix = rule::chosen_goal(&prop.goals, me, rec, &kinds, inp.goal);
+    let fixes: Vec<String> = chosen_ix.map(|i| rule::fix_moves(&prop.goals[i])).unwrap_or_default();
+    for m in &fixes { put(&mut mine, m); }
+    for (k, r) in their.iter().enumerate() {
+        let Some(u) = r.unit else { continue };
+        for (t, ans) in &prop.defence { if *t == u { for a in ans { put(&mut mine, &a.mv); if k == 0 { put(&mut answers_largest, &a.mv); } } } }
+    }
+    let mut theirs: Vec<String> = vec![];
+    if let Some(i) = rule::chosen_goal(&prop.goals, other, rec, &kinds, inp.goal) { for m in rule::fix_moves(&prop.goals[i]) { put(&mut theirs, &m); } }
+    for r in prop.list.other.iter().filter(|r| r.verdict == crate::threat_verdict::VerdictKind::Confirmed && !r.two_moves) {
+        for x in r.responses.iter().filter(|x| x.state == RespState::Kept) { if let Some(n) = x.names.first() { put(&mut theirs, n); } }
+    }
+    let budget = if inp.named_budget > 0 { inp.named_budget } else { rule::NAMED_BUDGET };
+    let kept = rule::keep_read(g, s, rec, &mine, &theirs, budget, LineParams { depth: tp.sweep_depth, fuse: tp.sweep_fuse }, inp.share_table);
+    let named_mine: Vec<String> = kept.mine.iter().map(|k| k.name.clone()).collect();
+    let named_theirs: Vec<String> = kept.theirs.iter().map(|k| k.name.clone()).collect();
+    contributions.push(Contribution { piece: "named moves: their lines read, the refuted left out", step: 4, seconds: t0.elapsed().as_secs_f64(), named: named_mine.iter().chain(named_theirs.iter()).cloned().collect(), note: format!("{} lines read, {} refuted, {} not read (over the budget)", kept.read, kept.refuted.len(), kept.unlisted.len()) });
+    // ---- step 5: the search, with the named moves first and in full
+    let t0 = std::time::Instant::now();
+    let used = t_all.elapsed().as_secs_f64();
+    let search_secs = (params.seconds - used).max(params.seconds * crate::LEDGER_SHARE);
+    let mut ls = Search::new(g, judge, me, search_secs);
+    ls.history = history.iter().copied().collect();
+    ls.verify_ties = true;
+    if !named_mine.is_empty() { ls.named.insert(g.key(s), named_mine.clone()); }
+    if !named_theirs.is_empty() { ls.named_ply.insert(1, named_theirs.clone()); }
+    let ln = ls.run(s, params.depth);
+    let moves = g.moves(s);
+    let own: Option<usize> = ln.first_index;
+    let decided = ln.value.abs() >= WIN - 1000;
+    let mut probes: Vec<(usize, i64)> = vec![];
+    let mut equal_ix: Vec<usize> = vec![];
+    if !decided && own.is_some() {
+        ls.resume(tie_seconds(params.seconds));
+        probes = ls.probes(s, ln.depth, ln.value, None);
+        let first: Vec<usize> = probes.iter().filter(|(_, v)| *v >= ln.value).map(|(i, _)| *i).collect();
+        equal_ix = if ls.cut() || first.is_empty() { if ls.cut() { vec![] } else { first } } else { ls.verify(s, ln.depth, ln.value, &first) };
+    }
+    if let Some(o) = own { equal_ix.retain(|i| *i != o); equal_ix.insert(0, o); }
+    let equal: Vec<String> = equal_ix.iter().map(|i| g.move_name(s, &moves[*i])).collect();
+    contributions.push(Contribution { piece: "search with the count of worths at its end, and the equal reading", step: 5, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: format!("depth {}, {} nodes, {} held equal", ln.depth, ls.nodes, equal.len()) });
+    // ---- step 6: among the moves held equal
+    let t0 = std::time::Instant::now();
+    let all_names: Vec<String> = moves.iter().map(|m| g.move_name(s, m)).collect();
+    let sc: Option<Vec<MoveReasons>> = match (&inp.reasons, p.reasons_pick) {
+        (Some(r), true) => Some(crate::pick::scores(st, g, s, inp.goal, r, &all_names)),
+        (None, true) => { log.notes.push("the reasons' pick asked for and no reasons given: no estimate of a move, the search's own first move decides among the rest".into()); None }
+        _ => None,
+    };
+    let tie_digits = inp.reasons.as_ref().map_or(9, |r| r.tie_digits);
+    let chosen = rule::choose(&equal, &answers_largest, &fixes, &|set: &[String]| sc.as_ref().and_then(|v| crate::pick::pick(v, set, tie_digits)));
+    contributions.push(Contribution { piece: "the choice among the moves held equal (the rule, the estimates)", step: 6, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
+    let mv = chosen.as_ref().map(|c| c.mv.clone()).or_else(|| ln.first.clone());
+    // ---- step 7: the chain of claims and the log
+    let ended = if decided { "the game itself ends in the line (concrete)".to_string() } else { format!("the settled end: no capture is left to either side after the depth read in full ({} plies)", ln.depth) };
+    let mut chain = vec![Claim { line: ln.line.clone(), ended, by: "search" }];
+    if let (Some(c), Some(m)) = (&chosen, &mv) {
+        if c.answers_their_threat {
+            if let Some(x) = their.first().and_then(|r| r.responses.iter().find(|x| x.names.first() == Some(m))) { chain.push(Claim { line: x.names.clone(), ended: x.end_reason.clone(), by: "threat list: an answer to their largest threat" }); }
+            else if let Some(k) = kept.mine.iter().find(|k| &k.name == m) { chain.push(Claim { line: k.line.clone(), ended: k.ended.clone(), by: "threat list: an answer to their largest threat" }); }
+        }
+        if c.fixes_our_goal { if let Some(k) = kept.mine.iter().find(|k| &k.name == m) { chain.push(Claim { line: k.line.clone(), ended: k.ended.clone(), by: "goal: a fix of the chosen goal" }); } }
+        if sc.is_some() && c.left_after_goal > 1 { chain.push(Claim { line: vec![m.clone()], ended: "the reasons' score decides among the moves held equal (an estimate, never a value)".into(), by: "estimate: the reasons' pick" }); }
+    }
+    log.chosen = mv.clone();
+    log.why = chosen.as_ref().map_or_else(|| "no move held equal: the search's own move".to_string(), |c| c.why.clone());
+    let goal_log = |x: &Goal, chosen: bool| GoalLog {
+        side: roles[x.side].clone(), target: text(&x.target), source: x.source.clone(), depth: x.depth, parent: x.parent.as_ref().map(&text), via: x.via.map(|v| v.to_string()), unmet: x.unmet.iter().map(|u| u.to_string()).collect(), stoppers: x.stoppers.iter().map(&text).collect(),
+        fixes: x.fixes.iter().map(|f| (format!("{:?}", f.kind), f.moves.iter().take(8).cloned().collect())).collect(), in_the_way: rule::things_in_the_way(x),
+        chance: inp.chances.as_ref().map(|t| { let e = t.chance(x); (e.chance, e.n, e.source.to_string()) }), chosen, goal_unit: x.goal_unit,
+    };
+    log.goals = prop.goals.iter().enumerate().map(|(i, x)| goal_log(x, Some(i) == chosen_ix)).collect();
+    if inp.chances.is_none() && p.goals { log.notes.push("no table of the chance of a goal given: no estimate per goal".into()); }
+    log.notes.push("no table of frames given: no estimate per frame".into());
+    log.chosen_goal = chosen_ix.map(|i| goal_log(&prop.goals[i], true));
+    if let Some(i) = chosen_ix { let mut x = &prop.goals[i]; while let Some(par) = x.parent { match prop.goals.iter().find(|y| y.target == par && y.side == x.side) { Some(y) => x = y, None => break } } if !std::ptr::eq(x, &prop.goals[i]) { log.far_goal = Some(format!("{} ({})", text(&x.target), x.unmet.join(", "))); } }
+    log.their_threat = their.first().map(|r| r.unit.map_or_else(|| "the end of the game".to_string(), |u| text(&u)));
+    let row_log = |name: &str, r: &ThreatRow| RowLog { list: name.to_string(), unit: r.unit.map_or_else(|| "the end of the game".to_string(), |u| text(&u)), class: r.class.clone(), verdict: format!("{:?}", r.verdict), net: r.net, ended: r.ended.to_string(), line: r.line.clone(),
+        responses: r.responses.iter().map(|x| (x.names.first().cloned().unwrap_or_default(), x.state.word().to_string(), x.net)).collect(), carried: carried_out.as_ref().is_some_and(|c| c.held.iter().any(|h| h.row.unit == r.unit && r.unit.is_some())) };
+    for (n, v) in [("against us", &prop.list.mover), ("against them", &prop.list.other), ("exchange", &prop.list.exchange), ("dropped", &prop.list.dropped)] { log.rows.extend(v.iter().take(12).map(|r| row_log(n, r))); }
+    log.named_mine = kept.mine.iter().map(|k| (k.name.clone(), format!("{:?}", k.verdict), k.net, k.ended.clone())).collect();
+    log.named_theirs = kept.theirs.iter().map(|k| (k.name.clone(), format!("{:?}", k.verdict), k.net, k.ended.clone())).collect();
+    log.refuted = kept.refuted.clone();
+    log.unlisted = kept.unlisted.clone();
+    // the candidate moves at the root: what was calculated, what each serves or answers, each estimate
+    let mut mlog: Vec<MoveLog> = vec![];
+    for (i, m) in moves.iter().enumerate() {
+        let name = all_names[i].clone();
+        let (line, _lost) = ls.line_from(s, i, ln.depth.max(1) as usize + 2);
+        let value = probes.iter().find(|(j, _)| *j == i).map(|(_, v)| *v);
+        let mut serves: Vec<String> = vec![];
+        let mut chance: Option<f64> = None;
+        for gl in prop.goals.iter().filter(|x| x.side == me) {
+            for f in &gl.facts { if f.fixes.iter().any(|fx| fx.moves.contains(&name)) { serves.push(format!("fix of {} ({})", text(&gl.target), f.name)); if let Some(t) = &inp.chances { let c = t.chance(gl).chance; chance = Some(chance.map_or(c, |o: f64| o.max(c))); } } }
+        }
+        serves.dedup();
+        let mut ans: Vec<String> = vec![];
+        for r in their.iter() {
+            let by_resp = r.responses.iter().any(|x| x.state == RespState::Kept && x.names.first() == Some(&name));
+            let by_fact = r.unit.is_some_and(|u| prop.defence.iter().any(|(t, a)| *t == u && a.iter().any(|x| x.mv == name)));
+            if by_resp || by_fact { ans.push(format!("answers the threat on {}", r.unit.map_or_else(|| "the end of the game".to_string(), |u| text(&u)))); }
+        }
+        let rs = sc.as_ref().and_then(|v| v.iter().find(|x| x.mv == name));
+        let _ = m;
+        mlog.push(MoveLog { mv: name.clone(), value, equal: equal.contains(&name), line, ended: if value.is_some_and(|v| v.abs() >= WIN - 1000) { "the game itself ends in the line".into() } else { format!("the settled end after the depth read ({} plies)", ln.depth) },
+            named: named_mine.contains(&name), own_read: kept.mine.iter().find(|k| k.name == name).map(|k| (format!("{:?}", k.verdict), k.net, k.ended.clone())), serves, answers: ans, chance, reasons_score: rs.map(|x| x.score), reasons_carried: rs.map(|x| x.carried.len()) });
+    }
+    mlog.sort_by_key(|m| (!m.equal, m.value.map_or(i64::MAX, |v| -v)));
+    log.moves = mlog;
+    let carried_next = frames.as_ref().map(|f| Carried::of(&prop.list, &f.read_sets));
+    contributions.push(Contribution { piece: "the whole decision", step: 0, seconds: t_all.elapsed().as_secs_f64(), named: vec![], note: String::new() });
+    WakeDecision { mv, value: ln.value, depth: ln.depth, nodes: ln.nodes, chain, contributions, unported: params.pieces.unported(), log, proposal: Some(prop), carried: carried_next, named_mine, named_theirs, equal }
+}
