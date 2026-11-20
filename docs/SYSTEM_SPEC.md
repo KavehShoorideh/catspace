@@ -756,6 +756,19 @@ Kaveh: "the most complex piece".
   builder reads some of them against the board and says what a strong player would not agree with, and the main
   agent reads them again before the merge. A piece is not called done on its numbers alone. The judgement is
   written in the plan note as words, never as a number, and never enters the engine.
+**The layers, each with its own work, its interface and its test** (Kaveh 2026-11-20, thinking out loud; UNDER DISCUSSION, nothing
+built, "I will tell you what to do there"). His words in short: clean up the interfaces, define the work of each layer, write good
+tests for each layer, "so that we can build on top and rely on what's been done" and "so that we only work on one part". His
+layers, from the base up: (1) REPRESENTATION: space, time and material; the units, the board, a notion of tempo. Test: a position
+is encoded and recreated. (2) RULES: each side makes one move a tempo, alternating; what move is legal and what is not. All in
+Rust. (3) BASIC FACTS, PATTERNS AND FRAMES: frames of two, three, maybe four units. Test: correctness of the basic patterns.
+(4) MEANS-ENDS, THE TACTICAL LAYER: decides what move to make to get a goal. Test: positions where the solution is not quiet
+(puzzle solutions; the oracle as a measure). Quiet moves need one layer deeper. (5) GOALS AND SUBGOALS, with the memory and the
+techniques, working hand in hand with the tactical layer. (6) THE OPPONENT: the effect of the opponent. (7) STRATEGIC: what we are
+trying to accomplish. His questions: do we have these interfaces between the layers; do we have tests that let us be sure a layer
+is done; is anything missing. The main agent's answer of the same day is in the conversation and in section 13 item 38; the
+layers of section 2 stand until he decides.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -925,6 +938,11 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     share of turns at which the term is lower within the next three turns; the goal's question reads up to three of our moves and
     gets half the share of the steps before the search; a game of the test ends at the third repetition. Two choices the main agent
     holds to be faults and will mend: the fall is counted from the value now, and a dropped goal is not taken up again.
+38. From Kaveh's words of 2026-11-20 on the layers (section 11, last block). The main agent's answer, PROPOSED: the crates are
+    close to his layers but not the same (game and gdl hold representation and rules together; cs_tactics holds the base graph, the
+    frames and the search in one crate; cs_decision holds goals, the rule for choosing and the wake in one crate; memory is its own
+    crate; the opponent and the strategic layer have no crate). No layer has a test that says "this layer is done". Missing from his
+    list, to be placed: value (results, worth), the estimator, sleep (learning), and the measure of what the whole does. His to decide.
 28. From plan 79.09 (2026-11-19). Choices the builder made where the spec is silent, kept until you say otherwise: the steps before the
     search get what the search and its equal reading leave of the clock; a line cut by the clock is a gap and never a refutation; an
     estimate that did not reach a move does not decide. Three readings of your words that plan 79.10 builds on, mine: when every fix of
@@ -1074,4 +1092,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The small endings as the test of means and ends; the October measure of progress was not brought into the new engine (DIRECTION, Kaveh; ANSWER and READING, main agent) | 2026-11-20 | 7 (last block before section 8), ledger row 35 |
 | The go on the small endings: the order of the build; the table in sleep and in the measure only (READING) | 2026-11-20 | 7 (last block before section 8), 13 item 36 |
 | Plan 79.17: the measure of progress in the new engine, mined, held by the wake; two faults that stand | 2026-11-20 | 12, 13 item 37 |
+| The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last block), 13 item 38 |
 | What was replaced | 2026-11-16 | 14 |

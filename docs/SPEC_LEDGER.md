@@ -68,6 +68,7 @@ sections 2, 3, 9 and 10 were not reread for it and are owed a pass.
 | 33 | Lean is the source of truth for frames and lemmas | 3, AGENTS 11 | PART | Core built; three results not reached; no lemma is read by the wake |
 | 34 | An event-driven memory in which a claim stands until something it read changes | 4 (and the October design) | PART | The October event loop is Python and not in the wake; a claim's read set held about half the time (78.72); the line's own read set not built |
 | 35 | A measure of progress toward a stated goal: did we get closer or are we going in circles; a forced win is a measure that falls against every reply | 7 (2026-11-20; October: plans 52.23, 73.5b, Lean forced_by_measure) | PART | Built and proved in the older system only (agenda.py, technique_miner.py, Lean); nothing of it in rust/engine. Plan 79.17 (go 2026-11-20) built it (cs_tactics::measure, the miner, the wake's held goal; tests measure.rs, wake_measure.rs). Missing: the fall is counted from the value now, not the lowest held; passed on a sample, not proved; one class |
+| 36 | Layers from the base up (representation, rules, basic facts and frames, means-ends, goals and subgoals with memory and techniques, the opponent, strategic), each with its work, its interface and a test that says it is done, so that one part is worked on at a time | 11 (2026-11-20, UNDER DISCUSSION) | NOT | The crates are near these layers but not the same; no layer has a test of being done; Kaveh is deciding the list |
 
 ## What this list says (main agent, 2026-11-20)
 
