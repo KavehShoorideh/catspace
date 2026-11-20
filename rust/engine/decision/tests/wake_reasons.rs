@@ -2,6 +2,7 @@
 //! move's own line is no gain; the end of the game forced is said as such; no claim without the reason it ended; a goal is the subgoal of the moment only if a named move serves it. The pure part (`why_of`) on built inputs, the rest on the wake over constructed positions. No puzzle, no stored game, no match.
 use cs_decision::rule::{choose, why_of, Chosen, Decided, Kept, WhyIn};
 use cs_decision::threat_verdict::{Record, VerdictKind};
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -90,7 +91,7 @@ fn c_the_estimates_and_the_search_alone_are_said_to_be_what_they_are() {
 
 fn whole(g: &KernelGame, seconds: f64) -> WakeParams {
     WakeParams { seconds, depth: 64, pieces: Pieces { carried: false, frames: false, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: false, heads: false, after_move: false, direct_names: false },
-        inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, goal: Some(kind(g, "king")), pre_share: Some(0.5), ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(Record { worth: table(), half: HashMap::new() }), ..Default::default() }, None), goal: Some(kind(g, "king")), pre_share: Some(0.5), ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 #[test]

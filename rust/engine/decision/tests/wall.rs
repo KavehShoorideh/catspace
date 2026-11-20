@@ -75,6 +75,7 @@ fn b6_a_first_move_above_the_value_is_never_lowered() {
 // ------------------------------------------------------------------------------------------------------------------------------ the whole wake on decision 18
 
 use cs_decision::threat_verdict::Record;
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
@@ -102,7 +103,7 @@ fn b7_the_wake_does_not_play_a_first_move_the_probe_lowered_while_other_moves_ho
     let mut lowered_seen = 0;
     for seconds in [0.02, 0.05, 0.1, 0.2, 0.4] {
         let params = WakeParams { seconds, depth: 64, pieces: Pieces { reasons_pick: true, ..Pieces::default() }, places: vec![],
-            inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, ..WakeInputs::default() } };
+            inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(Record { worth: table(), half: HashMap::new() }), ..Default::default() }, None), ..WakeInputs::default() } };
         let d = decide(&st, &g, &s, &[], &judge, &params);
         let first = d.first.clone();
         if d.log.first_lowered.is_some() {
@@ -127,7 +128,7 @@ fn b8_with_no_lowered_first_move_the_moves_held_equal_are_mains() {
     for fen in ["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7", "4k3/8/8/3b4/8/8/4N3/R3K3 w - - 0 1",
                 "1n1qkbnr/2pbpppp/8/3p4/8/2PPPP2/1B4PP/QN2KBNR b Kk - 2 11", "r3k2r/pppq1ppp/2npbn2/2b1p3/2B1P3/2NP1N2/PPPBQPPP/R3K2R w KQkq - 0 9", "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", "8/8/4k3/8/3K4/8/3P4/8 w - - 0 1"] {
         let s = KernelGame::from_fen("chess", fen).unwrap().initial();
-        let params = WakeParams { seconds: 30.0, depth: 4, pieces: Pieces { reasons_pick: true, ..Pieces::default() }, places: vec![], inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, ..WakeInputs::default() } };
+        let params = WakeParams { seconds: 30.0, depth: 4, pieces: Pieces { reasons_pick: true, ..Pieces::default() }, places: vec![], inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(Record { worth: table(), half: HashMap::new() }), ..Default::default() }, None), ..WakeInputs::default() } };
         let d = decide(&st, &g, &s, &[], &judge, &params);
         // main's set, rebuilt from the search itself
         let me = g.mover(&s).unwrap_or(0);

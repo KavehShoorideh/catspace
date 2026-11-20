@@ -3,6 +3,7 @@ use cs_decision::estimate::ChanceTable;
 use cs_decision::frame_rows::FrameRead;
 use cs_decision::pick::{Dir, Reason, Reasons, Side};
 use cs_decision::threat_verdict::Record;
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, pre_share_of, search_seconds, Pieces, WakeInputs, WakeParams, FAIL_OF_TIE, TAIL_SHARE};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -53,7 +54,7 @@ fn reasons_of(st: &Static, g: &KernelGame, s: &<KernelGame as Game>::State) -> R
 fn whole(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State, seconds: f64, scale: Option<f64>, read_on: bool) -> WakeParams {
     let pre = scale.map(|k| pre_share_of(cs_decision::LEDGER_SHARE, None) * k);
     WakeParams { seconds, depth: 64, pieces: Pieces::all(),
-        inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, goal: Some(kind(g, "king")), frame: Some(frame_of(g, st, s)), chances: Some(ChanceTable { floor: 20, total: (100, 25), ..Default::default() }), reasons: Some(reasons_of(st, g, s)), pre_share: pre, read_on, ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(Record { worth: table(), half: HashMap::new() }), chances: Some(ChanceTable { floor: 20, total: (100, 25), ..Default::default() }), reasons: Some(reasons_of(st, g, s)), ..Default::default() }, None), goal: Some(kind(g, "king")), frame: Some(frame_of(g, st, s)), pre_share: pre, read_on, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 const POSITIONS: [&str; 5] = ["r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7", "k7/4n3/2p5/8/8/5B2/8/4R2K w - - 0 1", "4k3/8/8/3b4/8/8/4N3/R3K3 w - - 0 1",

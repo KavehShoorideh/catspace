@@ -2,6 +2,7 @@
 //! decisions 3, 11 and 17 of 79.14 (positions as the engine logged them): a line of theirs stands on the mover's goal unit; the move played answers it and the reason says so, before any fix of a goal of ours is named. No puzzle, no match.
 use cs_decision::goals::standing_line;
 use cs_decision::threat_verdict::Record;
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -22,7 +23,7 @@ fn kind(g: &KernelGame, name: &str) -> Kind { g.kind_names().iter().position(|k|
 fn state(fen: &str) -> <KernelGame as Game>::State { KernelGame::from_fen("chess", fen).unwrap().initial() }
 fn whole(g: &KernelGame, seconds: f64) -> WakeParams {
     WakeParams { seconds, depth: 64, pieces: Pieces { carried: false, frames: false, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: false, heads: false, after_move: false, direct_names: false },
-        inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, goal: Some(kind(g, "king")), pre_share: Some(0.5), ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(Record { worth: table(), half: HashMap::new() }), ..Default::default() }, None), goal: Some(kind(g, "king")), pre_share: Some(0.5), ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 /// (decision of 79.14, the position, the unit that stands borne on, the bearer, a move that answers it)

@@ -60,6 +60,9 @@ impl std::fmt::Debug for Partition {
 
 impl Partition {
     pub fn new(key: GameKey) -> Partition { Partition { key, parent: None, statements: BTreeMap::new(), entries: BTreeMap::new(), id: OnceLock::new() } }
+    /// A partition built in place from its parts (no snapshot is made, no hash is computed until the id is asked): how a caller that is given the tables of a game makes the reader of one decision.
+    pub fn with_entry(mut self, name: &str, e: Arc<dyn Kept>) -> Partition { self.entries.insert(name.to_string(), e); self }
+    pub fn with_statement(mut self, s: Statement) -> Partition { self.statements.insert(s.id.clone(), s); self }
     fn child(&self) -> Partition { Partition { key: self.key.clone(), parent: Some(self.id().to_string()), statements: self.statements.clone(), entries: self.entries.clone(), id: OnceLock::new() } }
     pub fn statements(&self) -> impl Iterator<Item = &Statement> { self.statements.values() }
     pub fn statement(&self, id: &str) -> Option<&Statement> { self.statements.get(id) }
@@ -122,8 +125,12 @@ impl std::fmt::Debug for Reader {
 }
 
 impl Reader {
+    /// The reader of one partition (the partition is shared, never copied).
+    pub fn new(p: Partition) -> Reader { Reader { part: Arc::new(p) } }
     pub fn key(&self) -> &GameKey { &self.part.key }
     pub fn id(&self) -> &str { self.part.id() }
+    /// Write this partition as a file under `root` (a copy of what it holds; the memory is not changed).
+    pub fn write(&self, root: &Path) -> Result<PathBuf, String> { self.part.write(root) }
     pub fn parent(&self) -> Option<&str> { self.part.parent.as_deref() }
     pub fn statements(&self) -> impl Iterator<Item = &Statement> { self.part.statements() }
     pub fn statement(&self, id: &str) -> Option<&Statement> { self.part.statement(id) }

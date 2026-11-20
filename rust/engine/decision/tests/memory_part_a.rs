@@ -1,3 +1,4 @@
+//! (This file is in cs_decision's tests because it needs cs_gdl to compose a variant's text; cs_memory has no such dependency, and adding one changes Cargo.lock, which the kernels' certificates are keyed by.)
 //! PLAN 79.19 PART A: THE STATEMENT AND ITS FOUR TESTS (SYSTEM_SPEC 11 "the layers": "a position is encoded and recreated"; "what the representation layer must be able to say"), on TWO games: the standard game (rules/chess.gdl) and one variant of the repo (rules/variants/kingofthehill.gdl).
 //! (1) a position is encoded and recreated exactly over a large sample of positions of generated games (the game's own state, by replay and by its text; the facts through their canonical text);
 //! (2) every statement of every standing and holder is written, read back and found identical (the patterns come from the games' own facts);

@@ -4,6 +4,7 @@ use cs_decision::chooser::{apply, inputs_of, AfterFacts, ChooserSpec, FixFacts, 
 use cs_decision::pick::{scores_must, Dir, Reason, Reasons, Side};
 use cs_decision::rule::{why_against_first, why_of, Chosen, Decided, FirstFacts, Kept, WhyIn};
 use cs_decision::threat_verdict::{Record, VerdictKind};
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -209,7 +210,7 @@ fn a_the_first_moves_of_the_order_given_are_scored_after_the_clock_has_ended_and
 fn whole(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State, chooser: Option<ChooserSpec>) -> WakeParams {
     WakeParams { seconds: 60.0, depth: 4,
         pieces: Pieces { carried: false, frames: false, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: true, heads: false, after_move: true, direct_names: true },
-        inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, goal: Some(kind(g, "king")), reasons: Some(reasons_of(st, g, s)), budget: 4, chooser, ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(Record { worth: table(), half: HashMap::new() }), reasons: Some(reasons_of(st, g, s)), ..Default::default() }, None), goal: Some(kind(g, "king")), budget: 4, chooser, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 #[test]

@@ -5,6 +5,7 @@ use cs_decision::frame_rows::FrameRead;
 use cs_decision::pick::{Dir, Reason, Reasons, Side};
 use cs_decision::estimate::ChanceTable;
 use cs_decision::threat_verdict::Record;
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, WakeDecision, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -58,7 +59,7 @@ fn chances() -> ChanceTable { ChanceTable { floor: 20, total: (100, 25), ..Defau
 /// every piece of the whole on, the inputs a caller would give
 fn whole(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State, seconds: f64, depth: i32) -> WakeParams {
     WakeParams { seconds, depth, pieces: Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: true, heads: false, after_move: false, direct_names: false },
-        inputs: WakeInputs { record: record(), goal: Some(kind(g, "king")), frame: Some(frame_read(g, st, s)), chances: Some(chances()), reasons: Some(reasons_of(st, g, s)), budget: 4, ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(record()), chances: Some(chances()), reasons: Some(reasons_of(st, g, s)), ..Default::default() }, None), goal: Some(kind(g, "king")), frame: Some(frame_read(g, st, s)), budget: 4, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 /// a quiet developed position, a position with a bishop on the long line to the goal unit (a pawn shuts it), and a position where the other side attacks a unit of ours
@@ -123,8 +124,7 @@ fn d_the_value_of_the_search_is_the_same_with_and_without_the_pieces_and_the_est
         assert_eq!(va, vb, "the named moves change the order and never the value");
         // the estimates (the chance of a goal, the reasons) change neither the search's value nor the set it holds equal; they may change the choice among the equal
         let mut p2 = whole(&g, &st, &s, 60.0, 4);
-        p2.inputs.chances = None;
-        p2.inputs.reasons = None;
+        p2.inputs.memory = WakeMemory::given(Parts { record: Some(record()), ..Default::default() }, None);
         let without = decide(&st, &g, &s, &[], &j, &p2);
         assert_eq!((with.value, with.depth, with.equal.clone()), (without.value, without.depth, without.equal.clone()));
         assert!(without.log.notes.iter().any(|n| n.contains("no reasons given")) && without.log.notes.iter().any(|n| n.contains("no table of the chance")), "what is missing is said");
@@ -138,11 +138,11 @@ fn d_the_carry_holds_a_claim_whose_read_set_did_not_change_and_logs_it() {
     let s = state(POSITIONS[1]);
     let j = judge();
     let first = decide(&st, &g, &s, &[], &j, &whole(&g, &st, &s, 60.0, 3));
-    let prev = first.carried.clone().expect("the open tactics to carry");
+    let prev = first.carried().expect("the open tactics to carry").clone();
     assert!(!prev.rows.is_empty(), "the frame read made rows with read sets");
     // the same position again: every row with a read set is held, none is read again
     let mut p = whole(&g, &st, &s, 60.0, 3);
-    p.inputs.previous = Some(prev.clone());
+    p.inputs.memory.game = first.game.clone();
     let second = decide(&st, &g, &s, &[], &j, &p);
     let step = second.contributions.iter().find(|c| c.step == 1).expect("the carry is a step");
     println!("OBS carry 79.08: {} rows carried from the last decision; {}", prev.rows.len(), step.note);

@@ -70,3 +70,39 @@ def test_the_scenarios_hold_what_they_say(rows):
     assert sum(1 for m in held if m and m.get("held_before")) >= 8
     assert any(x["carried"] for r in rows["carried"] if r["variant"] == "graph_on" for x in r["words"]["log"]["rows"])
     assert all(len(rows[n]) > 0 for n in G.NAMES)
+
+
+@pytest.fixture(scope="module")
+def through_the_file(world, tmp_path_factory):
+    """The long-term memory of this game written as partition files (under a temporary folder here; the plan's own run writes under artifacts/experiments/whole_79_19) and the scenarios run reading them."""
+    root = tmp_path_factory.mktemp("long_term")
+    G.LONG_TERM = {kind: Path(G.write_memory(world, root, kind)[0]) for kind in ("nogoal", "tables", "full")}
+    try:
+        yield G.all_rows(world, P.POSITIONS, "f")
+    finally:
+        G.LONG_TERM = None
+
+
+@pytest.mark.parametrize("name", G.NAMES)
+def test_the_wake_reading_its_tables_and_its_goal_from_the_long_term_file_decides_as_main(through_the_file, name):
+    """The tables the wake read as arguments and the mined measure are now a partition of the long-term memory, written to a file named by its content and read by the wake as the game's reader: the decisions are equal to the baseline made on main."""
+    snap = json.loads(BASELINE.read_text())
+    assert len(through_the_file[name]) == len(snap[name]) > 0
+    for i, (a, b) in enumerate(zip(snap[name], json.loads(json.dumps(through_the_file[name])))):
+        assert a == b, (name, i)
+
+
+def test_a_partition_of_another_game_is_refused_by_the_wake(world, tmp_path):
+    """The wake of one game given the partition file of another (another name, other rules) refuses it: what was learned in one game is not read in another."""
+    other = tmp_path / "other"
+    path, _id, _parent = world.model.memory_write(str(other), dict(world.worth), {}, None, None, None, None, None, None)
+    # (the file is this game's: its game key is rewritten to another game's and the file is renamed by its new content)
+    body = json.loads(Path(path).read_text())
+    body["game"] = {"name": "another game", "rules": "0123456789abcdef"}
+    import hashlib
+    raw = json.dumps(body, separators=(",", ":")).encode()
+    fake = tmp_path / (hashlib.sha256(raw).hexdigest()[:16] + ".json")
+    fake.write_bytes(raw)
+    args = (P.POSITIONS[3], [], 1.0, 3, dict(world.worth), {}, world.goal, ["goals"], 0, 0, None, None, None, None)
+    with pytest.raises(ValueError, match="another game"):
+        world.model.wake_decide(*args, long_term=str(fake))

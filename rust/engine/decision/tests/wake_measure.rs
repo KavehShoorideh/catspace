@@ -2,6 +2,7 @@
 //! where the calculation holds it equal, dropped only for a stated cause (the class changed, no line lowers it, the end of the game found), and with no goal given the wake logs nothing of it. The log is read as words.
 use cs_decision::log::MeasureLog;
 use cs_decision::threat_verdict::Record;
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, MeasureGoal, Pieces, WakeDecision, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
@@ -26,9 +27,9 @@ fn state(fen: &str) -> St { KernelGame::from_fen("chess", fen).unwrap().initial(
 fn kind(g: &KernelGame, name: &str) -> u8 { g.kind_names().iter().position(|k| k == name).unwrap() as u8 }
 fn play(g: &KernelGame, s: &St, name: &str) -> St { let m = g.moves(s).into_iter().find(|m| g.move_name(s, m) == name).unwrap_or_else(|| panic!("no move {name}")); g.apply(s, &m) }
 
-fn params(g: &KernelGame, seconds: f64, measure: Option<MeasureGoal>, previous: Option<cs_decision::carry::Carried>) -> WakeParams {
+fn params(g: &KernelGame, seconds: f64, measure: Option<MeasureGoal>, previous: Option<cs_memory::store::GameMemory>) -> WakeParams {
     let pieces = Pieces { goals: true, threats: true, direct_names: true, ..Pieces::old_player() };
-    WakeParams { seconds, depth: 64, pieces, inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, goal: Some(kind(g, "king")), measure, previous, ..WakeInputs::default() }, ..WakeParams::default() }
+    WakeParams { seconds, depth: 64, pieces, inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(Record { worth: table(), half: HashMap::new() }), measure: measure.map(|m| (m.term.text(), m.d, "a test".to_string())), ..Default::default() }, previous), goal: Some(kind(g, "king")), ..WakeInputs::default() }, ..WakeParams::default() }
 }
 fn goal(g: &KernelGame, text: &str, d: u32) -> MeasureGoal { let kk = kind(g, "king"); MeasureGoal { term: Term::parse(&text.replace("K", &kk.to_string())).unwrap(), d } }
 fn ml(d: &WakeDecision) -> &MeasureLog { d.log.measure.as_ref().expect("the measure was given: the log has its entry") }
@@ -41,7 +42,7 @@ fn with_no_goal_given_the_wake_logs_nothing_of_it_and_carries_nothing() {
     let s = state(START);
     let d = decide(&st, &g, &s, &[], &Worth { name: "r".into(), table: table(), ours_first: false }, &params(&g, 1.0, None, None));
     assert!(d.log.measure.is_none());
-    assert!(d.carried.as_ref().is_none_or(|c| c.held.is_none()));
+    assert!(d.carried().is_none_or(|c| c.held.is_none()));
     assert!(d.log.to_json()["measure"].is_null());
     assert!(!d.contributions.iter().any(|c| c.piece.starts_with("the held goal")));
 }
@@ -65,7 +66,7 @@ fn the_goal_is_taken_up_named_and_carried_and_the_event_is_logged_when_the_value
         }
         if m.reached { reached += 1; }
         println!("OBS wake_measure ply {ply}: value {:?} held {:?} reached {} (total {}), first {:?} in {:?} moves, played toward {}, move {:?}; {}", m.value_now, m.held_after, m.reached, m.reached_total, m.first, m.moves, m.played_toward, d.mv, m.said);
-        assert!(d.carried.as_ref().is_some_and(|c| c.held.is_some()), "the goal is carried with the decision");
+        assert!(d.carried().is_some_and(|c| c.held.is_some()), "the goal is carried with the decision");
         if m.dropped.is_some() { break; }
         if m.played_toward { assert_eq!(d.mv, m.first); assert!(d.log.why.starts_with("toward the held goal")); }
         let mv = d.mv.clone().expect("a move");
@@ -73,7 +74,7 @@ fn the_goal_is_taken_up_named_and_carried_and_the_event_is_logged_when_the_value
         // the other side answers with its first legal move (a fixed defender: the test is of the goal, not of the defence)
         let Some(reply) = g.moves(&s).first().map(|m| g.move_name(&s, m)) else { break };
         s = play(&g, &s, &reply);
-        prev = d.carried.clone();
+        prev = Some(d.game.clone());
     }
     println!("OBS wake_measure: subgoals reached over the line: {reached}");
 }
@@ -84,16 +85,16 @@ fn a_goal_is_dropped_when_the_class_changes_and_the_cause_is_logged_and_kept() {
     let judge = Worth { name: "r".into(), table: table(), ours_first: false };
     let mg = goal(&g, "region(1,K)", 2);
     let d1 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg.clone()), None));
-    let held = d1.carried.clone().unwrap();
+    let held = d1.carried().unwrap().clone();
     assert!(held.held.as_ref().unwrap().dropped.is_none());
     // a unit of ours is gone: the class is not the class the goal was taken up in
-    let d2 = decide(&st, &g, &state("7k/8/8/8/8/8/8/K7 w - - 0 1"), &[], &judge, &params(&g, 1.0, Some(mg.clone()), Some(held.clone())));
+    let d2 = decide(&st, &g, &state("7k/8/8/8/8/8/8/K7 w - - 0 1"), &[], &judge, &params(&g, 1.0, Some(mg.clone()), Some(d1.game.clone())));
     let m = ml(&d2);
     assert!(m.dropped.as_ref().is_some_and(|c| c.starts_with("the class changed")), "{:?}", m.dropped);
     assert!(m.first.is_none() && !m.played_toward);
     println!("OBS wake_measure: {}", m.said);
     // dropped for good: the next decision, back in the first class, says it was dropped earlier and names nothing
-    let d3 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg), d2.carried.clone()));
+    let d3 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg), Some(d2.game.clone())));
     assert!(ml(&d3).said.contains("dropped earlier") && ml(&d3).first.is_none());
 }
 
@@ -107,8 +108,8 @@ fn control_a_term_nothing_can_lower_stays_and_is_asked_again_with_the_count_of_d
     let m = ml(&d1);
     assert!(m.first.is_none() && !m.cut, "the question is read to its end: {}", m.said);
     assert!(m.dropped.is_none() && m.without_line == 1, "{:?} {}", m.dropped, m.said);
-    assert!(d1.carried.as_ref().unwrap().held.as_ref().unwrap().dropped.is_none());
-    let d2 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 2.0, Some(mg), d1.carried.clone()));
+    assert!(d1.carried().unwrap().held.as_ref().unwrap().dropped.is_none());
+    let d2 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 2.0, Some(mg), Some(d1.game.clone())));
     let m2 = ml(&d2);
     assert!(m2.dropped.is_none() && m2.without_line == 2 && m2.said.contains("2 decisions in a row without a line"), "{:?} {}", m2.dropped, m2.said);
     println!("OBS wake_measure control: {}", m2.said);
@@ -125,7 +126,7 @@ fn the_end_of_the_game_found_by_the_search_is_played_and_the_goal_goes_to_sleep(
     let m = ml(&d);
     assert!(m.dropped.is_none() && m.asleep.as_ref().is_some_and(|c| c.starts_with("the end of the game is found by the search")), "{:?} {:?} {}", m.dropped, m.asleep, m.said);
     assert!(!m.played_toward && m.slept_total == 1 && m.woken_total == 0);
-    let h = d.carried.as_ref().unwrap().held.as_ref().unwrap();
+    let h = d.carried().unwrap().held.as_ref().unwrap();
     assert!(h.asleep.is_some() && h.dropped.is_none());
     println!("OBS wake_measure: {}", m.said);
 }
@@ -141,14 +142,14 @@ fn a_goal_asleep_is_woken_when_the_search_no_longer_holds_the_end() {
     let d1 = decide(&st, &g, &end, &[], &judge, &params(&g, 2.0, Some(mg.clone()), None));
     assert!(ml(&d1).asleep.is_some());
     // still found: asleep, counted once
-    let d1b = decide(&st, &g, &end, &[], &judge, &params(&g, 2.0, Some(mg.clone()), d1.carried.clone()));
+    let d1b = decide(&st, &g, &end, &[], &judge, &params(&g, 2.0, Some(mg.clone()), Some(d1.game.clone())));
     assert!(ml(&d1b).asleep.is_some() && ml(&d1b).slept_total == 1 && !ml(&d1b).woke, "{}", ml(&d1b).said);
     // not found: the search does not hold the end in the first position of the class (the end is far): the goal wakes
-    let d2 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg.clone()), d1b.carried.clone()));
+    let d2 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg.clone()), Some(d1b.game.clone())));
     let m = ml(&d2);
     assert!(m.woke && m.asleep.is_none() && m.woken_total == 1 && m.dropped.is_none(), "{}", m.said);
     assert!(m.first.is_some(), "a woken goal asks its question and names a move: {}", m.said);
-    assert!(d2.carried.as_ref().unwrap().held.as_ref().unwrap().asleep.is_none());
+    assert!(d2.carried().unwrap().held.as_ref().unwrap().asleep.is_none());
     println!("OBS wake_measure: asleep then woken: {}", m.said);
 }
 
@@ -159,9 +160,9 @@ fn a_recovery_is_said_counted_apart_and_never_a_subgoal_reached() {
     let judge = Worth { name: "r".into(), table: table(), ours_first: false };
     let mg = goal(&g, "region(1,K)", 2);
     let d1 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg.clone()), None));
-    let mut carried = d1.carried.clone().unwrap();
+    let mut carried = d1.carried().unwrap().clone();
     carried.held.as_mut().unwrap().value = vec![0];          // the lowest held: below every region
-    let d2 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg), Some(carried)));
+    let d2 = decide(&st, &g, &state(START), &[], &judge, &params(&g, 1.0, Some(mg), Some({ let mut game = d1.game.clone(); game.put_slot(cs_decision::memory::CARRIED, Some(std::sync::Arc::new(carried)), "a test"); game })));
     let m = ml(&d2);
     assert!(m.recovery && m.first.is_some() && !m.reached, "{}", m.said);
     assert_eq!(m.held_after, Some(vec![0]), "the lowest held does not move on a recovery");
