@@ -240,6 +240,82 @@ impl BaseGraph {
         out.into_py_any(py)
     }
 
+    /// PLAN 79.07 (the wake's proposer, cs_decision::goals): wake_goals(text, worth, half, goal_kind, sides, rows, budget) -> {"goals": [goal], "two": [(role, [pair])], "shared": [(role, move, [(unit, fact)])], "defence": [(unit, [(move, [fact])])], "asked", "unasked", "questions", "line_reads"}.
+    /// A unit is (role, kind, place) by the game's words; a goal is {"side", "target", "source", "unmet", "key", "stake", "two_moves", "lead", "n_unmet", "every", "goal_unit", "stoppers", "own_moves", "facts": [{"name", "status", "cause": None | {"type", "stoppers", "victim", "basis"}, "a", "place", "fixes": [(kind, [moves])]}],
+    /// "fix_set": [{"unit", "kind", "removable", "resolves", "left", "left_stoppers", "moves"}], "steps", "escapes"}. `sides`: the roles whose goals are wanted (None: both); `budget`: the questions (None: the default). Exists for the unit check of the Rust proposer against its Python mirror; the wake calls the Rust function.
+    #[pyo3(signature = (text, worth, half, goal_kind=None, sides=None, rows=None, budget=None))]
+    #[allow(clippy::type_complexity)]
+    fn wake_goals(&self, py: Python<'_>, text: &str, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, sides: Option<Vec<String>>, rows: Option<Vec<(String, String, String, String, Vec<(String, String, String)>, Vec<(String, String, u8, bool)>, Option<f64>)>>, budget: Option<usize>) -> PyResult<PyObject> {
+        use cs_decision::goals::{propose, FixKind, GoalParams, Status};
+        use cs_decision::threat_verdict::Record;
+        use cs_decision::threats::{FrameRow, ThreatParams};
+        use cs_decision::wake::UnitRef;
+        let (g, s) = self.game(text)?;
+        let n = &self.st.names;
+        let u = |t: &(String, String, String)| -> Result<UnitRef, String> { Ok(UnitRef { owner: n.role(&t.0)?, kind: n.kind(&t.1)?, at: n.place(&t.2)? }) };
+        let mut p = ThreatParams::default();
+        p.goal = match &goal_kind { Some(k) => Some(n.kind(k).map_err(bad)?), None => None };
+        if let Some(rs) = rows {
+            let mut v = vec![];
+            for r in &rs {
+                let unit = u(&(r.0.clone(), r.1.clone(), r.2.clone())).map_err(bad)?;
+                let by = r.4.iter().map(&u).collect::<Result<Vec<_>, _>>().map_err(bad)?;
+                let ix = r.5.iter().map(|a| Ok((n.place(&a.0)?, n.place(&a.1)?, a.2, a.3))).collect::<Result<Vec<_>, String>>().map_err(bad)?;
+                v.push(FrameRow { unit, class: r.3.clone(), by, response_ix: ix, stake: r.6 });
+            }
+            p.rows = Some(v);
+        }
+        let mut gp = GoalParams::default();
+        if let Some(b) = budget { gp.budget = b; }
+        if let Some(sd) = sides { gp.sides = Some(sd.iter().map(|r| n.role(r)).collect::<Result<Vec<_>, _>>().map_err(bad)?); }
+        let rec = Record { worth, half };
+        let pr = propose(&self.st, &g, &s, &rec, &p, &gp);
+        let uw = |x: &UnitRef| (n.roles[x.owner].clone(), n.kind_text(x.kind).to_string(), n.place_text(x.at).to_string());
+        let kind_word = |k: FixKind| match k { FixKind::Remove => "remove", FixKind::Bring => "bring", FixKind::FirstMove => "first_move" };
+        let mut goals_py = vec![];
+        for gl in &pr.goals {
+            let d = PyDict::new(py);
+            d.set_item("side", n.roles[gl.side].clone())?; d.set_item("target", uw(&gl.target))?; d.set_item("source", gl.source.clone())?;
+            d.set_item("unmet", gl.unmet.clone())?; d.set_item("key", gl.key.clone())?; d.set_item("stake", gl.stake)?; d.set_item("two_moves", gl.two_moves)?; d.set_item("lead", gl.lead.clone())?;
+            d.set_item("depth", gl.depth)?; d.set_item("parent", gl.parent.as_ref().map(&uw))?; d.set_item("via", gl.via)?; d.set_item("n_unmet", gl.n_unmet)?; d.set_item("every", gl.every)?; d.set_item("goal_unit", gl.goal_unit)?; d.set_item("own_moves", gl.own_moves)?;
+            d.set_item("stoppers", gl.stoppers.iter().map(&uw).collect::<Vec<_>>())?;
+            let mut facts = vec![];
+            for f in &gl.facts {
+                let fd = PyDict::new(py);
+                fd.set_item("name", f.name)?; fd.set_item("status", f.status.word())?;
+                let _ = Status::Met;
+                match &f.cause {
+                    Some(c) => { let cd = PyDict::new(py); cd.set_item("type", c.kind)?; cd.set_item("stoppers", c.stoppers.iter().map(&uw).collect::<Vec<_>>())?; cd.set_item("victim", c.victim.as_ref().map(&uw))?; cd.set_item("basis", c.basis)?; fd.set_item("cause", cd)?; }
+                    None => fd.set_item("cause", py.None())?,
+                }
+                fd.set_item("a", f.a.as_ref().map(&uw))?; fd.set_item("place", f.place.map(|p| n.place_text(p).to_string()))?; 
+                fd.set_item("fixes", f.fixes.iter().map(|x| (kind_word(x.kind), x.moves.clone())).collect::<Vec<_>>())?;
+                facts.push(fd);
+            }
+            d.set_item("facts", facts)?;
+            let fs: Vec<PyObject> = gl.fix_set.iter().map(|e| {
+                let ed = PyDict::new(py);
+                let _ = ed.set_item("unit", e.unit.as_ref().map(&uw)); let _ = ed.set_item("kind", kind_word(e.kind)); let _ = ed.set_item("removable", e.removable); let _ = ed.set_item("resolves", e.resolves.clone());
+                let _ = ed.set_item("left", e.left); let _ = ed.set_item("left_stoppers", e.left_stoppers); let _ = ed.set_item("moves", e.moves.clone());
+                ed.into_any().unbind()
+            }).collect();
+            d.set_item("fix_set", fs)?;
+            d.set_item("steps", gl.steps.iter().map(|x| (x.step, x.moves)).collect::<Vec<_>>())?;
+            d.set_item("escapes", gl.escapes.iter().map(|e| (n.place_text(e.place).to_string(), e.covered, e.by.iter().map(&uw).collect::<Vec<_>>())).collect::<Vec<_>>())?;
+            goals_py.push(d);
+        }
+        let out = PyDict::new(py);
+        out.set_item("goals", goals_py)?;
+        out.set_item("two", pr.two.iter().map(|(r, t)| (n.roles[*r].clone(), t.goals.iter().map(|x| (x.kind, x.stake, x.threats.iter().map(|y| (uw(&y.0), y.1, y.2)).collect::<Vec<_>>())).collect::<Vec<_>>())).collect::<Vec<_>>())?;
+        out.set_item("shared", pr.shared.iter().map(|d| (n.roles[d.side].clone(), d.mv.clone(), d.under.iter().map(|x| (uw(&x.0), x.1)).collect::<Vec<_>>())).collect::<Vec<_>>())?;
+        out.set_item("defence", pr.defence.iter().map(|(u, a)| (uw(u), a.iter().map(|x| (x.mv.clone(), x.facts.clone())).collect::<Vec<_>>())).collect::<Vec<_>>())?;
+        out.set_item("asked", pr.asked.iter().map(&uw).collect::<Vec<_>>())?;
+        out.set_item("unasked", pr.unasked.iter().map(&uw).collect::<Vec<_>>())?;
+        out.set_item("questions", pr.questions)?;
+        out.set_item("line_reads", pr.line_reads)?;
+        out.into_py_any(py)
+    }
+
     /// dump(text) -> text: the position's nodes, one per line, with their links.
     fn dump(&self, text: &str) -> PyResult<String> {
         let (g, s) = self.game(text)?;

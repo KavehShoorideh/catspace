@@ -30,7 +30,7 @@ impl Pieces {
     /// The names of the pieces asked for that are NOT ported into this module yet (the Python mirrors exist; see docs/ANALYST_PLAN.md 79.05 BUILT).
     pub fn unported(&self) -> Vec<&'static str> {
         let mut v = vec![];
-        for (on, name) in [(self.carried, "carried open tactics"), (self.frames, "frames and the question read"), (self.goals, "proposer of goals"), (self.two_threat_goals, "goals of two threats"), (self.reasons_pick, "reasons' pick"), (self.heads, "heads")] {
+        for (on, name) in [(self.carried, "carried open tactics"), (self.frames, "frames and the question read"), (self.reasons_pick, "reasons' pick"), (self.heads, "heads")] {
             if on { v.push(name); }
         }
         v
@@ -106,18 +106,27 @@ pub fn goal_unit_lines<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal:
     out
 }
 
-fn bearers_on(part: &PositionPart, owner: Role, place: Place) -> usize { part.bears.iter().filter(|r| r.place == place && part.units[r.unit].owner == owner).count() }
+/// How many units of `owner` bear on each of `places` in `s` (the graph's `bear` relation is `Placed::bearing_from` of each unit, so this is the same count without building the graph).
+fn bearer_counts<G: Game + Placed>(g: &G, s: &G::State, owner: Role, places: &[Place]) -> Vec<usize> {
+    let mut n = vec![0usize; places.len()];
+    for (o, k, at) in g.cells(s) {
+        if o != owner { continue; }
+        let b = g.bearing_from(s, o, k, at);
+        for (i, p) in places.iter().enumerate() { if b.contains(p) { n[i] += 1; } }
+    }
+    n
+}
 
-/// The legal moves of the mover after which more units of the mover bear on one of `places` than before: (the move's name, the places it adds a bearer on). A bearer the move brings and a line it opens both count: the graph of the position after the move says who bears.
-/// This needs no edited position, so a bearer brought by a move that attacks the other side's goal unit is read like any other.
-pub fn new_bearer_moves<G: Game + Placed>(st: &Static, g: &G, s: &G::State, places: &[Place]) -> Vec<(String, Vec<Place>)> {
+/// The legal moves of the mover after which more units of the mover bear on one of `places` than before: (the move's name, the places it adds a bearer on). A bearer the move brings and a line it opens both count: who bears is read after the move (the relation of each unit, as the graph
+/// builds it, without building the graph: PLAN 79.07 made it cheap, the answer is the same). This needs no edited position, so a bearer brought by a move that attacks the other side's goal unit is read like any other.
+pub fn new_bearer_moves<G: Game + Placed>(_st: &Static, g: &G, s: &G::State, places: &[Place]) -> Vec<(String, Vec<Place>)> {
     let Some(mover) = g.mover(s) else { return vec![] };
-    let before_part = st.position(g, s);
-    let before: Vec<usize> = places.iter().map(|p| bearers_on(&before_part, mover, *p)).collect();
+    if places.is_empty() { return vec![]; }
+    let before = bearer_counts(g, s, mover, places);
     let mut out = vec![];
     for m in g.moves(s) {
-        let after = st.position(g, &g.apply(s, &m));
-        let added: Vec<Place> = places.iter().zip(&before).filter(|(p, b)| bearers_on(&after, mover, **p) > **b).map(|(p, _)| *p).collect();
+        let after = bearer_counts(g, &g.apply(s, &m), mover, places);
+        let added: Vec<Place> = places.iter().zip(&before).zip(&after).filter(|((_, b), a)| a > b).map(|((p, _), _)| *p).collect();
         if !added.is_empty() { out.push((g.move_name(s, &m), added)); }
     }
     out
@@ -153,23 +162,9 @@ pub struct Unported(pub &'static str);
 /// STEP 3, the threat list (PLAN 79.06, ported): the rows, the list and `concrete_threats` live in `crate::threats` (one piece per module) and are named here as the wake's interface. Their types were declared here thin (`unit: UnitRef`, `responses: Vec<String>`) and are widened there with the reason stated in the 79.06 BUILT block: the Python row carries the line, outcome, verdict and kept responses a proposer reads.
 pub use crate::threats::{concrete_threats, ConcreteList, ThreatRow};
 
-/// A fix: take a stopper out, move a unit off a line, bring a unit to bear (by LEGAL moves of the graph, not by an edited text), or play a quiet first move.
-#[derive(Debug, Clone)]
-pub enum Fix { Remove(UnitRef), Bring { unit: UnitRef, to: Place, moves: u8 }, FirstMove(String) }
-
-/// One fact of a goal (bears, may_take, unguarded, kept, borne_on, covered, forced_end) with its status, the units that stop it and the fix.
-#[derive(Debug, Clone)]
-pub struct Fact { pub name: &'static str, pub status: &'static str, pub stoppers: Vec<UnitRef>, pub fix: Option<Fix> }
-
-/// A goal of one side (subgoal_goals.py): a threat of ours that does not work yet, as the facts that would make it work.
-#[derive(Debug, Clone)]
-pub struct Goal { pub target: UnitRef, pub facts: Vec<Fact>, pub fix_set: Vec<Fix>, pub stake: Option<f64> }
-
-/// STEP 3, the proposer: a goal for every unit of the other side and for the goal unit (its lines shut by one unit, `lines_onto`, are its facts), the fix as a set. Python mirror: subgoal_goals.goals and subgoal_units.every_unit (846 lines; the graph reads are ported).
-pub fn goals<G: Game + Placed>(_st: &Static, _g: &G, _s: &G::State, _list: &ConcreteList, _side: Role) -> Result<Vec<Goal>, Unported> { Err(Unported("proposer of goals")) }
-
-/// STEP 3, goals of two threats no one reply meets (future_goals.py, 200 lines).
-pub fn two_threat_goals(_list: &ConcreteList, _side: Role) -> Result<Vec<(UnitRef, UnitRef)>, Unported> { Err(Unported("goals of two threats")) }
+/// STEP 3, the proposer (PLAN 79.07, ported): the facts, causes, fixes and goals, the goals of two threats, the moves that make two threats at once and `named_moves` live in `crate::goals` (one piece per module) and are named here as the wake's interface. Their types were declared here thin
+/// (`Fix`, `Fact`, `Goal` with strings and a count of moves) and are widened there with the reason stated in the 79.07 BUILT block: a fix must carry the legal moves that do it, a fact its cause and the units it is about, a goal its side, source and the fix set.
+pub use crate::goals::{answers_against, goals, named_moves, propose, shared_fix_moves, two_threat_goals, Answer, SharedMove, Fact, Fix, FixKind, Goal, GoalParams, Proposal, TwoThreats};
 
 /// STEP 6, the reasons' pick among the moves the search holds equal (symbols_play.ReasonsReader.pick: the pattern counter is Rust already; the weights are a JSON record).
 pub fn reasons_pick<G: Game + Placed>(_st: &Static, _g: &G, _s: &G::State, _equal: &[String]) -> Result<Option<String>, Unported> { Err(Unported("reasons' pick")) }

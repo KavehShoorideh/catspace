@@ -83,7 +83,7 @@ pub struct ThreatRow {
 }
 
 impl ThreatRow {
-    fn new(owner: Role, unit: Option<UnitRef>, class: &str, by: Vec<UnitRef>, stake: Option<f64>) -> ThreatRow {
+    pub fn new(owner: Role, unit: Option<UnitRef>, class: &str, by: Vec<UnitRef>, stake: Option<f64>) -> ThreatRow {
         ThreatRow { owner, unit, goal: false, every: false, class: class.to_string(), by, stake, verdict: VerdictKind::Unread, ended: ENDED[3], reason: String::new(), net: None, line: vec![], lead: None, first: None, two_moves: false, depth: 0, outcome: None, resolution: 0.0, pv_disagrees: false, nodes: 0,
             responses: vec![], resp_read: 0, resp_unread: 0, resp_unread_moves: vec![], resp_states: BTreeMap::new(), deferred: false, response_ix: vec![], why: None, dropped_verdict: None }
     }
@@ -97,7 +97,8 @@ pub struct RoundCost { pub name: &'static str, pub seconds: f64, pub queries: u6
 #[derive(Debug, Clone, Default)]
 pub struct ConcreteList {
     pub mover: Vec<ThreatRow>, pub other: Vec<ThreatRow>, pub exchange: Vec<ThreatRow>, pub dropped: Vec<ThreatRow>, pub goal: Vec<ThreatRow>,
-    pub dropped_counts: BTreeMap<String, usize>, pub resp_read: usize, pub resp_dropped: usize, pub resp_sweeps: usize, pub resp_reread: usize, pub unread_rows: usize, pub cost: Vec<RoundCost>,
+    /// PLAN 79.07: the units the budget of questions did not ask (no row: a gap, never a refutation).
+    pub unasked: Vec<UnitRef>, pub dropped_counts: BTreeMap<String, usize>, pub resp_read: usize, pub resp_dropped: usize, pub resp_sweeps: usize, pub resp_reread: usize, pub unread_rows: usize, pub cost: Vec<RoundCost>,
 }
 
 impl ConcreteList {
@@ -189,7 +190,7 @@ pub fn response_of(after: &After, passed: Option<&LineRead>, rec: &Record, how: 
 // ------------------------------------------------------------------------------------------------------------------------------ the candidates
 
 /// The candidates from the graph when the caller has no frame read: every unit of either side (not the goal kind) that a unit of the other side bears on.
-fn graph_rows<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>) -> Vec<FrameRow> {
+pub fn graph_rows<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>) -> Vec<FrameRow> {
     let part = st.position(g, s);
     let mut out = vec![];
     for (i, u) in part.units.iter().enumerate() {
@@ -404,8 +405,54 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
 
 /// THE LINE READ OF EVERY UNIT OF THE OTHER SIDE THAT THE LIST HAS NO ROW FOR (subgoal_units.every_unit; SYSTEM_SPEC 7 "a goal for every target"). For each side in `sides` the targets are the units of the other side (the goal kind has no row: it cannot be taken). One
 /// row is added for each, read as the list reads a row (the taking lines; where none is legal the quiet move that makes a taking stand) and put where the list would put it (a taking that works or is cut: the side's list; an exchange: `exchange`; a failure: `dropped`
-/// with the code of why). No responses are read here: the goal reads them. Changes `list` in place; returns the count of units read.
+/// with the code of why). No responses are read here: the goal reads them. Changes `list` in place; returns the count of units read. Every unit is asked: the old behaviour (`Ask::all`); the proposer asks through `every_unit_ask`.
 pub fn every_unit<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut ConcreteList, sides: &[Role], rec: &Record, params: &ThreatParams) -> usize {
+    every_unit_ask(st, g, s, list, sides, rec, params, &Ask::all()).read
+}
+
+/// THE WORTH OF A KIND FOR THE ORDER OF QUESTIONS (PLAN 79.07): the measured record's worth of the kind of each unit, where the record is keyed by the words the game's ledger uses (the words of `Game::units`, which are not always the words of `kind_names`): the word is read from what taking the unit off the
+/// board (`Placed::without`) removes from the game's units, so no word of any game is written here. A unit the game cannot take off, or whose word the record does not hold, is worth 0.
+pub fn kind_worths<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, units: &[UnitRef]) -> HashMap<Kind, f64> {
+    let mut out: HashMap<Kind, f64> = HashMap::new();
+    for u in units {
+        if out.contains_key(&u.kind) { continue; }
+        let word = g.without(s, u.at).and_then(|after| { let mut b = g.units(s); for x in g.units(&after) { if let Some(i) = b.iter().position(|y| *y == x) { b.swap_remove(i); } } b.into_iter().next().map(|x| x.1) });
+        out.insert(u.kind, word.and_then(|w| rec.worth.get(&w).copied()).unwrap_or(0) as f64);
+    }
+    out
+}
+
+/// PLAN 79.07 (SYSTEM_SPEC 4 "a budget of questions", 7 the proposer): THE BUDGET OF QUESTIONS of `every_unit_ask`. A question is one unit asked (its taking lines, and where none is legal the quiet moves that make one stand). `budget` None: every unit is asked. Some(n): the units are asked
+/// in the order of their stake (the greater first; the record's worth of the kind where the caller gave no stake), the first `n - used` of them; past the budget a unit is asked only while the LAST question changed a fact (`progress`: a line was read for the unit before it, so that
+/// the facts of its goal are known). A unit not asked has no row and is listed in `unasked`: a gap, never a refutation.
+#[derive(Debug, Clone, Copy)]
+pub struct Ask { pub budget: Option<usize>, pub used: usize, pub progress: bool }
+impl Ask { pub fn all() -> Ask { Ask { budget: None, used: 0, progress: true } } }
+
+/// What `every_unit_ask` did: the units read, the units asked (with whether the quiet-move read was needed), the units not asked, the questions, the distinct lines read, their nodes.
+#[derive(Debug, Clone, Default)]
+pub struct EveryOut { pub read: usize, pub asked: Vec<(UnitRef, bool)>, pub unasked: Vec<UnitRef>, pub questions: usize, pub line_reads: usize, pub nodes: u64 }
+
+/// ONE PASS OVER THE QUIET MOVES SERVES EVERY UNIT (PLAN 79.07): for each taker the quiet moves are listed once with the places a taking would stand on after the other side's pass; the whole line of a move is read at most once however many units it serves
+/// (the Python reads it again for each unit: the same lines, the same order, so the rows agree).
+type QuietList<M> = Vec<(M, (Place, Place), HashSet<Place>)>;
+
+fn quiet_list<G: Game + Placed>(g: &G, p0: &G::State) -> QuietList<G::Move> {
+    let mut out = vec![];
+    for m in g.moves(p0) {
+        if !g.captured(p0, &m).is_empty() { continue; }
+        let c = g.apply(p0, &m);
+        if g.outcome(&c).is_some() { continue; }
+        let Some(cq) = g.pass(&c) else { continue };
+        let ends: HashSet<Place> = g.moves(&cq).iter().filter(|x| !g.captured(&cq, x).is_empty()).map(|x| g.move_ends(&cq, x).1).collect();
+        if ends.is_empty() { continue; }
+        let e = g.move_ends(p0, &m);
+        out.push((m, e, ends));
+    }
+    out
+}
+
+pub fn every_unit_ask<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut ConcreteList, sides: &[Role], rec: &Record, params: &ThreatParams, ask: &Ask) -> EveryOut {
     let t0 = Instant::now();
     let mut rd = Rd::new(g, s, rec);
     let mover = rd.mover;
@@ -428,34 +475,76 @@ pub fn every_unit<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &mut
         }
     }
     let n = rows.len();
-    // round 1: the taking lines; round 2: the quiet move that makes a taking stand, for the rows with no taking
-    let mut state: Vec<u8> = vec![0; n];                                   // 0 pending, 1 done, 2 dropped
-    let mut two: Vec<usize> = vec![];
-    for (i, (row, taker_p)) in rows.iter_mut().enumerate() {
-        let place = row.unit.map_or(0, |u| u.at);
-        match rd.takings(*taker_p, place, lp) {
-            None => { row.verdict = VerdictKind::Unread; row.ended = ENDED[3]; row.reason = "the side to move must answer: the game gives no pass, so what the other side would take cannot be read".into(); state[i] = 1; }
-            Some(reads) => match best_taking(&reads, rec) { None => two.push(i), Some(b) => { let all = reads.iter().map(|r| r.nodes).sum(); fill(row, &b, false, all); state[i] = 1; } },
-        }
+    // the order of the questions: by stake (the stake of the caller where every unit has one, else the record's worth of the kind), the greater first
+    let mut order: Vec<usize> = (0..n).collect();
+    if ask.budget.is_some() {
+        let by_stake = rows.iter().all(|r| r.0.stake.is_some());
+        let us: Vec<UnitRef> = rows.iter().filter_map(|r| r.0.unit).collect();
+        let worth = kind_worths(g, s, rec, &us);
+        let key = |i: usize| -> f64 { let r = &rows[i].0; if by_stake { r.stake.unwrap_or(0.0) } else { r.unit.map_or(0.0, |u| worth.get(&u.kind).copied().unwrap_or(0.0)) } };
+        order.sort_by(|a, b| key(*b).partial_cmp(&key(*a)).unwrap_or(std::cmp::Ordering::Equal).then(rows[*a].0.unit.map(|u| u.at).cmp(&rows[*b].0.unit.map(|u| u.at))));
     }
-    for i in two {
+    let mut state: Vec<u8> = vec![0; n];                                   // 0 pending, 1 done, 2 dropped, 3 not asked
+    let mut out = EveryOut::default();
+    let mut quiet: HashMap<bool, Option<QuietList<G::Move>>> = HashMap::new();
+    let mut lines: HashMap<(bool, usize), LineRead> = HashMap::new();
+    let (mut used, mut progress) = (ask.used, ask.progress);
+    for &i in &order {
+        let allowed = ask.budget.map_or(true, |b| used < b) || progress;
         let (row, taker_p) = &mut rows[i];
-        let place = row.unit.map_or(0, |u| u.at);
-        let best = rd.two_moves(*taker_p, place, lp).and_then(|rs| { let all: u64 = rs.iter().map(|r| r.nodes).sum(); best_taking(&rs, rec).map(|b| (b, all)) });
-        match best {
-            Some((b, all)) => { fill(row, &b, true, all); state[i] = 1; if !matches!(b.kind, VerdictKind::Confirmed | VerdictKind::Unread) { row.dropped_verdict = Some(row.verdict); row.why = Some("two_move_not_ahead"); state[i] = 2; } }
-            None => { row.why = Some(if row.by.is_empty() { "no_bearer_no_move" } else { "no_taking_legal" }); row.line = vec![]; row.net = None; row.outcome = None; state[i] = 2; }
+        let uref = row.unit.expect("a unit row");
+        if !allowed { state[i] = 3; out.unasked.push(uref); continue; }
+        used += 1; out.questions += 1;
+        let place = uref.at;
+        match rd.takings(*taker_p, place, lp) {
+            None => { row.verdict = VerdictKind::Unread; row.ended = ENDED[3]; row.reason = "the side to move must answer: the game gives no pass, so what the other side would take cannot be read".into(); state[i] = 1; progress = false; out.asked.push((uref, false)); }
+            Some(reads) => match best_taking(&reads, rec) {
+                Some(b) => { let all = reads.iter().map(|r| r.nodes).sum(); fill(row, &b, false, all); state[i] = 1; progress = true; out.asked.push((uref, false)); }
+                None => {
+                    // the quiet moves that make a taking stand: the pass over them is made once per taker, the line of a move once
+                    out.asked.push((uref, true));
+                    let mut fresh = 0u64;
+                    let best = match rd.at(*taker_p).and_then(|p0| g.mover(p0).map(|me| (p0, me))) {
+                        None => None,
+                        Some((p0, me)) => {
+                            let ql = quiet.entry(*taker_p).or_insert_with(|| Some(quiet_list(g, p0))).as_ref().unwrap();
+                            let mut rs: Vec<LineRead> = vec![];
+                            for (k, (m, e, ends)) in ql.iter().enumerate() {
+                                if !ends.contains(&place) { continue; }
+                                if !lines.contains_key(&(*taker_p, k)) { let r = L::read_line(g, &rd.judge, p0, m, me, lp); fresh += r.nodes; out.line_reads += 1; lines.insert((*taker_p, k), r); }
+                                let mut r = lines[&(*taker_p, k)].clone();
+                                r.lead = Some(*e);
+                                rs.push(r);
+                            }
+                            rs.sort_by_key(|r| -r.value);
+                            rd.queries += 1;
+                            let all: u64 = rs.iter().map(|r| r.nodes).sum();
+                            best_taking(&rs, rec).map(|b| (b, all))
+                        }
+                    };
+                    rd.nodes += fresh;
+                    progress = best.is_some();
+                    match best {
+                        Some((b, all)) => { fill(row, &b, true, all); state[i] = 1; if !matches!(b.kind, VerdictKind::Confirmed | VerdictKind::Unread) { row.dropped_verdict = Some(row.verdict); row.why = Some("two_move_not_ahead"); state[i] = 2; } }
+                        None => { row.why = Some(if row.by.is_empty() { "no_bearer_no_move" } else { "no_taking_legal" }); row.line = vec![]; row.net = None; row.outcome = None; state[i] = 2; }
+                    }
+                }
+            },
         }
     }
     for (i, (row, _)) in rows.into_iter().enumerate() {
         let v = row.verdict;
+        if state[i] == 3 { continue; }
         if state[i] == 2 { list.dropped.push(row); }
         else if matches!(v, VerdictKind::Refuted | VerdictKind::Quiet) { let mut r = row; r.why = Some("refuted"); list.dropped.push(r); }
         else if v == VerdictKind::Exchange { list.exchange.push(row); }
         else if side_is_mover(row.owner, mover) { list.mover.push(row) } else { list.other.push(row) }
     }
+    list.unasked.extend(out.unasked.iter().copied());
+    out.read = n - out.unasked.len();
+    out.nodes = rd.nodes;
     list.add_cost("every unit of the other side", t0, rd.queries, rd.nodes);
-    n
+    out
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------ the stake

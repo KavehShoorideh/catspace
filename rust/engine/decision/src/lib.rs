@@ -8,6 +8,7 @@
 pub mod batch;
 pub mod cards;
 pub mod claim_op;
+pub mod goals;
 pub mod graph;
 pub mod graph_net;
 pub mod graph_prior;
