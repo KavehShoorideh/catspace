@@ -821,6 +821,9 @@ form of statement with its standing, its holder and what it read; the long-term 
 hold it; a layer's scratch that is not to be kept stays in that layer; what is to be kept is written through a way of changing
 the memories that the representation layer owns (add, replace, retract, fall by change). Plan 79.19 builds it on `cs_memory`,
 which already has the language with variables, the matcher and the snapshots. The layers above 1 are still under discussion.
+His addition the same day: the long-term memory is for ANY game the system learns, keyed by the game and its specific variant
+(the standard game, its variants, other board games), "properly namespaced, partitioned". A reader sees one game's partition;
+nothing learned in one game is read in another unless checked again there (the last clause is the main agent's READING).
 
 ## 12. What exists
 
