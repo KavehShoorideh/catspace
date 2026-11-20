@@ -77,10 +77,12 @@ pub struct LedgerOp<'a, J: Judge> {
     pub late_reduce: bool,
     /// Plan 78.51: a caller's order of the root moves; None (the default) is the search as it was.
     pub root_order: Option<crate::ledger::RootOrder>,
+    /// Plan 79.05: moves named by position (`Search::named`); empty (the default) is the search as it was.
+    pub named: Vec<(u64, Vec<String>)>,
 }
 
 impl<'a, J: Judge> LedgerOp<'a, J> {
-    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, choice_mode: crate::ledger::ChoiceMode::Slot, reask: false, root_full: false, null_move: true, late_reduce: true, root_order: None } }
+    pub fn new(judge: &'a J) -> Self { LedgerOp { judge, history: vec![], ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, choice_mode: crate::ledger::ChoiceMode::Slot, reask: false, root_full: false, null_move: true, late_reduce: true, root_order: None, named: vec![] } }
 }
 
 impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
@@ -101,6 +103,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         ls.choice_mode = self.choice_mode;
         ls.reask = self.reask;
         ls.root_full = self.root_full;
+        ls.named = self.named.iter().cloned().collect();           // (plan 79.05: empty by default)
         ls.null_move = self.null_move;
         ls.late_reduce = self.late_reduce;
         ls.root_first = prefer.clone();
