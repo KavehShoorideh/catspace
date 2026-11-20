@@ -11,6 +11,9 @@ INTERFACE (written before the bodies).
   Runner(world, pieces)                                       wraps `World.wake` with a slot: `decide(text, seconds, slot, **kw)` -> the decision (JSON), its wall; `fresh(text, seconds, **kw)` with no slot.
   step_table(decisions) -> [(step, piece, mean seconds, share of the whole decision, count)]    the table of the steps.
   profile_job(job) / carry_job(job)                           module level, for the pool.
+  CONFIGS                                                     PART E: the whole with B (`b`), with B and C (`bc`: the table of the window of 16 plies, the named moves in the order of stake times chance), with B, C and mode Gain mended (`bcg`, only if D's tests pass).
+  table16(tag) -> table                                       the table of the chance of a goal at the window of 16 plies counted on the fit half of 79.13's goal rows (goal_table.py), written to <out>/<tag>/table16.json.
+  cmd_sanity / cmd_judge                                      the sanity match that finds the scale of the equal wall for this build, and a match of a config against the old player at that scale (sets A and B, settled with min_pairs 60).
   Called by: the command line, whole_79_14_print.py, tests/test_plan79_14.py.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.whole_79_14 profile [--count N] [--seconds S] [--pieces carried,...] | carrytest [--count N] [--seconds S] [--workers W]
@@ -29,6 +32,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+from catspace.incubator.analyst.discovery import goal_reach as GR
+from catspace.incubator.analyst.discovery import goal_table as GT
 from catspace.incubator.analyst.discovery import whole_79_10_print as W10
 from catspace.incubator.analyst.discovery import whole_play as WP
 from catspace.io import paths
@@ -37,6 +42,11 @@ OUT = ("whole_79_14",)
 LOG_ROOT = ("whole_79_13", "full", "logs")                 # the logged games the pairs are taken from (read only)
 BASE_PIECES = list(W10.PIECES)                              # the pieces of 79.13, the carry on (the binding keeps the last decision of a slot)
 GRAPH_CARRY = "carry_graph"                                 # PLAN 79.14 B: the switch of the carry that asks again only what the graph says was touched; off by default
+CHANCE_ORDER = "chance_order"                               # PLAN 79.14 C: the named moves in the order of stake times the table's chance; off by default
+GAIN_MEND = "gain_mend"                                     # PLAN 79.14 D: the gain mended; off by default
+TABLE_WINDOW = 16                                           # the plies of the event of the table of C (the plan's window)
+CONFIGS = {"b": BASE_PIECES + [GRAPH_CARRY], "bc": BASE_PIECES + [GRAPH_CARRY, CHANCE_ORDER], "bcg": BASE_PIECES + [GRAPH_CARRY, CHANCE_ORDER, GAIN_MEND]}
+SEED_TAG = "full"                                           # 79.13's goal rows (read only)
 _WORLD = None
 
 
@@ -208,9 +218,66 @@ def cmd_carrytest(a, say, pool=None) -> None:
     say(f"OBS whole_79_14 carrytest: {same} of {len(res)} positions gave the same rows, goals and names carried and afresh; {diff} differed; rows marked carried {carried_rows}; frames carried {carried_frames}; CONTROL (the same position asked afresh twice): {ctl} of {len(res)} differed")
 
 
+def table16(src_tag: str = SEED_TAG, tag: str = "full") -> dict:
+    """The table of the chance of a goal at the window of 16 plies, counted on the FIT half of the goal rows of 79.13 (the held-out half is never counted), written for the wake."""
+    d = GT.load(src_tag)
+    j = GR.KS.index(TABLE_WINDOW)
+    table = GT.fit_table(d, j, GR.fit_mask(d))
+    (out_root(tag) / "table16.json").write_text(json.dumps(table))
+    return table
+
+
+def table_for(tag: str = "full") -> tuple:
+    return GT.binding_form(json.loads((out_root(tag) / "table16.json").read_text()))
+
+
+def config_specs(config: str, set_name: str, pairs: int, seconds: float, scratch: Path, log_dir: Path, scale_: float, table: "tuple | None", name: str) -> list:
+    """The games of one match: the wake of `config` (the table of 16 plies for bc and bcg, mode Gain for bcg) against the old player at `scale_ x seconds`."""
+    chooser = {"mode": "gain", "weights": {}, "seed": 0} if config == "bcg" else None
+    return WP.match_specs("wake", "old", set_name, pairs, seconds, scratch, log_dir, clock_b=scale_ * seconds, label=name, chooser_a=chooser, table_a=table if config != "b" else None, pieces_a=CONFIGS[config])
+
+
+def cmd_sanity(a, say) -> float:
+    """The scale of the equal wall for this build: the wake of config b against the old player at one clock, 20 games (10 opening pairs of set A, no early stop): the wake's mean wall a move over the old player's."""
+    root = out_root(a.tag)
+    log_dir = root / "logs" / "sanity"
+    specs = WP.match_specs("wake", "old", "A", 10, a.seconds, root / "scratch", log_dir, label="sanity", pieces_a=CONFIGS["b"])
+    load0, busy = TM.wait_quiet(say)
+    games = TM.run_games(specs, a.workers, root / "matches" / "sanity.jsonl", say, play=WP.play11, stop=None)
+    s = WP.scale_of(games)
+    (root / "scale.json").write_text(json.dumps({"scale": s, "seconds": a.seconds, "wake_wall": WP.mean_wall(games, 0), "old_wall": WP.mean_wall(games, 1), "games": len(games)}))
+    say(f"OBS whole_79_14 sanity: ONE SCALE of equal wall for this build = {s:.4f} (the wake's mean wall a move {WP.mean_wall(games, 0):.4f} s over the old player's {WP.mean_wall(games, 1):.4f} s at the clock {a.seconds} s, {len(games)} games, load average at start {load0:.2f}); the old player is given {s * a.seconds:.4f} s for equal mean wall")
+    return s
+
+
+def depth_of(games: list, who: int) -> float:
+    return sum(g["stats"][TM.seat_of(g, who)].get("depth_sum", 0) for g in games) / max(1, sum(g["stats"][TM.seat_of(g, who)]["decisions"] for g in games))
+
+
+def cmd_judge(a, say) -> None:
+    root = out_root(a.tag)
+    scale_ = json.loads((root / "scale.json").read_text())["scale"]
+    table = table_for(a.tag) if a.config != "b" else None
+    name = f"{a.config}_v_old_{a.set}"
+    log_dir = root / "logs" / name
+    specs = config_specs(a.config, a.set, a.pairs, a.seconds, root / "scratch", log_dir, scale_, table, name)
+    extra = ", ".join(CONFIGS[a.config][len(BASE_PIECES):]) + (f" (the table of the window of {TABLE_WINDOW} plies)" if a.config != "b" else "") + (", mode Gain" if a.config == "bcg" else "")
+    say(f"OBS whole_79_14 {name}: the wake with the pieces of 79.13 and {extra} against the old player at {scale_ * a.seconds:.4f} s (the scale {scale_:.4f} of the sanity match); clock {a.seconds} s, ply cap {TM.PLY_CAP}, early stop min_pairs={WP.MIN_PAIRS}, workers {a.workers}")
+    load0, busy = TM.wait_quiet(say)
+    t0 = time.perf_counter()
+    games = TM.run_games(specs, a.workers, root / "matches" / f"{name}.jsonl", say, play=WP.play11, stop=lambda g: TM.settled(g, min_pairs=WP.MIN_PAIRS))
+    wall = time.perf_counter() - t0
+    for x in WP.lines_of(name, "wake", "old", a.set, games, load0, os.getloadavg()[0], busy, wall, a.seconds, a.workers, {"old": scale_ * a.seconds}, log_dir):
+        say(x.replace("OBS whole ", "OBS whole_79_14 ", 1))
+    say(f"OBS whole_79_14 {name}: mean depth of the search a decision: wake {depth_of(games, 0):.2f}, old player {depth_of(games, 1):.2f} (the wake's mean wall {WP.mean_wall(games, 0):.4f} s, the old player's {WP.mean_wall(games, 1):.4f} s)")
+
+
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("stage", choices=("profile", "carrytest"))
+    ap.add_argument("stage", choices=("profile", "carrytest", "table16", "sanity", "judge"))
+    ap.add_argument("--config", default="b", choices=tuple(CONFIGS))
+    ap.add_argument("--set", default="A", choices=("A", "B"))
+    ap.add_argument("--pairs", type=int, default=100)
     ap.add_argument("--count", type=int, default=100)
     ap.add_argument("--seconds", type=float, default=0.2)
     ap.add_argument("--pieces", default="")
@@ -222,7 +289,11 @@ def main(argv: "list | None" = None) -> int:
 
     def say(line: str) -> None:
         TM.emit([line], root / "obs.txt")
-    {"profile": cmd_profile, "carrytest": cmd_carrytest}[a.stage](a, say)
+    if a.stage == "table16":
+        tb = table16(tag=a.tag)
+        say(f"OBS whole_79_14 table16: the table of the window of {tb['k']} plies counted on the fit half of 79.13's goal rows: {tb['total'][0]} goals, {tb['total'][1]} reached, {sum(len(lv['cells']) for lv in tb['levels'])} cells of at least {tb['floor']} goals")
+        return 0
+    {"profile": cmd_profile, "carrytest": cmd_carrytest, "sanity": cmd_sanity, "judge": cmd_judge}[a.stage](a, say)
     return 0
 
 
