@@ -58,7 +58,19 @@ pub struct DecisionLog {
     pub step_seconds: Vec<(u8, String, f64)>,
     /// PLAN 79.12 B: the last layer's rows (None: no chooser given)
     pub chooser: Option<ChooserLog>,
+    /// PLAN 79.15 B (the wall kept): how the search's first move stood at the equal reading ("probe": its null-window answer was below the value; "verification": the probe held and the verification dropped it; None: not lowered), whether the moves held equal are held by their first reading only (the clock cut the verification),
+    /// and what the set was made from ("as_before" | "verified" | "probe_only" | "highest_probe")
+    pub first_lowered: Option<String>, pub equal_unverified: bool, pub equal_from: String,
+    /// PLAN 79.15 A: the deepening's reads of the search (depth, finished, nodes, seconds), the last one the clock may have cut
+    pub depth_reads: Vec<(i32, bool, u64, f64)>,
+    /// PLAN 79.15 A: the diagnosis of a lowered first move (only where the measure asks for it: the piece `diag_first`; never in play)
+    pub first_diag: Option<FirstDiag>,
 }
+
+/// PLAN 79.15 A (SYSTEM_SPEC 8 the wall; piece: the wake): WHY THE PROBE AND THE SEARCH DISAGREE about a first move, read after the decision: the first move's null-window answer and the search's value, whether the first move asked again with the late-move reduction and the null move off (a fresh table) holds the value
+/// (None: the reading was cut), and its null-window answer at the next depths (the same value asked of a longer reading; the table kept).
+#[derive(Debug, Clone, Default)]
+pub struct FirstDiag { pub probe: i64, pub value: i64, pub unreduced_holds: Option<bool>, pub deeper: Vec<(i32, Option<i64>)> }
 
 /// PLAN 79.12 B: what the last layer saw and did in one decision: the mode, the seed, the names of the inputs, the candidates (the moves held equal that the layer may pick among) with their rows and weighted sums, the move the rule would pick, the move played, the propensity of the move played.
 #[derive(Debug, Clone, Default)]
@@ -87,6 +99,9 @@ impl DecisionLog {
             "unlisted": self.unlisted.iter().map(|r| json!({"move": r.0, "theirs": r.1})).collect::<Vec<_>>(),
             "notes": self.notes, "after_not_asked": self.after_not_asked,
             "first_held": self.first_held, "first_lowered_by": self.first_lowered_by,
+            "first_lowered": self.first_lowered, "equal_unverified": self.equal_unverified, "equal_from": self.equal_from,
+            "depth_reads": self.depth_reads.iter().map(|x| json!({"depth": x.0, "finished": x.1, "nodes": x.2, "seconds": x.3})).collect::<Vec<_>>(),
+            "first_diag": self.first_diag.as_ref().map(|d| json!({"probe": d.probe, "value": d.value, "unreduced_holds": d.unreduced_holds, "deeper": d.deeper.iter().map(|x| json!({"depth": x.0, "probe": x.1})).collect::<Vec<_>>()})),
             "step_seconds": self.step_seconds.iter().map(|x| json!({"step": x.0, "piece": x.1, "seconds": x.2})).collect::<Vec<_>>(),
             "chooser": self.chooser.as_ref().map(|c| json!({"mode": c.mode, "seed": c.seed, "inputs": c.inputs, "candidates": c.candidates.iter().map(|x| json!({"move": x.0, "row": x.1, "sum": x.2})).collect::<Vec<_>>(),
                 "fixed_pick": c.fixed_pick, "played": c.played, "propensity": c.propensity, "applied": c.applied})),

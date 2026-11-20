@@ -26,6 +26,7 @@ pub mod rule;
 pub mod threat_verdict;
 pub mod threats;
 pub mod wake;
+pub mod wall;
 
 pub use lemma_prior::{LemmaPrior, RulesFirst};
 pub use graph_prior::GraphPrior;

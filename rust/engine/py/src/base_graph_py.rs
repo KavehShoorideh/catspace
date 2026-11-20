@@ -198,10 +198,10 @@ impl BaseGraph {
     /// log in words). `pieces`: any of "carried", "frames", "threats", "goals", "two_threat_goals", "reasons_pick", "heads", and (PLAN 79.10) "after_move", "direct_names"; none is the old player. `keys`: the learned seeds of the frame read (None: the rows are the graph's); `frame_fuses`: (largest seed, fuse, row fuse, answer fuse); `chances`: (by key, by facts, (goals,
     /// reached) in all, floor), each cell (name, goals, reached); `reasons`: (pattern keys, [(column, side "mover"/"other", direction "up"/"down", weight)], largest seed, levels, tie digits). The frame read reads the kind values, bands and rules this graph was given (`set_kind_values`, `set_kind_bands`, `set_rules`) and its learned profile.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None, carry_slot=None, chooser=None, goal_table=None))]
+    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None, carry_slot=None, chooser=None, goal_table=None, pre_share_scale=None))]
     fn wake_decide(&self, py: Python<'_>, text: &str, history: Vec<u64>, seconds: f64, depth: i32, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, pieces: Vec<String>, budget: usize, named_budget: usize,
                    keys: Option<Vec<u64>>, frame_fuses: Option<(usize, u64, u64, u64)>, chances: Option<(Vec<(String, u32, u32)>, Vec<(String, u32, u32)>, (u32, u32), u32)>,
-                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>, carry_slot: Option<String>, chooser: Option<(String, HashMap<String, f64>, u64)>, goal_table: Option<(u32, u32, Vec<(Vec<String>, Vec<(String, u32, u32)>)>, (u32, u32))>) -> PyResult<String> {
+                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>, carry_slot: Option<String>, chooser: Option<(String, HashMap<String, f64>, u64)>, goal_table: Option<(u32, u32, Vec<(Vec<String>, Vec<(String, u32, u32)>)>, (u32, u32))>, pre_share_scale: Option<f64>) -> PyResult<String> {
         use cs_decision::estimate::ChanceTable;
         use cs_decision::frame_rows::FrameRead;
         use cs_decision::pick::{Dir, Reason, Reasons, Side};
@@ -210,10 +210,10 @@ impl BaseGraph {
         let (g, s) = self.game(text)?;
         let goal = self.goal_of(&goal_kind)?;
         let mut pc = Pieces::old_player();
-        let (mut carry_graph, mut chance_order, mut gain_mend) = (false, false, false);
+        let (mut carry_graph, mut chance_order, mut gain_mend, mut diag_first) = (false, false, false, false);
         for w in &pieces {
             match w.as_str() {
-                "carried" => pc.carried = true, "frames" => pc.frames = true, "threats" => pc.threats = true, "goals" => pc.goals = true, "two_threat_goals" => pc.two_threat_goals = true, "reasons_pick" => pc.reasons_pick = true, "heads" => pc.heads = true, "graph_reads" => pc.graph_reads = true, "after_move" => pc.after_move = true, "direct_names" => pc.direct_names = true, "carry_graph" => carry_graph = true, "chance_order" => chance_order = true, "gain_mend" => gain_mend = true,
+                "carried" => pc.carried = true, "frames" => pc.frames = true, "threats" => pc.threats = true, "goals" => pc.goals = true, "two_threat_goals" => pc.two_threat_goals = true, "reasons_pick" => pc.reasons_pick = true, "heads" => pc.heads = true, "graph_reads" => pc.graph_reads = true, "after_move" => pc.after_move = true, "direct_names" => pc.direct_names = true, "carry_graph" => carry_graph = true, "chance_order" => chance_order = true, "gain_mend" => gain_mend = true, "diag_first" => diag_first = true,
                 other => return Err(bad(format!("no such piece of the wake: {other}"))),
             }
         }
@@ -244,7 +244,7 @@ impl BaseGraph {
             }
         };
         let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: None, chooser, goal_table, carry_graph, chance_order, gain_mend } };
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, goal_table, carry_graph, chance_order, gain_mend, diag_first } };
         let st = &self.st;
         let d = py.allow_threads(|| decide(st, &g, &s, &history, &judge, &params));
         if let (Some(k), Some(c)) = (&carry_slot, &d.carried) { self.carry.borrow_mut().insert(k.clone(), c.clone()); }

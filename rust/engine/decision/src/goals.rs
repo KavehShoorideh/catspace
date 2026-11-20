@@ -672,6 +672,26 @@ pub fn answers_against<G: Game + Placed>(st: &Static, g: &G, s: &G::State, attac
     out
 }
 
+/// PLAN 79.15 C (SYSTEM_SPEC 8 the rule for choosing a move: "evaluate the threats of the opponent" first; piece: the wake): A LINE STANDS ON THE MOVER'S GOAL UNIT NOW: the unit, the units of theirs that bear on its place, and the moves of the mover after which no unit of theirs bears on where the goal unit is
+/// (the answers: a legal move that takes the bearer, shuts the line or moves the unit). The goal unit cannot be taken, so no row of the threat list names it (the list reads takings); this is the threat the rules of the game make the largest one. Takes the position the mover is to move in and the goal kind;
+/// None where the goal unit is not borne on (or there is none). Read from the graph's bearing and the legal moves only; nothing about any game is named. Called by `wake::decide` (step 4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StandingLine { pub unit: UnitRef, pub bearers: Vec<UnitRef>, pub answers: Vec<String> }
+
+pub fn standing_line<G: Game + Placed>(_st: &Static, g: &G, s: &G::State, goal: Option<Kind>) -> Option<StandingLine> {
+    let me = g.mover(s)?;
+    let goal = goal?;
+    let other = g.other(me);
+    let at = g.cells(s).into_iter().find(|c| c.0 == me && c.1 == goal)?.2;
+    // (the bearing of a unit does not depend on whose turn it is, so no pass is needed: a position in which the mover is borne on cannot be passed)
+    let borne = |p: &G::State, t: Place| -> Vec<UnitRef> { g.cells(p).into_iter().filter(|c| c.0 == other && g.bearing_from(p, c.0, c.1, c.2).contains(&t)).map(|c| UnitRef { owner: c.0, kind: c.1, at: c.2 }).collect() };
+    let bearers = borne(s, at);
+    if bearers.is_empty() { return None; }
+    let unit = UnitRef { owner: me, kind: goal, at };
+    let answers = g.moves(s).iter().filter(|m| { let e = g.move_ends(s, m); let t2 = if e.0 == at { e.1 } else { at }; borne(&g.apply(s, m), t2).is_empty() }).map(|m| g.move_name(s, m)).collect();
+    Some(StandingLine { unit, bearers, answers })
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------ what a goal gives the search
 
 /// THE MOVES BY POSITION that the fixes name, for both sides, in the form `Search::named` takes: the position's `Game::key` to the names of the legal moves to read first and unreduced there. The mover's goals name moves at the position itself; the other side's at the position after the game's pass
