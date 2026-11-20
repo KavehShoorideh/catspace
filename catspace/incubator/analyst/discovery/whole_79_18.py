@@ -93,6 +93,9 @@ def cmd_cells(a, say) -> None:
 
 def cell_numbers(root: Path, name: str) -> "dict | None":
     p = root / f"cell_{name}.json"
+    if not p.exists() and ".claude" in p.parts:          # a worktree: the earlier plan's cells are in the main checkout
+        i = p.parts.index(".claude")
+        p = Path(*p.parts[:i]) / Path(*p.parts[i + 3:])
     return json.loads(p.read_text()) if p.exists() else None
 
 
@@ -109,7 +112,7 @@ def cmd_compare(a, say) -> None:
                 if c is None:
                     continue
                 e = c["ended"]
-                say(f"OBS whole_79_18 compare {cls} defender {dfn} clock {sec}: games {c['games']}, wins with no goal (79.17 A) {no['wins'] if no else '-'}, wins before (79.17 E) {b['wins'] if b else '-'}, wins after {c['wins']}, mean plies before {b['mean_plies']:.1f} after {c['mean_plies']:.1f}, "
+                say(f"OBS whole_79_18 compare {cls} defender {dfn} clock {sec}: games {c['games']}, wins with no goal (79.17 A) {no['wins'] if no else '-'}, wins before (79.17 E) {b['wins'] if b else '-'}, wins after {c['wins']}, mean plies before {(b or {'mean_plies': float('nan')})['mean_plies']:.1f} after {c['mean_plies']:.1f}, "
                     f"ended by repetition before {b['ended'].get('repetition', 0) if b else '-'} after {e.get('repetition', 0)}, by the quiet-ply rule before {b['ended'].get('quiet_rule', 0) if b else '-'} after {e.get('quiet_rule', 0)}")
 
 

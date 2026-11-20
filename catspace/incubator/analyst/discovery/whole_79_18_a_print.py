@@ -88,12 +88,40 @@ def print_game(p: Path, rows: list) -> list:
     return out
 
 
+def read_decisions(log_dir: Path, per_kind: int) -> list:
+    """Decisions to be read against the board: a few of each kind (a recovery played, a goal woken, a fall played toward, a question cut), the first of each kind found in games in the order of their names, printed with the position, the measure's value now and the lowest held, what the question found and what was played."""
+    want = {"recovery": lambda m: m["recovery"], "woken": lambda m: m.get("woke"), "fall": lambda m: m["played_toward"] and not m["recovery"] and m["held_before"] is not None, "cut": lambda m: m["cut"]}
+    got: dict = {k: [] for k in want}
+    for p in sorted(Path(log_dir).glob("*.jsonl.gz")):
+        for d in rows_of(p):
+            m = d.get("wake", {}).get("log", {}).get("measure") if d.get("kind") == "decision" else None
+            if not m:
+                continue
+            for k, f in want.items():
+                if f(m) and len(got[k]) < per_kind and not any(x[0] == p.name for x in got[k]):
+                    got[k].append((p.name, d))
+    out = []
+    for k, v in got.items():
+        for name, d in v:
+            m = d["wake"]["log"]["measure"]
+            out.append(f"READ {k}: {name} ply {d['ply']} {d['position']} measure now {m['value_now']} lowest held {m['held_before']} first {m['first']} moves {m['moves']} recovery {int(m['recovery'])} asleep {m.get('asleep') and 'yes'} cut {int(m['cut'])} played {d['played']} (search first {d['search_first']}) why: {d['wake']['log'].get('why')}")
+    return out
+
+
 def main(argv: "list | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--logs", nargs="+", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--obs", default=None)
+    ap.add_argument("--read", type=int, default=0, help="print this many decisions of each kind to be read against the board, instead of the unwon games")
     a = ap.parse_args(argv)
+    if a.read:
+        rd = []
+        for d in a.logs:
+            rd.append(f"CELL {d}")
+            rd += read_decisions(Path(d), a.read)
+        Path(a.out).write_text("\n".join(rd) + "\n")
+        return 0
     lines = []
     obs = []
     for d in a.logs:
