@@ -16,7 +16,7 @@ HOW IT IS USED (main agent; PROPOSED until Kaveh confirms):
 STATES. IN: the wake does it by default, tested. PART: some of it is in the wake; what is missing is said.
 OFF: built, behind a switch that is off. MEASURED: built once as a measurement outside the wake. NOT: not built.
 
-State on main at c4275c44 (after plan 79.16). First version: rows 31 to 34 are from the status table of section 12, the
+State on main after plan 79.17 (first made at c4275c44, after 79.16). First version: rows 31 to 34 are from the status table of section 12, the
 sections 2, 3, 9 and 10 were not reread for it and are owed a pass.
 
 ## The wake, step by step (SYSTEM_SPEC 8)
@@ -40,7 +40,7 @@ sections 2, 3, 9 and 10 were not reread for it and are owed a pass.
 
 | Row | Decided | Spec | State | What is missing, or the proof |
 |---|---|---|---|---|
-| 13 | A subgoal is held across moves, said, and dropped only for a stated cause | 1, 7 | NOT | Goals are proposed afresh every move; "a goal was held about one decision" (78.75), nothing since |
+| 13 | A subgoal is held across moves, said, and dropped only for a stated cause | 1, 7 | PART | Goals are proposed afresh every move; "a goal was held about one decision" (78.75), nothing since. 79.17: a measure given as a goal is held, carried, said, dropped for a logged cause, in two small classes only; a dropped goal is not taken up again (fault) |
 | 14 | A goal is any set of facts of the graph with units as variables; no name needed | 7 | PART | Five fixed relations; one target shape (a unit to be taken) |
 | 15 | A problem, a proposed fix, and the fix becomes the subgoal; one way of asking for every goal | 7 | IN | goals.rs (79.07) |
 | 16 | Reachable has two layers: my moves only, then the other side's veto | 7 | PART | Layer one crude and undefined for most goals (78.78), not in the wake; layer two is the chance table of 79.13 |
@@ -50,9 +50,9 @@ sections 2, 3, 9 and 10 were not reread for it and are owed a pass.
 | 20 | A future judge learned from human trajectories; winning frames labelled in sleep; predict whether they can be reached | 7 | MEASURED | 78.94; not in the wake |
 | 21 | Among equal moves, the one that brings our goals nearer | 7 | IN | rule.rs; with row 14 as it is, it has takings only to work with |
 | 22 | Calculate what is near; estimate per frame and per goal, several estimates; a learned last layer trained on results | 7 | PART | Per goal: the chance table (79.13). Per frame: NOT. Last layer built, its fit found nothing (79.12), the fixed rule plays |
-| 23 | The chain of goals must end inside the search's horizon: a far goal is broken down until the nearest subgoal is one the search can reach, each a step to the next | 7 (2026-11-20) | NOT | New row |
-| 24 | A subgoal reached is a training signal, to make the reward denser than the result of the game | 7, 9 (2026-11-20) | NOT | goal_reach.py counts the event (79.13); nothing is trained on it but the table |
-| 25 | Subgoals are mined: which tactics, by existing, lead to a gain; which facts lead to those tactics; material is the subgoal on the way to the end of the game | 7, 9 (2026-11-20) | NOT | 78.80 and 78.94 are the nearest work |
+| 23 | The chain of goals must end inside the search's horizon: a far goal is broken down until the nearest subgoal is one the search can reach, each a step to the next | 7 (2026-11-20) | PART | 79.17: the end of the game beyond the horizon, the next fall of the measure inside it, for a class with a mined measure; nothing breaks down a goal in a whole game |
+| 24 | A subgoal reached is a training signal, to make the reward denser than the result of the game | 7, 9 (2026-11-20) | NOT | goal_reach.py counts the event (79.13); nothing is trained on it but the table. 79.17 logs each fall of the measure as a subgoal reached; still nothing trained |
+| 25 | Subgoals are mined: which tactics, by existing, lead to a gain; which facts lead to those tactics; material is the subgoal on the way to the end of the game | 7, 9 (2026-11-20) | NOT | 78.80 and 78.94 are the nearest work. 79.17 mined a measure for one class from good and bad games; not tactics that lead to a gain, not whole games |
 | 26 | Human data is conditioned on rating: high rating for accurate work; low rating only as a model of a low-rated opponent | 6, 10 (2026-11-20) | NOT | Samples so far were not split by rating for this purpose; to be checked |
 
 ## The estimator, value, sleep, memory (SYSTEM_SPEC 4, 5, 6, 9)
@@ -67,7 +67,7 @@ sections 2, 3, 9 and 10 were not reread for it and are owed a pass.
 | 32 | The menu of sleep, compression, the rolling measure across sleeps | 9 | NOT | |
 | 33 | Lean is the source of truth for frames and lemmas | 3, AGENTS 11 | PART | Core built; three results not reached; no lemma is read by the wake |
 | 34 | An event-driven memory in which a claim stands until something it read changes | 4 (and the October design) | PART | The October event loop is Python and not in the wake; a claim's read set held about half the time (78.72); the line's own read set not built |
-| 35 | A measure of progress toward a stated goal: did we get closer or are we going in circles; a forced win is a measure that falls against every reply | 7 (2026-11-20; October: plans 52.23, 73.5b, Lean forced_by_measure) | NOT | Built and proved in the older system only (agenda.py, technique_miner.py, Lean); nothing of it in rust/engine. Plan 79.17 (go 2026-11-20) builds it, with rows 13, 23, 24, 25 |
+| 35 | A measure of progress toward a stated goal: did we get closer or are we going in circles; a forced win is a measure that falls against every reply | 7 (2026-11-20; October: plans 52.23, 73.5b, Lean forced_by_measure) | PART | Built and proved in the older system only (agenda.py, technique_miner.py, Lean); nothing of it in rust/engine. Plan 79.17 (go 2026-11-20) built it (cs_tactics::measure, the miner, the wake's held goal; tests measure.rs, wake_measure.rs). Missing: the fall is counted from the value now, not the lowest held; passed on a sample, not proved; one class |
 
 ## What this list says (main agent, 2026-11-20)
 
