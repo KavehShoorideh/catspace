@@ -75,9 +75,11 @@ pub struct WakeInputs {
     pub gain_mend: bool,
     /// PLAN 79.15 A: after the decision, a lowered first move is asked again unreduced and at the next depths (the log's `first_diag`); a measure, false in play
     pub diag_first: bool,
+    /// PLAN 79.16 A: the search does not stop on a failed first move (`Search::fail_extend`): the clock it may read on is `FAIL_OF_TIE` of the equal reading's share, taken from it; false (the default): the search as it was.
+    pub read_on: bool,
 }
 
-impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, goal_table: None, carry_graph: false, chance_order: false, gain_mend: false, diag_first: false } } }
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, goal_table: None, carry_graph: false, chance_order: false, gain_mend: false, diag_first: false, read_on: false } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -239,6 +241,17 @@ pub const AFTER_OF_PRE: f64 = 0.5;
 pub const CLAIMS_OF_TAIL: f64 = 0.5;
 /// PLAN 79.15 A: the clock of each extra reading of the diagnosis of a lowered first move (a measure, asked only by the piece `diag_first`, after the decision).
 pub const DIAG_SECONDS: f64 = 20.0;
+/// PLAN 79.16 A (SYSTEM_SPEC 7, the budget): THE SEARCH'S READING ON a failed first move may take this share of the equal reading's clock (`tie_seconds`), and the equal reading has that much less to do; the decision's total clock is what it was given. A named share (half: the equal reading and the reading on a first move are the
+/// two readings that ask whether the search's first move holds, and each gets half of what the one had), printed in the log with what it spent.
+pub const FAIL_OF_TIE: f64 = 0.5;
+/// PLAN 79.16 B: the clock of the search is the whole decision's clock less what the equal reading and the tail keep (`search_seconds`).
+
+/// PLAN 79.16 B (SYSTEM_SPEC 7, the budget; 8 the wall): TIME NOT USED GOES TO THE SEARCH. The search is given what is left of the decision's clock `total` (`left` seconds from now) after the equal reading's clock `tie` and the tail (`TAIL_SHARE` of the total) are kept, and never less than its own share of the total: so where the steps before it end
+/// under their share (or the share is scaled down) the search's deadline is moved by what is left, and where they overrun it the search still has its share. With the steps spending exactly their share this is `total * share`, as before.
+pub fn search_seconds(total: f64, share: f64, left: f64, tie: f64) -> f64 { (left - tie - TAIL_SHARE * total).max(total * share) }
+
+/// PLAN 79.16 B: the clock of the equal reading: its share less what the reading on of a failed first move spent (`spent`), and what is left of the decision's clock after the tail is kept if that is more (the clock the steps and the search did not use is the equal reading's, which the clock cuts three times in four); never less than 0.01 s.
+pub fn equal_seconds(total: f64, tie: f64, spent: f64, left: f64) -> f64 { (tie - spent).max(left - TAIL_SHARE * total).max(0.01) }
 
 /// The share of the clock the steps before the search may take.
 pub fn pre_share_of(share: f64, given: Option<f64>) -> f64 { given.unwrap_or(((1.0 - share) * (1.0 - crate::TIE_SHARE) - TAIL_SHARE).max(0.0)) }
@@ -374,8 +387,11 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     // ---- step 5: the search, with the named moves first and in full
     let t0 = std::time::Instant::now();
     // the search keeps its share of the clock and gets what the steps before it did not spend of theirs
-    let search_secs = params.seconds * share + pre_end.saturating_duration_since(std::time::Instant::now()).as_secs_f64();
+    let tie = tie_seconds(params.seconds, share);
+    let search_secs = search_seconds(params.seconds, share, wall_end.saturating_duration_since(std::time::Instant::now()).as_secs_f64(), tie);
     let mut ls = Search::new(g, judge, me, search_secs);
+    if inp.read_on { ls.fail_extend = FAIL_OF_TIE * tie; }
+    ls.lean = true;          // PLAN 79.16 C: the same answers with one ask of the game's mover a node
     ls.history = history.iter().copied().collect();
     ls.verify_ties = true;
     ls.fair_names = p.direct_names;          // PLAN 79.11 A: a named move and an un-named rival are compared by the same reading
@@ -390,7 +406,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let mut equal_ix: Vec<usize> = vec![];
     let mut verified = false;
     if !decided && own.is_some() {
-        ls.resume(tie_seconds(params.seconds, share));
+        ls.resume(equal_seconds(params.seconds, tie, ls.failed_first.as_ref().map_or(0.0, |f| f.seconds), wall_end.saturating_duration_since(std::time::Instant::now()).as_secs_f64()));
         probes = ls.probes(s, ln.depth, ln.value, None);
         let first: Vec<usize> = probes.iter().filter(|(_, v)| *v >= ln.value).map(|(i, _)| *i).collect();
         equal_ix = if ls.cut() || first.is_empty() { if ls.cut() { vec![] } else { first } } else { ls.verify(s, ln.depth, ln.value, &first) };
@@ -483,7 +499,9 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
                 if !v.iter().any(|x| x.2 == w) { v.push((rule::stake_of(&prop.goals, i, &stakes), i, w)); }
             } }
         }
-        v.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(rule::things_in_the_way(&prop.goals[a.1]).cmp(&rule::things_in_the_way(&prop.goals[b.1]))));
+        // PLAN 79.16 D: with the table of play the goals a move serves are ranked by stake times chance (`rule::rank_cmp`, the one order of the names and of the fixes among the moves held equal); without it by stake alone, as before
+        if inp.chance_order && inp.goal_table.is_some() { v.sort_by(|a, b| rule::rank_cmp((a.0, by_chance(&prop.goals[a.1])), (b.0, by_chance(&prop.goals[b.1])), stakes.ceiling).then(rule::things_in_the_way(&prop.goals[a.1]).cmp(&rule::things_in_the_way(&prop.goals[b.1])))); }
+        else { v.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(rule::things_in_the_way(&prop.goals[a.1]).cmp(&rule::things_in_the_way(&prop.goals[b.1])))); }
         v
     };
     let mut decided_by: Option<rule::Decided> = None;
@@ -584,6 +602,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     log.equal_unverified = cand.unverified;
     log.equal_from = match cand.held { crate::wall::Held::AsBefore => "as_before", crate::wall::Held::Verified => "verified", crate::wall::Held::ProbeOnly => "probe_only", crate::wall::Held::Highest => "highest_probe" }.to_string();
     if first_lowered { log.notes.push(format!("the search's first move was put lower by the equal reading ({}): it is not a candidate{}", log.first_lowered.clone().unwrap_or_default(), if cand.unverified { "; the clock cut the verification, so the moves whose probe held are the candidates, unverified" } else if cand.held == crate::wall::Held::Highest { "; no other move holds, so the move with the highest probe is the candidate" } else { "" })); }
+    log.failed_first = ls.failed_first.as_ref().map(|f| crate::log::FailedFirstLog { from_depth: f.depth - 1, depth: f.depth, first_value: f.first_value, goal: f.goal, outcome: f.outcome.to_string(), seconds: f.seconds, nodes: f.nodes, allowed: FAIL_OF_TIE * tie });
     log.depth_reads = ls.reads.iter().map(|r| (r.depth, r.complete, r.nodes, r.seconds)).collect();
     // PLAN 79.15 A (a measure, never in play): why the probe and the search disagree about a lowered first move
     if inp.diag_first && first_lowered {

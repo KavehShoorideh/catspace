@@ -174,7 +174,23 @@ pub struct Search<'a, G: Game, J: Judge> {
     pub named_ply: FxHashMap<i32, Vec<String>>,
     /// The deepening steps of the runs so far, as measured (the granular cost of the search).
     pub reads: Vec<DepthRead>,
+    /// PLAN 79.16 A (SYSTEM_SPEC 8 the rule for choosing a move and the budget; piece: the wake): THE SEARCH DOES NOT STOP ON A FAILED FIRST MOVE. Seconds the deepening may read on, after the clock stopped it, when the move it stood on at depth d failed low at depth d+1 (its d+1 reading finished, below the value of d):
+    /// the d+1 reading is taken up again (the table kept) and stops as soon as one other root move holds the value of d (read in full), or when every move has been read (all failed: the best of d+1 stands), or when these seconds end (the answer is then depth d's, said so). 0.0 (the default everywhere, and the old player's path never sets it) is `run` exactly as it was.
+    pub fail_extend: f64,
+    /// PLAN 79.16 A: what the last `run` did on a failed first move (None: the first move did not fail low, or the extension was not asked).
+    pub failed_first: Option<FailedFirst>,
+    /// PLAN 79.16 C (SYSTEM_SPEC 11, everything in the hot path fast; piece: the wake): THE MOVER OF A NODE IS ASKED OF THE GAME ONCE. A game's `mover` may itself read the position to its end (the chess kernel decides whether the game is over before it names the side to move), and a node asked it up to four times (the node itself, the null move,
+    /// the ordering of its moves, the cutoff) and a capture run again for the ordering. With `lean` the node asks once and passes the answer on; the capture run sorts only the moves that capture. The answers are the same (a test on logged positions: values, first moves and nodes equal); false (the default everywhere: the old player's path never sets it) is the search as it was.
+    pub lean: bool,
+    root_goal: Option<(i64, usize)>,
+    root_found: Option<usize>,
+    root_done: Vec<(usize, i64)>,
 }
+
+/// PLAN 79.16 A: the extension of the deepening on a failed first move. `depth` the depth read again (d+1), `first_value` the stood-on move's value at that depth, `goal` the value of the depth before, `outcome` one of "first_held" (the first move's null-window answer at that depth holds `goal`: the answer stays), "other_held" (a move other than the first holds `goal`: it is the answer), "all_failed" (every move was read, the best of the depth is the answer),
+/// "cut" (the seconds ended, the answer is the depth before's), `found` the root move that held, `seconds` and `nodes` what the extension cost.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FailedFirst { pub depth: i32, pub first_value: Option<i64>, pub goal: i64, pub outcome: &'static str, pub found: Option<usize>, pub seconds: f64, pub nodes: u64 }
 
 /// PLAN 78.92: what `verified_choice` found: the move to play and why. Off: not asked; Held: the chosen move holds its value without the two prunings; Replaced: it did not and another candidate did (`index` is that one);
 /// Failed: it did not and no other candidate held, the choice stands; Cut: the clock or the fuse stopped the reading, the choice stands.
@@ -225,14 +241,17 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![], fail_extend: 0.0, failed_first: None, lean: false, root_goal: None, root_found: None, root_done: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
         Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true,
-                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![] }
+                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![], fail_extend: 0.0, failed_first: None, lean: false, root_goal: None, root_found: None, root_done: vec![] }
     }
+
+    /// PLAN 79.16 C: `with_fuse` for the steps before the search of the wake (the lines of the threat list, the questions): the mover of a node is asked of the game once (`lean`). The old player's reads (the census, the audits) keep `with_fuse`.
+    pub fn lean_with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self { let mut x = Self::with_fuse(g, judge, me, nodes); x.lean = true; x }
 
     /// Plan 78.51: read the root moves in `order` (indices of the root's legal moves, first read first; each at most once). `strict`: see `root_pos`. An empty order is no order.
     pub fn set_root_order(&mut self, order: &[usize], strict: bool) {
@@ -466,15 +485,25 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         v
     }
 
+    /// PLAN 79.16 C: `ordered` of the moves that gain only, in the order `ordered` reads them (the moves that do not gain are not sorted: the capture run skips them).
+    fn ordered_captures(&self, s: &G::State, maxing: bool) -> Vec<(usize, G::Move, i64)> {
+        let mut v: Vec<(usize, G::Move, i64)> = self.g.moves(s).into_iter().enumerate().filter_map(|(i, m)| { let d = self.gain(s, &m); if d == 0 { None } else { Some((i, m, d)) } }).collect();
+        v.sort_by_key(|(i, _, d)| (false, if maxing { -*d } else { *d }, *i));
+        v
+    }
+
     /// `ordered` at a node of the main search (ply `ply`): the previous best first, then the moves that gain (best gain first), then the killers of this ply, then
     /// the quiet moves by their history.
-    fn ordered_at(&self, s: &G::State, maxing: bool, hint: Option<usize>, ply: i32) -> Vec<(usize, G::Move, i64)> {
+    fn ordered_at(&self, s: &G::State, maxing: bool, hint: Option<usize>, ply: i32) -> Vec<(usize, G::Move, i64)> { self.ordered_at_by(s, maxing, hint, ply, None) }
+
+    /// `ordered_at` where the caller already knows the mover of `s` (`known`: used with `lean`, else the game is asked as before).
+    fn ordered_at_by(&self, s: &G::State, maxing: bool, hint: Option<usize>, ply: i32, known: Option<Option<Role>>) -> Vec<(usize, G::Move, i64)> {
         if !self.ordering {
             let mut v = self.ordered(s, maxing, hint);
             if ply == 0 && !self.root_last.is_empty() { v.sort_by_key(|(i, _, _)| self.root_last.contains(i)); }          // (stable: the rest keeps its order)
             return v;
         }
-        let mover = self.g.mover(s).unwrap_or(self.me);
+        let mover = known.unwrap_or_else(|| self.g.mover(s)).unwrap_or(self.me);
         let k = self.killers.get(ply as usize);
         let ro = ply == 0 && !self.root_pos.is_empty();         // (plan 78.51: a caller's root order is given)
         let mut v: Vec<(usize, G::Move, i64, i64)> = self.g.moves(s).into_iter().enumerate().map(|(i, m)| {
@@ -488,12 +517,12 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         v.into_iter().map(|(i, m, d, _)| (i, m, d)).collect()
     }
 
-    fn cutoff(&mut self, s: &G::State, m: &G::Move, d: i64, ply: i32, depth: i32) {
+    fn cutoff(&mut self, s: &G::State, m: &G::Move, d: i64, ply: i32, depth: i32, known: Option<Option<Role>>) {
         if !self.ordering || d != 0 { return; }
         let p = ply as usize;
         if self.killers.len() <= p { self.killers.resize(p + 1, [None, None]); }
         if self.killers[p][0].as_ref() != Some(m) { self.killers[p][1] = self.killers[p][0].take(); self.killers[p][0] = Some(m.clone()); }
-        let mover = self.g.mover(s).unwrap_or(self.me);
+        let mover = known.unwrap_or_else(|| self.g.mover(s)).unwrap_or(self.me);
         *self.hist.entry((mover, m.clone())).or_insert(0) += (depth as i64) * (depth as i64);
     }
 
@@ -504,7 +533,8 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let maxing = self.g.mover(s) == Some(self.me);
         let mut best = 0i64;                                   // standing: no further capture
         if maxing { if best >= beta { return best; } alpha = alpha.max(best); } else { if best <= alpha { return best; } beta = beta.min(best); }
-        for (_i, m, d) in self.ordered(s, maxing, None) {
+        let moves: Vec<(usize, G::Move, i64)> = if self.lean { self.ordered_captures(s, maxing) } else { self.ordered(s, maxing, None) };
+        for (_i, m, d) in moves {
             if d == 0 { continue; }                            // (captures only)
             let q = self.g.apply(s, &m);
             let v = d + self.quiet(&q, ply + 1, alpha - d, beta - d, depth + 1);
@@ -518,6 +548,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// Minimax of the judge's sum over the FUTURE of `s` (what is lost from here on), `depth` plies, alpha-beta.
     fn value(&mut self, s: &G::State, depth: i32, ply: i32, mut alpha: i64, mut beta: i64) -> i64 {
         if let Some(v) = self.g.outcome(s) { return self.terminal(&v, ply); }
+        if ply == 0 && self.fail_extend > 0.0 { self.root_done.clear(); self.root_found = None; }
         let key = self.g.key(s);
         if ply > 0 && (self.history.contains(&key) || self.path.contains(&key)) { return 0; }      // (a position met again: the rules' draw -- nothing more is lost or won)
         if depth <= 0 { return self.quiet(s, ply, alpha, beta, 0); }
@@ -531,9 +562,11 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
                 if alpha >= beta { return e.value; }
             }
         }
-        let maxing = self.g.mover(s) == Some(self.me);
+        let node_mover = self.g.mover(s);
+        let known = if self.lean { Some(node_mover) } else { None };
+        let maxing = node_mover == Some(self.me);
         if self.prune && self.null_move && ply > 0 && depth >= NULL_MIN_DEPTH && beta < WIN - 1000 && alpha > -WIN + 1000 {
-            let mover = self.g.mover(s);
+            let mover = known.unwrap_or_else(|| self.g.mover(s));
             let mine = self.g.units(s).iter().filter(|(o, _)| Some(*o) == mover).count();
             if mine > ZUGZWANG_UNITS {
                 if let Some(p) = self.g.pass(s) {
@@ -546,7 +579,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let mut best = if maxing { i64::MIN } else { i64::MAX };
         let mut best_i = 0;
         self.path.push(key);
-        let mut order = self.ordered_at(s, maxing, hint, ply);
+        let mut order = self.ordered_at_by(s, maxing, hint, ply, known);
         // PLAN 79.05: the moves a caller named at this position are read first (stable among themselves) and are not read shallow first; nothing is done when none is named (the default)
         let mut pins: Vec<bool> = vec![];
         let by_ply = self.named_ply.get(&ply);
@@ -566,6 +599,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let mut reduced_only: Vec<(usize, G::Move, i64)> = vec![];
         let mut best_pinned = false;
         let mut cut_off = false;
+        let mut early = false;
         for (n_read, (i, m, d)) in order.into_iter().enumerate() {
             let q = self.g.apply(s, &m);
             let late = self.prune && self.late_reduce && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint && !(ply == 0 && self.root_strict) && !(ply == 0 && self.root_full) && !pins.get(n_read).copied().unwrap_or(false);        // (plan 78.51: under a strict root order no root move is read shallow first, so the first of the best value IS the first one that holds it at this depth)
@@ -579,10 +613,15 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             if !read_in_full && ply == 0 && self.fair_names { reduced_only.push((i, m.clone(), d)); }
             if (maxing && v > best) || (!maxing && v < best) { best = v; best_i = i; best_pinned = pins.get(n_read).copied().unwrap_or(false); }
             if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }
-            if alpha >= beta { self.cutoff(s, &m, d, ply, depth); cut_off = true; break; }
+            if ply == 0 && self.fail_extend > 0.0 {
+                self.root_done.push((i, v));
+                // PLAN 79.16 A: in the reading taken up after a failed first move, one other move read in full that holds the value of the depth before ends it
+                if let Some((goal, skip)) = self.root_goal { if i != skip && read_in_full && ((maxing && v >= goal) || (!maxing && v <= goal)) { self.root_found = Some(i); best = v; best_i = i; early = true; break; } }
+            }
+            if alpha >= beta { self.cutoff(s, &m, d, ply, depth, known); cut_off = true; break; }
         }
         // PLAN 79.11 A: the best is a named move read in full: the rivals read only reduced are read again in full, so that the comparison is by one reading
-        if ply == 0 && self.fair_names && best_pinned && !cut_off {
+        if ply == 0 && self.fair_names && best_pinned && !cut_off && !early {
             for (i, m, d) in reduced_only {
                 let q = self.g.apply(s, &m);
                 let v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
@@ -594,7 +633,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             }
         }
         self.path.pop();
-        let bound = if best <= a0 { Bound::Upper } else if best >= b0 { Bound::Lower } else { Bound::Exact };
+        let bound = if early { if maxing { Bound::Lower } else { Bound::Upper } } else if best <= a0 { Bound::Upper } else if best >= b0 { Bound::Lower } else { Bound::Exact };
         self.tt.insert(key, Tt { depth, value: best, bound, best: best_i });
         best
     }
@@ -618,6 +657,47 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         (names, lost)
     }
 
+    /// PLAN 79.16 A (see `fail_extend`). Called by `run` where the clock stopped depth `d`; `out` is the answer of depth d-1. THE FIRST MOVE IS HEARD: where the move `out` stands on was read at depth `d` to its end and came out below `out.value`, or its reading at depth `d` was not finished (the root reads it with the full window,
+    /// which is dear), it is asked "at least the value of depth d-1?" by a null window at depth `d` (the table kept) within `fail_extend` seconds. Held: the answer stays depth d-1's (it was heard). Failed low: the reading of `d` is taken up again within what is left of the seconds and stops as soon as one other root move
+    /// holds the value (read in full): that move answers at depth `d`; or at the end of the root (all failed): the best move of depth `d` answers. The seconds ending leave the answer of depth d-1 (`cut`).
+    fn read_on_failed_first(&mut self, s: &G::State, d: i32, out: &mut Line) {
+        let (Some(fi), true) = (out.first_index, out.value.abs() < WIN - 1000) else { return };
+        let maxing = self.g.mover(s) == Some(self.me);
+        let goal = out.value;
+        let known = self.root_done.iter().find(|x| x.0 == fi).map(|x| x.1);
+        let fails = |v: i64| if maxing { v < goal } else { v > goal };
+        if known.is_some_and(|v| !fails(v)) { return; }                  // the first move finished depth d and holds: nothing to hear
+        let (n0, t0) = (self.nodes, Instant::now());
+        let ext = self.fail_extend;
+        let mut first_value = known;
+        if known.is_none() {
+            self.resume(ext);
+            let pr = self.probes(s, d, goal, Some(&[fi]));
+            let v = pr.first().map(|x| x.1);
+            if self.stopped || v.is_none() { self.finish_extension(d, goal, v, "cut", None, n0, t0); self.stopped = false; return; }
+            first_value = v;
+            if !fails(v.unwrap_or(goal)) { self.finish_extension(d, goal, v, "first_held", None, n0, t0); self.stopped = false; return; }
+        }
+        let left = (ext - t0.elapsed().as_secs_f64()).max(0.0);
+        self.root_goal = Some((goal, fi));
+        self.resume(left);
+        let v = self.value(s, d, 0, i64::MIN / 2, i64::MAX / 2);
+        self.root_goal = None;
+        let found = self.root_found;
+        let outcome = if self.stopped { "cut" } else if found.is_some() { "other_held" } else { "all_failed" };
+        self.finish_extension(d, goal, first_value, outcome, found, n0, t0);
+        if self.stopped { self.stopped = false; return; }          // (the answer stays depth d-1's; the clock is given back)
+        let (line, lost) = self.line_of(s, d as usize + 8);
+        let fi2 = self.tt.get(&self.g.key(s)).map(|e| e.best);
+        *out = Line { first: line.first().cloned(), value: v, line, lost, depth: d, nodes: self.nodes, first_index: fi2 };
+    }
+
+    fn finish_extension(&mut self, d: i32, goal: i64, first_value: Option<i64>, outcome: &'static str, found: Option<usize>, n0: u64, t0: Instant) {
+        let seconds = t0.elapsed().as_secs_f64();
+        self.reads.push(DepthRead { depth: d, nodes: self.nodes - n0, seconds, complete: outcome != "cut" });
+        self.failed_first = Some(FailedFirst { depth: d, first_value, goal, outcome, found, seconds, nodes: self.nodes - n0 });
+    }
+
     /// Iterative deepening to `max_depth` while the clock lasts -> the deepest line read in full.
     pub fn run(&mut self, s: &G::State, max_depth: i32) -> Line {
         let mut out = Line { first: None, value: 0, line: vec![], lost: vec![], depth: 0, nodes: 0, first_index: None };
@@ -625,7 +705,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             let (n0, t0) = (self.nodes, Instant::now());
             let v = self.value(s, d, 0, i64::MIN / 2, i64::MAX / 2);
             self.reads.push(DepthRead { depth: d, nodes: self.nodes - n0, seconds: t0.elapsed().as_secs_f64(), complete: !self.stopped });
-            if self.stopped { break; }
+            if self.stopped { if self.fail_extend > 0.0 { self.read_on_failed_first(s, d, &mut out); } break; }
             let (line, lost) = self.line_of(s, d as usize + 8);
             let fi = self.tt.get(&self.g.key(s)).map(|e| e.best);
             out = Line { first: line.first().cloned(), value: v, line, lost, depth: d, nodes: self.nodes, first_index: fi };

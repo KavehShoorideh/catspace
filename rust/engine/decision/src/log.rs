@@ -65,7 +65,13 @@ pub struct DecisionLog {
     pub depth_reads: Vec<(i32, bool, u64, f64)>,
     /// PLAN 79.15 A: the diagnosis of a lowered first move (only where the measure asks for it: the piece `diag_first`; never in play)
     pub first_diag: Option<FirstDiag>,
+    /// PLAN 79.16 A: the search's reading on of a failed first move (None: the first move was not asked again: it finished its depth and held, the switch is off, or the game was decided)
+    pub failed_first: Option<FailedFirstLog>,
 }
+
+/// PLAN 79.16 A: the reading on of a first move that the clock stopped at depth `depth` (the answer of `from_depth` is the one asked about): the first move's null-window answer at `depth` (None: cut before it ended), the value it was asked to hold, how it ended ("first_held", "other_held", "all_failed", "cut"), what it cost and what it was allowed.
+#[derive(Debug, Clone, Default)]
+pub struct FailedFirstLog { pub from_depth: i32, pub depth: i32, pub first_value: Option<i64>, pub goal: i64, pub outcome: String, pub seconds: f64, pub nodes: u64, pub allowed: f64 }
 
 /// PLAN 79.15 A (SYSTEM_SPEC 8 the wall; piece: the wake): WHY THE PROBE AND THE SEARCH DISAGREE about a first move, read after the decision: the first move's null-window answer and the search's value, whether the first move asked again with the late-move reduction and the null move off (a fresh table) holds the value
 /// (None: the reading was cut), and its null-window answer at the next depths (the same value asked of a longer reading; the table kept).
@@ -102,6 +108,7 @@ impl DecisionLog {
             "first_lowered": self.first_lowered, "equal_unverified": self.equal_unverified, "equal_from": self.equal_from,
             "depth_reads": self.depth_reads.iter().map(|x| json!({"depth": x.0, "finished": x.1, "nodes": x.2, "seconds": x.3})).collect::<Vec<_>>(),
             "first_diag": self.first_diag.as_ref().map(|d| json!({"probe": d.probe, "value": d.value, "unreduced_holds": d.unreduced_holds, "deeper": d.deeper.iter().map(|x| json!({"depth": x.0, "probe": x.1})).collect::<Vec<_>>()})),
+            "failed_first": self.failed_first.as_ref().map(|f| json!({"from_depth": f.from_depth, "depth": f.depth, "first_value": f.first_value, "goal": f.goal, "outcome": f.outcome, "seconds": f.seconds, "nodes": f.nodes, "allowed": f.allowed})),
             "step_seconds": self.step_seconds.iter().map(|x| json!({"step": x.0, "piece": x.1, "seconds": x.2})).collect::<Vec<_>>(),
             "chooser": self.chooser.as_ref().map(|c| json!({"mode": c.mode, "seed": c.seed, "inputs": c.inputs, "candidates": c.candidates.iter().map(|x| json!({"move": x.0, "row": x.1, "sum": x.2})).collect::<Vec<_>>(),
                 "fixed_pick": c.fixed_pick, "played": c.played, "propensity": c.propensity, "applied": c.applied})),

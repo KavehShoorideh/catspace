@@ -59,7 +59,7 @@ MIN_PAIRS = RP.MIN_PAIRS
 PLAYERS = ("wake", "old")
 REASONS = ("forced_end", "own_line_wins", "answers_threat", "fixes_goal", "estimate", "search_only", "none",
            "first_lowered", "only_own_line", "only_answers", "only_fixes", "explore", "chooser", "gain")        # PLAN 79.12: the last six name what separated the move played from the search's first move, or the last layer; PLAN 79.15: "gain", the reason of mode Gain (79.14 logged it as none)
-WATCHDOG = 300.0                                    # seconds a game may take before its worker is ended with its traceback kept (PLAN 79.11: one game of the first match hung in an engine call)
+WATCHDOG = float(os.environ.get("CATSPACE_WATCHDOG", 300.0))   # PLAN 79.16: scaled to the clock by the caller (the environment reaches the spawned workers) ;                                    # seconds a game may take before its worker is ended with its traceback kept (PLAN 79.11: one game of the first match hung in an engine call)
 _WORLD = None
 CTX: dict = {}                                      # the game being played in this process: {"gid", "log_dir"}
 
