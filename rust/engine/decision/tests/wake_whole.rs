@@ -57,7 +57,7 @@ fn chances() -> ChanceTable { ChanceTable { floor: 20, total: (100, 25), ..Defau
 
 /// every piece of the whole on, the inputs a caller would give
 fn whole(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State, seconds: f64, depth: i32) -> WakeParams {
-    WakeParams { seconds, depth, pieces: Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: true, heads: false },
+    WakeParams { seconds, depth, pieces: Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: true, heads: false, after_move: false },
         inputs: WakeInputs { record: record(), goal: Some(kind(g, "king")), frame: Some(frame_read(g, st, s)), chances: Some(chances()), reasons: Some(reasons_of(st, g, s)), budget: 4, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 

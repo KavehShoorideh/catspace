@@ -21,7 +21,14 @@ pub struct MoveLog {
     pub serves: Vec<String>, pub answers: Vec<String>,
     /// the chance of the best goal it serves, from the table (None: no table, or it serves none) and the reasons' score and how many reasons it carries (None: no reasons given)
     pub chance: Option<f64>, pub reasons_score: Option<f64>, pub reasons_carried: Option<usize>,
+    /// PLAN 79.10 A: what their goals say after this move (None: not read; the clock did not reach it)
+    pub their_after: Option<TheirAfterLog>,
 }
+
+/// PLAN 79.10 A: the other side's goals on the position after one move of ours, in words: the target at the top of their chain of the highest stake (None: no chain of theirs stands after the move), the things in the way of its nearest goal before (None: no such chain stood before) and after, the units the move took out of its way
+/// and put in its way, the fixes of theirs named at that position (read first and in full), and the fact in one sentence. A fact about the move: it adds to no value.
+#[derive(Debug, Clone, Default)]
+pub struct TheirAfterLog { pub top: Option<String>, pub before: Option<usize>, pub after: usize, pub took_out: Vec<String>, pub put_in: Vec<String>, pub names: Vec<String>, pub said: String }
 
 /// A goal in words, with what stops it, its fixes and its estimate.
 #[derive(Debug, Clone, Default)]
@@ -43,6 +50,8 @@ pub struct DecisionLog {
     pub named_mine: Vec<(String, String, i64, String)>, pub named_theirs: Vec<(String, String, i64, String)>, pub refuted: Vec<(String, bool, String)>, pub unlisted: Vec<(String, bool)>,
     /// what is missing and said so: a piece asked for with nothing to read (no table, no reasons, no learned seeds)
     pub notes: Vec<String>,
+    /// PLAN 79.10 A: the moves of ours whose child position the clock did not reach (their goals after them were not read: a gap)
+    pub after_not_asked: Vec<String>,
 }
 
 fn kept(v: &[(String, String, i64, String)]) -> Value { json!(v.iter().map(|k| json!({"move": k.0, "verdict": k.1, "net": k.2, "ended": k.3})).collect::<Vec<_>>()) }
@@ -58,14 +67,15 @@ impl DecisionLog {
         json!({
             "chosen": self.chosen, "why": self.why, "chosen_goal": self.chosen_goal.as_ref().map(goal_json), "far_goal": self.far_goal, "their_threat": self.their_threat,
             "moves": self.moves.iter().map(|m| json!({"move": m.mv, "value": m.value, "equal": m.equal, "line": m.line, "ended": m.ended, "named": m.named,
-                "own_read": m.own_read.as_ref().map(|r| json!({"verdict": r.0, "net": r.1, "ended": r.2})), "serves": m.serves, "answers": m.answers, "chance": m.chance, "reasons_score": m.reasons_score, "reasons_carried": m.reasons_carried})).collect::<Vec<_>>(),
+                "own_read": m.own_read.as_ref().map(|r| json!({"verdict": r.0, "net": r.1, "ended": r.2})), "serves": m.serves, "answers": m.answers, "chance": m.chance, "reasons_score": m.reasons_score, "reasons_carried": m.reasons_carried,
+                "their_after": m.their_after.as_ref().map(|a| json!({"top": a.top, "before": a.before, "after": a.after, "took_out": a.took_out, "put_in": a.put_in, "names": a.names, "said": a.said}))})).collect::<Vec<_>>(),
             "goals": self.goals.iter().map(goal_json).collect::<Vec<_>>(),
             "rows": self.rows.iter().map(|r| json!({"list": r.list, "unit": r.unit, "class": r.class, "verdict": r.verdict, "net": r.net, "ended": r.ended, "line": r.line, "carried": r.carried,
                 "responses": r.responses.iter().map(|x| json!({"move": x.0, "state": x.1, "net": x.2})).collect::<Vec<_>>()})).collect::<Vec<_>>(),
             "named_mine": kept(&self.named_mine), "named_theirs": kept(&self.named_theirs),
             "refuted": self.refuted.iter().map(|r| json!({"move": r.0, "theirs": r.1, "ended": r.2})).collect::<Vec<_>>(),
             "unlisted": self.unlisted.iter().map(|r| json!({"move": r.0, "theirs": r.1})).collect::<Vec<_>>(),
-            "notes": self.notes,
+            "notes": self.notes, "after_not_asked": self.after_not_asked,
         })
     }
 }

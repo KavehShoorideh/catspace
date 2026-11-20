@@ -24,15 +24,17 @@ use cs_tactics::lines::LineParams;
 use cs_tactics::sheet::base_graph::{PositionPart, Static, UnitRec};
 use std::collections::HashSet;
 
-/// Which pieces of the wake are on (section 8's steps): `carried` step 1, `frames` step 2, `threats` and `goals` and `two_threat_goals` step 3, `graph_reads` step 3 (the shut lines and the bearers a move brings), `reasons_pick` and `heads` step 6.
+/// Which pieces of the wake are on (section 8's steps): `carried` step 1, `frames` step 2, `threats` and `goals` and `two_threat_goals` step 3, `graph_reads` step 3 (the shut lines and the bearers a move brings), `reasons_pick` and `heads` step 6, `after_move` step 4 (PLAN 79.10 A).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Pieces { pub carried: bool, pub frames: bool, pub threats: bool, pub goals: bool, pub two_threat_goals: bool, pub graph_reads: bool, pub reasons_pick: bool, pub heads: bool }
+pub struct Pieces { pub carried: bool, pub frames: bool, pub threats: bool, pub goals: bool, pub two_threat_goals: bool, pub graph_reads: bool, pub reasons_pick: bool, pub heads: bool,
+    /// PLAN 79.10 A: their goals are read after each move of ours (`after`), their fixes named at that child position, the fact about the move logged
+    pub after_move: bool }
 
 impl Pieces {
     /// The old player: the search with the count of worths at its end, nothing else.
     pub fn old_player() -> Pieces { Pieces::default() }
     /// Every piece on.
-    pub fn all() -> Pieces { Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: true, reasons_pick: true, heads: true } }
+    pub fn all() -> Pieces { Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: true, reasons_pick: true, heads: true, after_move: true } }
     /// The names of the pieces asked for that are NOT ported: only the heads that read counts summed over the whole position, which the owner's decision of 2026-11-19 (SYSTEM_SPEC 7, point 2) says not to port and not to call; the estimates of the wake are per goal (estimate.rs) and per move (pick.rs).
     pub fn unported(&self) -> Vec<&'static str> {
         let mut v = vec![];
@@ -215,6 +217,8 @@ pub const TAIL_SHARE: f64 = 0.08;
 /// Of what the steps before the search may take: the frame read at most `FRAMES_OF_PRE` of what is left, the threat list and goals at most `LIST_OF_PRE` of what is then left; the reading of the named moves has the rest.
 pub const FRAMES_OF_PRE: f64 = 0.3;
 pub const LIST_OF_PRE: f64 = 0.7;
+/// PLAN 79.10 A: of what is left of the steps before the search, their goals after our moves may take at most this much (the reading of the named moves has the rest).
+pub const AFTER_OF_PRE: f64 = 0.5;
 
 /// The share of the clock the steps before the search may take.
 pub fn pre_share_of(share: f64, given: Option<f64>) -> f64 { given.unwrap_or(((1.0 - share) * (1.0 - crate::TIE_SHARE) - TAIL_SHARE).max(0.0)) }
@@ -284,11 +288,19 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
         for (t, ans) in &prop.defence { if *t == u { for a in ans { put(&mut mine, &a.mv); if k == 0 { put(&mut answers_largest, &a.mv); } } } }
     }
     let mut theirs: Vec<String> = vec![];
-    for c in &chains_theirs { for m in &c.moves { put(&mut theirs, m); } }
+    // PLAN 79.10 A: with `after_move` their fixes are named at each child position (below), not at the ply after ours on a pass
+    if !p.after_move { for c in &chains_theirs { for m in &c.moves { put(&mut theirs, m); } } }
     for r in prop.list.other.iter().filter(|r| r.verdict == crate::threat_verdict::VerdictKind::Confirmed && !r.two_moves) {
         for x in r.responses.iter().filter(|x| x.state == RespState::Kept) { if let Some(n) = x.names.first() { put(&mut theirs, n); } }
     }
     let budget = if inp.named_budget > 0 { inp.named_budget } else { rule::NAMED_BUDGET };
+    // PLAN 79.10 A: their goals on the position after each move of ours, in the search's own order, until the clock of the step; their fixes named at that child
+    let mut after = crate::after::AfterRead::default();
+    if p.after_move {
+        let order = Search::new(g, judge, me, 0.1).deepening_order(s);
+        after = crate::after::their_goals_after(st, g, s, rec, inp.goal, &order, budget, Some(until(pre_end, AFTER_OF_PRE)));
+        contributions.push(Contribution { piece: "their goals after each move of ours", step: 4, seconds: after.seconds, named: vec![], note: format!("{} positions read, {} not reached by the clock", after.rows.len(), after.not_asked.len()) });
+    }
     let kept = rule::keep_read_by(g, s, rec, &mine, &theirs, budget, LineParams { depth: tp.sweep_depth, fuse: tp.sweep_fuse }, inp.share_table, Some(pre_end));
     let named_mine: Vec<String> = kept.mine.iter().map(|k| k.name.clone()).collect();
     let named_theirs: Vec<String> = kept.theirs.iter().map(|k| k.name.clone()).collect();
@@ -306,6 +318,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     ls.verify_ties = true;
     if !named_mine.is_empty() { ls.named.insert(g.key(s), named_mine.clone()); }
     if !named_theirs.is_empty() { ls.named_ply.insert(1, named_theirs.clone()); }
+    for r in &after.rows { if !r.names.is_empty() { ls.named.insert(r.key, r.names.clone()); } }
     let ln = ls.run(s, params.depth);
     let moves = g.moves(s);
     let own: Option<usize> = ln.first_index;
@@ -421,13 +434,28 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
         let rs = sc.as_ref().and_then(|v| v.iter().find(|x| x.mv == name));
         let _ = m;
         mlog.push(MoveLog { mv: name.clone(), value, equal: equal.contains(&name), line, ended: if value.is_some_and(|v| v.abs() >= WIN - 1000) { "the game itself ends in the line".into() } else { format!("the settled end after the depth read ({} plies)", ln.depth) },
-            named: named_mine.contains(&name), own_read: kept.mine.iter().find(|k| k.name == name).map(|k| (format!("{:?}", k.verdict), k.net, k.ended.clone())), serves, answers: ans, chance, reasons_score: rs.map(|x| x.score), reasons_carried: rs.map(|x| x.carried.len()) });
+            named: named_mine.contains(&name), own_read: kept.mine.iter().find(|k| k.name == name).map(|k| (format!("{:?}", k.verdict), k.net, k.ended.clone())), serves, answers: ans, chance, reasons_score: rs.map(|x| x.score), reasons_carried: rs.map(|x| x.carried.len()),
+            their_after: after.rows.iter().find(|r| r.mv == name).map(|r| their_after_log(r, &text)) });
     }
     mlog.sort_by_key(|m| (!m.equal, m.value.map_or(i64::MAX, |v| -v)));
     log.moves = mlog;
+    log.after_not_asked = after.not_asked.clone();
     let carried_next = frames.as_ref().map(|f| Carried::of(&prop.list, &f.read_sets));
     contributions.push(Contribution { piece: "the whole decision", step: 0, seconds: t_all.elapsed().as_secs_f64(), named: vec![], note: String::new() });
     WakeDecision { mv, value: ln.value, depth: ln.depth, nodes: ln.nodes, chain, contributions, unported: params.pieces.unported(), log, proposal: Some(prop), carried: carried_next, named_mine, named_theirs, equal }
+}
+
+/// PLAN 79.10 A: the fact about one move of ours in words (the units as the game names them): a thing it took out of the way of their chain, a thing it put in the way, or no change. It says what happened; it adds to no value.
+fn their_after_log(r: &crate::after::TheirAfter, text: &dyn Fn(&UnitRef) -> String) -> crate::log::TheirAfterLog {
+    let list = |v: &[UnitRef]| v.iter().map(|u| text(u)).collect::<Vec<_>>();
+    let Some(f) = &r.fact else { return crate::log::TheirAfterLog { names: r.names.clone(), said: "after it no chain of theirs stands".into(), ..Default::default() } };
+    let (took_out, put_in) = (list(&f.took_out), list(&f.put_in));
+    let mut said = format!("their chain on {}: {} things in its way after it", text(&f.top), f.in_the_way_after);
+    match f.in_the_way_before { Some(b) => said.push_str(&format!(" ({b} before)")), None => said.push_str(" (no such chain stood before)") }
+    if !took_out.is_empty() { said.push_str(&format!("; it took out of the way: {}", took_out.join(", "))); }
+    if !put_in.is_empty() { said.push_str(&format!("; it put in the way: {}", put_in.join(", "))); }
+    if took_out.is_empty() && put_in.is_empty() { said.push_str("; nothing of ours was taken out of the way or put in it"); }
+    crate::log::TheirAfterLog { top: Some(text(&f.top)), before: f.in_the_way_before, after: f.in_the_way_after, took_out, put_in, names: r.names.clone(), said }
 }
 
 impl WakeDecision {

@@ -101,6 +101,14 @@ pub fn named_fixes(goals: &[Goal], side: Role, sk: &Stakes) -> Vec<ChainFix> {
     out.into_iter().map(|x| x.0).collect()
 }
 
+/// PLAN 79.10 A: THE NAMES OF A POSITION from its chains: the fixes of each chain's nearest goal, the chains in order of stake, each move once, at most `count`.
+pub fn names_of(chains: &[ChainFix], count: usize) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for c in chains { for m in &c.moves { if !out.contains(m) { out.push(m.clone()); } } }
+    out.truncate(count);
+    out
+}
+
 /// The moves among those the search holds equal that the FIRST chain with any of them names (the ladder of rule (c) goes down the chains in order of stake): the moves and the index of the chain; empty and None where no chain names an equal move.
 pub fn fixes_among(chains: &[ChainFix], equal: &[String]) -> (Vec<String>, Option<usize>) {
     for (k, c) in chains.iter().enumerate() {
