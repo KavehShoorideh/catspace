@@ -210,10 +210,10 @@ impl BaseGraph {
         let (g, s) = self.game(text)?;
         let goal = self.goal_of(&goal_kind)?;
         let mut pc = Pieces::old_player();
-        let (mut carry_graph, mut chance_order, mut gain_mend, mut diag_first) = (false, false, false, false);
+        let (mut carry_graph, mut chance_order, mut gain_mend, mut diag_first, mut read_on) = (false, false, false, false, false);
         for w in &pieces {
             match w.as_str() {
-                "carried" => pc.carried = true, "frames" => pc.frames = true, "threats" => pc.threats = true, "goals" => pc.goals = true, "two_threat_goals" => pc.two_threat_goals = true, "reasons_pick" => pc.reasons_pick = true, "heads" => pc.heads = true, "graph_reads" => pc.graph_reads = true, "after_move" => pc.after_move = true, "direct_names" => pc.direct_names = true, "carry_graph" => carry_graph = true, "chance_order" => chance_order = true, "gain_mend" => gain_mend = true, "diag_first" => diag_first = true,
+                "carried" => pc.carried = true, "frames" => pc.frames = true, "threats" => pc.threats = true, "goals" => pc.goals = true, "two_threat_goals" => pc.two_threat_goals = true, "reasons_pick" => pc.reasons_pick = true, "heads" => pc.heads = true, "graph_reads" => pc.graph_reads = true, "after_move" => pc.after_move = true, "direct_names" => pc.direct_names = true, "carry_graph" => carry_graph = true, "chance_order" => chance_order = true, "gain_mend" => gain_mend = true, "diag_first" => diag_first = true, "read_on" => read_on = true,
                 other => return Err(bad(format!("no such piece of the wake: {other}"))),
             }
         }
@@ -244,7 +244,7 @@ impl BaseGraph {
             }
         };
         let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, goal_table, carry_graph, chance_order, gain_mend, diag_first } };
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, goal_table, carry_graph, chance_order, gain_mend, diag_first, read_on } };
         let st = &self.st;
         let d = py.allow_threads(|| decide(st, &g, &s, &history, &judge, &params));
         if let (Some(k), Some(c)) = (&carry_slot, &d.carried) { self.carry.borrow_mut().insert(k.clone(), c.clone()); }
