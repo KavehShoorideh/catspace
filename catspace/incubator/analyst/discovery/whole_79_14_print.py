@@ -78,8 +78,8 @@ def twenty_lines(root: Path, run: str, count: int, world, old_clock: float) -> l
                 board_text(d["position"]), f"    position: {d['position']}",
                 f"    THE WAKE'S REASON: {lg['why']}", f"    their largest standing threat: {lg['their_threat'] or 'none'}; named for us: {' '.join(w['named_mine'][:8]) or '-'}; for them: {' '.join(w['named_theirs'][:6]) or '-'}"]
         for m in lg["moves"]:
-            if m["mv"] in (d["played"], o["move"]):
-                out.append(f"    move {m['mv']}: held equal {m['equal']}, named {m['named']}, value {m['value']}, serves {m['serves'][:2] or '-'}, answers {m['answers'][:2] or '-'}, chance {m['chance']}")
+            if m["move"] in (d["played"], o["move"]):
+                out.append(f"    move {m['move']}: held equal {m['equal']}, named {m['named']}, value {m['value']}, serves {m['serves'][:2] or '-'}, answers {m['answers'][:2] or '-'}, chance {m['chance']}")
         out.append("    TIME BY STEP: " + "; ".join(f"{s['step']} {s['piece'].split(':')[0][:40]} {s['seconds']:.3f}" for s in w["steps"] if s["step"] < 20))
     return out
 
