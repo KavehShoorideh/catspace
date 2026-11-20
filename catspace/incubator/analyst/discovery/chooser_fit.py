@@ -27,6 +27,7 @@ from sklearn.linear_model import LogisticRegression
 
 from catspace.incubator.analyst.discovery import whole_79_12 as W12
 from catspace.incubator.analyst.discovery import whole_79_12_print as P
+from catspace.incubator.analyst.discovery import whole_79_13 as W13
 
 SEED = 7912
 PENALTIES = (0.001, 0.01, 0.1, 1.0, 10.0)
@@ -48,7 +49,7 @@ class Data:
         return np.where(self.seat == 0, w, 1.0 - w)
 
 
-def load(tag: str, runs: list) -> Data:
+def load(tag: str, runs: list, root: "Path | None" = None) -> Data:
     X: list = []
     seat: list = []
     game: list = []
@@ -56,7 +57,7 @@ def load(tag: str, runs: list) -> Data:
     gids: list = []
     names = None
     for run in runs:
-        for decs, res in P.games_of(W12.out_root(tag) / "logs" / run):
+        for decs, res in P.games_of((root or W12.out_root(tag)) / "logs" / run):
             if res is None:
                 continue
             w = 0.5 if res.get("outcome") is None else res["outcome"] / 100.0
@@ -185,8 +186,20 @@ def analyse(d: Data, boot: int = 200, shuffles: int = 10) -> dict:
     return res
 
 
-def lines_of(tag: str, runs: list, d: Data, r: dict) -> list:
-    t = f"OBS whole_79_12 fit {'+'.join(runs)}"
+def beats_shuffled(r: dict) -> tuple:
+    """PLAN 79.13 D (1), the rule in sense: a fitted chooser is played only if the fit beats the same fit on shuffled results on BOTH counts: the held-out improvement over nought weights (ln 2 less the held-out log-loss) is larger than every shuffled fit's, and the count of inputs clear on held-out is larger than every shuffle's.
+    Returns (played, the reason in words)."""
+    sh = r["shuffled"]
+    real_gain = r["held_logloss_nought"] - r["held_logloss_fit_weights"]
+    best_sh = max(r["held_logloss_nought"] - x["held_logloss"] for x in sh)
+    real_clear = int(r["clear"].sum())
+    most_clear = max(int(x["clear"].sum()) for x in sh)
+    ok = real_gain > best_sh and real_clear > most_clear
+    return ok, f"held-out gain over nought weights real {real_gain:+.5f} against the best shuffled {best_sh:+.5f}; clear inputs real {real_clear} against the most of any shuffle {most_clear}"
+
+
+def lines_of(tag: str, runs: list, d: Data, r: dict, plan: str = "79_12") -> list:
+    t = f"OBS whole_{plan} fit {'+'.join(runs)}"
     out = [f"{t}: games {r['games']}, rows (varied decisions) {r['rows']}; split by game: fit half {r['fit_games']} games {r['fit_rows']} rows, held-out half {r['held_games']} games {r['held_rows']} rows; penalty C {r['penalty']} (grouped cross-validation in the fit half)",
            f"{t}: inputs with no spread on the sample (left out): {r['dropped_nought']}; identical to an earlier input (left out): {r['dropped_duplicate']}",
            f"{t}: mean result of the mover over the rows {d.y.mean():.4f}; share of rows from games that ended on a result {np.mean(np.isin(d.white[d.game], (0.0, 1.0))):.4f}"]
@@ -197,10 +210,12 @@ def lines_of(tag: str, runs: list, d: Data, r: dict) -> list:
     out.append(f"{t}: inputs clear on held-out: {n_clear} of {len(r['names'])}")
     out.append(f"{t}: SHUFFLED results ({len(sh)} shuffles of whole games' results, the same procedure): inputs clear on held-out per shuffle {sh}, mean {np.mean(sh):.2f}; largest |weight| of the fit half real {np.abs(r['beta_fit']).max():.4f}, shuffled mean {np.mean([x['max_abs'] for x in r['shuffled']]):.4f} (max {np.max([x['max_abs'] for x in r['shuffled']]):.4f})")
     out.append(f"{t}: held-out mean log-loss of the fit half's weights {r['held_logloss_fit_weights']:.5f} against nought weights {r['held_logloss_nought']:.5f} (smaller is better); shuffled fits {np.mean([x['held_logloss'] for x in r['shuffled']]):.5f}")
+    ok, why = beats_shuffled(r)
+    out.append(f"{t}: PLAN 79.13 RULE (played only if the fit beats the same fit on shuffled results, held-out log-loss and count of clear inputs): {'PLAYED' if ok else 'NOT PLAYED'}: {why}")
     if n_clear == 0:
         out.append(f"{t}: STOP: no weight's band is clear of nought on held-out games: the inputs do not tell equal moves apart by result at this sample; no weights are written and part E is not played")
     else:
-        out.append(f"{t}: weights written (clear inputs, refit on all games, scale of the raw inputs): " + ", ".join(f"{k} {v:+.6g}" for k, v in r["weights"].items()))
+        out.append(f"{t}: weights {'written' if ok else 'NOT written (the fit does not beat the shuffled fits)'} (clear inputs, refit on all games, scale of the raw inputs): " + ", ".join(f"{k} {v:+.6g}" for k, v in r["weights"].items()))
     return out
 
 
@@ -210,15 +225,16 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--runs", default="train_self,train_old")
     ap.add_argument("--boot", type=int, default=200)
     ap.add_argument("--shuffles", type=int, default=10)
+    ap.add_argument("--plan", default="79_12", choices=("79_12", "79_13"), help="whose folder holds the logs and receives the fit (PLAN 79.13 reads its own games, which carry the gain inputs)")
     a = ap.parse_args(argv)
     runs = a.runs.split(",")
-    d = load(a.tag, runs)
+    root = W12.out_root(a.tag) if a.plan == "79_12" else W13.out_root(a.tag)
+    d = load(a.tag, runs, root)
     r = analyse(d, a.boot, a.shuffles)
-    lines = lines_of(a.tag, runs, d, r)
-    root = W12.out_root(a.tag)
+    lines = lines_of(a.tag, runs, d, r, a.plan)
     (root / "fit").mkdir(parents=True, exist_ok=True)
     (root / "fit" / "fit_obs.txt").write_text("\n".join(lines) + "\n")
-    if r["weights"]:
+    if r["weights"] and beats_shuffled(r)[0]:
         (root / "fit" / "weights.json").write_text(json.dumps({"weights": r["weights"], "weights_standardised": r["weights_std"], "penalty": r["penalty"], "runs": runs}, indent=1))
     print("\n".join(lines))
     return 0

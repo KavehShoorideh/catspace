@@ -103,7 +103,8 @@ class MoverWhole(TM.Mover67):
         self.gid, _, seat = seed.rpartition(":")
         self.seat = int(seat)
         self.slot = seed                                                          # the game and the seat: the binding keeps this slot's open tactics for the next decision
-        self.chooser = spec.get("chooser")                                        # PLAN 79.12 B: None, or {"mode": "fixed" | "weights" | "explore", "weights": {input: weight}, "seed": base seed}
+        self.chooser = spec.get("chooser")                                        # PLAN 79.12 B: None, or {"mode": "fixed" | "weights" | "explore" (PLAN 79.13: | "gain"), "weights": {input: weight}, "seed": base seed}
+        self.goal_table = spec.get("goal_table")                                  # PLAN 79.13 C: None, or the table of the chance of a goal as the binding takes it (goal_table.binding_form)
         self.log_file = None
         if self.kind == KIND_WAKE and CTX.get("log_dir"):
             self.log_file = Path(CTX["log_dir"]) / f"{self.gid.replace(':', '_')}.jsonl.gz"
@@ -122,7 +123,10 @@ class MoverWhole(TM.Mover67):
     def chooser_kw(self, ply: int) -> dict:
         """The keyword for the binding: {"chooser": ...} where a last layer is given, else nothing (the call is then the call of 79.11)."""
         a = self.chooser_arg(ply)
-        return {} if a is None else {"chooser": a}
+        kw = {} if a is None else {"chooser": a}
+        if self.goal_table is not None:
+            kw["goal_table"] = self.goal_table                                    # PLAN 79.13 C (nothing is given when none is: the call is then the call of 79.12)
+        return kw
 
     def write(self, rec: dict) -> None:
         if self.log_file is None:
@@ -183,24 +187,26 @@ def play11(spec: dict) -> dict:
 
 # ------------------------------------------------------------------------------------------------------------------------------ the players and the matches
 
-def player_spec(name: str, seconds: "float | None" = None, chooser: "dict | None" = None) -> dict:
+def player_spec(name: str, seconds: "float | None" = None, chooser: "dict | None" = None, goal_table: "tuple | None" = None) -> dict:
     spec = {"kind": KIND_WAKE if name == "wake" else KIND_OLD, "worth": RP.worth_of("human"), "charge": False}
     if seconds is not None:
         spec["seconds"] = float(seconds)
     if chooser is not None:
         spec["chooser"] = chooser                                                 # PLAN 79.12 B (only the wake has a last layer)
+    if goal_table is not None and name == "wake":
+        spec["goal_table"] = goal_table                                           # PLAN 79.13 C (only the wake reads a table of the chance of a goal)
     return spec
 
 
 def match_specs(a: str, b: str, set_name: str, pairs: int, seconds: float, scratch: Path, log_dir: Path, clock_a: "float | None" = None, clock_b: "float | None" = None, label: str = "",
-                chooser_a: "dict | None" = None, chooser_b: "dict | None" = None, openings: "list | None" = None) -> list:
+                chooser_a: "dict | None" = None, chooser_b: "dict | None" = None, openings: "list | None" = None, table_a: "tuple | None" = None, table_b: "tuple | None" = None, max_plies: "int | None" = None) -> list:
     """`chooser_a`, `chooser_b` (PLAN 79.12): the last layer of a wake player; `openings` [(seed, moves)]: given in place of the named set (the spec's start is then `set_name` + the seed)."""
-    pa, pb = player_spec(a, clock_a, chooser_a), player_spec(b, clock_b, chooser_b)
+    pa, pb = player_spec(a, clock_a, chooser_a, table_a), player_spec(b, clock_b, chooser_b, table_b)
     specs = []
     for seed, opening in (openings if openings is not None else TM.openings(set_name, pairs)):
         for colour in (0, 1):
             specs.append({"gid": f"{label or a + '_v_' + b}:{set_name}{seed}:{colour}", "start": f"{set_name}{seed}", "colour": colour, "text": None, "opening": opening,
-                          "players": [pa, pb] if colour == 0 else [pb, pa], "seconds": seconds, "max_plies": TM.PLY_CAP, "scratch": str(scratch), "log_dir": str(log_dir)})
+                          "players": [pa, pb] if colour == 0 else [pb, pa], "seconds": seconds, "max_plies": max_plies or TM.PLY_CAP, "scratch": str(scratch), "log_dir": str(log_dir)})
     return specs
 
 
