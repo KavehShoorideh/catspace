@@ -58,7 +58,7 @@ PIECES = list(W10.PIECES)                           # every piece of the whole o
 MIN_PAIRS = RP.MIN_PAIRS
 PLAYERS = ("wake", "old")
 REASONS = ("forced_end", "own_line_wins", "answers_threat", "fixes_goal", "estimate", "search_only", "none",
-           "first_lowered", "only_own_line", "only_answers", "only_fixes", "explore", "chooser")        # PLAN 79.12: the last six name what separated the move played from the search's first move, or the last layer
+           "first_lowered", "only_own_line", "only_answers", "only_fixes", "explore", "chooser", "gain")        # PLAN 79.12: the last six name what separated the move played from the search's first move, or the last layer; PLAN 79.15: "gain", the reason of mode Gain (79.14 logged it as none)
 WATCHDOG = 300.0                                    # seconds a game may take before its worker is ended with its traceback kept (PLAN 79.11: one game of the first match hung in an engine call)
 _WORLD = None
 CTX: dict = {}                                      # the game being played in this process: {"gid", "log_dir"}
@@ -89,7 +89,7 @@ def reason_of(why: str) -> str:
                          ("no threat of theirs and no goal decides it: the reasons' score", "estimate"), ("no threat of theirs and no goal decides it", "search_only"),
                          ("the equal reading put the search's first move lower", "first_lowered"), ("only its own line wins", "only_own_line"), ("only it answers the threat", "only_answers"), ("only it fixes the", "only_fixes"),
                          ("nothing separates it from the search's first move but the estimates", "estimate"), ("nothing separates it from the search's first move", "search_only"),
-                         ("explore:", "explore"), ("the chooser:", "chooser")):
+                         ("explore:", "explore"), ("the chooser:", "chooser"), ("the gain:", "gain")):
         if w.startswith(prefix):
             return name
     return "none"
@@ -105,6 +105,7 @@ class MoverWhole(TM.Mover67):
         self.slot = seed                                                          # the game and the seat: the binding keeps this slot's open tactics for the next decision
         self.chooser = spec.get("chooser")                                        # PLAN 79.12 B: None, or {"mode": "fixed" | "weights" | "explore" (PLAN 79.13: | "gain"), "weights": {input: weight}, "seed": base seed}
         self.goal_table = spec.get("goal_table")                                  # PLAN 79.13 C: None, or the table of the chance of a goal as the binding takes it (goal_table.binding_form)
+        self.pre_scale = spec.get("pre_scale")                                    # PLAN 79.15 D: None, or the scale of the share of the clock the steps before the search may take (1.0: as on main)
         self.pieces = list(spec.get("pieces") or PIECES)                          # PLAN 79.14: the pieces of this player (the pieces of 79.13 where the spec names none; "carry_graph", "chance_order", "gain_mend" are the switches of 79.14)
         self.log_file = None
         if self.kind == KIND_WAKE and CTX.get("log_dir"):
@@ -127,6 +128,8 @@ class MoverWhole(TM.Mover67):
         kw = {} if a is None else {"chooser": a}
         if self.goal_table is not None:
             kw["goal_table"] = self.goal_table                                    # PLAN 79.13 C (nothing is given when none is: the call is then the call of 79.12)
+        if self.pre_scale is not None:
+            kw["pre_share_scale"] = float(self.pre_scale)                         # PLAN 79.15 D
         return kw
 
     def write(self, rec: dict) -> None:
@@ -145,7 +148,7 @@ class MoverWhole(TM.Mover67):
         out = json.loads(w.model.wake_decide(pos, history, self.seconds, 64, dict(self.worth), {}, w.goal, self.pieces, 0, 0, w.keys, fuses(), w.chances, w.reasons, TM.LEDGER_SHARE, self.slot, **self.chooser_kw(len(moves))))
         wall = time.perf_counter() - t0
         eq = out["equal"]
-        first = eq[0] if eq else None                                             # the search's own move leads the moves it holds equal (wake.rs)
+        first = out["first"] if "first" in out else (eq[0] if eq else None)       # the search's own first move (PLAN 79.15 B: it no longer always leads the moves held equal: a first move the equal reading put lower is not among them)
         mv = out["move"] if out["move"] in legal else (first if first in legal else legal[0])
         differs = first is not None and mv != first
         reason = reason_of(out["log"]["why"])
@@ -188,7 +191,7 @@ def play11(spec: dict) -> dict:
 
 # ------------------------------------------------------------------------------------------------------------------------------ the players and the matches
 
-def player_spec(name: str, seconds: "float | None" = None, chooser: "dict | None" = None, goal_table: "tuple | None" = None, pieces: "list | None" = None) -> dict:
+def player_spec(name: str, seconds: "float | None" = None, chooser: "dict | None" = None, goal_table: "tuple | None" = None, pieces: "list | None" = None, pre_scale: "float | None" = None) -> dict:
     spec = {"kind": KIND_WAKE if name == "wake" else KIND_OLD, "worth": RP.worth_of("human"), "charge": False}
     if seconds is not None:
         spec["seconds"] = float(seconds)
@@ -198,13 +201,15 @@ def player_spec(name: str, seconds: "float | None" = None, chooser: "dict | None
         spec["goal_table"] = goal_table                                           # PLAN 79.13 C (only the wake reads a table of the chance of a goal)
     if pieces is not None and name == "wake":
         spec["pieces"] = list(pieces)                                             # PLAN 79.14 (only the wake has pieces)
+    if pre_scale is not None and name == "wake":
+        spec["pre_scale"] = float(pre_scale)                                      # PLAN 79.15 D (only the wake has steps before its search)
     return spec
 
 
 def match_specs(a: str, b: str, set_name: str, pairs: int, seconds: float, scratch: Path, log_dir: Path, clock_a: "float | None" = None, clock_b: "float | None" = None, label: str = "",
-                chooser_a: "dict | None" = None, chooser_b: "dict | None" = None, openings: "list | None" = None, table_a: "tuple | None" = None, table_b: "tuple | None" = None, max_plies: "int | None" = None, pieces_a: "list | None" = None, pieces_b: "list | None" = None) -> list:
+                chooser_a: "dict | None" = None, chooser_b: "dict | None" = None, openings: "list | None" = None, table_a: "tuple | None" = None, table_b: "tuple | None" = None, max_plies: "int | None" = None, pieces_a: "list | None" = None, pieces_b: "list | None" = None, pre_scale_a: "float | None" = None) -> list:
     """`chooser_a`, `chooser_b` (PLAN 79.12): the last layer of a wake player; `openings` [(seed, moves)]: given in place of the named set (the spec's start is then `set_name` + the seed)."""
-    pa, pb = player_spec(a, clock_a, chooser_a, table_a, pieces_a), player_spec(b, clock_b, chooser_b, table_b, pieces_b)
+    pa, pb = player_spec(a, clock_a, chooser_a, table_a, pieces_a, pre_scale_a), player_spec(b, clock_b, chooser_b, table_b, pieces_b)
     specs = []
     for seed, opening in (openings if openings is not None else TM.openings(set_name, pairs)):
         for colour in (0, 1):
