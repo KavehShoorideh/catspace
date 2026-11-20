@@ -448,14 +448,14 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   assumed: does adding earlier states improve the prediction of the next one. If it does, a short memory of earlier
   states is added as input.
 
-**Calculation and estimate, decided together** (DIRECTION 2026-11-19, his words). "I need an intuition and a calculation, right? And if I can
+**Calculation and estimate, decided together** (DECIDED 2026-11-19, his words; the six points below confirmed by him the same day: "Yep, you got all of that right."). "I need an intuition and a calculation, right? And if I can
 calculate, if it's close enough for me to be able to calculate, I should be able to calculate using the rules. Follow simple rules of
 logic. And if I can't calculate it, then I have to estimate. And I estimate based on frames that I've seen before, based on basically
 sub-problems or sub-structures in the structure, instead of just taking the whole thing in at once. And that's the novelty that I'm
 bringing there. So these are the two pieces that we need, and they need to kind of go together. And we need information from both, and
 then using information from both, we make a decision. ... these are different ways of estimating the same thing. But, you might have
 multiple different estimates, and using multiple different estimates, we decide. So reinforcement learning agent as the final layer can
-make that decision, right? That's kind of the way it should go." READING of the main agent, kept until he says otherwise: (1) what is
+make that decision, right? That's kind of the way it should go." The six points, written by the main agent and confirmed by him: (1) what is
 near is calculated by the questions and the line read; (2) what is not is estimated PER FRAME AND PER GOAL (the chance that this goal's
 unmet facts come true, that this frame ends well, from frames seen before), not by one number for the whole position; the heads of
 section 6 as fitted so far read counts summed over the whole position, which is the thing he says not to do; (3) the wake hands the last
@@ -793,7 +793,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     same wall clock a position; the clock of the whole is whatever its steps need, and the cost by step is reported as work to do in
     Rust. One thing you floated and took back the same day, recorded so it is not lost: worths from the results of the oracle's own
     playouts in sleep instead of from human games of every level (it would change the sources of section 5; not taken).
-27. From 2026-11-19, his direction on calculation and estimate with a learned last layer (section 7). Questions it leaves for you: whether the
+27. ANSWERED 2026-11-19 ("Yep, you got all of that right."): the six points of section 7 stand, with the fixed rule first and the learned
+    chooser after the whole wake has logged games, and estimates per frame and goal. Item 23's proposal is withdrawn by this. Was: whether the
     reading above is right, above all point 2 (estimates per frame and goal, which would replace my proposal of item 23) and point 5
     (a fixed rule first, the learned chooser after the whole wake runs and has logged games).
 26. From 2026-11-19, a question you asked and did not settle: "how do we spend effort chasing a mate that is very far off that we can't
@@ -809,7 +810,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     is in Rust the rows of the threat list come from the graph (every unit an opposing unit bears on); the stake is read by a function
     the caller gives. Two behaviours carried over from the Python that look wrong and are to be settled at the integration tests: a
     response whose result only equals the threat's is called kept; a quiet first move that ends level is dropped, not an exchange.
-23. From plan 79.04 (2026-11-19). A DECISION FOR YOU: how the estimator is fitted next. The heads were fitted on quiet positions only, so
+23. WITHDRAWN 2026-11-19 by item 27: the next estimator is per frame and per goal, not the same heads on more positions. Was: From plan 79.04 (2026-11-19). A DECISION FOR YOU: how the estimator is fitted next. The heads were fitted on quiet positions only, so
     the statements about contact (what is borne on, and its worth) are silent on every fit row and carry no weight, while at the
     ends of the search's lines they are among what differs most between a move that keeps the oracle's class and one that loses
     it. PROPOSED by the main agent: fit the result head again on ALL positions of the same human games (results only, as now; no
@@ -937,6 +938,6 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | What exists and the state of the build | 2026-11-16 | 12 |
 | Open questions | 2026-11-16 | 13 |
 | The pieces are folded into one wake and the whole is judged, not each piece alone | 2026-11-19 | 8 |
-| Calculation where it is near and estimate by sub-structures where it is not; several estimates; a learned last layer decides from both (direction) | 2026-11-19 | 7 |
+| Calculation where it is near and estimate by sub-structures where it is not; several estimates; a learned last layer decides from both; a fixed rule first, the chooser trained after the whole wake has logged games | 2026-11-19 | 7 |
 | One way of asking for every goal: what stands in the way, can it be removed; a stopper is a target and that is the subgoal; the defence is the same read from the other side; no word special to the goal unit | 2026-11-19 | 7 |
 | What was replaced | 2026-11-16 | 14 |
