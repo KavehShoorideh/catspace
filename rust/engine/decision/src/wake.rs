@@ -278,7 +278,6 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let stakes = rule::Stakes::read(g, s, rec, &prop.goals, inp.goal);
     let chains_mine = rule::named_fixes(&prop.goals, me, &stakes);
     let chains_theirs = rule::named_fixes(&prop.goals, other, &stakes);
-    let chosen_ix = chains_mine.first().map(|c| c.goal);
     for c in &chains_mine { for m in &c.moves { put(&mut mine, m); } }
     for (k, r) in their.iter().enumerate() {
         let Some(u) = r.unit else { continue };
@@ -293,6 +292,10 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let kept = rule::keep_read_by(g, s, rec, &mine, &theirs, budget, LineParams { depth: tp.sweep_depth, fuse: tp.sweep_fuse }, inp.share_table, Some(pre_end));
     let named_mine: Vec<String> = kept.mine.iter().map(|k| k.name.clone()).collect();
     let named_theirs: Vec<String> = kept.theirs.iter().map(|k| k.name.clone()).collect();
+    // PLAN 79.09 C: a goal is the subgoal of the moment only if a named move serves it: the first chain (in order of stake) whose nearest goal has a move that was named
+    let chosen_chain = chains_mine.iter().position(|c| c.moves.iter().any(|m| named_mine.contains(m)));
+    let chosen_ix = chosen_chain.map(|k| chains_mine[k].goal);
+    if chosen_ix.is_none() && !chains_mine.is_empty() { log.notes.push("no goal of ours is the subgoal of the moment: no move that fixes one was named (refuted or not read)".into()); }
     contributions.push(Contribution { piece: "named moves: their lines read, the refuted left out", step: 4, seconds: t0.elapsed().as_secs_f64(), named: named_mine.iter().chain(named_theirs.iter()).cloned().collect(), note: format!("{} lines read, {} refuted, {} not read (over the budget)", kept.read, kept.refuted.len(), kept.unlisted.len()) });
     // ---- step 5: the search, with the named moves first and in full
     let t0 = std::time::Instant::now();
@@ -337,18 +340,48 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     contributions.push(Contribution { piece: "the choice among the moves held equal (the rule, the estimates)", step: 6, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
     let mv = chosen.as_ref().map(|c| c.mv.clone()).or_else(|| ln.first.clone());
     // ---- step 7: the chain of claims and the log
-    let ended = if decided { "the game itself ends in the line (concrete)".to_string() } else { format!("the settled end: no capture is left to either side after the depth read in full ({} plies)", ln.depth) };
-    let mut chain = vec![Claim { line: ln.line.clone(), ended, by: "search" }];
-    if let (Some(c), Some(m)) = (&chosen, &mv) {
-        if c.answers_their_threat {
-            if let Some(x) = their.first().and_then(|r| r.responses.iter().find(|x| x.names.first() == Some(m))) { chain.push(Claim { line: x.names.clone(), ended: x.end_reason.clone(), by: "threat list: an answer to their largest threat" }); }
-            else if let Some(k) = kept.mine.iter().find(|k| &k.name == m) { chain.push(Claim { line: k.line.clone(), ended: k.ended.clone(), by: "threat list: an answer to their largest threat" }); }
+    // THE CLAIM THAT DECIDED THE MOVE (PLAN 79.09 C): the goals the move is a fix of, the goal of the largest stake first
+    let serves_of = |name: &String| -> Vec<(f64, usize, String)> {
+        let mut v: Vec<(f64, usize, String)> = vec![];
+        for (i, gl) in prop.goals.iter().enumerate().filter(|(_, x)| x.side == me) {
+            for f in &gl.facts { if f.fixes.iter().any(|fx| fx.moves.contains(name)) {
+                let w = format!("goal on {} ({}){}", text(&gl.target), f.name, gl.parent.as_ref().map_or(String::new(), |par| format!(", the stopper of the goal on {}", text(par))));
+                if !v.iter().any(|x| x.2 == w) { v.push((rule::stake_of(&prop.goals, i, &stakes), i, w)); }
+            } }
         }
-        if c.fixes_our_goal { if let Some(k) = kept.mine.iter().find(|k| &k.name == m) { chain.push(Claim { line: k.line.clone(), ended: k.ended.clone(), by: "goal: a fix of the chosen goal" }); } }
-        if sc.is_some() && c.left_after_goal > 1 { chain.push(Claim { line: vec![m.clone()], ended: "the reasons' score decides among the moves held equal (an estimate, never a value)".into(), by: "estimate: the reasons' pick" }); }
-    }
+        v.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(rule::things_in_the_way(&prop.goals[a.1]).cmp(&rule::things_in_the_way(&prop.goals[b.1]))));
+        v
+    };
+    let mut decided_by: Option<rule::Decided> = None;
+    let nonempty = |x: &str, fallback: &str| if x.trim().is_empty() { fallback.to_string() } else { x.to_string() };
+    let mut chain: Vec<Claim> = vec![];
+    if let (Some(c), Some(m)) = (&chosen, &mv) {
+        let own = kept.mine.iter().find(|k| &k.name == m);
+        let standing: Option<String> = their.first().map(|r| r.unit.map_or_else(|| "the end of the game forced against us".to_string(), |u| text(&u)));
+        let answers = answers_largest.contains(m);
+        let sv: Vec<String> = serves_of(m).into_iter().map(|x| x.2).collect();
+        let (kind, why) = rule::why_of(&rule::WhyIn { chosen: c, value: ln.value, depth: ln.depth, own, standing: standing.clone(), answers, serves: sv });
+        decided_by = Some(kind);
+        // the search's own line of the move chosen (the table's line from it, not the line of its first move when another equal move is played)
+        let (mline, _) = if Some(m) == ln.first.as_ref() { (ln.line.clone(), vec![]) } else { moves.iter().position(|x| &g.move_name(s, x) == m).map_or((vec![], vec![]), |i| ls.line_from(s, i, ln.depth.max(1) as usize + 2)) };
+        let search_end = if decided { format!("the game itself ends in the line (concrete): {}", if ln.value > 0 { "won by us" } else { "lost by us" }) } else { format!("the settled end: no capture is left to either side after the depth read in full ({} plies)", ln.depth) };
+        let by_search = if decided { "search: the end of the game forced" } else { "search" };
+        chain.push(Claim { line: mline, ended: search_end, by: by_search });
+        match kind {
+            rule::Decided::OwnGain => if let Some(k) = own { chain.push(Claim { line: k.line.clone(), ended: nonempty(&k.ended, "its own line was read; how it ended was not recorded"), by: "its own line read: it wins by its own reading" }); },
+            rule::Decided::AnswersThreat => {
+                if let Some(x) = their.first().and_then(|r| r.responses.iter().find(|x| x.names.first() == Some(m))) { chain.push(Claim { line: x.names.clone(), ended: nonempty(&x.end_reason, &x.why), by: "threat list: an answer to a threat of theirs that stands" }); }
+                else if let Some(k) = own { chain.push(Claim { line: k.line.clone(), ended: nonempty(&k.ended, "its own line was read; how it ended was not recorded"), by: "threat list: an answer to a threat of theirs that stands" }); }
+                else { chain.push(Claim { line: vec![m.clone()], ended: "the move is among the answers the goal of theirs names; its own line was not read, so no end is claimed".into(), by: "threat list: an answer to a threat of theirs that stands" }); }
+            }
+            rule::Decided::FixesGoal => { if let Some(k) = own { chain.push(Claim { line: k.line.clone(), ended: nonempty(&k.ended, "its own line was read; how it ended was not recorded"), by: "goal: a fix of a goal" }); } }
+            rule::Decided::Estimate => chain.push(Claim { line: vec![m.clone()], ended: "the reasons' score decides among the moves held equal (an estimate, never a value)".into(), by: "estimate: the reasons' pick" }),
+            _ => {}
+        }
+        log.why = why;
+    } else { log.why = "no move held equal: the search's own move".to_string(); chain.push(Claim { line: ln.line.clone(), ended: if decided { "the game itself ends in the line (concrete)".to_string() } else { format!("the settled end: no capture is left to either side after the depth read in full ({} plies)", ln.depth) }, by: "search" }); }
+    let _ = (decided_by, fix_chain);
     log.chosen = mv.clone();
-    log.why = chosen.as_ref().map_or_else(|| "no move held equal: the search's own move".to_string(), |c| c.why.clone());
     let goal_log = |x: &Goal, chosen: bool| GoalLog {
         side: roles[x.side].clone(), target: text(&x.target), source: x.source.clone(), depth: x.depth, parent: x.parent.as_ref().map(&text), via: x.via.map(|v| v.to_string()), unmet: x.unmet.iter().map(|u| u.to_string()).collect(), stoppers: x.stoppers.iter().map(&text).collect(),
         fixes: x.fixes.iter().map(|f| (format!("{:?}", f.kind), f.moves.iter().take(8).cloned().collect())).collect(), in_the_way: rule::things_in_the_way(x),
