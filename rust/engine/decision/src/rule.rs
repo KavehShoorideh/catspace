@@ -244,7 +244,9 @@ pub fn choose(equal: &[String], answers: &[String], fixes: &[String], picked: &d
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decided { ForcedEnd, OwnGain, AnswersThreat, FixesGoal, Estimate, SearchOnly,
     /// PLAN 79.12 A: the equal reading put the search's first move lower; PLAN 79.12 B: the last layer chose (Weights) or drew (Explore)
-    FirstLowered, Chooser }
+    FirstLowered, Chooser,
+    /// PLAN 79.17 D: the move is the first of a line that lowers the held measure against every reply, played because the calculation holds it equal
+    Measure }
 
 /// What the reason is made from: the rule's choice, the search's value for the move and the plies it read, the move's own line as read for naming (None: not named or not read), the largest threat of theirs that stands in words (None: none stands; the end of the game forced against us is one), whether the move is among the
 /// answers to it, and the goals the move is a fix of (in words, the goal of the largest stake first).
