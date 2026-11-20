@@ -282,18 +282,19 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let stakes = rule::Stakes::read(g, s, rec, &prop.goals, inp.goal);
     let chains_mine = rule::named_fixes(&prop.goals, me, &stakes);
     let chains_theirs = rule::named_fixes(&prop.goals, other, &stakes);
-    for c in &chains_mine { for m in &c.moves { put(&mut mine, m); } }
+    let count = if inp.named_budget > 0 { inp.named_budget } else { rule::NAMED_BUDGET };
+    for m in rule::names_of(&chains_mine, count) { put(&mut mine, &m); }
     for (k, r) in their.iter().enumerate() {
         let Some(u) = r.unit else { continue };
         for (t, ans) in &prop.defence { if *t == u { for a in ans { put(&mut mine, &a.mv); if k == 0 { put(&mut answers_largest, &a.mv); } } } }
     }
     let mut theirs: Vec<String> = vec![];
     // PLAN 79.10 A: with `after_move` their fixes are named at each child position (below), not at the ply after ours on a pass
-    if !p.after_move { for c in &chains_theirs { for m in &c.moves { put(&mut theirs, m); } } }
+    if !p.after_move { for m in rule::names_of(&chains_theirs, count) { put(&mut theirs, &m); } }
     for r in prop.list.other.iter().filter(|r| r.verdict == crate::threat_verdict::VerdictKind::Confirmed && !r.two_moves) {
         for x in r.responses.iter().filter(|x| x.state == RespState::Kept) { if let Some(n) = x.names.first() { put(&mut theirs, n); } }
     }
-    let budget = if inp.named_budget > 0 { inp.named_budget } else { rule::NAMED_BUDGET };
+    let budget = count;
     // PLAN 79.10 A: their goals on the position after each move of ours, in the search's own order, until the clock of the step; their fixes named at that child
     let mut after = crate::after::AfterRead::default();
     if p.after_move {
@@ -305,7 +306,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let named_mine: Vec<String> = kept.mine.iter().map(|k| k.name.clone()).collect();
     let named_theirs: Vec<String> = kept.theirs.iter().map(|k| k.name.clone()).collect();
     // PLAN 79.09 C: a goal is the subgoal of the moment only if a named move serves it: the first chain (in order of stake) whose nearest goal has a move that was named
-    let chosen_chain = chains_mine.iter().position(|c| c.moves.iter().any(|m| named_mine.contains(m)));
+    let chosen_chain = chains_mine.iter().position(|c| c.all_moves().iter().any(|m| named_mine.contains(m)));
     let chosen_ix = chosen_chain.map(|k| chains_mine[k].goal);
     if chosen_ix.is_none() && !chains_mine.is_empty() { log.notes.push("no goal of ours is the subgoal of the moment: no move that fixes one was named (refuted or not read)".into()); }
     contributions.push(Contribution { piece: "named moves: their lines read, the refuted left out", step: 4, seconds: t0.elapsed().as_secs_f64(), named: named_mine.iter().chain(named_theirs.iter()).cloned().collect(), note: format!("{} lines read, {} refuted, {} not read (over the budget)", kept.read, kept.refuted.len(), kept.unlisted.len()) });
