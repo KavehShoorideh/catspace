@@ -12,6 +12,8 @@ pub mod graph;
 pub mod graph_net;
 pub mod graph_prior;
 pub mod lemma_prior;
+pub mod threat_verdict;
+pub mod wake;
 
 pub use lemma_prior::{LemmaPrior, RulesFirst};
 pub use graph_prior::GraphPrior;
@@ -96,12 +98,14 @@ pub struct Params {
     pub ledger_depth: i32,
     /// Plan 78.51: a caller's order of the root moves for the ledger search (None: the search as it was).
     pub root_order: Option<cs_tactics::ledger::RootOrder>,
+    /// PLAN 79.05 (the wake): moves named by position, read first and unreduced (`Search::named`): (the position's `Game::key`, the moves' names). EMPTY BY DEFAULT: the search as it was.
+    pub named: Vec<(u64, Vec<String>)>,
 }
 
 impl Default for Params {
     fn default() -> Params {
         Params { prior: false, ties: false, reason: false, wdl: false, wdl_table: None, claims: true, history: vec![], prior_depth: cs_planning::density::DEPTH, ledger_share: LEDGER_SHARE, prior_defects: 1, ordering: true, prune: true, extend: true, verify_ties: false, verify_choice: false, choice_mode: cs_tactics::ledger::ChoiceMode::Slot, reask: false, root_full: false, null_move: true, late_reduce: true,
-                 max_depth: MAX_DEPTH, ledger_depth: LEDGER_DEPTH, root_order: None }
+                 max_depth: MAX_DEPTH, ledger_depth: LEDGER_DEPTH, root_order: None, named: vec![] }
     }
 }
 
@@ -317,7 +321,7 @@ pub fn decide_with_store<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, j
     if n == 0 { return None; }
     let trace = vec![format!("decide: {} to move, {} legal moves, {:.2} s", g.roles()[me], n, seconds)];
     let forcing = ForcingOp;
-    let ledger = LedgerOp { judge, history: params.history.clone(), ordering: params.ordering, prune: params.prune, extend: params.extend, verify_ties: params.verify_ties, verify_choice: params.verify_choice, choice_mode: params.choice_mode, reask: params.reask, root_full: params.root_full, null_move: params.null_move, late_reduce: params.late_reduce, root_order: params.root_order.clone() };
+    let ledger = LedgerOp { judge, history: params.history.clone(), ordering: params.ordering, prune: params.prune, extend: params.extend, verify_ties: params.verify_ties, verify_choice: params.verify_choice, choice_mode: params.choice_mode, reask: params.reask, root_full: params.root_full, null_move: params.null_move, late_reduce: params.late_reduce, root_order: params.root_order.clone(), named: params.named.clone() };
     let density = DensityOp { judge };
     let reason = ReasonOp { judge };
     let mut ops: Vec<&dyn Operator<G>> = vec![&forcing, &ledger, &density, &reason];

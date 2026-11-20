@@ -161,6 +161,9 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// treats alike (same previous-best / `root_last` / `root_first` rank, same gain, same killer or history standing), the rest as before. An order, never a verdict.
     root_pos: Vec<usize>,
     root_strict: bool,
+    /// PLAN 79.05 (SYSTEM_SPEC 8, the wake): MOVES NAMED BY POSITION. `named[key]` are the names (`Game::move_name`) of moves a caller wants read FIRST and UNREDUCED at the position whose `Game::key` is `key`, at the root and below it. An order and an exemption from the late-move
+    /// reduction, never a verdict and never an addition to the value: an exact search returns the same value whatever the order. Empty (the default everywhere) is the search exactly as it was.
+    pub named: FxHashMap<u64, Vec<String>>,
     /// The deepening steps of the runs so far, as measured (the granular cost of the search).
     pub reads: Vec<DepthRead>,
 }
@@ -210,13 +213,13 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
         Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true,
-                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, reads: vec![] }
+                 killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), reads: vec![] }
     }
 
     /// Plan 78.51: read the root moves in `order` (indices of the root's legal moves, first read first; each at most once). `strict`: see `root_pos`. An empty order is no order.
@@ -528,13 +531,24 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let mut best = if maxing { i64::MIN } else { i64::MAX };
         let mut best_i = 0;
         self.path.push(key);
-        let order = self.ordered_at(s, maxing, hint, ply);
+        let mut order = self.ordered_at(s, maxing, hint, ply);
+        // PLAN 79.05: the moves a caller named at this position are read first (stable among themselves) and are not read shallow first; nothing is done when none is named (the default)
+        let mut pins: Vec<bool> = vec![];
+        if let Some(ns) = self.named.get(&key) {
+            pins = order.iter().map(|(_, m, _)| { let nm = self.g.move_name(s, m); ns.iter().any(|x| *x == nm) }).collect();
+            if pins.iter().any(|p| *p) {
+                let mut z: Vec<_> = order.into_iter().zip(pins).collect();
+                z.sort_by_key(|(_, p)| !*p);
+                pins = z.iter().map(|(_, p)| *p).collect();
+                order = z.into_iter().map(|(o, _)| o).collect();
+            } else { pins = vec![]; }
+        }
         // THE FEW-REPLY EXTENSION (plan 78.11, game-free): a node with at most FEW_REPLIES legal moves (a forced answer) does not shorten the line
         let ext = if self.extend && order.len() <= FEW_REPLIES && ply < 2 * depth + 8 { 1 } else { 0 };
         let depth = depth + ext;
         for (n_read, (i, m, d)) in order.into_iter().enumerate() {
             let q = self.g.apply(s, &m);
-            let late = self.prune && self.late_reduce && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint && !(ply == 0 && self.root_strict) && !(ply == 0 && self.root_full);          // (plan 78.51: under a strict root order no root move is read shallow first, so the first of the best value IS the first one that holds it at this depth)
+            let late = self.prune && self.late_reduce && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint && !(ply == 0 && self.root_strict) && !(ply == 0 && self.root_full) && !pins.get(n_read).copied().unwrap_or(false);        // (plan 78.51: under a strict root order no root move is read shallow first, so the first of the best value IS the first one that holds it at this depth)
             let mut v = if late { d + self.value(&q, depth - 3, ply + 1, alpha - d, beta - d) } else { 0 };
             if !late || (maxing && v > alpha) || (!maxing && v < beta) {
                 v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);

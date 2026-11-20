@@ -161,6 +161,33 @@ impl BaseGraph {
         d.into_py_any(py)
     }
 
+    /// PLAN 79.05 (the wake, cs_decision::wake): wake_graph_read(text, goal_kind, places) -> {"lines": [(owner, place, None | [{"unit", "blocker", "bearers", "holders"}])], "new_bearer_moves": [(move name, [place names])]}. A unit is (role, kind, place) by the game's words.
+    /// `lines`: for the goal unit of each side, the lines of the other side onto it that exactly one unit shuts (None where the game gives no pass for the side not to move); `new_bearer_moves`: the legal moves after which more units of the mover bear on one of `places`.
+    fn wake_graph_read(&self, py: Python<'_>, text: &str, goal_kind: String, places: Vec<String>) -> PyResult<PyObject> {
+        use cs_decision::wake;
+        let (g, s) = self.game(text)?;
+        let n = &self.st.names;
+        let goal = n.kind(&goal_kind).map_err(bad)?;
+        let ps: Vec<u16> = places.iter().map(|p| n.place(p)).collect::<Result<_, _>>().map_err(bad)?;
+        let uw = |u: &wake::UnitRef| (n.roles[u.owner].clone(), n.kind_text(u.kind).to_string(), n.place_text(u.at).to_string());
+        let lines: Vec<(String, String, Option<Vec<PyObject>>)> = wake::goal_unit_lines(&self.st, &g, &s, goal).into_iter().map(|(owner, at, ls)| {
+            let ls = ls.map(|v| v.into_iter().map(|l| {
+                let d = PyDict::new(py);
+                let _ = d.set_item("unit", uw(&l.unit));
+                let _ = d.set_item("blocker", uw(&l.blocker));
+                let _ = d.set_item("bearers", l.bearers.iter().map(&uw).collect::<Vec<_>>());
+                let _ = d.set_item("holders", l.holders.iter().map(&uw).collect::<Vec<_>>());
+                d.into_any().unbind()
+            }).collect());
+            (n.roles[owner].clone(), n.place_text(at).to_string(), ls)
+        }).collect();
+        let nb: Vec<(String, Vec<String>)> = wake::new_bearer_moves(&self.st, &g, &s, &ps).into_iter().map(|(m, a)| (m, a.iter().map(|p| n.place_text(*p).to_string()).collect())).collect();
+        let d = PyDict::new(py);
+        d.set_item("lines", lines)?;
+        d.set_item("new_bearer_moves", nb)?;
+        d.into_py_any(py)
+    }
+
     /// dump(text) -> text: the position's nodes, one per line, with their links.
     fn dump(&self, text: &str) -> PyResult<String> {
         let (g, s) = self.game(text)?;

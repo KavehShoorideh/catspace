@@ -604,6 +604,7 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         ls.choice_mode = self.params.choice_mode;
         ls.reask = self.params.reask;                    // (plan 79.02: off by default)
         ls.root_full = self.params.root_full;            // (plan 79.03: off by default)
+        ls.named = self.params.named.iter().cloned().collect();   // (plan 79.05: empty by default)
         ls.null_move = self.params.null_move;
         ls.late_reduce = self.params.late_reduce;
         ls.root_first = prefer.clone();
@@ -739,13 +740,13 @@ fn equals_one<J: cs_tactics::ledger::Judge>(i: usize, it: &BatchItem, judge: &J,
 /// deepens within `ledger_share` of the clock and the equal reading takes what is left of it (so the whole decision stays within `seconds`); `cut` says the clock stopped the reading
 /// (the list is then only part of the equals: every move in it held the best). `positions`, `seconds`, `worth`, `store`, `specs` and `threads` as in `solve_batch`.
 #[pyfunction]
-#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false, null_move=true, late_reduce=true, verify_choice=false, choice_mode="slot".to_string(), reask=false, root_full=false))]
+#[pyo3(signature = (positions, seconds=0.2, worth=HashMap::new(), ours_first=false, valuation=String::new(), threads=0, store=None, specs=HashMap::new(), record=true, ledger_share=0.8, claims=true, ledger_depth=None, root_orders=None, root_order_mode="strict".to_string(), kind_change=true, verify_ties=false, null_move=true, late_reduce=true, verify_choice=false, choice_mode="slot".to_string(), reask=false, root_full=false, named_moves=None))]
 #[allow(clippy::too_many_arguments)]
 fn solve_equals_batch(py: Python<'_>, positions: Vec<BatchItem>, seconds: f64, worth: HashMap<String, i64>, ours_first: bool, valuation: String, threads: usize, store: Option<String>,
-                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool, null_move: bool, late_reduce: bool, verify_choice: bool, choice_mode: String, reask: bool, root_full: bool) -> PyResult<Vec<PyObject>> {
+                      specs: HashMap<String, String>, record: bool, ledger_share: f64, claims: bool, ledger_depth: Option<i32>, root_orders: Option<Vec<Option<Vec<usize>>>>, root_order_mode: String, kind_change: bool, verify_ties: bool, null_move: bool, late_reduce: bool, verify_choice: bool, choice_mode: String, reask: bool, root_full: bool, named_moves: Option<Vec<(u64, Vec<String>)>>) -> PyResult<Vec<PyObject>> {
     let choice_mode = cs_tactics::ledger::ChoiceMode::parse(&choice_mode).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("choice_mode is \"slot\" or \"main\""))?;
     let orders = root_orders_of(root_orders, &root_order_mode, positions.len())?;
-    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, verify_choice, choice_mode, reask, root_full, null_move, late_reduce, ..cs_decision::Params::default() };
+    let params = cs_decision::Params { ties: true, claims, ledger_share, ledger_depth: ledger_depth.unwrap_or(cs_decision::LEDGER_DEPTH), verify_ties, verify_choice, choice_mode, reask, root_full, null_move, late_reduce, named: named_moves.unwrap_or_default(), ..cs_decision::Params::default() };
     let store = match store { Some(p) => Some(load_store(&p, specs)?), None => None };
     let judge_worth: Option<(HashMap<String, i64>, bool, String)> = if worth.is_empty() {
         store.as_ref().and_then(|s| s.snapshot.judge.as_ref()).map(|j| (j.worth.iter().map(|(k, v)| (k.clone(), *v)).collect(), j.ours_first, j.name.clone()))
