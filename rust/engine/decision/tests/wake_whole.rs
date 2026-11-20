@@ -200,3 +200,108 @@ fn d_the_chain_of_the_goal_kind_is_asked_first_and_the_log_says_which_goal_is_th
     assert!(!d.chain.is_empty() && d.chain.iter().all(|c| !c.ended.trim().is_empty()), "no claim without the reason it ended");
     println!("OBS chain first 79.09: subgoal {} (parent {:?}); far goal {:?}; why: {}", cg.target, cg.parent, l.far_goal, l.why);
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------ PLAN 79.10 E: the integration tests of the whole with their goals after each move, the next goal of a chain and the names direct
+
+/// every piece of the whole on, those of 79.10 too
+fn whole10(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State, seconds: f64, depth: i32) -> WakeParams {
+    let mut p = whole(g, st, s, seconds, depth);
+    p.pieces.after_move = true;
+    p.pieces.direct_names = true;
+    p
+}
+
+#[test]
+fn e_the_whole_of_79_10_returns_a_move_a_chain_and_a_log_that_says_what_each_move_does_to_their_goals() {
+    let (g, st) = world();
+    for fen in POSITIONS {
+        let s = state(fen);
+        let d: WakeDecision = decide(&st, &g, &s, &[], &judge(), &whole10(&g, &st, &s, 60.0, 4));
+        let mv = d.mv.clone().expect("a move");
+        assert!(g.moves(&s).iter().any(|m| g.move_name(&s, m) == mv), "the move is legal");
+        assert_eq!(d.chain[0].by, "search");
+        assert!(d.chain.iter().all(|c| !c.ended.trim().is_empty()), "no claim without the reason it ended");
+        assert!(d.unported.is_empty());
+        let l = &d.log;
+        assert_eq!(l.chosen.as_deref(), Some(mv.as_str()));
+        assert_eq!(l.moves.len(), g.moves(&s).len(), "one record for every candidate move at the root");
+        assert!(l.after_not_asked.is_empty(), "at 60 s every child is reached");
+        assert!(l.moves.iter().all(|m| m.their_after.as_ref().map_or(true, |a| !a.said.is_empty())), "what their goals do after each move is said in words");
+        assert!(l.moves.iter().any(|m| m.their_after.is_some()), "their goals after our moves are read");
+        let steps: Vec<&str> = d.contributions.iter().map(|c| c.piece).collect();
+        assert!(steps.iter().any(|p| p.contains("after each move")) && steps.iter().any(|p| p.contains("given to the search directly")) && steps.iter().any(|p| p.contains("after the search")), "{steps:?}");
+        assert!(!steps.iter().any(|p| p.contains("their lines read")), "no line of a named move before the search");
+        let j = d.to_json();
+        assert!(j["log"]["moves"].as_array().unwrap().iter().any(|m| m["their_after"]["said"].is_string()));
+    }
+}
+
+#[test]
+fn e_with_every_piece_off_the_wake_is_the_old_player_move_for_move_whatever_79_10_is_given() {
+    let (g, st) = world();
+    for fen in POSITIONS {
+        let s = state(fen);
+        let me = g.mover(&s).unwrap();
+        let j = judge();
+        let mut plain = Search::with_fuse(&g, &j, me, 50_000_000);
+        let want = plain.run(&s, 5);
+        let p = WakeParams { seconds: 60.0, depth: 5, pieces: Pieces::old_player(), inputs: whole10(&g, &st, &s, 60.0, 5).inputs, ..WakeParams::default() };
+        let got = decide(&st, &g, &s, &[], &j, &p);
+        assert_eq!((got.mv.clone(), got.value, got.depth), (want.first.clone(), want.value, want.depth));
+        assert!(got.proposal.is_none() && got.named_mine.is_empty() && got.log.moves.is_empty() && got.log.after_not_asked.is_empty());
+    }
+}
+
+#[test]
+fn e_the_value_and_the_set_held_equal_are_the_same_with_the_pieces_of_79_10_on_and_off() {
+    let (g, st) = world();
+    for fen in POSITIONS {
+        let s = state(fen);
+        let j = judge();
+        let on = decide(&st, &g, &s, &[], &j, &whole10(&g, &st, &s, 60.0, 4));
+        let off = decide(&st, &g, &s, &[], &j, &whole(&g, &st, &s, 60.0, 4));
+        assert_eq!((on.value, on.depth), (off.value, off.depth), "{fen}: nothing of their goals, the next goal or the names adds to a value");
+        let (mut a, mut b) = (on.equal.clone(), off.equal.clone());
+        a.sort();
+        b.sort();
+        assert_eq!(a, b, "{fen}: the same moves are held equal");
+    }
+}
+
+#[test]
+fn e_a_move_that_takes_a_stopper_out_of_their_way_is_said_so_in_the_log_and_the_next_goal_of_the_chain_is_named() {
+    let (g, st) = world();
+    // black to move: white's bishop bears on the king through the pawn; the knight stands on the rook's file
+    let s = state("k7/4n3/2p5/8/8/5B2/8/4R2K b - - 0 1");
+    let d = decide(&st, &g, &s, &[], &judge(), &whole10(&g, &st, &s, 60.0, 4));
+    let knight = d.log.moves.iter().find(|m| m.mv == "e7f5").and_then(|m| m.their_after.as_ref()).expect("logged");
+    assert!(knight.said.contains("took out of the way"), "{}", knight.said);
+    assert!(!knight.names.is_empty(), "their fixes are named at that position");
+    // white to move: the chains of our goals name the nearest goal's fixes and the goals after it, all of them while the count lasts
+    let s = state("k7/4n3/2p5/8/8/5B2/8/4R2K w - - 0 1");
+    let d = decide(&st, &g, &s, &[], &judge(), &whole10(&g, &st, &s, 60.0, 4));
+    let prop = d.proposal.as_ref().unwrap();
+    let sk = cs_decision::rule::Stakes::read(&g, &s, &record(), &prop.goals, Some(kind(&g, "king")));
+    let chains = cs_decision::rule::named_fixes(&prop.goals, g.mover(&s).unwrap(), &sk);
+    assert!(!chains.is_empty());
+    let first = chains[0].all_moves();
+    assert!(first.iter().take(cs_decision::rule::NAMED_BUDGET).all(|m| d.named_mine.contains(m) || d.log.unlisted.iter().any(|u| &u.0 == m)), "{first:?} vs {:?}", d.named_mine);
+    println!("OBS next goal 79.10: the first chain names {} moves over {} goals ({} after the nearest); named for the search: {:?}", first.len(), 1 + chains[0].later.len(), chains[0].later.len(), d.named_mine);
+}
+
+#[test]
+fn e_the_whole_of_79_10_holds_its_clock_and_prints_the_time_by_step() {
+    let (g, st) = world();
+    for (fen, secs) in [(POSITIONS[0], 0.2), (POSITIONS[1], 0.2), (POSITIONS[0], 2.0), (POSITIONS[1], 2.0)] {
+        let s = state(fen);
+        let j = judge();
+        let params = whole10(&g, &st, &s, secs, 64);
+        let t0 = std::time::Instant::now();
+        let d = decide(&st, &g, &s, &[], &j, &params);
+        let wall = t0.elapsed().as_secs_f64();
+        let steps: Vec<String> = d.contributions.iter().map(|c| format!("step {} {} {:.3} s ({})", c.step, c.piece, c.seconds, c.note)).collect();
+        println!("OBS whole decision 79.10: clock {secs} s, one thread, wall {:.3} s, move {:?}, depth {}, {} nodes; by step: {}", wall, d.mv, d.depth, d.nodes, steps.join("; "));
+        assert!(d.mv.is_some());
+        assert!(wall <= secs * 1.25 + 0.03, "the whole decision ran past its clock: {wall}");
+    }
+}
