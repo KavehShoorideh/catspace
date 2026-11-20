@@ -1,0 +1,1 @@
+//! THE STATEMENT (plan 79.19 part A; SYSTEM_SPEC 11 "what the representation layer must be able to say"). The interface is in the crate's doc comment (lib.rs); this module is its body. Game-free: it reads facts only through `Fact`.
