@@ -36,7 +36,7 @@ def test_the_rust_added_for_the_list_names_no_game_object():
     parts = [(ENGINE / "tactics" / "src" / "sheet" / "questions.rs", "    /// PLAN 78.70 A. WHAT THE OWNER OF A MEMBER", "    pub fn root_state_after_pass"),
              (ENGINE / "tactics" / "src" / "sheet" / "questions.rs", "/// 78.70: one answer to a taking", "/// What one reading found."),
              (ENGINE / "py" / "src" / "questions_py.rs", "// ------------------------------------------------------------------------------------------------------------------------------------------------------------------ plan 78.70 stage A", None),
-             (ENGINE / "py" / "src" / "questions_py.rs", "/// The class and basis of member `id`", "/// One member unit of a frame read at a position:"),
+             (ENGINE / "tactics" / "src" / "sheet" / "threat_frames.rs", "/// The class and basis of member `id`", None),   # (plan 79.08 moved it out of the binding into the sheet crate; the whole of that file from there on is scanned)
              (ENGINE / "py" / "src" / "base_graph_py.rs", "    /// questions_threats(", "    /// frames_measure(")]
     for p, a, b in parts:
         text = _between(p, a, b)
