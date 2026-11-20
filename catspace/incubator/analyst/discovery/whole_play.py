@@ -34,6 +34,7 @@ from __future__ import annotations
 from catspace.incubator.analyst.discovery import tiebreak_measure as TM          # first: it sets one thread a process before numpy is loaded
 
 import argparse
+import faulthandler
 import gzip
 import json
 import os
@@ -54,6 +55,7 @@ PIECES = list(W10.PIECES)                           # every piece of the whole o
 MIN_PAIRS = RP.MIN_PAIRS
 PLAYERS = ("wake", "old")
 REASONS = ("forced_end", "own_line_wins", "answers_threat", "fixes_goal", "estimate", "search_only", "none")
+WATCHDOG = 300.0                                    # seconds a game may take before its worker is ended with its traceback kept (PLAN 79.11: one game of the first match hung in an engine call)
 _WORLD = None
 CTX: dict = {}                                      # the game being played in this process: {"gid", "log_dir"}
 
@@ -143,7 +145,13 @@ def play11(spec: dict) -> dict:
     TM.REG.clear()
     CTX.clear()
     CTX.update(gid=spec["gid"], log_dir=spec.get("log_dir"))
-    g = OM.play_game(spec)
+    os.makedirs(spec["scratch"], exist_ok=True)
+    if spec.get("log_dir"):
+        (Path(spec["log_dir"]) / f"{spec['gid'].replace(':', '_')}.jsonl.gz").unlink(missing_ok=True)       # a game played again starts its log again
+    with open(Path(spec["scratch"]) / f"hang_{os.getpid()}.txt", "w") as hang:
+        faulthandler.dump_traceback_later(WATCHDOG, exit=True, file=hang)           # a game that takes this long is a hang (a game takes tens of seconds): its traceback is kept and the worker ends
+        g = OM.play_game(spec)
+        faulthandler.cancel_dump_traceback_later()
     g["stats"] = [dict(m.stats) for m in TM.REG]
     seats = [s for s in (0, 1) if spec["players"][s]["kind"] == KIND_WAKE]
     if spec.get("log_dir") and seats:

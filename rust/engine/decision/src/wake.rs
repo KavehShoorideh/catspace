@@ -434,7 +434,8 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     if inp.chances.is_none() && p.goals { log.notes.push("no table of the chance of a goal given: no estimate per goal".into()); }
     log.notes.push("no table of frames given: no estimate per frame".into());
     log.chosen_goal = chosen_ix.map(|i| goal_log(&prop.goals[i], true));
-    if let Some(i) = chosen_ix { let mut x = &prop.goals[i]; while let Some(par) = x.parent { match prop.goals.iter().find(|y| y.target == par && y.side == x.side) { Some(y) => x = y, None => break } } if !std::ptr::eq(x, &prop.goals[i]) { log.far_goal = Some(format!("{} ({})", text(&x.target), x.unmet.join(", "))); } }
+    // (PLAN 79.11: the climb to the far goal takes at most one step a goal: two goals that name each other as the parent made it loop for ever, and a game in play hung on it)
+    if let Some(i) = chosen_ix { let mut x = &prop.goals[i]; for _ in 0..prop.goals.len() { let Some(par) = x.parent else { break }; match prop.goals.iter().find(|y| y.target == par && y.side == x.side) { Some(y) => x = y, None => break } } if !std::ptr::eq(x, &prop.goals[i]) { log.far_goal = Some(format!("{} ({})", text(&x.target), x.unmet.join(", "))); } }
     log.their_threat = their.first().map(|r| r.unit.map_or_else(|| "the end of the game".to_string(), |u| text(&u)));
     let row_log = |name: &str, r: &ThreatRow| RowLog { list: name.to_string(), unit: r.unit.map_or_else(|| "the end of the game".to_string(), |u| text(&u)), class: r.class.clone(), verdict: format!("{:?}", r.verdict), net: r.net, ended: r.ended.to_string(), line: r.line.clone(),
         responses: r.responses.iter().map(|x| (x.names.first().cloned().unwrap_or_default(), x.state.word().to_string(), x.net)).collect(), carried: carried_out.as_ref().is_some_and(|c| c.held.iter().any(|h| h.row.unit == r.unit && r.unit.is_some())) };

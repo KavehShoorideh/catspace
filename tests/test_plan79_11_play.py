@@ -132,6 +132,19 @@ def test_the_mover_of_the_other_kind_is_78_67s_unchanged():
     assert WP.KIND_OLD == "tb_control"
 
 
+def test_the_whole_wake_does_not_hang_where_goals_named_each_other_as_parent():
+    """Found in play (two games of the first matches hung, one worker each): the climb from the chosen goal to the far goal followed the parent for ever when two goals named each other. The position is one of them (the wake to move, every piece on)."""
+    if not (ROOT / "artifacts" / "experiments" / "symbols_78_81" / "full" / "reasons.json").exists():
+        import pytest
+        pytest.skip("the world of the wake (learned seeds, reasons) is not on this machine")
+    code = ("import json, cs_engine as CE; from catspace.incubator.analyst.discovery import whole_play as WP, record_play as RP, tiebreak_measure as TM, odds_measure as OM\n"
+            "w = WP.world(); pos = CE.state(OM.VARIANT, '8/8/8/8/3k2Bn/4p2P/8/4R1K1 w - - 2 51', [])[0]\n"
+            "out = json.loads(w.model.wake_decide(pos, [], 0.2, 64, RP.worth_of('human'), {}, w.goal, WP.PIECES, 0, 0, w.keys, WP.fuses(), w.chances, w.reasons, TM.LEDGER_SHARE, None))\n"
+            "print('MOVE', out['move'])\n")
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120, cwd=str(ROOT))
+    assert "MOVE " in r.stdout, r.stdout + r.stderr
+
+
 def test_the_binding_keeps_the_open_tactics_of_a_slot_between_two_decisions():
     model = GL.model("chess", "chess")
     goal = G2M.goal_kind_of("chess")
