@@ -5,6 +5,7 @@
 //! (plan 78.7, planning) among the moves the ledger holds equal, when asked. The clock is split: a share for the proof, the rest for the ledger search (named shares, not
 //! tuned numbers). Every step is an `Operator` call that says its goal, its evidence and its measured cost; `drive` records them. A trained router or a mixture of experts
 //! is another `Controller`, and plugs in here without touching the operators.
+pub mod after;
 pub mod batch;
 pub mod cards;
 pub mod carry;

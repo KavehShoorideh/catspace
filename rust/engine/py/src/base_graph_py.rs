@@ -192,7 +192,7 @@ impl BaseGraph {
     /// `worth`/`half`: the measured record (the game's words for the kinds). `rows`: None (the graph's candidates) or the frame read's rows as (role, kind, place, class, by [(role, kind, place)], response_ix [(from, to, how, unit moves)], stake).
     /// `every_sides`: None (the mover) or the roles whose goals are wanted. A unit is (role, kind, place) by the game's words. Exists for the unit check of the Rust list against its Python mirror; the wake calls the Rust function.
     /// PLAN 79.08 THE WHOLE WAKE, ONE BINDING (SYSTEM_SPEC 8): `wake_decide(text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons)` -> the decision as a JSON string (the move, the chain of claims, the time of each step, the moves named and held equal, the decision
-    /// log in words). `pieces`: any of "carried", "frames", "threats", "goals", "two_threat_goals", "reasons_pick", "heads"; none is the old player. `keys`: the learned seeds of the frame read (None: the rows are the graph's); `frame_fuses`: (largest seed, fuse, row fuse, answer fuse); `chances`: (by key, by facts, (goals,
+    /// log in words). `pieces`: any of "carried", "frames", "threats", "goals", "two_threat_goals", "reasons_pick", "heads", and (PLAN 79.10) "after_move", "direct_names"; none is the old player. `keys`: the learned seeds of the frame read (None: the rows are the graph's); `frame_fuses`: (largest seed, fuse, row fuse, answer fuse); `chances`: (by key, by facts, (goals,
     /// reached) in all, floor), each cell (name, goals, reached); `reasons`: (pattern keys, [(column, side "mover"/"other", direction "up"/"down", weight)], largest seed, levels, tie digits). The frame read reads the kind values, bands and rules this graph was given (`set_kind_values`, `set_kind_bands`, `set_rules`) and its learned profile.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None))]
@@ -209,7 +209,7 @@ impl BaseGraph {
         let mut pc = Pieces::old_player();
         for w in &pieces {
             match w.as_str() {
-                "carried" => pc.carried = true, "frames" => pc.frames = true, "threats" => pc.threats = true, "goals" => pc.goals = true, "two_threat_goals" => pc.two_threat_goals = true, "reasons_pick" => pc.reasons_pick = true, "heads" => pc.heads = true, "graph_reads" => pc.graph_reads = true,
+                "carried" => pc.carried = true, "frames" => pc.frames = true, "threats" => pc.threats = true, "goals" => pc.goals = true, "two_threat_goals" => pc.two_threat_goals = true, "reasons_pick" => pc.reasons_pick = true, "heads" => pc.heads = true, "graph_reads" => pc.graph_reads = true, "after_move" => pc.after_move = true, "direct_names" => pc.direct_names = true,
                 other => return Err(bad(format!("no such piece of the wake: {other}"))),
             }
         }

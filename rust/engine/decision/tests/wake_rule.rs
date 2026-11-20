@@ -1,7 +1,7 @@
 //! Plan 79.08 PART C (the rule for choosing a move, SYSTEM_SPEC 8, 13 items 26 and 27): UNIT TESTS of the pure parts of the fixed rule (rule.rs): the goal with the fewest things in its way, their working threats, and the ladder among the moves the search holds equal. The loop (`wake::decide`) is tested in
 //! wake_whole.rs, after every piece is in Rust. No puzzle, no stored game, no match.
 use cs_decision::goals::{propose, GoalParams};
-use cs_decision::rule::{Stakes, chain_top, choose, fix_moves, fixes_among, named_fixes, stake_of, their_threats, things_in_the_way};
+use cs_decision::rule::{Stakes, chain_top, choose, fix_moves, fixes_among, named_fixes, names_of, stake_of, their_threats, things_in_the_way};
 use cs_decision::threat_verdict::{Record, VerdictKind};
 use cs_decision::threats::{ConcreteList, ThreatParams, ThreatRow};
 use cs_decision::wake::UnitRef;
@@ -161,4 +161,58 @@ fn c_the_choice_among_equal_moves_goes_down_the_ladder_threat_then_goal_then_est
     let c = choose(&eq, &["not equal".to_string()], &[], &none).unwrap();
     assert_eq!((c.mv.as_str(), c.answers_their_threat), ("m1", false));
     assert!(choose(&[], &[], &[], &none).is_none());
+}
+
+/// PLAN 79.10 B: the queen's chain of four goals (the queen, the pawn that stops it, the knight that stops the pawn) with the moves given for each, and the pawn's own chain
+fn chain_goals(g: &KernelGame, st: &Static, moves: [&[&str]; 4]) -> (Vec<cs_decision::goals::Goal>, Stakes, usize) {
+    let s = state(LINE);
+    let white = role(g, "white");
+    let p = propose(st, g, &s, &record(), &ThreatParams { goal: Some(kind(g, "king")), ..Default::default() }, &GoalParams::default());
+    let b = base_goal(&p, white);
+    let board = state("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
+    let spec = [("pawn", "a7", None, 0u8), ("queen", "d8", None, 0), ("pawn", "b7", Some(unit(g, "black", "queen", "d8")), 1), ("knight", "b8", Some(unit(g, "black", "pawn", "b7")), 2)];
+    let goals: Vec<_> = spec.iter().enumerate().map(|(i, (k, at_, parent, depth))| {
+        let mut x = b.clone(); x.target = unit(g, "black", k, at_); x.parent = *parent; x.depth = *depth; x.fix_set.clear(); x.fixes.clear(); x.facts.clear();
+        x.fixes.push(cs_decision::goals::Fix { kind: cs_decision::goals::FixKind::Bring, against: vec![], to: None, steps: None, moves: moves[i].iter().map(|m| m.to_string()).collect(), words: "" });
+        x }).collect();
+    let sk = Stakes::read(g, &board, &record(), &goals, Some(kind(g, "king")));
+    (goals, sk, white)
+}
+fn names(v: &[&str]) -> Vec<String> { v.iter().map(|s| s.to_string()).collect() }
+
+#[test]
+fn b_the_next_goal_of_a_chain_follows_the_nearest_in_the_order_of_nearness_each_move_once() {
+    let (g, st) = world();
+    let (goals, sk, white) = chain_goals(&g, &st, [&["m_pawn"], &["m_queen", "shared"], &["m_stop1", "shared"], &["m_stop2"]]);
+    let chains = named_fixes(&goals, white, &sk);
+    assert_eq!(chains[0].moves, names(&["m_stop2"]), "the nearest goal of the chain: the deepest stopper");
+    assert_eq!(chains[0].later.iter().map(|x| (x.0, x.1.clone())).collect::<Vec<_>>(), vec![(2, names(&["m_stop1", "shared"])), (1, names(&["m_queen"]))], "then the goals after it, nearest first; a move a nearer goal holds is not listed again");
+    assert_eq!(chains[0].all_moves(), names(&["m_stop2", "m_stop1", "shared", "m_queen"]));
+    assert!(chains[1].later.is_empty());
+}
+
+#[test]
+fn b_a_goal_with_no_move_among_its_fixes_is_passed_over_to_the_next_goal_of_the_chain() {
+    let (g, st) = world();
+    let (goals, sk, white) = chain_goals(&g, &st, [&["m_pawn"], &["m_queen"], &["m_stop1"], &[]]);
+    let chains = named_fixes(&goals, white, &sk);
+    assert_eq!(chains[0].goal, 2, "the knight has no move: the next goal of the chain is the nearest that is asked");
+    assert_eq!(chains[0].moves, names(&["m_stop1"]));
+    assert_eq!(chains[0].later.iter().map(|x| x.0).collect::<Vec<_>>(), vec![1]);
+}
+
+#[test]
+fn b_the_names_go_in_rounds_so_that_many_fixes_of_the_nearest_goal_do_not_keep_the_next_goal_out() {
+    let (g, st) = world();
+    let many: Vec<String> = (0..7).map(|i| format!("f{i}")).collect();
+    let many: Vec<&str> = many.iter().map(|s| s.as_str()).collect();
+    let (goals, sk, white) = chain_goals(&g, &st, [&["m_pawn"], &["m_queen"], &["m_stop1"], &many]);
+    let chains = named_fixes(&goals, white, &sk);
+    // round one: the nearest goal of the chain of the largest stake (seven fixes), then the small chain's; round two: the next goal of the first chain; round three: the next
+    assert_eq!(names_of(&chains, 12), names(&["f0", "f1", "f2", "f3", "f4", "f5", "f6", "m_pawn", "m_stop1", "m_queen"]));
+    assert_eq!(names_of(&chains, 8), names(&["f0", "f1", "f2", "f3", "f4", "f5", "f6", "m_pawn"]), "a count that ends inside a round keeps the order of stake");
+    assert_eq!(names_of(&chains, 0), Vec::<String>::new());
+    assert_eq!(names_of(&[], 5), Vec::<String>::new());
+    // the ladder of the choice counts the moves of every goal of a chain
+    assert_eq!(fixes_among(&chains, &names(&["x", "m_queen", "m_pawn"])), (names(&["m_queen"]), Some(0)));
 }

@@ -12,7 +12,7 @@
 //!   `things_in_the_way(goal) -> usize`            the distinct stoppers of its unmet facts, plus one for each unmet fact with no stopper named (something is missing).
 //!   `Stakes { worth, goal }`, `Stakes::read(g, s, rec, goals, goal)`   the worth of each kind of the targets, from the record, and the goal kind (the largest).
 //!   `stake_of(goals, i, &Stakes) -> f64`   the stake of a goal: that of the target at the top of its chain (`chain_top`).
-//!   `named_fixes(goals, side, &Stakes) -> Vec<ChainFix>`   the fixes of the nearest goal of each chain of `side`, the chains in order of stake; `fixes_among(chains, equal)` the ladder's fixes: those of the first chain with an equal move.
+//!   `named_fixes(goals, side, &Stakes) -> Vec<ChainFix>`   the fixes of the nearest goal of each chain of `side`, the chains in order of stake, and (79.10 B) of the later goals of the chain in the order of their nearness (`later`, `all_moves`); `names_of(chains, count)` the names in rounds; `fixes_among(chains, equal)` the ladder's fixes: those of the first chain with an equal move.
 //!   `their_threats(list, mover) -> Vec<&ThreatRow>`   the rows against the mover that work now, the largest net first (the end of the game first).
 //!   `fix_moves(goal) -> Vec<String>`              the moves of a goal's fix set, then of its other fixes, each once, in that order.
 //!   `keep_read(g, s, rec, mine, theirs, budget, p, share) -> KeptNames`   reads the line of each named move (ours at the position, theirs after the game's pass), in order, within `budget` reads a side; keeps those not refuted.
@@ -79,12 +79,18 @@ pub fn chain_top(goals: &[Goal], i: usize) -> usize {
 /// THE STAKE OF A GOAL (PLAN 79.09 A): the stake of the target of the goal at the top of its chain; a subgoal carries the stake of the goal it serves, so the chain of the goal unit stands above every chain of a smaller target.
 pub fn stake_of(goals: &[Goal], i: usize, sk: &Stakes) -> f64 { target_stake(goals[chain_top(goals, i)].target, sk) }
 
-/// The fixes of the nearest goal of one chain: the goal whose fixes these are (the nearest of its chain), the goal at the top of the chain, the stake of the chain, the moves.
+/// The fixes of one chain: the goal whose fixes come first (the nearest of its chain), the goal at the top of the chain, the stake of the chain, the moves of the nearest goal, and (PLAN 79.10 B) the goals after it in the order of their nearness, each with the moves of its fixes that no nearer goal of the chain already holds.
 #[derive(Debug, Clone)]
-pub struct ChainFix { pub goal: usize, pub top: usize, pub stake: f64, pub moves: Vec<String> }
+pub struct ChainFix { pub goal: usize, pub top: usize, pub stake: f64, pub moves: Vec<String>, pub later: Vec<(usize, Vec<String>)> }
 
-/// THE FIXES NAMED FOR A SIDE, CHAIN BY CHAIN IN ORDER OF STAKE (PLAN 79.09 A; section 13 item 26 as written, both halves): the chains (a goal and the subgoals below it) of `side` are taken in order of the stake of their top, the greater first; from each chain the fixes of its NEAREST goal, the one with the fewest things in its way, the deeper
-/// (the stopper) breaking a tie, then the place. A far goal gives the reading only its nearest stopper; the chain of the largest stake is always asked first; a small chain comes after, within the budget of line reads (`keep_read`). Only goals with an unmet fact and a move among their fixes count. Chains of equal stake: the nearer goal first, then the place.
+impl ChainFix {
+    /// Every move the chain names, the nearest goal's first.
+    pub fn all_moves(&self) -> Vec<String> { let mut v = self.moves.clone(); for (_, ms) in &self.later { for m in ms { if !v.contains(m) { v.push(m.clone()); } } } v }
+}
+
+/// THE FIXES NAMED FOR A SIDE, CHAIN BY CHAIN IN ORDER OF STAKE (PLAN 79.09 A; section 13 item 26 as written, both halves; PLAN 79.10 B): the chains (a goal and the subgoals below it) of `side` are taken in order of the stake of their top, the greater first; from each chain the fixes of its NEAREST goal, the one with the fewest things in its way, the deeper
+/// (the stopper) breaking a tie, then the place; AND the goals of the chain after it in the same order, which are asked when the nearest goal's fixes do not hold ("can I remove one of the defenders? if not, can I add one more attacker?": the next goal of the chain is the next question). A goal with no move among its fixes is passed over to the next. Only goals with an unmet fact count.
+/// A far goal gives the reading only its nearest stopper; the chain of the largest stake is always asked first; a small chain comes after. Chains of equal stake: the nearer goal first, then the place.
 pub fn named_fixes(goals: &[Goal], side: Role, sk: &Stakes) -> Vec<ChainFix> {
     let mut by_top: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
     for (i, gl) in goals.iter().enumerate() {
@@ -92,19 +98,44 @@ pub fn named_fixes(goals: &[Goal], side: Role, sk: &Stakes) -> Vec<ChainFix> {
         by_top.entry(chain_top(goals, i)).or_default().push(i);
     }
     let mut out: Vec<(ChainFix, (usize, u16))> = vec![];
-    for (top, members) in by_top {
-        let near = members.iter().copied().min_by_key(|&i| (things_in_the_way(&goals[i]), std::cmp::Reverse(goals[i].depth), goals[i].target.at)).expect("a chain has a member");
+    for (top, mut members) in by_top {
+        members.sort_by_key(|&i| (things_in_the_way(&goals[i]), std::cmp::Reverse(goals[i].depth), goals[i].target.at));
+        let near = members[0];
         let stake = target_stake(goals[top].target, sk);
-        out.push((ChainFix { goal: near, top, stake, moves: fix_moves(&goals[near]) }, (things_in_the_way(&goals[near]), goals[near].target.at)));
+        let mut seen: Vec<String> = fix_moves(&goals[near]);
+        let mut later: Vec<(usize, Vec<String>)> = vec![];
+        for &i in &members[1..] {
+            let ms: Vec<String> = fix_moves(&goals[i]).into_iter().filter(|m| !seen.contains(m)).collect();
+            if ms.is_empty() { continue; }
+            seen.extend(ms.iter().cloned());
+            later.push((i, ms));
+        }
+        out.push((ChainFix { goal: near, top, stake, moves: fix_moves(&goals[near]), later }, (things_in_the_way(&goals[near]), goals[near].target.at)));
     }
     out.sort_by(|a, b| b.0.stake.partial_cmp(&a.0.stake).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
     out.into_iter().map(|x| x.0).collect()
 }
 
-/// The moves among those the search holds equal that the FIRST chain with any of them names (the ladder of rule (c) goes down the chains in order of stake): the moves and the index of the chain; empty and None where no chain names an equal move.
+/// THE NAMES OF A POSITION from its chains (PLAN 79.10 A, B): in ROUNDS: the first round takes the fixes of each chain's nearest goal, the chains in order of stake; the second the fixes of each chain's next goal, and so on; each move once, at most `count`. A chain whose nearest goal has many fixes does not keep
+/// the next goal of the chain out of the names while the count lasts, and a chain of small stake is named after those of a greater stake in every round. A count, not a reading: nothing is read here, and the search reads what is named, in full.
+pub fn names_of(chains: &[ChainFix], count: usize) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    let rounds = chains.iter().map(|c| 1 + c.later.len()).max().unwrap_or(0);
+    for r in 0..rounds {
+        for c in chains {
+            let ms: &[String] = if r == 0 { &c.moves } else { c.later.get(r - 1).map_or(&[], |x| &x.1) };
+            for m in ms { if !out.contains(m) { out.push(m.clone()); } }
+        }
+        if out.len() >= count { break; }
+    }
+    out.truncate(count);
+    out
+}
+
+/// The moves among those the search holds equal that the FIRST chain with any of them names (the ladder of rule (c) goes down the chains in order of stake; a chain names the moves of all its goals, the nearest first): the moves and the index of the chain; empty and None where no chain names an equal move.
 pub fn fixes_among(chains: &[ChainFix], equal: &[String]) -> (Vec<String>, Option<usize>) {
     for (k, c) in chains.iter().enumerate() {
-        let hit: Vec<String> = c.moves.iter().filter(|m| equal.contains(m)).cloned().collect();
+        let hit: Vec<String> = c.all_moves().into_iter().filter(|m| equal.contains(m)).collect();
         if !hit.is_empty() { return (hit, Some(k)); }
     }
     (vec![], None)

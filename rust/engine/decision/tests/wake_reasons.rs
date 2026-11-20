@@ -89,7 +89,7 @@ fn c_the_estimates_and_the_search_alone_are_said_to_be_what_they_are() {
 }
 
 fn whole(g: &KernelGame, seconds: f64) -> WakeParams {
-    WakeParams { seconds, depth: 64, pieces: Pieces { carried: false, frames: false, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: false, heads: false },
+    WakeParams { seconds, depth: 64, pieces: Pieces { carried: false, frames: false, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: false, heads: false, after_move: false, direct_names: false },
         inputs: WakeInputs { record: Record { worth: table(), half: HashMap::new() }, goal: Some(kind(g, "king")), pre_share: Some(0.5), ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
