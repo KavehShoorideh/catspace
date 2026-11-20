@@ -99,6 +99,23 @@ def predict(table: dict, d: dict, rows: np.ndarray, j: int) -> tuple:
     return chance, level
 
 
+def goal_key(gl: dict, mine: bool, worth: dict, goal_kind: str, fields: tuple, owner: str) -> str:
+    """The key of one goal as the wake logs it (a goal of a decision's log; `owner`: the role that holds its target), on `fields`, in the text the wake builds from the goal itself: the two must agree (tests/test_plan79_13.py reads a decision of the wake against this)."""
+    v = {"source": gl["source"], "unmet": "+".join(sorted(set(gl["unmet"]))), "in_way": str(int(gl["in_the_way"])), "depth": str(int(gl["depth"])),
+         "rank": str(GR.rank_of(worth, GR.kind_of(gl["target"], owner), goal_kind)), "fix": "1" if any(f["moves"] for f in gl["fixes"]) else "0", "mine": "1" if mine else "0"}
+    return "|".join(v[f] for f in fields)
+
+
+def binding_form(table: dict) -> tuple:
+    """The table as the wake's binding takes it (its `goal_table` argument): (the plies of the event, the floor, [(the field names, [(key, goals, reached)])], (goals, reached) in all)."""
+    return (int(table["k"]), int(table["floor"]), [(list(lv["fields"]), [(c[0], int(c[1]), int(c[2])) for c in lv["cells"]]) for lv in table["levels"]], (int(table["total"][0]), int(table["total"][1])))
+
+
+def load_table(tag: str) -> dict:
+    """The table written by `main` for the wake (all the training games' goals counted)."""
+    return json.loads((GR.out_root(tag) / "table.json").read_text())
+
+
 def logloss_rows(p: np.ndarray, y: np.ndarray) -> np.ndarray:
     p = np.clip(p, 1e-6, 1 - 1e-6)
     return -(y * np.log(p) + (1 - y) * np.log(1 - p))

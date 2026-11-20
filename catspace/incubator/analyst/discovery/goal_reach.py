@@ -11,6 +11,7 @@ THE EVENT. For a goal logged at the decision after ply t of a game that has the 
   Times: `KS` is the ladder of K read; 3 values are printed (`PRINT_KS`) and ONE is chosen by the plan's rule: the smallest K of the ladder at which nine in ten of the goals ever reached (reached within `EVER`, the longest K of the ladder) are reached; the rule is read on the FIT half of the games.
 
 INTERFACE (written before the bodies).
+  worth_by_kind(word_worth) -> dict               the record of worths (keyed by the one-letter words) by the full name of each kind, as the logs and the tracker name it.
   rank_of(worth, kind, goal_kind) -> int          the rank of a target's stake among the kinds: the number of distinct worths of the record strictly under the target's stake (the goal kind's stake is above every worth).
   game_rows(model, decs, res, worth, goal_kind) -> dict of columns     one row a goal logged in the game: game-free columns (below) and `reached`, an int8 row over `KS` (1 reached, 0 not, -1 censored).
   load_runs(tag, runs, workers) -> dict of arrays   every game of the runs (a Pool over a real script file, one thread a worker), the rows concatenated; strings kept as codes with their vocabularies.
@@ -37,6 +38,7 @@ import numpy as np
 from catspace.incubator.analyst.discovery import graph_layer1 as GL
 from catspace.incubator.analyst.discovery import graph_layer2_measure as G2M
 from catspace.incubator.analyst.discovery import human_heads_data as HD
+from catspace.incubator.analyst.discovery import odds_measure as OM
 from catspace.incubator.analyst.discovery import record_play as RP
 from catspace.io import paths
 
@@ -68,9 +70,14 @@ def rank_of(worth: dict, kind: str, goal_kind: str) -> int:
     return sum(1 for v in vals if v < stake)
 
 
-def kind_of(target: str, role: str) -> str:
-    """The kind inside "<role> <kind> on <place>" (the words the engine gave)."""
-    rest = target[len(role) + 1:] if target.startswith(role + " ") else target
+def worth_by_kind(word_worth: dict) -> dict:
+    """The record of worths is keyed by the one-letter words of the kinds the engine's player uses; the logs and the tracker name a kind in full. The same worths by the full name of the kind."""
+    return {name: int(word_worth[w]) for name, w in OM.kernel_names().items() if w in word_worth}
+
+
+def kind_of(target: str, owner: str) -> str:
+    """The kind inside "<owner> <kind> on <place>" (the words the engine gave); `owner` is the role that holds the target, the other role than the side of the goal."""
+    rest = target[len(owner) + 1:] if target.startswith(owner + " ") else target
     return rest.rsplit(" on ", 1)[0]
 
 
@@ -131,7 +138,7 @@ def game_rows(model, decs: list, res: dict, worth: dict, goal_kind: str) -> dict
             out["unmet"].append("+".join(sorted(set(gl["unmet"]))))
             out["in_way"].append(int(gl["in_the_way"]))
             out["depth"].append(int(gl["depth"]))
-            out["rank"].append(rank_of(worth, kind_of(target, side), goal_kind))
+            out["rank"].append(rank_of(worth, kind_of(target, other), goal_kind))
             out["fix"].append(1 if any(f["moves"] for f in gl["fixes"]) else 0)
             out["goal_unit"].append(1 if gl["goal_unit"] else 0)
             out["old_chance"].append(float(ch.get("chance", -1.0)))
@@ -156,7 +163,7 @@ def read_game(p: Path) -> tuple:
 def _init() -> None:
     global _MODEL, _WORTH, _GOAL
     _MODEL = GL.model(HD.GAME, HD.VARIANT)
-    _WORTH = dict(RP.worth_of("human"))
+    _WORTH = worth_by_kind(dict(RP.worth_of("human")))
     _GOAL = G2M.goal_kind_of(HD.VARIANT)
 
 
