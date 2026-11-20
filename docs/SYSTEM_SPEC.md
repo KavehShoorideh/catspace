@@ -800,7 +800,9 @@ main agent, to be confirmed: every statement carries its HOLDER as well as its s
 seen; what differs by holder is the conjectures, the beliefs, the goals and how far each side reads. The layer only makes this
 sayable; what the other side is likely to hold is filled by the opponent layer and by sleep (ledger rows 29 and 26: the chance
 depends on the opponent; data of a rating is a model of an opponent of that rating). One level of holder is proposed, no deeper
-nesting, until a need is shown. UNDER DISCUSSION, nothing built.
+nesting, until a need is shown. UNDER DISCUSSION, nothing built. His sharpening the same day: "Or rather, what is my belief
+state about the belief state of my opponent?" So it is never their state itself, which we cannot read: it is a belief of ours,
+with its own probability and count, about what they hold.
 
 ## 12. What exists
 
