@@ -1,0 +1,603 @@
+{
+ "made_with": "the binding built from main at 11a416d3 (plan 79.17 merged), before plan 79.18's Rust",
+ "rows": [
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "a2a3",
+      "a7a6",
+      "b2b3",
+      "a6a5",
+      "c2c3"
+     ]
+    }
+   ],
+   "chosen": "a2a3",
+   "depth": 5,
+   "equal": [
+    "a2a3",
+    "b2b3",
+    "c2c3",
+    "d2d3",
+    "e2e3",
+    "f2f3",
+    "g2g3",
+    "h2h3",
+    "a2a4",
+    "b2b4",
+    "c2c4",
+    "d2d4",
+    "e2e4",
+    "f2f4",
+    "g2g4",
+    "h2h4",
+    "b1a3",
+    "b1c3",
+    "g1f3",
+    "g1h3"
+   ],
+   "measure": null,
+   "move": "a2a3",
+   "named_mine": [],
+   "named_theirs": [],
+   "value": 0,
+   "why": "no threat of theirs and no goal decides it: the search's own first move among those it holds equal"
+  },
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "d2d4",
+      "c6d4",
+      "f3d4",
+      "e5d4",
+      "d1d4"
+     ]
+    },
+    {
+     "by": "goal: a fix of a goal",
+     "ended": "the settled end: no capture is left to either side after 4 plies; 2 like for like cancelled",
+     "line": [
+      "d2d4",
+      "e5d4",
+      "f3d4",
+      "c6d4",
+      "d1d4"
+     ]
+    }
+   ],
+   "chosen": "d2d4",
+   "depth": 5,
+   "equal": [
+    "d2d4",
+    "a2a3",
+    "b2b3",
+    "c2c3",
+    "d2d3",
+    "g2g3",
+    "h2h3",
+    "a2a4",
+    "c2c4",
+    "h2h4",
+    "b1a3",
+    "b1c3",
+    "f3g1",
+    "f1e2",
+    "f1d3",
+    "f1c4",
+    "f1b5",
+    "h1g1",
+    "d1e2",
+    "e1e2"
+   ],
+   "measure": null,
+   "move": "d2d4",
+   "named_mine": [
+    "f3e5",
+    "f3g5",
+    "d2d4",
+    "f1a6",
+    "f3d4",
+    "f1b5"
+   ],
+   "named_theirs": [
+    "c6d4",
+    "c6b4",
+    "d8f6",
+    "f8b4",
+    "d8g5",
+    "d8h4"
+   ],
+   "value": 0,
+   "why": "a fix of the goal on black pawn on e5 (unguarded); no threat of theirs that stands is answered by it, and its own line is no gain (net 0)"
+  },
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "c3a4",
+      "c5b4",
+      "h2h3",
+      "g4e6",
+      "c4e6"
+     ]
+    },
+    {
+     "by": "goal: a fix of a goal",
+     "ended": "the settled end: no capture is left to either side after 4 plies",
+     "line": [
+      "c3a4",
+      "c5b4",
+      "a2a3",
+      "b4a5",
+      "b2b3"
+     ]
+    }
+   ],
+   "chosen": "c3a4",
+   "depth": 5,
+   "equal": [
+    "a2a3",
+    "b2b3",
+    "h2h3",
+    "a2a4",
+    "h2h4",
+    "c3b1",
+    "c3e2",
+    "c3a4",
+    "c3d5",
+    "c1d2",
+    "c1e3",
+    "c1g5",
+    "c4b3",
+    "c4b5",
+    "a1b1",
+    "f1e1",
+    "d1e1",
+    "d1d2",
+    "d1e2",
+    "g1h1"
+   ],
+   "measure": null,
+   "move": "c3a4",
+   "named_mine": [
+    "f3e5",
+    "f3g5",
+    "d3d4",
+    "b2b4",
+    "c3a4",
+    "c1e3",
+    "c4a6",
+    "c4f7",
+    "c3b5",
+    "c3d5",
+    "a2a3",
+    "b2b3"
+   ],
+   "named_theirs": [
+    "f6e4",
+    "d6d5",
+    "b7b5",
+    "c6a5",
+    "g4e6",
+    "g4f3",
+    "g4h3",
+    "c5a3",
+    "c5f2",
+    "c6b4",
+    "c6d4",
+    "f6d5"
+   ],
+   "value": 0,
+   "why": "only it fixes the goal on black bishop on c5 (bears), the stopper of the goal on black pawn on d6; the search's first move does not"
+  },
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "a2g2",
+      "h8h7",
+      "g2g1",
+      "h7h6",
+      "g1b1",
+      "h6g5"
+     ]
+    },
+    {
+     "by": "goal: a fix of a goal",
+     "ended": "the settled end: no capture is left to either side after 4 plies",
+     "line": [
+      "a2g2",
+      "h8h7",
+      "g2g1",
+      "h7h6",
+      "g1b1",
+      "h6g5"
+     ]
+    }
+   ],
+   "chosen": "a2g2",
+   "depth": 5,
+   "equal": [
+    "a2g2",
+    "a2b2",
+    "a2c2",
+    "a2d2",
+    "a2e2",
+    "a2f2",
+    "a2h2",
+    "a2a3",
+    "a2a4",
+    "a2a5",
+    "a2a6",
+    "a2a7",
+    "a2a8",
+    "a1b1",
+    "a1b2"
+   ],
+   "measure": null,
+   "move": "a2g2",
+   "named_mine": [
+    "a2h2",
+    "a2a8",
+    "a2g2",
+    "a2a7"
+   ],
+   "named_theirs": [],
+   "value": 0,
+   "why": "a fix of the goal on black king on h8 (covered); no threat of theirs that stands is answered by it, and its own line is no gain (net 0)"
+  },
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "a6a2",
+      "d3d4",
+      "a2a1",
+      "d4c3",
+      "a1b1"
+     ]
+    },
+    {
+     "by": "goal: a fix of a goal",
+     "ended": "the settled end: no capture is left to either side after 4 plies",
+     "line": [
+      "a6a2",
+      "d3c3",
+      "a2a1",
+      "c3b2",
+      "a1d1"
+     ]
+    }
+   ],
+   "chosen": "a6a2",
+   "depth": 5,
+   "equal": [
+    "a6a2",
+    "a6a1",
+    "a6a3",
+    "a6a4",
+    "a6a5",
+    "a6b6",
+    "a6c6",
+    "a6d6",
+    "a6e6",
+    "a6a7",
+    "a6a8",
+    "f6e5",
+    "f6f5",
+    "f6g5",
+    "f6e6",
+    "f6g6",
+    "f6e7",
+    "f6f7",
+    "f6g7"
+   ],
+   "measure": null,
+   "move": "a6a2",
+   "named_mine": [
+    "a6a3",
+    "a6d6",
+    "a6a2",
+    "a6c6",
+    "a6a4",
+    "f6e5",
+    "a6e6",
+    "f6f5"
+   ],
+   "named_theirs": [
+    "d3d4",
+    "d3e4"
+   ],
+   "value": 0,
+   "why": "a fix of the goal on black king on d3 (covered); no threat of theirs that stands is answered by it, and its own line is no gain (net 0)"
+  },
+  {
+   "chain": [
+    {
+     "by": "search: the end of the game forced",
+     "ended": "the game itself ends in the line (concrete): won by us",
+     "line": [
+      "d1d8"
+     ]
+    }
+   ],
+   "chosen": "d1d8",
+   "depth": 1,
+   "equal": [
+    "d1d8"
+   ],
+   "measure": null,
+   "move": "d1d8",
+   "named_mine": [
+    "d1d7"
+   ],
+   "named_theirs": [
+    "f7f6",
+    "g7g6",
+    "h7h6",
+    "f7f5",
+    "g7g5",
+    "h7h5",
+    "g8f8"
+   ],
+   "value": 1099511627775,
+   "why": "the end of the game is forced in its line: the search finds it within 1 plies"
+  },
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "f2f3",
+      "f7f6",
+      "f3f4",
+      "f6f5",
+      "g2f1"
+     ]
+    },
+    {
+     "by": "goal: a fix of a goal",
+     "ended": "the settled end: no capture is left to either side after 4 plies",
+     "line": [
+      "f2f3",
+      "f7f6",
+      "f3f4",
+      "f6f5",
+      "g2f1"
+     ]
+    }
+   ],
+   "chosen": "f2f3",
+   "depth": 5,
+   "equal": [
+    "f2f3",
+    "f2f4",
+    "g2f1",
+    "g2g1",
+    "g2h1",
+    "g2h2",
+    "g2f3",
+    "g2h3"
+   ],
+   "measure": null,
+   "move": "f2f3",
+   "named_mine": [
+    "f2f3",
+    "g3g4",
+    "f2f4",
+    "g2f1",
+    "g2g1",
+    "g2h1",
+    "g2h2",
+    "g2f3",
+    "g2h3"
+   ],
+   "named_theirs": [
+    "g6g5",
+    "f7f6",
+    "f7f5",
+    "g7f6",
+    "g7h6",
+    "g7h7",
+    "g7f8",
+    "g7g8",
+    "g7h8"
+   ],
+   "value": 0,
+   "why": "a fix of the goal on black pawn on h5 (kept); no threat of theirs that stands is answered by it, and its own line is no gain (net 0)"
+  },
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "a2a3",
+      "e6g4",
+      "f3d2",
+      "a7a6",
+      "g2g3"
+     ]
+    },
+    {
+     "by": "goal: a fix of a goal",
+     "ended": "the settled end: no capture is left to either side after 4 plies",
+     "line": [
+      "a2a3",
+      "a7a6",
+      "g2g3",
+      "b7b6",
+      "f3d2"
+     ]
+    }
+   ],
+   "chosen": "a2a3",
+   "depth": 5,
+   "equal": [
+    "a2a3",
+    "g2g3",
+    "h2h3",
+    "a2a4",
+    "h2h4",
+    "f3d2",
+    "f1e2",
+    "f1d3",
+    "a1b1",
+    "a1c1",
+    "a1d1",
+    "h1g1",
+    "c2c1",
+    "c2b2",
+    "c2d2",
+    "c2b3",
+    "c2d3",
+    "e1d1",
+    "e1d2",
+    "e1e2",
+    "e1c1"
+   ],
+   "measure": null,
+   "move": "a2a3",
+   "named_mine": [
+    "f1a6",
+    "a1b1",
+    "c2b1",
+    "c2b2",
+    "c2b3",
+    "a2a3",
+    "g2g3",
+    "h2h3",
+    "a2a4",
+    "g2g4",
+    "h2h4",
+    "f3g1"
+   ],
+   "named_theirs": [
+    "a5c3",
+    "c6d4",
+    "a5b5",
+    "a5a6",
+    "a5a2",
+    "c6e5",
+    "e6g4",
+    "c6b4",
+    "e6f5",
+    "a5a4",
+    "a5b4",
+    "a5c5"
+   ],
+   "value": 0,
+   "why": "a fix of the goal on black queen on a5 (kept), the stopper of the goal on black pawn on h7; no threat of theirs that stands is answered by it, and its own line is no gain (net 0)"
+  },
+  {
+   "chain": [
+    {
+     "by": "search",
+     "ended": "the settled end: no capture is left to either side after the depth read in full (5 plies)",
+     "line": [
+      "d2d5",
+      "e8e7",
+      "d5d1",
+      "e7e6",
+      "d1a1"
+     ]
+    },
+    {
+     "by": "its own line read: it wins by its own reading",
+     "ended": "the settled end: no capture is left to either side after 4 plies",
+     "line": [
+      "d2d5",
+      "e8e7",
+      "d5d1",
+      "e7e6",
+      "d1a1"
+     ]
+    }
+   ],
+   "chosen": "d2d5",
+   "depth": 5,
+   "equal": [
+    "d2d5"
+   ],
+   "measure": null,
+   "move": "d2d5",
+   "named_mine": [
+    "d2d5",
+    "d2e2",
+    "d2f2"
+   ],
+   "named_theirs": [
+    "d5d2",
+    "d5b3",
+    "d5f3",
+    "d5h5",
+    "d5h1",
+    "d5e4",
+    "d5e5",
+    "d5e6",
+    "d5g2",
+    "d5d3",
+    "d5c4",
+    "d5b5"
+   ],
+   "value": 3583,
+   "why": "its own line wins by its own reading: net 3583 (the settled end: no capture is left to either side after 4 plies); it serves the goal on black king on e8 (covered)"
+  },
+  {
+   "chain": [
+    {
+     "by": "search: the end of the game forced",
+     "ended": "the game itself ends in the line (concrete): won by us",
+     "line": [
+      "c3c8"
+     ]
+    }
+   ],
+   "chosen": "c3c8",
+   "depth": 1,
+   "equal": [
+    "c3c8"
+   ],
+   "measure": null,
+   "move": "c3c8",
+   "named_mine": [
+    "c3c4",
+    "c3c5",
+    "c3c6",
+    "c3c7",
+    "c3c8",
+    "a3a4",
+    "c3b3"
+   ],
+   "named_theirs": [
+    "c8e8",
+    "c8c3",
+    "b5b4",
+    "c8c4",
+    "c8c5",
+    "c8c6",
+    "c8c7",
+    "f7f6",
+    "g7g6",
+    "h7h6",
+    "f7f5",
+    "g7g5"
+   ],
+   "value": 1099511629720,
+   "why": "the end of the game is forced in its line: the search finds it within 1 plies"
+  }
+ ]
+}
