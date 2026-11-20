@@ -63,9 +63,11 @@ pub struct WakeInputs {
     pub ledger_share: Option<f64>,
     /// PLAN 79.09 B: the share of the clock the steps before the search (1 to 4) may take together (None: what the search and its equal reading do not keep, less `TAIL_SHARE`: `pre_share_of`). The steps ask in order of stake and stop at it; what they did not ask is listed.
     pub pre_share: Option<f64>,
+    /// PLAN 79.12 B: the last layer among the moves held equal (None: the rule of rule.rs decides, as before). With a spec the rows of the candidates are written to the log in every mode; Weights and Explore choose.
+    pub chooser: Option<crate::chooser::ChooserSpec>,
 }
 
-impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None } } }
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { record: Record::default(), goal: None, budget: 0, named_budget: 0, frame: None, previous: None, chances: None, reasons: None, share_table: true, ledger_share: None, pre_share: None, chooser: None } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -345,12 +347,17 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let decided = ln.value.abs() >= WIN - 1000;
     let mut probes: Vec<(usize, i64)> = vec![];
     let mut equal_ix: Vec<usize> = vec![];
+    let mut verified = false;
     if !decided && own.is_some() {
         ls.resume(tie_seconds(params.seconds, share));
         probes = ls.probes(s, ln.depth, ln.value, None);
         let first: Vec<usize> = probes.iter().filter(|(_, v)| *v >= ln.value).map(|(i, _)| *i).collect();
         equal_ix = if ls.cut() || first.is_empty() { if ls.cut() { vec![] } else { first } } else { ls.verify(s, ln.depth, ln.value, &first) };
+        verified = !ls.cut();
     }
+    // PLAN 79.12 A: did the equal reading keep the search's first move (the first is put at the head of the equal moves below whether it was kept or not, as on main)
+    let first_held: Option<bool> = if verified { own.map(|o| equal_ix.contains(&o)) } else { None };
+    let first_lowered_by: Option<i64> = if first_held == Some(false) { own.and_then(|o| probes.iter().find(|(i, _)| *i == o)).map(|(_, v)| ln.value - v).filter(|d| *d > 0) } else { None };
     if let Some(o) = own { equal_ix.retain(|i| *i != o); equal_ix.insert(0, o); }
     let equal: Vec<String> = equal_ix.iter().map(|i| g.move_name(s, &moves[*i])).collect();
     contributions.push(Contribution { piece: "search with the count of worths at its end, and the equal reading", step: 5, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: format!("depth {}, {} nodes, {} held equal", ln.depth, ls.nodes, equal.len()) });
@@ -359,7 +366,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let all_names: Vec<String> = moves.iter().map(|m| g.move_name(s, m)).collect();
     let sc: Option<Vec<MoveReasons>> = match (&inp.reasons, p.reasons_pick) {
         // the moves held equal are scored first (they decide); the others only while the clock of the whole decision lasts (they are logged); one not reached has no score
-        (Some(r), true) => { let order: Vec<String> = equal.iter().cloned().chain(all_names.iter().filter(|n| !equal.contains(n)).cloned()).collect(); Some(crate::pick::scores_by(st, g, s, inp.goal, r, &order, Some(if p.direct_names { until(wall_end, CLAIMS_OF_TAIL) } else { wall_end }))) }
+        (Some(r), true) => { let order: Vec<String> = equal.iter().cloned().chain(all_names.iter().filter(|n| !equal.contains(n)).cloned()).collect(); Some(crate::pick::scores_must(st, g, s, inp.goal, r, &order, Some(if p.direct_names { until(wall_end, CLAIMS_OF_TAIL) } else { wall_end }), equal.len())) }
         (None, true) => { log.notes.push("the reasons' pick asked for and no reasons given: no estimate of a move, the search's own first move decides among the rest".into()); None }
         _ => None,
     };
@@ -371,7 +378,45 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     if sc.is_some() && !scored_equal { log.notes.push("the clock ended before every move held equal was scored: the estimates do not decide".into()); }
     let chosen = rule::choose(&equal, &answers_largest, &fixes, &|set: &[String]| if scored_equal { sc.as_ref().and_then(|v| crate::pick::pick(v, set, tie_digits)) } else { None });
     contributions.push(Contribution { piece: "the choice among the moves held equal (the rule, the estimates)", step: 6, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
-    let mv = chosen.as_ref().map(|c| c.mv.clone()).or_else(|| ln.first.clone());
+    let mut mv = chosen.as_ref().map(|c| c.mv.clone()).or_else(|| ln.first.clone());
+    // ---- PLAN 79.12 B: the last layer among the moves held equal (the wall: a first move the equal reading dropped is not a candidate)
+    let mut override_why: Option<(rule::Decided, String)> = None;
+    if let Some(spec) = &inp.chooser {
+        let t0 = std::time::Instant::now();
+        let drop_first = first_held == Some(false) && equal.len() > 1;
+        let cands: Vec<String> = equal.iter().enumerate().filter(|(k, _)| !(drop_first && *k == 0)).map(|(_, m)| m.clone()).collect();
+        if cands.len() >= 2 {
+            let cells = g.cells(s);
+            let standing_row = their.first();
+            let threat_stake = standing_row.map_or(0.0, |r| r.unit.map_or(f64::INFINITY, |u| stakes.of(u)));
+            let facts: Vec<crate::chooser::MoveFacts> = cands.iter().map(|name| {
+                let i = moves.iter().position(|m| &g.move_name(s, m) == name);
+                let fix = prop.goals.iter().enumerate().filter(|(_, x)| x.side == me && !x.unmet.is_empty() && rule::fix_moves(x).contains(name))
+                    .min_by_key(|(_, x)| (rule::things_in_the_way(x), std::cmp::Reverse(x.depth), x.target.at))
+                    .map(|(gi, x)| crate::chooser::FixFacts::new(rule::stake_of(&prop.goals, gi, &stakes), rule::things_in_the_way(x), rule::things_in_the_way(&prop.goals[rule::chain_top(&prop.goals, gi)]), inp.chances.as_ref().map(|t| t.chance(x).chance)));
+                let taking = i.and_then(|i| { let to = g.move_ends(s, &moves[i]).1; cells.iter().find(|(o, _, at)| *at == to && *o != me).map(|(o, k, at)| { let u = UnitRef { owner: *o, kind: *k, at: *at }; if Some(*k) == inp.goal { f64::INFINITY } else { crate::threats::kind_worths(g, s, rec, &[u]).get(k).copied().unwrap_or(0.0) } }) });
+                let af = after.rows.iter().find(|r| &r.mv == name).and_then(|r| r.fact.as_ref()).map(|f| crate::chooser::AfterFacts { before: f.in_the_way_before, after: f.in_the_way_after, took_out: f.took_out.len(), put_in: f.put_in.len() });
+                crate::chooser::MoveFacts { is_first: Some(name) == ln.first.as_ref(), first_held: first_held != Some(false), answers_threat: answers_largest.contains(name), threat_stake, fix, reasons_score: sc.as_ref().and_then(|v| v.iter().find(|x| &x.mv == name)).map(|x| x.score), after: af, taking }
+            }).collect();
+            let rows: Vec<Vec<f64>> = facts.iter().map(crate::chooser::inputs_of).collect();
+            let fixed_ix = cands.iter().position(|c| Some(c) == mv.as_ref());
+            let ap = crate::chooser::apply(spec, &rows, fixed_ix);
+            let played = cands[ap.index].clone();
+            let moved = spec.mode != crate::chooser::Mode::Fixed;
+            if moved {
+                override_why = Some(match spec.mode {
+                    crate::chooser::Mode::Explore => (rule::Decided::Chooser, format!("explore: one of the {} moves the search holds equal, drawn at random from the seed (propensity 1 in {}); the rule would pick {}", cands.len(), cands.len(), mv.clone().unwrap_or_default())),
+                    _ => (rule::Decided::Chooser, format!("the chooser: the largest weighted sum of its inputs among the {} moves the search holds equal ({:.4}); the rule would pick {}", cands.len(), ap.sums[ap.index], mv.clone().unwrap_or_default())),
+                });
+            }
+            log.chooser = Some(crate::log::ChooserLog { mode: format!("{:?}", spec.mode), seed: spec.seed, inputs: crate::chooser::INPUTS.iter().map(|x| x.to_string()).collect(),
+                candidates: cands.iter().cloned().zip(rows.into_iter().zip(ap.sums.iter().copied())).map(|(c, (r, x))| (c, r, x)).collect(), fixed_pick: mv.clone(), played: Some(played.clone()), propensity: ap.propensity, applied: moved });
+            if moved { mv = Some(played); }
+        } else {
+            log.notes.push("the last layer: fewer than two moves held equal, nothing to choose among".into());
+        }
+        contributions.push(Contribution { piece: "the last layer among the moves held equal", step: 6, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
+    }
     // PLAN 79.10 C: the reading of the named moves for the chain of claims comes AFTER the search, where the clock of the whole decision allows: the move played first, then the others named, in order; what the clock did not reach is listed (a gap)
     if p.direct_names {
         let t0 = std::time::Instant::now();
@@ -403,7 +448,12 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
         let standing: Option<String> = their.first().map(|r| r.unit.map_or_else(|| "the end of the game forced against us".to_string(), |u| text(&u)));
         let answers = answers_largest.contains(m);
         let sv: Vec<String> = serves_of(m).into_iter().map(|x| x.2).collect();
-        let (kind, why) = rule::why_of(&rule::WhyIn { chosen: c, value: ln.value, depth: ln.depth, own, standing: standing.clone(), answers, serves: sv });
+        let wi = rule::WhyIn { chosen: c, value: ln.value, depth: ln.depth, own, standing: standing.clone(), answers, serves: sv };
+        let (kind, why) = match (&override_why, &ln.first) {
+            (Some(o), _) => o.clone(),
+            (None, Some(f)) if f != m => rule::why_against_first(&wi, &rule::FirstFacts { name: f.clone(), held: first_held, lowered_by: first_lowered_by, answers: answers_largest.contains(f), fixes: fixes.contains(f), own_gain: kept.mine.iter().any(|k| &k.name == f && k.verdict == crate::threat_verdict::VerdictKind::Confirmed && k.net > 0) }),
+            _ => rule::why_of(&wi),
+        };
         decided_by = Some(kind);
         // the search's own line of the move chosen (the table's line from it, not the line of its first move when another equal move is played)
         let (mline, _) = if Some(m) == ln.first.as_ref() { (ln.line.clone(), vec![]) } else { moves.iter().position(|x| &g.move_name(s, x) == m).map_or((vec![], vec![]), |i| ls.line_from(s, i, ln.depth.max(1) as usize + 2)) };
@@ -418,6 +468,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
                 else { chain.push(Claim { line: vec![m.clone()], ended: "the move is among the answers the goal of theirs names; its own line was not read, so no end is claimed".into(), by: "threat list: an answer to a threat of theirs that stands" }); }
             }
             rule::Decided::FixesGoal => { if let Some(k) = own { chain.push(Claim { line: k.line.clone(), ended: nonempty(&k.ended, "its own line was read; how it ended was not recorded"), by: "goal: a fix of a goal" }); } }
+            rule::Decided::Chooser => chain.push(Claim { line: vec![m.clone()], ended: "the last layer chose among the moves held equal (their inputs and weighted sums are in the log; never a value)".into(), by: "chooser: the last layer" }),
             rule::Decided::Estimate => chain.push(Claim { line: vec![m.clone()], ended: "the reasons' score decides among the moves held equal (an estimate, never a value)".into(), by: "estimate: the reasons' pick" }),
             _ => {}
         }
@@ -473,6 +524,8 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     log.after_not_asked = after.not_asked.clone();
     let carried_next = frames.as_ref().map(|f| Carried::of(&prop.list, &f.read_sets));
     contributions.push(Contribution { piece: "the whole decision", step: 0, seconds: t_all.elapsed().as_secs_f64(), named: vec![], note: String::new() });
+    log.first_held = first_held; log.first_lowered_by = first_lowered_by;
+    log.step_seconds = contributions.iter().map(|c| (c.step, c.piece.to_string(), c.seconds)).collect();
     WakeDecision { mv, value: ln.value, depth: ln.depth, nodes: ln.nodes, chain, contributions, unported: params.pieces.unported(), log, proposal: Some(prop), carried: carried_next, named_mine, named_theirs, equal }
 }
 

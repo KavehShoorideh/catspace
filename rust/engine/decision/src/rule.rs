@@ -216,7 +216,9 @@ pub fn choose(equal: &[String], answers: &[String], fixes: &[String], picked: &d
 /// What decided the move, in the order the reasons are tried (PLAN 79.09 C; SYSTEM_SPEC 8 "the wake gives reasons", 4 the four ways a line ends): the end of the game forced in its line; its own line wins by its own reading; it answers a threat of theirs that stands and its own line is no gain; it is a fix of a goal; the estimates picked it
 /// among the moves held equal; nothing named decides it (the search's own move).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Decided { ForcedEnd, OwnGain, AnswersThreat, FixesGoal, Estimate, SearchOnly }
+pub enum Decided { ForcedEnd, OwnGain, AnswersThreat, FixesGoal, Estimate, SearchOnly,
+    /// PLAN 79.12 A: the equal reading put the search's first move lower; PLAN 79.12 B: the last layer chose (Weights) or drew (Explore)
+    FirstLowered, Chooser }
 
 /// What the reason is made from: the rule's choice, the search's value for the move and the plies it read, the move's own line as read for naming (None: not named or not read), the largest threat of theirs that stands in words (None: none stands; the end of the game forced against us is one), whether the move is among the
 /// answers to it, and the goals the move is a fix of (in words, the goal of the largest stake first).
@@ -237,4 +239,31 @@ pub fn why_of(w: &WhyIn) -> (Decided, String) {
     if w.chosen.fixes_our_goal && !w.serves.is_empty() { return (Decided::FixesGoal, format!("a fix of the {}; no threat of theirs that stands is answered by it, and {own}", w.serves[0])); }
     if w.chosen.by_estimate { return (Decided::Estimate, "no threat of theirs and no goal decides it: the reasons' score picks among the moves the search holds equal (an estimate, never a value)".to_string()); }
     (Decided::SearchOnly, "no threat of theirs and no goal decides it: the search's own first move among those it holds equal".to_string())
+}
+
+/// PLAN 79.12 A (SYSTEM_SPEC 8 "the wake gives reasons"; piece: the wake): WHAT THE SEARCH'S FIRST MOVE WAS, to say what SEPARATED the move played from it: its name, whether the equal reading kept it (None: the reading did not run), by how much the best stood above its null-window reading (None: not known), whether it answers the largest standing threat, whether it is a fix of the goal named, whether its own line wins by its own reading.
+#[derive(Debug, Clone, Default)]
+pub struct FirstFacts { pub name: String, pub held: Option<bool>, pub lowered_by: Option<i64>, pub answers: bool, pub fixes: bool, pub own_gain: bool }
+
+/// THE REASON WHERE THE MOVE PLAYED IS NOT THE SEARCH'S FIRST (PLAN 79.12 A): the reason names what separated the two, in this order: the end of the game forced (as `why_of`); the equal reading put the first lower (and by how much); only the move played has a line that wins by its own reading; only it answers a standing threat; only it fixes the
+/// goal named; else only the estimates are left (said as such, and where both answer or both fix, said that too). Never a class of the whole equal set.
+pub fn why_against_first(w: &WhyIn, f: &FirstFacts) -> (Decided, String) {
+    if w.value.abs() >= cs_tactics::ledger::WIN - 1000 { return why_of(w); }
+    let serves = w.serves.first().map(|x| format!("; it serves the {x}")).unwrap_or_default();
+    if f.held == Some(false) {
+        let by = match f.lowered_by { Some(d) if d > 0 => format!(", {d} below the best at that reading"), _ => ", below the best at that reading".to_string() };
+        return (Decided::FirstLowered, format!("the equal reading put the search's first move lower{by}; this move is held equal to the best"));
+    }
+    if let Some(k) = w.own.filter(|k| k.verdict == VerdictKind::Confirmed && k.net > 0) {
+        if !f.own_gain { return (Decided::OwnGain, format!("only its own line wins by its own reading: net {} ({}); the search's first move has none{serves}", k.net, k.ended)); }
+    }
+    if let (Some(t), true) = (&w.standing, w.answers) {
+        if !f.answers { return (Decided::AnswersThreat, format!("only it answers the threat of theirs on {t}, which stands; the search's first move does not")); }
+    }
+    if w.chosen.fixes_our_goal && !w.serves.is_empty() && !f.fixes {
+        return (Decided::FixesGoal, format!("only it fixes the {}; the search's first move does not", w.serves[0]));
+    }
+    let both = if w.standing.is_some() && w.answers && f.answers { "both answer the threat of theirs that stands; " } else if w.chosen.fixes_our_goal && f.fixes { "both fix the goal named; " } else { "" };
+    if w.chosen.by_estimate { return (Decided::Estimate, format!("nothing separates it from the search's first move but the estimates: {both}the reasons' score picks it (an estimate, never a value)")); }
+    (Decided::SearchOnly, format!("nothing separates it from the search's first move: {both}no threat, goal or estimate decides"))
 }

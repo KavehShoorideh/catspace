@@ -60,10 +60,14 @@ fn events(before: &FxHashMap<usize, (u32, u32)>, after: &FxHashMap<usize, (u32, 
 pub fn scores<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String]) -> Vec<MoveReasons> { scores_by(st, g, s, goal, r, moves, None) }
 
 /// PLAN 79.09 B: `scores` in the order the moves are given, stopping at `stop` (the clock of the whole decision): the moves not reached have no score (the caller lists them: a gap, the estimate is not made, never a zero).
-pub fn scores_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String], stop: Option<std::time::Instant>) -> Vec<MoveReasons> {
+pub fn scores_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String], stop: Option<std::time::Instant>) -> Vec<MoveReasons> { scores_must(st, g, s, goal, r, moves, stop, 0) }
+
+/// PLAN 79.12 A (SYSTEM_SPEC 8, the estimates decide among the moves held equal; piece: the wake): `scores_by` where the FIRST `must` moves of the order given (the moves the search holds equal) are scored whatever the clock says, because they are what the estimates decide among; the others follow in order while the clock lasts. The caller puts the equal moves first.
+#[allow(clippy::too_many_arguments)]
+pub fn scores_must<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String], stop: Option<std::time::Instant>, must: usize) -> Vec<MoveReasons> {
     let want: FxHashMap<u64, usize> = r.keys.iter().enumerate().map(|(i, k)| (*k, i)).collect();
     let before = counts(st, g, s, goal, r, &want);
-    moves.iter().take_while(|_| !stop.is_some_and(|t| std::time::Instant::now() >= t)).map(|name| {
+    moves.iter().enumerate().take_while(|(i, _)| *i < must || !stop.is_some_and(|t| std::time::Instant::now() >= t)).map(|(_, name)| {
         let Some(m) = g.find_move(s, name) else { return MoveReasons { mv: name.clone(), carried: vec![], score: 0.0 } };
         let a = g.apply(s, &m);
         let after = counts(st, g, &a, goal, r, &want);
