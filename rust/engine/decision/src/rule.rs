@@ -196,12 +196,14 @@ pub struct WhyIn<'a> { pub chosen: &'a Chosen, pub value: i64, pub depth: i32, p
 pub fn why_of(w: &WhyIn) -> (Decided, String) {
     let serves = w.serves.first().map(|x| format!("; it serves the {x}")).unwrap_or_default();
     if w.value.abs() >= cs_tactics::ledger::WIN - 1000 {
-        return if w.value > 0 { (Decided::ForcedEnd, format!("the end of the game is forced in its line: the search finds it within {} plies{serves}", w.depth)) }
+        return if w.value > 0 { (Decided::ForcedEnd, format!("the end of the game is forced in its line: the search finds it within {} plies", w.depth)) }
                else { (Decided::ForcedEnd, format!("the end of the game is forced against us whatever is played (the search reads it within {} plies); this move holds the longest line", w.depth)) };
     }
     if let Some(k) = w.own.filter(|k| k.verdict == VerdictKind::Confirmed && k.net > 0) { return (Decided::OwnGain, format!("its own line wins by its own reading: net {} ({}){serves}", k.net, k.ended)); }
-    if let (Some(t), true) = (&w.standing, w.answers) { return (Decided::AnswersThreat, format!("answers the threat of theirs on {t}, which stands; its own line is no gain")); }
-    if w.chosen.fixes_our_goal && !w.serves.is_empty() { return (Decided::FixesGoal, format!("a fix of the {}; no threat of theirs that stands is answered by it, and its own line is no gain", w.serves[0])); }
+    // what is known of the move's own line, said as it is: not read, cut by the budget (unread), or read and no gain
+    let own = match w.own { None => "its own line was not read".to_string(), Some(k) if k.verdict == VerdictKind::Unread => "its own line was cut by the budget (unread)".to_string(), Some(k) => format!("its own line is no gain (net {})", k.net) };
+    if let (Some(t), true) = (&w.standing, w.answers) { return (Decided::AnswersThreat, format!("answers the threat of theirs on {t}, which stands; {own}")); }
+    if w.chosen.fixes_our_goal && !w.serves.is_empty() { return (Decided::FixesGoal, format!("a fix of the {}; no threat of theirs that stands is answered by it, and {own}", w.serves[0])); }
     if w.chosen.by_estimate { return (Decided::Estimate, "no threat of theirs and no goal decides it: the reasons' score picks among the moves the search holds equal (an estimate, never a value)".to_string()); }
     (Decided::SearchOnly, "no threat of theirs and no goal decides it: the search's own first move among those it holds equal".to_string())
 }

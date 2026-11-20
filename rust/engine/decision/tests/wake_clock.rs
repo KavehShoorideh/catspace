@@ -174,21 +174,23 @@ fn b_the_whole_decision_is_within_the_clock_and_says_what_it_did_not_ask() {
     for fen in [DEVELOPED, LINE, ATTACKED] {
         let s = state(fen);
         for secs in [0.2, 1.0] {
+            let params = whole(&g, &st, &s, secs, None);
             let t0 = Instant::now();
-            let d = decide(&st, &g, &s, &[], &judge(), &whole(&g, &st, &s, secs, None));
+            let d = decide(&st, &g, &s, &[], &judge(), &params);
             let wall = t0.elapsed().as_secs_f64();
             let steps: Vec<String> = d.contributions.iter().map(|c| format!("step {} {:.3} s ({})", c.step, c.seconds, c.note)).collect();
             println!("OBS clock held 79.09: clock {secs} s, wall {wall:.3} s, move {:?}, depth {}; by step: {}", d.mv, d.depth, steps.join("; "));
             assert!(d.mv.is_some());
             // the search stops on its clock every 1024 nodes and the steps before it on theirs: a small slack, the clock itself is never run past by a step of the decision
-            assert!(wall <= secs * 1.2 + 0.03, "wall {wall} s over the clock {secs} s");
+            assert!(wall <= secs * 1.1 + 0.02, "wall {wall} s over the clock {secs} s");
         }
     }
     // a decision whose steps before the search have no share asks nothing of them and says so; the move is still legal and the search keeps the clock
     let s = state(DEVELOPED);
+    let params = whole(&g, &st, &s, 0.4, Some(0.0));
     let t0 = Instant::now();
-    let d = decide(&st, &g, &s, &[], &judge(), &whole(&g, &st, &s, 0.4, Some(0.0)));
-    assert!(t0.elapsed().as_secs_f64() <= 0.4 * 1.2 + 0.03);
+    let d = decide(&st, &g, &s, &[], &judge(), &params);
+    assert!(t0.elapsed().as_secs_f64() <= 0.4 * 1.1 + 0.02);
     let mv = d.mv.clone().expect("a move");
     assert!(g.moves(&s).iter().any(|m| g.move_name(&s, m) == mv));
     let frames = d.contributions.iter().find(|c| c.step == 2).expect("the frame read is a step");

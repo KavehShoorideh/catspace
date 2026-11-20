@@ -37,7 +37,8 @@ fn c_the_end_of_the_game_forced_is_said_as_such_and_is_never_called_an_answer() 
     let w = WhyIn { chosen: &c, value: WIN - 3, depth: 5, own: None, standing: Some("the end of the game forced against us".into()), answers: true, serves: vec!["goal on x (bears)".into()] };
     let (d, t) = why_of(&w);
     assert_eq!(d, Decided::ForcedEnd);
-    assert!(t.contains("the end of the game is forced in its line") && t.contains("within 5 plies") && t.contains("it serves the goal on x"), "{t}");
+    assert!(t.contains("the end of the game is forced in its line") && t.contains("within 5 plies"), "{t}");
+    assert!(!t.contains("serves"), "a forced end names no goal: it is the end of the game, not a fix of a goal on some unit: {t}");
     assert!(!t.contains("answers"), "{t}");
     let (d, t) = why_of(&WhyIn { value: -(WIN - 3), ..w.clone() });
     assert_eq!(d, Decided::ForcedEnd);
