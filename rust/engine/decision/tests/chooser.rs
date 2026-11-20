@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 // ------------------------------------------------------------------------------------------------------------------------------ B: the pure layer
 
-fn facts() -> MoveFacts { MoveFacts { is_first: true, first_held: true, answers_threat: true, threat_stake: 475.0, fix: Some(FixFacts::new(1945.0, 2, 3, Some(0.4))), reasons_score: Some(0.25), after: Some(AfterFacts { before: Some(4), after: 2, took_out: 1, put_in: 0 }), taking: Some(1216.0) }
+fn facts() -> MoveFacts { MoveFacts { is_first: true, first_held: true, answers_threat: true, threat_stake: 475.0, fix: Some(FixFacts::new(1945.0, 2, 3, Some(0.4))), reasons_score: Some(0.25), after: Some(AfterFacts { before: Some(4), after: 2, took_out: 1, put_in: 0 }), taking: Some(1216.0), gain: None }
 }
 fn at(name: &str) -> usize { INPUTS.iter().position(|k| *k == name).unwrap() }
 

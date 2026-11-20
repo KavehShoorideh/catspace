@@ -11,16 +11,19 @@
 //!                                  given, the propensity (1 over the number of candidates) returned for the log.
 //!   `ChooserSpec { mode, weights, seed }`, `ChooserSpec::new(mode, &[(name, weight)], seed) -> Result`.
 //!   `apply(&ChooserSpec, rows, fixed) -> Applied`   takes the rows of the candidates (the search's first among them where it is held), the index of the rule's pick (None: the rule's pick is not a candidate); returns the index played, the weighted sum of every candidate (zero with no weights), the propensity.
+//!   PLAN 79.13 C: four more inputs, the gain of a move in the value of the chains (stake times chance, gain.rs) from before the move to after it: `our_gain`, `their_gain` (the finite stakes) and `our_goal_gain`, `their_goal_gain` (the chains of the goal kind, by chance alone: no worth is assumed for it); `GainFacts` carries them (None: no table of the chance of a goal given, or the move's child was not read: all nought). `Mode::Gain` is the owner's rule read plainly,
+//!                                  no fit: among the candidates that answer the standing threat (all of them if none does) the largest (our gain less their gain), the chains of the goal kind first and then the finite ones; a tie goes to the rule's pick when it is among the tied, else the first.
 //!   Called by: `wake::decide` (step 6), which builds the facts and writes the rows, sums and propensity into the decision log; the unit tests. Nothing here reads a game, a clock or a file.
 
 /// The names of the inputs, in the order of a row.
-pub const INPUTS: [&str; 19] = [
+pub const INPUTS: [&str; 23] = [
     "is_first", "first_held",
     "answers_threat", "answers_threat_stake", "answers_end_threat",
     "fixes_goal", "fix_stake", "fix_goal_kind", "fix_in_way", "fix_top_in_way", "fix_chance",
     "reasons_score",
     "their_in_way_after", "their_in_way_change", "their_took_out", "their_put_in",
     "is_taking", "taking_stake", "taking_goal_kind",
+    "our_gain", "their_gain", "our_goal_gain", "their_goal_gain",
 ];
 
 /// The goal fixed by a move: the stake of the chain it belongs to (INFINITY: the goal kind), the things in the way of the goal and of the goal at the top of the chain, the goal's chance (None: no table).
@@ -33,6 +36,10 @@ impl FixFacts { pub fn new(stake: f64, in_way: usize, top_in_way: usize, chance:
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AfterFacts { pub before: Option<usize>, pub after: usize, pub took_out: usize, pub put_in: usize }
 
+/// PLAN 79.13 C: the gain in the value of our chains and of theirs from before the move to after it (after less before), the finite part and the part of the goal kind.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct GainFacts { pub ours: f64, pub theirs: f64, pub ours_goal: f64, pub theirs_goal: f64 }
+
 /// What the wake knows of one candidate move (see the module doc). A stake of `f64::INFINITY` is the goal kind.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MoveFacts {
@@ -40,6 +47,7 @@ pub struct MoveFacts {
     pub answers_threat: bool, pub threat_stake: f64,
     pub fix: Option<FixFacts>, pub reasons_score: Option<f64>, pub after: Option<AfterFacts>,
     pub taking: Option<f64>,
+    pub gain: Option<GainFacts>,
 }
 
 fn finite(x: f64) -> f64 { if x.is_finite() { x } else { 0.0 } }
@@ -56,12 +64,13 @@ pub fn inputs_of(f: &MoveFacts) -> Vec<f64> {
         f.reasons_score.unwrap_or(0.0),
         after.map_or(0.0, |a| a.after as f64), after.map_or(0.0, |a| a.before.map_or(0.0, |b| a.after as f64 - b as f64)), after.map_or(0.0, |a| a.took_out as f64), after.map_or(0.0, |a| a.put_in as f64),
         flag(f.taking.is_some()), f.taking.map_or(0.0, finite), flag(f.taking.is_some_and(|x| !x.is_finite())),
+        f.gain.map_or(0.0, |x| finite(x.ours)), f.gain.map_or(0.0, |x| finite(x.theirs)), f.gain.map_or(0.0, |x| finite(x.ours_goal)), f.gain.map_or(0.0, |x| finite(x.theirs_goal)),
     ]
 }
 
 /// How the choice among the equal moves is made.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Mode { #[default] Fixed, Weights, Explore }
+pub enum Mode { #[default] Fixed, Weights, Explore, Gain }
 
 /// The mode, the weights (a weight a name of `INPUTS`; the rest are nought) and the seed of Explore.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -101,6 +110,18 @@ pub fn apply(spec: &ChooserSpec, rows: &[Vec<f64>], fixed: Option<usize>) -> App
     match spec.mode {
         Mode::Fixed => Applied { index: keep, sums, propensity: 1.0 },
         Mode::Explore => Applied { index: (splitmix(spec.seed) % n as u64) as usize, sums, propensity: 1.0 / n as f64 },
+        Mode::Gain => {
+            let at = |name: &str| INPUTS.iter().position(|k| *k == name).unwrap_or(0);
+            let (a, o, og, tg, th) = (at("answers_threat"), at("our_gain"), at("our_goal_gain"), at("their_gain"), at("their_goal_gain"));
+            let pool: Vec<usize> = { let ans: Vec<usize> = (0..n).filter(|i| rows[*i][a] > 0.5).collect(); if ans.is_empty() { (0..n).collect() } else { ans } };
+            let key = |i: usize| (rows[i][og] - rows[i][th], rows[i][o] - rows[i][tg]);
+            let eq = |x: f64, y: f64| (x - y).abs() <= 1e-12 * x.abs().max(y.abs()).max(1.0);
+            let top = pool.iter().copied().fold(key(pool[0]), |b, i| { let k = key(i); if k.0 > b.0 && !eq(k.0, b.0) || (eq(k.0, b.0) && k.1 > b.1 && !eq(k.1, b.1)) { k } else { b } });
+            let tied: Vec<usize> = pool.iter().copied().filter(|i| { let k = key(*i); eq(k.0, top.0) && eq(k.1, top.1) }).collect();
+            let sums: Vec<f64> = (0..n).map(|i| rows[i][o] - rows[i][tg]).collect();
+            let index = if tied.contains(&keep) { keep } else { tied[0] };
+            Applied { index, sums, propensity: 1.0 }
+        }
         Mode::Weights => {
             let top = sums.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
             let tied: Vec<usize> = (0..n).filter(|i| (sums[*i] - top).abs() <= 1e-12 * top.abs().max(1.0)).collect();
