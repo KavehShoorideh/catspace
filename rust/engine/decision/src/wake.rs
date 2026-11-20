@@ -30,7 +30,7 @@ impl Pieces {
     /// The names of the pieces asked for that are NOT ported into this module yet (the Python mirrors exist; see docs/ANALYST_PLAN.md 79.05 BUILT).
     pub fn unported(&self) -> Vec<&'static str> {
         let mut v = vec![];
-        for (on, name) in [(self.carried, "carried open tactics"), (self.frames, "frames and the question read"), (self.threats, "concrete threat list"), (self.goals, "proposer of goals"), (self.two_threat_goals, "goals of two threats"), (self.reasons_pick, "reasons' pick"), (self.heads, "heads")] {
+        for (on, name) in [(self.carried, "carried open tactics"), (self.frames, "frames and the question read"), (self.goals, "proposer of goals"), (self.two_threat_goals, "goals of two threats"), (self.reasons_pick, "reasons' pick"), (self.heads, "heads")] {
             if on { v.push(name); }
         }
         v
@@ -150,16 +150,8 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unported(pub &'static str);
 
-/// One row of the concrete threat list (threat_concrete.py): a unit of one side that the other side takes, with the verdict of the best taking line, the stake and the kept responses.
-#[derive(Debug, Clone)]
-pub struct ThreatRow { pub owner: Role, pub unit: UnitRef, pub verdict: crate::threat_verdict::VerdictKind, pub line: Vec<String>, pub net: i64, pub stake: Option<f64>, pub responses: Vec<String>, pub two_moves: bool }
-
-/// The concrete threat list of a position, both sides (rows against the mover's units, rows against the other side's, exchanges apart, dropped rows kept for the proposer).
-#[derive(Debug, Clone, Default)]
-pub struct ConcreteList { pub mover: Vec<ThreatRow>, pub other: Vec<ThreatRow>, pub exchange: Vec<ThreatRow>, pub dropped: Vec<ThreatRow> }
-
-/// STEP 3, the threat list: every row read as a line to a settled end (`cs_tactics::lines`), judged by `threat_verdict`, with responses read the same way. Python mirror: threat_concrete.concrete_lists (477 lines; the line reads are already Rust).
-pub fn concrete_threats<G: Game + Placed>(_st: &Static, _g: &G, _s: &G::State, _record: &crate::threat_verdict::Record) -> Result<ConcreteList, Unported> { Err(Unported("concrete threat list")) }
+/// STEP 3, the threat list (PLAN 79.06, ported): the rows, the list and `concrete_threats` live in `crate::threats` (one piece per module) and are named here as the wake's interface. Their types were declared here thin (`unit: UnitRef`, `responses: Vec<String>`) and are widened there with the reason stated in the 79.06 BUILT block: the Python row carries the line, outcome, verdict and kept responses a proposer reads.
+pub use crate::threats::{concrete_threats, ConcreteList, ThreatRow};
 
 /// A fix: take a stopper out, move a unit off a line, bring a unit to bear (by LEGAL moves of the graph, not by an edited text), or play a quiet first move.
 #[derive(Debug, Clone)]

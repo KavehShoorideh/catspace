@@ -24,7 +24,9 @@ impl Record {
 
 /// The verdict of one line, for the side that takes it.
 #[derive(Debug, Clone)]
-pub struct Verdict { pub kind: VerdictKind, pub taker_lost: Vec<String>, pub taker_won: Vec<String>, pub left_lost: Vec<String>, pub left_won: Vec<String>, pub cancelled: usize, pub net: i64, pub resolution: f64, pub first: (u16, u16), pub end: u8 }
+pub struct Verdict { pub kind: VerdictKind, pub taker_lost: Vec<String>, pub taker_won: Vec<String>, pub left_lost: Vec<String>, pub left_won: Vec<String>, pub cancelled: usize, pub net: i64, pub resolution: f64, pub first: (u16, u16), pub end: u8,
+    /// 79.06 (additive, for the threat list's rows): the moves of the line up to its last taking, all its moves, the depth and nodes of the read, whether it ended inside an unsettled exchange, how its tail ended, what the kind changes added, the search's own value, where it started when a quiet move made it, and whether the game's end was reached only in the tail.
+    pub names: Vec<String>, pub full_names: Vec<String>, pub depth: i32, pub nodes: u64, pub unsettled: bool, pub tail_end: u8, pub kind_net: i64, pub net_search: i64, pub lead: Option<(u16, u16)>, pub prefix: Vec<String>, pub end_in_tail: bool }
 
 /// Units of the same kind taken and lost cancel exactly: (the kinds the taker is left having lost, the kinds it is left having taken, the pairs cancelled).
 pub fn cancel_like(lost: &[String], won: &[String]) -> (Vec<String>, Vec<String>, usize) {
@@ -56,7 +58,8 @@ pub fn verdict_of(read: &LineRead, rec: &Record) -> Verdict {
         else if lost.is_empty() && won.is_empty() && read.changes.is_empty() && net == 0 { VerdictKind::Quiet }
         else if (!lost.is_empty() && !won.is_empty()) || (!left_lost.is_empty() && !left_won.is_empty()) { VerdictKind::Exchange }
         else if !left_won.is_empty() { VerdictKind::Confirmed } else { VerdictKind::Refuted };
-    Verdict { kind, taker_lost: lost, taker_won: won, left_lost, left_won, cancelled: pairs, net, resolution: res, first: read.first, end }
+    Verdict { kind, taker_lost: lost, taker_won: won, left_lost, left_won, cancelled: pairs, net, resolution: res, first: read.first, end,
+        names: read.names[..read.settled.min(read.names.len())].to_vec(), full_names: read.names.clone(), depth: read.depth, nodes: read.nodes, unsettled: read.unsettled, tail_end: read.tail_end, kind_net: kind_change_net(read, rec), net_search: read.value, lead: read.lead, prefix: read.prefix.clone(), end_in_tail: read.end == 0 }
 }
 
 /// The line of a row from its taking lines: the best for the taker; a line that was cut stands only when no line that was read is CONFIRMED.

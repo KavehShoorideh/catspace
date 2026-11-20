@@ -13,6 +13,7 @@ pub mod graph_net;
 pub mod graph_prior;
 pub mod lemma_prior;
 pub mod threat_verdict;
+pub mod threats;
 pub mod wake;
 
 pub use lemma_prior::{LemmaPrior, RulesFirst};
