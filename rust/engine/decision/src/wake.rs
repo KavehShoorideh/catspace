@@ -24,17 +24,19 @@ use cs_tactics::lines::LineParams;
 use cs_tactics::sheet::base_graph::{PositionPart, Static, UnitRec};
 use std::collections::HashSet;
 
-/// Which pieces of the wake are on (section 8's steps): `carried` step 1, `frames` step 2, `threats` and `goals` and `two_threat_goals` step 3, `graph_reads` step 3 (the shut lines and the bearers a move brings), `reasons_pick` and `heads` step 6, `after_move` step 4 (PLAN 79.10 A).
+/// Which pieces of the wake are on (section 8's steps): `carried` step 1, `frames` step 2, `threats` and `goals` and `two_threat_goals` step 3, `graph_reads` step 3 (the shut lines and the bearers a move brings), `reasons_pick` and `heads` step 6, `after_move` step 4 (PLAN 79.10 A), `direct_names` step 4 (79.10 C).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Pieces { pub carried: bool, pub frames: bool, pub threats: bool, pub goals: bool, pub two_threat_goals: bool, pub graph_reads: bool, pub reasons_pick: bool, pub heads: bool,
     /// PLAN 79.10 A: their goals are read after each move of ours (`after`), their fixes named at that child position, the fact about the move logged
-    pub after_move: bool }
+    pub after_move: bool,
+    /// PLAN 79.10 C: the names go to the search directly, a small count a position, in order of stake; no line of a named move is read before the search (the reading for the chain of claims comes after it, where the clock allows)
+    pub direct_names: bool }
 
 impl Pieces {
     /// The old player: the search with the count of worths at its end, nothing else.
     pub fn old_player() -> Pieces { Pieces::default() }
     /// Every piece on.
-    pub fn all() -> Pieces { Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: true, reasons_pick: true, heads: true, after_move: true } }
+    pub fn all() -> Pieces { Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: true, reasons_pick: true, heads: true, after_move: true, direct_names: true } }
     /// The names of the pieces asked for that are NOT ported: only the heads that read counts summed over the whole position, which the owner's decision of 2026-11-19 (SYSTEM_SPEC 7, point 2) says not to port and not to call; the estimates of the wake are per goal (estimate.rs) and per move (pick.rs).
     pub fn unported(&self) -> Vec<&'static str> {
         let mut v = vec![];
@@ -219,6 +221,8 @@ pub const FRAMES_OF_PRE: f64 = 0.3;
 pub const LIST_OF_PRE: f64 = 0.7;
 /// PLAN 79.10 A: of what is left of the steps before the search, their goals after our moves may take at most this much (the reading of the named moves has the rest).
 pub const AFTER_OF_PRE: f64 = 0.5;
+/// PLAN 79.10 C: with direct names the tail of the clock (what is left after the search and the equal reading) is shared between the reasons' score of the moves held equal and the reading of the named moves for the claims: the score may take this share of what is left, the claims the rest.
+pub const CLAIMS_OF_TAIL: f64 = 0.5;
 
 /// The share of the clock the steps before the search may take.
 pub fn pre_share_of(share: f64, given: Option<f64>) -> f64 { given.unwrap_or(((1.0 - share) * (1.0 - crate::TIE_SHARE) - TAIL_SHARE).max(0.0)) }
@@ -244,6 +248,14 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let text = |u: &UnitRef| format!("{} {} on {}", roles[u.owner], kinds[u.kind as usize], places[u.at as usize]);
     let mut contributions: Vec<Contribution> = vec![];
     let mut log = DecisionLog::default();
+    // ---- PLAN 79.10 A, first, because it needs nothing of the steps after it and costs about a thousandth of a second a position: their goals on the position after each move of ours, in the search's own order, within its share of the steps before the search; their fixes named at that child
+    let count = if inp.named_budget > 0 { inp.named_budget } else { rule::NAMED_BUDGET };
+    let mut after = crate::after::AfterRead::default();
+    if p.after_move {
+        let order = Search::new(g, judge, me, 0.1).deepening_order(s);
+        after = crate::after::their_goals_after(st, g, s, rec, inp.goal, &order, count, Some(until(pre_end, AFTER_OF_PRE)));
+        contributions.push(Contribution { piece: "their goals after each move of ours", step: 3, seconds: after.seconds, named: vec![], note: format!("{} positions read, {} not reached by the clock", after.rows.len(), after.not_asked.len()) });
+    }
     // ---- steps 1 and 2: the frames and the carry
     let mut frames: Option<FrameRows> = None;
     if p.frames {
@@ -282,34 +294,40 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let stakes = rule::Stakes::read(g, s, rec, &prop.goals, inp.goal);
     let chains_mine = rule::named_fixes(&prop.goals, me, &stakes);
     let chains_theirs = rule::named_fixes(&prop.goals, other, &stakes);
-    let count = if inp.named_budget > 0 { inp.named_budget } else { rule::NAMED_BUDGET };
-    for m in rule::names_of(&chains_mine, count) { put(&mut mine, &m); }
+    // (with direct names the count is applied once, below, so that what it cuts is listed)
+    let chain_cap = if p.direct_names { usize::MAX } else { count };
+    for m in rule::names_of(&chains_mine, chain_cap) { put(&mut mine, &m); }
     for (k, r) in their.iter().enumerate() {
         let Some(u) = r.unit else { continue };
         for (t, ans) in &prop.defence { if *t == u { for a in ans { put(&mut mine, &a.mv); if k == 0 { put(&mut answers_largest, &a.mv); } } } }
     }
     let mut theirs: Vec<String> = vec![];
     // PLAN 79.10 A: with `after_move` their fixes are named at each child position (below), not at the ply after ours on a pass
-    if !p.after_move { for m in rule::names_of(&chains_theirs, count) { put(&mut theirs, &m); } }
+    if !p.after_move { for m in rule::names_of(&chains_theirs, chain_cap) { put(&mut theirs, &m); } }
     for r in prop.list.other.iter().filter(|r| r.verdict == crate::threat_verdict::VerdictKind::Confirmed && !r.two_moves) {
         for x in r.responses.iter().filter(|x| x.state == RespState::Kept) { if let Some(n) = x.names.first() { put(&mut theirs, n); } }
     }
     let budget = count;
-    // PLAN 79.10 A: their goals on the position after each move of ours, in the search's own order, until the clock of the step; their fixes named at that child
-    let mut after = crate::after::AfterRead::default();
-    if p.after_move {
-        let order = Search::new(g, judge, me, 0.1).deepening_order(s);
-        after = crate::after::their_goals_after(st, g, s, rec, inp.goal, &order, budget, Some(until(pre_end, AFTER_OF_PRE)));
-        contributions.push(Contribution { piece: "their goals after each move of ours", step: 4, seconds: after.seconds, named: vec![], note: format!("{} positions read, {} not reached by the clock", after.rows.len(), after.not_asked.len()) });
+    let t0 = std::time::Instant::now();
+    let (mut kept, named_mine, named_theirs): (rule::KeptNames, Vec<String>, Vec<String>);
+    if p.direct_names {
+        // PLAN 79.10 C: the names go to the search as they are, the answers to their largest threat first, then in order of stake; a count, not a reading. What the count cut is listed (a gap).
+        let first: Vec<String> = answers_largest.iter().cloned().chain(mine.iter().filter(|m| !answers_largest.contains(m)).cloned()).collect();
+        named_mine = first.iter().take(count).cloned().collect();
+        named_theirs = theirs.iter().take(count).cloned().collect();
+        kept = rule::KeptNames::default();
+        kept.unlisted = first.iter().skip(count).map(|m| (m.clone(), false)).chain(theirs.iter().skip(count).map(|m| (m.clone(), true))).collect();
+        contributions.push(Contribution { piece: "named moves: given to the search directly, in order of stake", step: 4, seconds: t0.elapsed().as_secs_f64(), named: named_mine.iter().chain(named_theirs.iter()).cloned().collect(), note: format!("{} named for the root, {} for the ply after, {} over the count", named_mine.len(), named_theirs.len(), kept.unlisted.len()) });
+    } else {
+        kept = rule::keep_read_by(g, s, rec, &mine, &theirs, budget, LineParams { depth: tp.sweep_depth, fuse: tp.sweep_fuse }, inp.share_table, Some(pre_end));
+        named_mine = kept.mine.iter().map(|k| k.name.clone()).collect();
+        named_theirs = kept.theirs.iter().map(|k| k.name.clone()).collect();
     }
-    let kept = rule::keep_read_by(g, s, rec, &mine, &theirs, budget, LineParams { depth: tp.sweep_depth, fuse: tp.sweep_fuse }, inp.share_table, Some(pre_end));
-    let named_mine: Vec<String> = kept.mine.iter().map(|k| k.name.clone()).collect();
-    let named_theirs: Vec<String> = kept.theirs.iter().map(|k| k.name.clone()).collect();
     // PLAN 79.09 C: a goal is the subgoal of the moment only if a named move serves it: the first chain (in order of stake) whose nearest goal has a move that was named
     let chosen_chain = chains_mine.iter().position(|c| c.all_moves().iter().any(|m| named_mine.contains(m)));
     let chosen_ix = chosen_chain.map(|k| chains_mine[k].goal);
     if chosen_ix.is_none() && !chains_mine.is_empty() { log.notes.push("no goal of ours is the subgoal of the moment: no move that fixes one was named (refuted or not read)".into()); }
-    contributions.push(Contribution { piece: "named moves: their lines read, the refuted left out", step: 4, seconds: t0.elapsed().as_secs_f64(), named: named_mine.iter().chain(named_theirs.iter()).cloned().collect(), note: format!("{} lines read, {} refuted, {} not read (over the budget)", kept.read, kept.refuted.len(), kept.unlisted.len()) });
+    if !p.direct_names { contributions.push(Contribution { piece: "named moves: their lines read, the refuted left out", step: 4, seconds: t0.elapsed().as_secs_f64(), named: named_mine.iter().chain(named_theirs.iter()).cloned().collect(), note: format!("{} lines read, {} refuted, {} not read (over the budget)", kept.read, kept.refuted.len(), kept.unlisted.len()) }); }
     // ---- step 5: the search, with the named moves first and in full
     let t0 = std::time::Instant::now();
     // the search keeps its share of the clock and gets what the steps before it did not spend of theirs
@@ -340,7 +358,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let all_names: Vec<String> = moves.iter().map(|m| g.move_name(s, m)).collect();
     let sc: Option<Vec<MoveReasons>> = match (&inp.reasons, p.reasons_pick) {
         // the moves held equal are scored first (they decide); the others only while the clock of the whole decision lasts (they are logged); one not reached has no score
-        (Some(r), true) => { let order: Vec<String> = equal.iter().cloned().chain(all_names.iter().filter(|n| !equal.contains(n)).cloned()).collect(); Some(crate::pick::scores_by(st, g, s, inp.goal, r, &order, Some(wall_end))) }
+        (Some(r), true) => { let order: Vec<String> = equal.iter().cloned().chain(all_names.iter().filter(|n| !equal.contains(n)).cloned()).collect(); Some(crate::pick::scores_by(st, g, s, inp.goal, r, &order, Some(if p.direct_names { until(wall_end, CLAIMS_OF_TAIL) } else { wall_end }))) }
         (None, true) => { log.notes.push("the reasons' pick asked for and no reasons given: no estimate of a move, the search's own first move decides among the rest".into()); None }
         _ => None,
     };
@@ -353,6 +371,16 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let chosen = rule::choose(&equal, &answers_largest, &fixes, &|set: &[String]| if scored_equal { sc.as_ref().and_then(|v| crate::pick::pick(v, set, tie_digits)) } else { None });
     contributions.push(Contribution { piece: "the choice among the moves held equal (the rule, the estimates)", step: 6, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
     let mv = chosen.as_ref().map(|c| c.mv.clone()).or_else(|| ln.first.clone());
+    // PLAN 79.10 C: the reading of the named moves for the chain of claims comes AFTER the search, where the clock of the whole decision allows: the move played first, then the others named, in order; what the clock did not reach is listed (a gap)
+    if p.direct_names {
+        let t0 = std::time::Instant::now();
+        let mut order: Vec<String> = mv.iter().cloned().collect();
+        order.extend(named_mine.iter().filter(|n| Some(*n) != mv.as_ref()).cloned());
+        let r = rule::keep_read_by(g, s, rec, &order, &[], count, LineParams { depth: tp.sweep_depth, fuse: tp.sweep_fuse }, inp.share_table, Some(wall_end));
+        contributions.push(Contribution { piece: "the lines of the named moves read for the claims, after the search", step: 7, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: format!("{} lines read, {} refuted, {} not reached by the clock", r.read, r.refuted.len(), r.unlisted.len()) });
+        kept.unlisted.extend(r.unlisted);
+        kept.read = r.read; kept.nodes = r.nodes; kept.seconds = r.seconds; kept.mine = r.mine; kept.refuted = r.refuted;
+    }
     // ---- step 7: the chain of claims and the log
     // THE CLAIM THAT DECIDED THE MOVE (PLAN 79.09 C): the goals the move is a fix of, the goal of the largest stake first
     let serves_of = |name: &String| -> Vec<(f64, usize, String)> {

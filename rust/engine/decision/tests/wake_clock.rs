@@ -164,7 +164,7 @@ fn b_the_share_of_the_clock_the_steps_before_the_search_may_take_is_what_the_sea
 }
 
 fn whole(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State, seconds: f64, pre: Option<f64>) -> WakeParams {
-    WakeParams { seconds, depth: 64, pieces: Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: true, heads: false, after_move: false },
+    WakeParams { seconds, depth: 64, pieces: Pieces { carried: true, frames: true, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: true, heads: false, after_move: false, direct_names: false },
         inputs: WakeInputs { record: record(), goal: Some(kind(g, "king")), frame: Some(frame_read_of(g, st, s, None)), chances: Some(ChanceTable { floor: 20, total: (100, 25), ..Default::default() }), reasons: Some(reasons_of(st, g, s)), pre_share: pre, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
