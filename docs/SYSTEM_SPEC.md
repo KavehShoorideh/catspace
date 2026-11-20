@@ -448,6 +448,18 @@ can inherit its errors, so it is anchored by ends of games and proved lemmas and
   assumed: does adding earlier states improve the prediction of the next one. If it does, a short memory of earlier
   states is added as input.
 
+**One way of asking for every goal** (DECIDED 2026-11-19). His words: "the idea that there should be like a special vocabulary for the line
+to the king, opening up the line to the king. No, it should just generally be like, how do I get to the goal? What are the things that
+stand in my way to getting to the goal? And then can I get rid of those things? So in the case of an attacker, it's either capture the
+attacker, pin the attacker, block the attacker, defend the piece sometimes, not always. So like these are the things that you can do to
+stop the attack, what's stopping your attack? What's stopping you from mating? What's stopping you from reaching your goal? Whatever
+that sub goal is." So the goal unit's goal has no fact and no word that another goal lacks. A goal has facts; an unmet fact names what
+stops it; each stopper that is a unit of the other side is itself a target with a goal of the same form, and that is the subgoal; the
+chain is goal, what stops it, the subgoal that removes it. The defence is the same read from the other side: our answers to a goal of
+theirs are the moves that make one of its facts unmet (take the bearer, tie it, put a unit between, add a holder, move the target),
+named by the fact and by nothing else; whether one works is the line read's verdict. A move that is a fix under two goals at once is
+how two threats are found. Plan 79.07 as amended.
+
 ## 8. Wake
 
 1. Bring forward the open tactics carried from the last move, and update only those whose facts changed.
@@ -765,6 +777,15 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     same wall clock a position; the clock of the whole is whatever its steps need, and the cost by step is reported as work to do in
     Rust. One thing you floated and took back the same day, recorded so it is not lost: worths from the results of the oracle's own
     playouts in sleep instead of from human games of every level (it would change the sources of section 5; not taken).
+26. From 2026-11-19, a question you asked and did not settle: "how do we spend effort chasing a mate that is very far off that we can't
+    really reason our way around because there's just too many plies out, or do we chase the smaller stake that is more concrete?"
+    What the spec already says (section 7, 2026-11-19): the stake orders goals, not the length; a budget of questions; past it only
+    where progress is made; too far means break it down. The proposer's own default orders by the fewest unmet facts first, which is
+    the opposite. PROPOSED by the main agent, not decided: two passes. The ASKING is in order of stake and costs almost nothing (the
+    graph alone: how many things stand in the way of each goal). The READING, which is what costs, goes to the goal with the fewest
+    things in its way, the larger stake breaking ties. A far goal of high stake is never read as a line; it is carried from move to
+    move and gives the reading one thing only, its nearest stopper as a subgoal, which is small and concrete. So the far goal chooses
+    WHICH small goals are worth reading, and the small goals get the reading.
 25. From plan 79.06 (2026-11-19). Choices the builder made where the spec is silent, kept until you say otherwise: until the frame read
     is in Rust the rows of the threat list come from the graph (every unit an opposing unit bears on); the stake is read by a function
     the caller gives. Two behaviours carried over from the Python that look wrong and are to be settled at the integration tests: a
@@ -897,4 +918,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | What exists and the state of the build | 2026-11-16 | 12 |
 | Open questions | 2026-11-16 | 13 |
 | The pieces are folded into one wake and the whole is judged, not each piece alone | 2026-11-19 | 8 |
+| One way of asking for every goal: what stands in the way, can it be removed; a stopper is a target and that is the subgoal; the defence is the same read from the other side; no word special to the goal unit | 2026-11-19 | 7 |
 | What was replaced | 2026-11-16 | 14 |
