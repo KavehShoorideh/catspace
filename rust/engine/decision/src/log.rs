@@ -75,7 +75,9 @@ pub struct DecisionLog {
 /// within `d` of our moves after which the term is lower against every reply (None: none, or the clock cut the question), `moves` how many of our moves that line takes, `played_toward` whether that move was played (it is played only where the calculation holds it equal), `dropped` the cause the goal was dropped for in this decision.
 #[derive(Debug, Clone, Default)]
 pub struct MeasureLog { pub term: String, pub d: u32, pub value_now: Vec<i64>, pub held_before: Option<Vec<i64>>, pub held_after: Option<Vec<i64>>, pub reached: bool, pub key: u64, pub reached_total: u32, pub since: u32,
-    pub first: Option<String>, pub moves: Option<u32>, pub game_end: bool, pub cut: bool, pub nodes: u64, pub seconds: f64, pub played_toward: bool, pub dropped: Option<String>, pub said: String }
+    pub first: Option<String>, pub moves: Option<u32>, pub game_end: bool, pub cut: bool, pub nodes: u64, pub seconds: f64, pub played_toward: bool, pub dropped: Option<String>, pub said: String,
+    /// PLAN 79.18: the move named is a recovery (below the value now, not below the lowest held); the goal sleeps (the search holds the end of the game) and why; it was woken at this decision; the decisions in a row without a line within d; the totals of recoveries, times asleep and times woken
+    pub recovery: bool, pub asleep: Option<String>, pub woke: bool, pub without_line: u32, pub recovered_total: u32, pub slept_total: u32, pub woken_total: u32 }
 
 /// PLAN 79.16 A: the reading on of a first move that the clock stopped at depth `depth` (the answer of `from_depth` is the one asked about): the first move's null-window answer at `depth` (None: cut before it ended), the value it was asked to hold, how it ended ("first_held", "other_held", "all_failed", "cut"), what it cost and what it was allowed.
 #[derive(Debug, Clone, Default)]
@@ -99,7 +101,7 @@ fn goal_json(x: &GoalLog) -> Value {
 
 fn measure_json(m: &MeasureLog) -> Value {
     let mut v = json!({"term": m.term, "d": m.d, "value_now": m.value_now, "held_before": m.held_before, "held_after": m.held_after, "reached": m.reached, "key": m.key.to_string(), "reached_total": m.reached_total, "since": m.since});
-    let w = json!({"first": m.first, "moves": m.moves, "game_end": m.game_end, "cut": m.cut, "nodes": m.nodes, "seconds": m.seconds, "played_toward": m.played_toward, "dropped": m.dropped, "said": m.said});
+    let w = json!({"first": m.first, "moves": m.moves, "game_end": m.game_end, "cut": m.cut, "nodes": m.nodes, "seconds": m.seconds, "played_toward": m.played_toward, "dropped": m.dropped, "said": m.said, "recovery": m.recovery, "asleep": m.asleep, "woke": m.woke, "without_line": m.without_line, "recovered_total": m.recovered_total, "slept_total": m.slept_total, "woken_total": m.woken_total});
     if let (Some(a), Some(b)) = (v.as_object_mut(), w.as_object()) { for (k, x) in b { a.insert(k.clone(), x.clone()); } }
     v
 }

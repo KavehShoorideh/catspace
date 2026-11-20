@@ -267,12 +267,13 @@ pub const MEASURE_OF_PRE: f64 = 0.5;
 /// PLAN 79.17 D: the fuse on the nodes of the held goal's question (a named cap, the clock is the real bound; a cut is a gap, never a verdict).
 pub const MEASURE_NODES: u64 = 20_000_000;
 
-/// PLAN 79.17 PART D (SYSTEM_SPEC 7, the measure of progress; 8 the rule for choosing a move; piece: the wake). THE HELD GOAL, one decision of it. INTERFACE: takes the game, the position, the history keys, the side to move (the side the measure is for), the goal asked for (`MeasureGoal`), the goal held from the last decision (`Carried::held`, None
-/// at the first) and the instant its question may run to; returns the goal held now, the log of what it did and the first move of a line that lowers the measure within `d` of our moves against every reply (None: none, or the clock cut the question). Called by `decide`, first, inside the share of the steps before the search.
-/// THE RULES: the goal is taken up at the first decision at the value read there; a value lower than the lowest held is a SUBGOAL REACHED (the event of ledger row 24, logged with the position's key) and the held value moves to it; the goal is DROPPED only for a stated cause, which is logged and ends it for the game: the class changed (the units of
-/// each side by kind are not the units it was taken up with), or no line of at most `d` of our moves lowers the measure (the question was read to its end, not cut). The question compares with the value NOW (October's criterion: from every position of the class some play within d lowers it), the held value being the lowest seen and the register of events.
+/// PLAN 79.17 PART D, MENDED BY PLAN 79.18 B AND C (SYSTEM_SPEC 7, the measure of progress; 8 the rule for choosing a move; piece: the wake). THE HELD GOAL, one decision of it. INTERFACE: takes the game, the position, the history keys, the side to move (the side the measure is for), the goal asked for (`MeasureGoal`), the goal held from the last decision
+/// (`Carried::held`, None at the first) and the instant its question may run to; returns the goal held now, the log of what it did and the first move of the line the question found (None: none, or the clock cut the question). Called by `decide`, first, inside the share of the steps before the search.
+/// THE RULES: the goal is taken up at the first decision at the value read there; a value lower than the lowest held is a SUBGOAL REACHED (the event of ledger row 24, logged with the position's key) and the lowest held moves to it. THE QUESTION (79.18 B, `cs_tactics::measure::question`) is counted against the LOWEST held: a line within `d` of our moves after which the term is below the lowest held
+/// against every reply (a fall); where none exists, read to its end, and the value now is above the lowest, a line that brings it below the value now (a RECOVERY: logged as one, played, never counted as a subgoal reached); a position met before in the game is never the end of a line that counts. THE GOAL'S STATES (79.18 C): it is DROPPED for good only when the class changed (the units of each side by kind are not
+/// the units it was taken up with); a question read to its end that found no line leaves the goal held and it is asked again at the next decision (the log says how many decisions in a row without a line); a goal the search's end of the game puts to SLEEP (`decide`) stays in what is carried and is woken at the next decision in which the search no longer holds the end.
 pub fn measure_step<G: Game + Placed>(st: &Static, g: &G, s: &G::State, history: &[u64], me: Role, mg: &MeasureGoal, prev: Option<&crate::carry::HeldGoal>, end: std::time::Instant) -> (crate::carry::HeldGoal, crate::log::MeasureLog, Option<String>) {
-    use cs_tactics::measure::{lower, lowering, value, Geometry, Reader};
+    use cs_tactics::measure::{lower, question, value, Geometry, Reader};
     let geo = Geometry::new(st);
     let now = value(&mg.term, &Reader::new(g, &geo, s, me));
     let mut class: Vec<(bool, u8)> = g.cells(s).iter().map(|(o, k, _)| (*o != me, *k)).collect();
@@ -280,14 +281,15 @@ pub fn measure_step<G: Game + Placed>(st: &Static, g: &G, s: &G::State, history:
     let text = mg.term.text();
     let mut log = crate::log::MeasureLog { term: text.clone(), d: mg.d, value_now: now.clone(), key: g.key(s), ..Default::default() };
     let fresh = prev.is_none_or(|p| p.term != text);
-    let mut held = if fresh { crate::carry::HeldGoal { term: text.clone(), value: now.clone(), since: 0, reached: 0, class: class.clone(), dropped: None } } else { prev.unwrap().clone() };
+    let mut held = if fresh { crate::carry::HeldGoal { term: text.clone(), value: now.clone(), since: 0, reached: 0, class: class.clone(), dropped: None, asleep: None, slept: 0, woken: 0, without_line: 0, recovered: 0 } } else { prev.unwrap().clone() };
+    let totals = |log: &mut crate::log::MeasureLog, h: &crate::carry::HeldGoal| { log.since = h.since; log.reached_total = h.reached; log.without_line = h.without_line; log.recovered_total = h.recovered; log.slept_total = h.slept; log.woken_total = h.woken; log.asleep = h.asleep.clone(); };
     if fresh { log.said = format!("the goal is taken up: the measure {text} reads {now:?} here"); }
     else {
         log.held_before = Some(held.value.clone());
-        if let Some(c) = held.dropped.clone() { log.dropped = Some(c.clone()); log.said = format!("the goal was dropped earlier: {c}"); log.since = held.since; log.reached_total = held.reached; return (held, log, None); }
+        if let Some(c) = held.dropped.clone() { log.dropped = Some(c.clone()); log.said = format!("the goal was dropped earlier: {c}"); totals(&mut log, &held); return (held, log, None); }
         if held.class != class {
             let c = "the class changed: the units of the two sides are no longer those the goal was taken up with".to_string();
-            held.dropped = Some(c.clone()); log.dropped = Some(c.clone()); log.said = format!("the goal is dropped: {c}"); log.since = held.since; log.reached_total = held.reached;
+            held.dropped = Some(c.clone()); log.dropped = Some(c.clone()); log.said = format!("the goal is dropped: {c}"); totals(&mut log, &held);
             return (held, log, None);
         }
         if lower(&now, &held.value) { log.reached = true; log.said = format!("a subgoal is reached: the measure fell from {:?} to {now:?}", held.value); held.value = now.clone(); held.since = 0; held.reached += 1; }
@@ -297,25 +299,29 @@ pub fn measure_step<G: Game + Placed>(st: &Static, g: &G, s: &G::State, history:
     let t0 = std::time::Instant::now();
     let mut b = cs_tactics::Budget::new(end.saturating_duration_since(t0).as_secs_f64(), MEASURE_NODES);
     let hist: HashSet<u64> = history.iter().copied().collect();
-    let (found, cut) = lowering(g, &geo, s, me, &mg.term, &now, mg.d, &hist, &mut b);
+    let (found, cut) = question(g, &geo, s, me, &mg.term, &held.value, &now, mg.d, &hist, &mut b);
     log.seconds = t0.elapsed().as_secs_f64();
     log.nodes = b.nodes;
     log.cut = cut;
     let mut first = None;
     match found {
-        Some(l) => {
+        Some(f) => {
+            let l = f.lowering();
             let name = g.move_name(s, &g.moves(s)[l.first]);
-            log.said.push_str(&format!("; a line of {} of our moves lowers it against every reply{}, its first move {name}", l.moves, if l.game_end { " (the end of the game is found in it)" } else { "" }));
+            let ends = if l.game_end { " (the end of the game is found in it)" } else { "" };
+            if f.is_fall() { log.said.push_str(&format!("; a line of {} of our moves lowers it below the lowest held against every reply{ends}, its first move {name}", l.moves)); }
+            else { log.recovery = true; held.recovered += 1; log.said.push_str(&format!("; no line within {} of our moves goes below the lowest held; a RECOVERY, not a subgoal reached: a line of {} of our moves brings it below the value now {now:?} against every reply{ends}, its first move {name}", mg.d, l.moves)); }
             log.first = Some(name.clone()); log.moves = Some(l.moves); log.game_end = l.game_end;
+            held.without_line = 0;
             first = Some(name);
         }
         None if !cut => {
-            let c = format!("no line of at most {} of our moves lowers the measure against every reply (the question was read to its end)", mg.d);
-            held.dropped = Some(c.clone()); log.dropped = Some(c.clone()); log.said.push_str(&format!("; the goal is dropped: {c}"));
+            held.without_line += 1;
+            log.said.push_str(&format!("; no line of at most {} of our moves goes below the lowest held or below the value now (the question was read to its end): the goal stays and is asked again at the next decision, {} decisions in a row without a line", mg.d, held.without_line));
         }
         None => log.said.push_str("; the clock cut the question: nothing is named (a gap, the goal stays)"),
     }
-    log.since = held.since; log.reached_total = held.reached;
+    totals(&mut log, &held);
     (held, log, first)
 }
 
@@ -521,17 +527,24 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     // ---- PLAN 79.12 B: the last layer among the moves held equal (the wall: a first move the equal reading dropped is not a candidate)
     let mut override_why: Option<(rule::Decided, String)> = None;
     // ---- PLAN 79.17 D: among the moves the calculation holds equal, the first move of the line that lowers the held measure (the wall stands: a move the calculation holds worse is never played for the measure; their largest threat is answered first, as the rule does)
+    // ---- PLAN 79.18 C: the goal sleeps while the search holds the end of the game (it is played) and is woken at the next decision in which the search no longer holds it; only a class that changed ends it for good
+    if let (Some(h), Some(ml)) = (held_next.as_mut(), measure_log.as_mut()) {
+        if h.dropped.is_none() {
+            if decided && h.asleep.is_none() { h.slept += 1; h.asleep = Some("the end of the game is found by the search, which plays it".to_string()); ml.said.push_str("; the goal goes to sleep: the search holds the end of the game"); }
+            else if !decided && h.asleep.is_some() { h.asleep = None; h.woken += 1; ml.woke = true; ml.said.push_str("; the goal is woken: the search no longer holds the end of the game"); }
+            ml.asleep = h.asleep.clone(); ml.slept_total = h.slept; ml.woken_total = h.woken;
+        }
+    }
     if let (Some(tf), Some(ml)) = (&toward_first, measure_log.as_mut()) {
         let held_by_probe: Vec<String> = probes.iter().filter(|(_, v)| *v >= ln.value).map(|(i, _)| g.move_name(s, &moves[*i])).collect();
         let allowed: Vec<String> = equal.iter().cloned().chain(held_by_probe.into_iter().filter(|m| !equal.contains(m))).collect();
         let answering: Vec<String> = allowed.iter().filter(|m| answers_largest.contains(m)).cloned().collect();
         let pool = if answering.is_empty() { allowed.clone() } else { answering };
         if decided {
-            if let Some(h) = held_next.as_mut() { if h.dropped.is_none() { let c = "the end of the game is found by the search, which plays it".to_string(); h.dropped = Some(c.clone()); ml.dropped = Some(c); } }
-            ml.said.push_str("; the search finds the end of the game: it is played and the goal is dropped");
+            ml.said.push_str("; the search finds the end of the game: it is played");
         } else if pool.contains(tf) {
             ml.played_toward = true;
-            override_why = Some((rule::Decided::Measure, format!("toward the held goal: the measure falls from {:?} within {} of our moves against every reply, and the calculation holds this first move equal to the best", ml.value_now, ml.moves.unwrap_or(0))));
+            override_why = Some((rule::Decided::Measure, if ml.recovery { format!("toward the held goal, a recovery: the measure is above the lowest held and a line of {} of our moves brings it below {:?} against every reply, and the calculation holds this first move equal to the best", ml.moves.unwrap_or(0), ml.value_now) } else { format!("toward the held goal: the measure falls from {:?} within {} of our moves against every reply, and the calculation holds this first move equal to the best", ml.value_now, ml.moves.unwrap_or(0)) }));
             mv = Some(tf.clone());
         } else {
             ml.said.push_str("; the move toward the goal is not among those the calculation holds equal (or answers their threat): it is not played, the wall stands");

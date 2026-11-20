@@ -31,12 +31,15 @@ pub struct Carried { pub rows: Vec<CarriedRow>,
     /// PLAN 79.17 D: the measure held as a goal beyond the search's horizon (SYSTEM_SPEC 7): carried from move to move with the open tactics
     pub held: Option<HeldGoal> }
 
-/// PLAN 79.17 PART D (SYSTEM_SPEC 7, the measure of progress as a goal held across moves; ledger rows 13, 24, 35): THE HELD GOAL. The term (its text), the value it had when it was last lowered, the plies since, the number of subgoals reached so far (each a lowering of the value), the class of the position it
-/// was taken up in (the units of each side by kind, as numbers, sorted: a change of class ends the goal) and, once dropped, the cause. It is a goal and never a value: it orders what the search reads and chooses among moves the calculation holds equal.
+/// PLAN 79.17 PART D (SYSTEM_SPEC 7, the measure of progress as a goal held across moves; ledger rows 13, 24, 35): THE HELD GOAL. The term (its text), the lowest value held (the value it had when it was last lowered), the plies since, the number of subgoals reached so far (each a lowering of the value below the lowest), the class of the position
+/// it was taken up in (the units of each side by kind, as numbers, sorted: a change of class ends the goal) and, once dropped, the cause. It is a goal and never a value: it orders what the search reads and chooses among moves the calculation holds equal.
+/// PLAN 79.18 C (the goal's states): `dropped` is for good and only for a class that changed; `asleep` is the cause the goal sleeps for (the search holds the end of the game: it is played) and ends at the next decision in which the search no longer holds it; `slept` and `woken` count the times it went to sleep and was
+/// woken; `without_line` counts the decisions in a row in which the question was read to its end and found no line within d (the goal stays and is asked again); `recovered` counts the decisions in which the move named was a recovery (below the value now, not below the lowest held).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeldGoal { pub term: String, pub value: Vec<i64>, pub since: u32, pub reached: u32, pub class: Vec<(bool, u8)>,
     /// the cause the goal was dropped for (None: held); a dropped goal is not taken up again in the game
-    pub dropped: Option<String> }
+    pub dropped: Option<String>,
+    pub asleep: Option<String>, pub slept: u32, pub woken: u32, pub without_line: u32, pub recovered: u32 }
 
 impl Carried {
     /// The rows of `list` that have a read set (the frame read made them).

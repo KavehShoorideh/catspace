@@ -22,10 +22,12 @@
 //!   `lower(a, b)`                                a is strictly below b in the order of the tuple.
 //!   `lowering(...) -> Option<Lowering>`          the question of October's criterion: is there a move of ours after which, within d of our moves and against every reply, the term is lower than `held` or the game's end is found? It is the search of toward.rs (`toward_with`) with the leaf
 //!                                                  "the term is below the held value" read where it is our turn. The answer names the first move.
+//!   `question(..) -> (Option<Found>, cut)`      PLAN 79.18 B: the question of the held goal. The fall is counted against the LOWEST value held: is there a line of at most d of our moves after which, against every reply, the term is below the lowest held (`Found::Fall`)? Where there is none, read to its end, and the value now is
+//!                                                  above the lowest, is there one that brings it below the value now (`Found::Recovery`, which is not a fall)? A position met before in the game is a draw for the search and never the end of a line that counts.
 //! Called by: the binding (`measure_atoms`, `measure_lowers`), the wake (`cs_decision::wake`, the held goal), the miner's driver in Python.
 use crate::sheet::base_graph::Static;
 use crate::sheet::{Kind, Place, PlaceSet};
-use crate::toward::{toward_with, Class, Verdict};
+use crate::toward::{toward_memo, Class, Verdict};
 use cs_game::placed::Placed;
 use cs_game::{Game, Role};
 use cs_operator::Budget;
@@ -279,8 +281,29 @@ pub fn lowering<G: Game + Placed>(g: &G, geo: &Geometry, s: &G::State, side: Rol
         if term.atoms().iter().any(|a| match a { Atom::Region(x) | Atom::Span(x, _) | Atom::Edge(x) | Atom::Corner(x) | Atom::AxisEdge(x, _) => !r.present(*x), Atom::Dist(x, y) | Atom::Axis(x, y, _) => !r.present(*x) || !r.present(*y), Atom::Turn => false }) { return None; }
         if lower(&value(term, &r), held) { Some(Verdict::Win) } else { None }
     };
-    let t = toward_with(g, s, side, &oracle, history, 2 * d, None, b);
+    let t = toward_memo(g, s, side, &oracle, history, 2 * d, None, b);          // PLAN 79.18: the same answers as `toward_with`, a position reached by another order of moves read once
     let best = t.of_class(Class::Win).into_iter().next();
     let found = best.map(|i| Lowering { first: i, moves: (t.depth + 1) / 2, game_end: t.root.iter().find(|r| r.0 == i).is_some_and(|r| crate::toward::is_game_win(r.2)), nodes: t.nodes });
     (found, t.cut)
+}
+
+/// PLAN 79.18 B (SYSTEM_SPEC 7, the measure of progress; piece: the measure): what the question of the held goal found. A FALL goes below the lowest value held and is the subgoal reached; a RECOVERY goes only below the value now (the term had risen above the lowest) and is not a subgoal reached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Found { Fall(Lowering), Recovery(Lowering) }
+
+impl Found {
+    pub fn lowering(&self) -> &Lowering { match self { Found::Fall(l) | Found::Recovery(l) => l }
+    }
+    pub fn is_fall(&self) -> bool { matches!(self, Found::Fall(_)) }
+}
+
+/// PLAN 79.18 B: THE QUESTION OF THE HELD GOAL, counted against what was held. `lowest` is the lowest value held so far and `now` the value in the position (never below `lowest`: a value below it is registered as an event before the question is asked). The first reading asks for a line of at most `d` of our moves after which
+/// the term is below `lowest` against every reply; only where that was read to its end and found nothing, and `now` is above `lowest`, a second asks for a line below `now`. A cut (the budget) is a gap: it is returned as `cut` and nothing is said of what was not read. The history keys are the game's record: a position met before is a draw for the search, so it is never the end of a line that counts.
+#[allow(clippy::too_many_arguments)]
+pub fn question<G: Game + Placed>(g: &G, geo: &Geometry, s: &G::State, side: Role, term: &Term, lowest: &[i64], now: &[i64], d: u32, history: &HashSet<u64>, b: &mut Budget) -> (Option<Found>, bool) {
+    let (fall, cut) = lowering(g, geo, s, side, term, lowest, d, history, b);
+    if let Some(l) = fall { return (Some(Found::Fall(l)), cut); }
+    if cut || !lower(lowest, now) { return (None, cut); }
+    let (rec, cut) = lowering(g, geo, s, side, term, now, d, history, b);
+    (rec.map(Found::Recovery), cut)
 }
