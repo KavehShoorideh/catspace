@@ -29,7 +29,9 @@ pub struct ReadSet { pub mover: Role, pub members: Vec<(Role, Kind, Place)>, pub
 
 /// The rows of the frame read and, for each row's unit, the read set of the frame that explains it, with the cost of the read.
 #[derive(Debug, Clone, Default)]
-pub struct FrameRows { pub rows: Vec<FrameRow>, pub read_sets: BTreeMap<UnitRef, ReadSet>, pub frames: usize, pub questions: u64, pub seconds: f64 }
+pub struct FrameRows { pub rows: Vec<FrameRow>, pub read_sets: BTreeMap<UnitRef, ReadSet>, pub frames: usize, pub questions: u64, pub seconds: f64,
+    /// PLAN 79.09 B: the frames the clock of the step did not reach (a gap, never a refutation)
+    pub unread_frames: usize }
 
 struct Flat { owner: Role, kind: Kind, place: Place, class: u8, bearers: Vec<(Kind, Place)>, answers: Vec<(Place, Place, u8, bool)>, n_members: usize, frame_id: String, members: BTreeSet<(Role, Kind, Place)>, read_set: ReadSet }
 
@@ -55,7 +57,7 @@ pub fn rows_of(raw: &ThreatFrames, mover: Role, other: Role, kinds: usize, stake
     let mut by_unit: BTreeMap<(Role, Kind, Place), Vec<&Flat>> = BTreeMap::new();
     for c in &cl { by_unit.entry((c.owner, c.kind, c.place)).or_default().push(c); }
     let _ = kinds;
-    let mut out = FrameRows { frames: raw.frames.len(), questions: raw.questions, ..Default::default() };
+    let mut out = FrameRows { frames: raw.frames.len(), questions: raw.questions, unread_frames: raw.unread_frames.len() + raw.unbuilt_seeds, ..Default::default() };
     for ((owner, kind, place), cs) in by_unit {
         let wins: Vec<&&Flat> = cs.iter().filter(|c| THREAT_CLASSES.contains(&c.class)).collect();
         if wins.is_empty() { continue; }

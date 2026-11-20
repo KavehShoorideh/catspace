@@ -213,11 +213,11 @@ impl BaseGraph {
                 other => return Err(bad(format!("no such piece of the wake: {other}"))),
             }
         }
-        let frame = keys.map(|k| { let f = frame_fuses.unwrap_or((3, 1500, 30_000, 1500)); FrameRead { want: k, params: cs_tactics::sheet::threat_frames::FrameReadParams { max_size: f.0, fuse: f.1, row_fuse: f.2, answer_fuse: f.3, conditional: true, kv: self.kv.clone(), bands: self.bands.clone(), rules: self.rules } } });
+        let frame = keys.map(|k| { let f = frame_fuses.unwrap_or((3, 1500, 30_000, 1500)); FrameRead { want: k, params: cs_tactics::sheet::threat_frames::FrameReadParams { max_size: f.0, fuse: f.1, row_fuse: f.2, answer_fuse: f.3, conditional: true, kv: self.kv.clone(), bands: self.bands.clone(), rules: self.rules, deadline: None } } });
         let chances = chances.map(|c| ChanceTable { by_key: c.0.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), by_facts: c.1.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), total: c.2, floor: c.3 });
         let reasons = reasons.map(|r| Reasons { keys: r.0, reasons: r.1.into_iter().map(|x| Reason { column: x.0, side: if x.1 == "mover" { Side::Mover } else { Side::Other }, dir: if x.2 == "up" { Dir::Up } else { Dir::Down }, weight: x.3 }).collect(), max_size: r.2, levels: r.3, tie_digits: r.4 });
         let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: None, chances, reasons, share_table: true, ledger_share } };
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: None, chances, reasons, share_table: true, ledger_share, pre_share: None } };
         let d = py.allow_threads(|| decide(&self.st, &g, &s, &history, &judge, &params));
         Ok(d.to_json().to_string())
     }

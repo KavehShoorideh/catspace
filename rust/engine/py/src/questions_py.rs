@@ -537,7 +537,7 @@ fn threat_game(variant: &str, st: &Static, goal: Option<u8>, game: &GameWire, wa
         }
     }
     // PLAN 79.08: the frame read of one position is cs_tactics::sheet::threat_frames (one piece, called by the wake too); this only turns it into the wire form
-    let fp = FrameReadParams { max_size: p.max_size, fuse: p.fuse, row_fuse: p.row_fuse, answer_fuse, conditional: p.conditional, kv: p.kv.clone(), bands: p.bands.clone(), rules: p.rules };
+    let fp = FrameReadParams { max_size: p.max_size, fuse: p.fuse, row_fuse: p.row_fuse, answer_fuse, conditional: p.conditional, kv: p.kv.clone(), bands: p.bands.clone(), rules: p.rules, deadline: None };
     for &t in wanted {
         if t >= states.len() { continue; }
         let s = &states[t];

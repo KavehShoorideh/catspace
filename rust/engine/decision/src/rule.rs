@@ -127,7 +127,11 @@ pub struct KeptNames { pub mine: Vec<Kept>, pub theirs: Vec<Kept>, pub refuted: 
 
 /// A NAMED MOVE IS ONE WHOSE LINE WAS READ AND NOT REFUTED, within a budget of reads a side (the first `budget` of the order given; the rest are `unlisted`: not read, a gap). Ours are read at the position by the mover; theirs after the game's pass by the other side (none where the game gives no pass). A line the fuse
 /// cut is not refuted (a gap, never a kill). With `share` the reads of one side go through one search and one table.
-pub fn keep_read<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, mine: &[String], theirs: &[String], budget: usize, p: LineParams, share: bool) -> KeptNames {
+pub fn keep_read<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, mine: &[String], theirs: &[String], budget: usize, p: LineParams, share: bool) -> KeptNames { keep_read_by(g, s, rec, mine, theirs, budget, p, share, None) }
+
+/// PLAN 79.09 B: `keep_read` with the clock of the step (None: the budget of reads only). The moves are read in the order given (the order of stake); past the clock a move is not read and is listed in `unlisted` (a gap, never a refutation), and a line the clock cuts is not refuted.
+#[allow(clippy::too_many_arguments)]
+pub fn keep_read_by<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, mine: &[String], theirs: &[String], budget: usize, p: LineParams, share: bool, stop: Option<std::time::Instant>) -> KeptNames {
     let t0 = std::time::Instant::now();
     let judge = Worth { name: "record".into(), table: rec.worth.clone(), ours_first: false };
     let mut out = KeptNames::default();
@@ -136,14 +140,15 @@ pub fn keep_read<G: Game + Placed>(g: &G, s: &G::State, rec: &Record, mine: &[St
     for (names, who) in [(mine, false), (theirs, true)] {
         let (pos, me) = if who { match &passed { Some(q) => (q, g.other(mover)), None => { for n in names { out.unlisted.push((n.clone(), true)); } continue; } } } else { (s, mover) };
         let mut shared = Search::with_fuse(g, &judge, me, 1);
+        if let Some(t) = stop { shared.stop_at(t); }
         let mut seen: HashSet<&String> = HashSet::new();
         let mut n = 0;
         for name in names {
             if !seen.insert(name) { continue; }
             let Some(m) = g.find_move(pos, name) else { continue };
-            if n >= budget { out.unlisted.push((name.clone(), who)); continue; }
+            if n >= budget || stop.is_some_and(|t| std::time::Instant::now() >= t) { out.unlisted.push((name.clone(), who)); continue; }
             n += 1;
-            let r = if share { L::read_line_in(&mut shared, pos, &m, me, p) } else { L::read_line(g, &judge, pos, &m, me, p) };
+            let r = if share || stop.is_some() { L::read_line_in(&mut shared, pos, &m, me, p) } else { L::read_line(g, &judge, pos, &m, me, p) };
             out.read += 1; out.nodes += r.nodes;
             let v = verdict_of(&r, rec);
             let (_, ended) = describe(&v);

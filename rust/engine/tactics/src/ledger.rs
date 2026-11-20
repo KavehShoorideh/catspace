@@ -259,6 +259,9 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// A fresh node budget for the next reading, the table kept (the census reads many neighbouring positions with one search: their sub-positions are shared).
     pub fn rebudget(&mut self, nodes: u64) { self.fuse = self.nodes + nodes; self.stopped = false; }
 
+    /// PLAN 79.09 B (SYSTEM_SPEC 7, the budget; piece: the wake): the clock of a reading that is one of the steps BEFORE the search of the wake: it stops at `at` whatever the node fuse (the lines it cuts are UNREAD, a gap, never a refutation). The clock is looked at every 1024 nodes.
+    pub fn stop_at(&mut self, at: Instant) { self.deadline = at; }
+
     /// Go on reading after the clock stopped the search: a fresh clock of `seconds` (the table kept).
     pub fn resume(&mut self, seconds: f64) {
         self.stopped = false;

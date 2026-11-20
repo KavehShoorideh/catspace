@@ -716,10 +716,12 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
         let keep = params.budget.min(c.len());
         rest = c.split_off(keep).into_iter().map(|r| r.unit).collect();
         first_units = c.iter().map(|r| r.unit).collect();
-        c.sort_by_key(|r| (r.unit.owner, r.unit.at));
+        if threats.deadline.is_none() { c.sort_by_key(|r| (r.unit.owner, r.unit.at)); }          // (with a clock the rows stay in the order of their stake: the clock stops the reading)
         rows = Some(c);
     }
-    let tp = ThreatParams { depth: threats.depth, fuse: threats.fuse, sweep_depth: threats.sweep_depth, sweep_fuse: threats.sweep_fuse, end_plies: threats.end_plies, end_fuse: threats.end_fuse, goal: threats.goal, rows, every_sides: Some(vec![]), stake: threats.stake, share_table: threats.share_table };
+    // PLAN 79.09 B: with a clock the frame read's rows are read in the order of the worth of their kind as well (the unit of the largest stake first)
+    if threats.deadline.is_some() { if let Some(v) = rows.as_mut() { let w = kind_worths(g, s, rec, &v.iter().map(|r| r.unit).collect::<Vec<_>>()); v.sort_by(|a, b| w.get(&b.unit.kind).copied().unwrap_or(0.0).partial_cmp(&w.get(&a.unit.kind).copied().unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal)); } }
+    let tp = ThreatParams { depth: threats.depth, fuse: threats.fuse, sweep_depth: threats.sweep_depth, sweep_fuse: threats.sweep_fuse, end_plies: threats.end_plies, end_fuse: threats.end_fuse, goal: threats.goal, rows, every_sides: Some(vec![]), stake: threats.stake, share_table: threats.share_table, deadline: threats.deadline };
     let mut list = concrete_threats(st, g, s, rec, &tp);
     crate::carry::merge_held(&mut list, &params.held);
     out.seconds.push(("the concrete list of the contested units and the forced end", t0.elapsed().as_secs_f64()));
@@ -729,9 +731,12 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     let ev = every_unit_ask(st, g, s, &mut list, &sides, rec, &tp, &Ask { budget: Some(params.budget), used: first_units.len(), progress });
     out.seconds.push(("every unit of the other side, by stake within the budget", t0.elapsed().as_secs_f64()));
     list.unasked.extend(rest.iter().copied());
-    out.questions = first_units.len() + ev.questions;
+    // (a contested unit the clock skipped was not asked: it is in the list's `unasked`)
+    let skipped: HashSet<UnitRef> = list.unasked.iter().copied().collect();
+    let first_asked: Vec<UnitRef> = first_units.iter().copied().filter(|u| !skipped.contains(u)).collect();
+    out.questions = first_asked.len() + ev.questions;
     out.line_reads = ev.line_reads;
-    out.asked = first_units.iter().copied().chain(ev.asked.iter().map(|a| a.0)).collect();
+    out.asked = first_asked.iter().copied().chain(ev.asked.iter().map(|a| a.0)).collect();
     out.unasked = list.unasked.clone();
     let t0 = Instant::now();
     for &side in &sides { out.goals.extend(goals(st, g, s, &list, side, tp.goal, params.depth, params.budget)); }

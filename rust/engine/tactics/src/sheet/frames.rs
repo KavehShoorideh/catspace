@@ -212,11 +212,16 @@ pub fn union_seed(a: &Seed, b: &Seed) -> Seed {
 
 /// THE SEEDS OF CONCEPT MATCHES on one board of the matcher: for each embedding of 1..=`max_size` relation nodes whose key (at any of `levels`) is in `want` (hash -> concept number), the units and the
 /// empty places the embedding binds. A key whose embedding is its own swap (sign 0) is skipped as 78.54 skipped it.
-pub fn seeds_of_board(b: &Board, part: &PositionPart, max_size: usize, levels: &[u8], want: &FxHashMap<u64, u32>) -> Vec<(u32, Seed)> {
+pub fn seeds_of_board(b: &Board, part: &PositionPart, max_size: usize, levels: &[u8], want: &FxHashMap<u64, u32>) -> Vec<(u32, Seed)> { seeds_of_board_until(b, part, max_size, levels, want, None).0 }
+
+/// PLAN 79.09 B: `seeds_of_board` that stops matching keys at `stop` (the clock of the step); the second value says the clock cut the matching (the seeds after it were not looked for: a gap).
+pub fn seeds_of_board_until(b: &Board, part: &PositionPart, max_size: usize, levels: &[u8], want: &FxHashMap<u64, u32>, stop: Option<std::time::Instant>) -> (Vec<(u32, Seed)>, bool) {
+    let mut cut = false;
     let mut out: Vec<(u32, Seed)> = vec![];
     let mut seen: FxHashSet<(u32, Vec<Cell>, Vec<Place>)> = FxHashSet::default();
     for size in 1..=max_size {
         b.connected_sets(size, &mut |its| {
+            if cut || stop.is_some_and(|t| std::time::Instant::now() >= t) { cut = true; return; }
             for key in b.keys(its, levels) {
                 if key.sign == 0 { continue; }
                 let Some(&c) = want.get(&key.hash) else { continue };
@@ -233,7 +238,7 @@ pub fn seeds_of_board(b: &Board, part: &PositionPart, max_size: usize, levels: &
             }
         });
     }
-    out
+    (out, cut)
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------ the reading
