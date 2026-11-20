@@ -122,7 +122,7 @@ fn c_the_value_of_a_sides_chains_is_stake_times_chance_at_each_top_and_the_goal_
     for t in &tops { let k = sk.of(gs[*t].target); if k.is_finite() { fin += k * 0.5; } else { goal += 0.5; } }
     assert!(!tops.is_empty(), "white has a goal on the knight");
     assert_eq!(v, ChainValue { finite: fin, goal });
-    assert!(v.finite > 0.0 || v.goal > 0.0);
+    assert!(v.finite > 0.0 && v.goal > 0.0, "a goal on a unit with a worth and the goal unit's: both parts are read");
     let two = chain_value(&gs, white, &sk, &|_, _| 1.0);
     assert!((two.finite - 2.0 * v.finite).abs() < 1e-9 && (two.goal - 2.0 * v.goal).abs() < 1e-9, "linear in the chance");
     let none = chain_value(&gs, role(&g, "black"), &sk, &|_, _| 1.0);
@@ -152,6 +152,20 @@ fn c_ours_are_read_after_each_move_only_where_a_value_is_given_and_what_was_read
         assert_eq!(before.ours, value(&ours, me), "{fen}: before: ours read at the position as it stands");
         assert_eq!(before.theirs, value(&their_goals(&st, &g, &s, &record(), k, g.other(me)), g.other(me)));
         assert!(with.ours_seconds > 0.0);
+    }
+}
+
+#[test]
+fn c_the_graph_alone_reads_no_row_so_every_chain_stands_on_the_goal_unit_and_the_finite_part_of_the_value_is_nought() {
+    // the reading after a move (after.rs) builds goals from the graph alone, with no line read: the goal unit's goal and the stoppers under it. So the chains are the goal unit's and the part of the value that has a worth in it is nought; this is what the plan's reading gives, said by a test.
+    let (g, st) = world();
+    for fen in POSITIONS {
+        let s = state(fen);
+        let me = g.mover(&s).unwrap();
+        let tg = their_goals(&st, &g, &s, &record(), Some(kind(&g, "king")), g.other(me));
+        let v = chain_value(&tg.goals, g.other(me), &tg.stakes, &|_, _| 0.5);
+        assert_eq!(v.finite, 0.0, "{fen}");
+        assert!(tg.goals.iter().enumerate().filter(|(_, x)| x.side == g.other(me) && !x.unmet.is_empty()).all(|(i, _)| tg.goals[chain_top(&tg.goals, i)].goal_unit), "{fen}: every chain stands on the goal unit");
     }
 }
 
