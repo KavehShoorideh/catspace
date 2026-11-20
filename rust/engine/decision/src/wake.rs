@@ -335,6 +335,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let mut ls = Search::new(g, judge, me, search_secs);
     ls.history = history.iter().copied().collect();
     ls.verify_ties = true;
+    ls.fair_names = p.direct_names;          // PLAN 79.11 A: a named move and an un-named rival are compared by the same reading
     if !named_mine.is_empty() { ls.named.insert(g.key(s), named_mine.clone()); }
     if !named_theirs.is_empty() { ls.named_ply.insert(1, named_theirs.clone()); }
     for r in &after.rows { if !r.names.is_empty() { ls.named.insert(r.key, r.names.clone()); } }

@@ -145,6 +145,11 @@ pub struct Search<'a, G: Game, J: Judge> {
     /// PLAN 79.03: no late-move reduction AT THE ROOT. A late quiet root move is then read at the full depth with the window like every other root move, so a root move whose win lies deeper than the reduced reading is not dropped as a fail-low
     /// (the reduction below the root and the null move are untouched). false (the default everywhere) is the search as it was.
     pub root_full: bool,
+    /// PLAN 79.11 A: NAMED AND UN-NAMED ROOT MOVES ARE COMPARED BY THE SAME READING. A named move is read in full, an un-named late one reduced, and a reduced reading that fails low is taken as it is, so the named move could come out above a rival that is as good or better. With this on, when the root's best is a
+    /// named move, every un-named root move that was only read reduced is read again in full (the window of the best) before the depth is called finished. Only where something is named at the root; false (the default everywhere) is the search as it was.
+    pub fair_names: bool,
+    /// PLAN 79.11 A: what the rereading of `fair_names` did (counted over the whole run): the rivals read again, those whose full reading came out at or above the best (the reduced reading had them under it), those above it.
+    pub fair_reread: FairCount,
     /// THE FEW-REPLY EXTENSION (plan 78.11): a forced answer does not shorten the line
     pub extend: bool,
     killers: Vec<[Option<G::Move>; 2]>,
@@ -199,6 +204,10 @@ impl ChoiceMode {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReaskCount { pub asked: usize, pub held: usize, pub reasked: usize, pub out: usize, pub unreached: usize, pub first_cut: bool }
 
+/// PLAN 79.11 A: the count of the rereading of `Search::fair_names`: `reread` rivals read again in full, `understated` of them at or above the best named move's value though their reduced reading was under it, `above` of those strictly above it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FairCount { pub reread: usize, pub understated: usize, pub above: usize }
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChoiceVerdict { pub index: usize, pub state: ChoiceState }
 
@@ -216,12 +225,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, extend: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true,
                  killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![] }
     }
 
@@ -554,17 +563,35 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         // THE FEW-REPLY EXTENSION (plan 78.11, game-free): a node with at most FEW_REPLIES legal moves (a forced answer) does not shorten the line
         let ext = if self.extend && order.len() <= FEW_REPLIES && ply < 2 * depth + 8 { 1 } else { 0 };
         let depth = depth + ext;
+        let mut reduced_only: Vec<(usize, G::Move, i64)> = vec![];
+        let mut best_pinned = false;
+        let mut cut_off = false;
         for (n_read, (i, m, d)) in order.into_iter().enumerate() {
             let q = self.g.apply(s, &m);
             let late = self.prune && self.late_reduce && depth >= LMR_MIN_DEPTH && n_read >= LMR_AFTER && d == 0 && Some(i) != hint && !(ply == 0 && self.root_strict) && !(ply == 0 && self.root_full) && !pins.get(n_read).copied().unwrap_or(false);        // (plan 78.51: under a strict root order no root move is read shallow first, so the first of the best value IS the first one that holds it at this depth)
             let mut v = if late { d + self.value(&q, depth - 3, ply + 1, alpha - d, beta - d) } else { 0 };
+            let mut read_in_full = !late;
             if !late || (maxing && v > alpha) || (!maxing && v < beta) {
                 v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
+                read_in_full = true;
             }
             if self.stopped { self.path.pop(); return if best == i64::MIN || best == i64::MAX { 0 } else { best }; }
-            if (maxing && v > best) || (!maxing && v < best) { best = v; best_i = i; }
+            if !read_in_full && ply == 0 && self.fair_names { reduced_only.push((i, m.clone(), d)); }
+            if (maxing && v > best) || (!maxing && v < best) { best = v; best_i = i; best_pinned = pins.get(n_read).copied().unwrap_or(false); }
             if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }
-            if alpha >= beta { self.cutoff(s, &m, d, ply, depth); break; }
+            if alpha >= beta { self.cutoff(s, &m, d, ply, depth); cut_off = true; break; }
+        }
+        // PLAN 79.11 A: the best is a named move read in full: the rivals read only reduced are read again in full, so that the comparison is by one reading
+        if ply == 0 && self.fair_names && best_pinned && !cut_off {
+            for (i, m, d) in reduced_only {
+                let q = self.g.apply(s, &m);
+                let v = d + self.value(&q, depth - 1, ply + 1, alpha - d, beta - d);
+                if self.stopped { self.path.pop(); return best; }
+                self.fair_reread.reread += 1;
+                if (maxing && v >= best) || (!maxing && v <= best) { self.fair_reread.understated += 1; }
+                if (maxing && v > best) || (!maxing && v < best) { best = v; best_i = i; self.fair_reread.above += 1; }
+                if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }
+            }
         }
         self.path.pop();
         let bound = if best <= a0 { Bound::Upper } else if best >= b0 { Bound::Lower } else { Bound::Exact };
