@@ -6,6 +6,7 @@ use cs_decision::goals::{goals, goals_with, propose, Goal, GoalParams};
 use cs_decision::rule::{named_fixes, named_fixes_by, Stakes};
 use cs_decision::threat_verdict::Record;
 use cs_decision::threats::{ConcreteList, ThreatParams};
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
@@ -157,7 +158,7 @@ fn d_and_c_with_the_switches_off_the_wake_is_what_it_was() {
     let s = state(MID);
     let judge = Worth { name: "human".into(), table: table(), ours_first: false };
     let mk = |chance_order: bool, gain_mend: bool| WakeParams { seconds: 60.0, depth: 3, pieces: Pieces { threats: true, goals: true, two_threat_goals: true, after_move: true, direct_names: true, ..Pieces::old_player() },
-        inputs: WakeInputs { record: record(), goal: king(&g), budget: 4, chance_order, gain_mend, ..WakeInputs::default() }, ..WakeParams::default() };
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(record()), ..Default::default() }, None), goal: king(&g), budget: 4, chance_order, gain_mend, ..WakeInputs::default() }, ..WakeParams::default() };
     let a = decide(&st, &g, &s, &[], &judge, &mk(false, false));
     let b = decide(&st, &g, &s, &[], &judge, &mk(true, true));
     // no goal table is given, so neither switch changes what is named or played: the order is main's (the plan's test: "with no table the order is as on main")
@@ -174,7 +175,7 @@ fn c_through_the_wake_a_table_given_changes_what_is_named_first_and_never_the_va
     // the fewer things in the way the likelier a goal (a table of play as the sleep counts it, here constructed)
     let tab = GoalTable { k: 16, floor: 20, levels: vec![Level { fields: vec![Field::InWay], cells: [("0", 100u32, 90u32), ("1", 100, 20), ("2", 100, 60), ("3", 100, 70), ("4", 100, 80)].iter().map(|(k, n, h)| (k.to_string(), (*n, *h))).collect() }], total: (1000, 150) };
     let mk = |chance_order: bool, t: Option<GoalTable>| WakeParams { seconds: 60.0, depth: 3, pieces: Pieces { threats: true, goals: true, two_threat_goals: true, after_move: true, direct_names: true, ..Pieces::old_player() },
-        inputs: WakeInputs { record: record(), goal: king(&g), budget: 4, chance_order, goal_table: t, ..WakeInputs::default() }, ..WakeParams::default() };
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(record()), goal_table: t, ..Default::default() }, None), goal: king(&g), budget: 4, chance_order, ..WakeInputs::default() }, ..WakeParams::default() };
     for fen in [MID, BLOCKED, "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w - - 2 3"] {
         let s = state(fen);
         let main = decide(&st, &g, &s, &[], &judge, &mk(false, Some(tab.clone())));

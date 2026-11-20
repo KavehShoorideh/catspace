@@ -9,6 +9,7 @@ use cs_decision::goals::goals;
 use cs_decision::rule::{chain_top, Stakes};
 use cs_decision::threat_verdict::{Record, VerdictKind};
 use cs_decision::threats::{ConcreteList, ThreatRow};
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, UnitRef, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -216,7 +217,7 @@ fn chance_table() -> GoalTable {
 fn whole(g: &KernelGame, goal_table: Option<GoalTable>, chooser: Option<ChooserSpec>) -> WakeParams {
     WakeParams { seconds: 60.0, depth: 4,
         pieces: Pieces { carried: false, frames: false, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: false, heads: false, after_move: true, direct_names: true },
-        inputs: WakeInputs { record: record(), goal: Some(kind(g, "king")), budget: 4, chooser, goal_table, ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(record()), goal_table: goal_table, ..Default::default() }, None), goal: Some(kind(g, "king")), budget: 4, chooser, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 #[test]
@@ -236,7 +237,7 @@ fn c_a_table_given_changes_no_value_and_in_mode_fixed_no_move_and_the_log_says_w
         // the old table is used where no new table is given
         let old = cs_decision::estimate::ChanceTable { floor: 20, total: (100, 25), ..Default::default() };
         let mut p = whole(&g, None, None);
-        p.inputs.chances = Some(old);
+        p.inputs.memory = WakeMemory::given(Parts { record: Some(record()), chances: Some(old), ..Default::default() }, None);
         let d = decide(&st, &g, &s, &[], &j, &p);
         assert!(d.log.goals.iter().all(|x| x.chance.as_ref().is_some_and(|c| c.2 == "total")), "{fen}: the old table speaks where no new one is given");
     }

@@ -2,6 +2,7 @@
 //! reading for the chain of claims comes after the search where the clock allows; the clock is held; the value is not touched. Constructed positions only; no puzzle, no match.
 use cs_decision::frame_rows::FrameRead;
 use cs_decision::threat_verdict::Record;
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -48,7 +49,7 @@ fn frame_read(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State) -> F
 /// the whole with the pieces of 79.10 on (`direct`) or the 79.09 flow (names read before the search, their goals on a pass)
 fn whole(g: &KernelGame, st: &Static, s: &<KernelGame as Game>::State, seconds: f64, depth: i32, direct: bool, with_frames: bool) -> WakeParams {
     WakeParams { seconds, depth, pieces: Pieces { carried: with_frames, frames: with_frames, threats: true, goals: true, two_threat_goals: true, graph_reads: false, reasons_pick: false, heads: false, after_move: direct, direct_names: direct },
-        inputs: WakeInputs { record: record(), goal: Some(kind(g, "king")), frame: if with_frames { Some(frame_read(g, st, s)) } else { None }, budget: 4, ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(record()), ..Default::default() }, None), goal: Some(kind(g, "king")), frame: if with_frames { Some(frame_read(g, st, s)) } else { None }, budget: 4, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 const POSITIONS: [&str; 3] = ["r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7", "k7/4n3/2p5/8/8/5B2/8/4R2K w - - 0 1", "4k3/8/8/3b4/8/8/4N3/R3K3 w - - 0 1"];

@@ -1,6 +1,7 @@
 //! Plan 79.10 PART A (their goals after each of our moves, SYSTEM_SPEC 8 "evaluate the threats of the opponent", 7 the stake): UNIT TESTS of `after.rs` and of the fact about our move that the decision logs. Constructed positions only; no puzzle, no match.
 use cs_decision::after::{fact_of, their_goals, their_goals_after, ChainView};
 use cs_decision::threat_verdict::Record;
+use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::wake::{decide, Pieces, UnitRef, WakeInputs, WakeParams};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{Kind, Placed};
@@ -112,7 +113,7 @@ fn a_the_clock_of_the_step_lists_the_moves_it_did_not_reach_a_gap_and_not_a_refu
 
 fn params(after: bool) -> WakeParams {
     WakeParams { seconds: 60.0, depth: 4, pieces: Pieces { threats: true, goals: true, two_threat_goals: true, after_move: after, ..Pieces::old_player() },
-        inputs: WakeInputs { record: record(), goal: Some(kind(&KernelGame::new("chess", 518).unwrap(), "king")), budget: 4, ..WakeInputs::default() }, ..WakeParams::default() }
+        inputs: WakeInputs { memory: WakeMemory::given(Parts { record: Some(record()), ..Default::default() }, None), goal: Some(kind(&KernelGame::new("chess", 518).unwrap(), "king")), budget: 4, ..WakeInputs::default() }, ..WakeParams::default() }
 }
 
 #[test]

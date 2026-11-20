@@ -25,8 +25,37 @@ pub struct BaseGraph {
     /// 78.60: the band (low, high) of the worth of each kind, from the estimator record; and the rules of a line's end (all off until set).
     bands: Option<Vec<(i64, i64)>>,
     rules: cs_tactics::sheet::questions::Rules,
-    /// PLAN 79.11 B: the open tactics of the last decision of a caller's slot (a name the caller gives), taken by the next `wake_decide` of the same slot and put back after it. The binding holds them so that the caller carries nothing across the language boundary.
-    carry: std::cell::RefCell<HashMap<String, cs_decision::wake::Carried>>,
+    /// PLAN 79.11 B, MOVED BY PLAN 79.19 C: the memory of the game at hand of a caller's slot (a name the caller gives; its open tactics and the goal held are its slot `carried`), taken by the next `wake_decide` of the same slot and put back after it. The binding holds them so that the caller carries nothing across the language boundary.
+    games: std::cell::RefCell<HashMap<String, cs_memory::store::GameMemory>>,
+    /// PLAN 79.19: the key of this game's partition of the long-term memory: what the game reports (its name) and the content address of its rules (the description it was built from)
+    key: cs_memory::store::GameKey,
+}
+
+
+// PLAN 79.19 C: the tables a caller gives, as the types of the decision crate (the one conversion, used by `wake_decide` and `memory_write`).
+type ChancesWire = (Vec<(String, u32, u32)>, Vec<(String, u32, u32)>, (u32, u32), u32);
+type ReasonsWire = (Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32);
+type GoalTableWire = (u32, u32, Vec<(Vec<String>, Vec<(String, u32, u32)>)>, (u32, u32));
+
+fn chances_of(c: Option<ChancesWire>) -> Option<cs_decision::estimate::ChanceTable> {
+    c.map(|c| cs_decision::estimate::ChanceTable { by_key: c.0.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), by_facts: c.1.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), total: c.2, floor: c.3 })
+}
+
+fn reasons_of(r: Option<ReasonsWire>) -> Option<cs_decision::pick::Reasons> {
+    use cs_decision::pick::{Dir, Reason, Reasons, Side};
+    r.map(|r| Reasons { keys: r.0, reasons: r.1.into_iter().map(|x| Reason { column: x.0, side: if x.1 == "mover" { Side::Mover } else { Side::Other }, dir: if x.2 == "up" { Dir::Up } else { Dir::Down }, weight: x.3 }).collect(), max_size: r.2, levels: r.3, tie_digits: r.4 })
+}
+
+/// PLAN 79.13 C: the table of the chance of a goal counted in sleep: (the plies of its event, the floor, the levels as (the names of the fields, the cells (key, goals, reached)), the counts of all goals (goals, reached)); None: the wake reads no such table
+fn goal_table_of(t: Option<GoalTableWire>) -> Result<Option<cs_decision::goal_table::GoalTable>, String> {
+    use cs_decision::goal_table::{Field, GoalTable, Level};
+    let Some((k, floor, levels, total)) = t else { return Ok(None) };
+    let mut ls = vec![];
+    for (fields, cells) in levels {
+        let fs: Result<Vec<Field>, String> = fields.iter().map(|n| Field::named(n).ok_or_else(|| format!("no such field of the table of the chance of a goal: {n}"))).collect();
+        ls.push(Level { fields: fs?, cells: cells.into_iter().map(|c| (c.0, (c.1, c.2))).collect() });
+    }
+    Ok(Some(GoalTable { k, floor, levels: ls, total }))
 }
 
 type NodeWire = (String, String);
@@ -141,7 +170,7 @@ impl BaseGraph {
         let steps = g.steps(description, &static_relations, &objects).map_err(bad)?;
         let st = Static::new(&steps, &names).map_err(bad)?;
         let geo = cs_tactics::measure::Geometry::new(&st);
-        Ok(BaseGraph { variant: variant.to_string(), st, geo, kv: None, bands: None, rules: Default::default(), carry: Default::default() })
+        Ok(BaseGraph { variant: variant.to_string(), st, geo, kv: None, bands: None, rules: Default::default(), games: Default::default(), key: cs_memory::store::GameKey::of(variant, description) })
     }
 
     /// kinds() -> the game's own words for its kinds, in the order of the numbers the measure's groups use.
@@ -243,15 +272,17 @@ impl BaseGraph {
     /// log in words). `pieces`: any of "carried", "frames", "threats", "goals", "two_threat_goals", "reasons_pick", "heads", and (PLAN 79.10) "after_move", "direct_names"; none is the old player. `keys`: the learned seeds of the frame read (None: the rows are the graph's); `frame_fuses`: (largest seed, fuse, row fuse, answer fuse); `chances`: (by key, by facts, (goals,
     /// reached) in all, floor), each cell (name, goals, reached); `reasons`: (pattern keys, [(column, side "mover"/"other", direction "up"/"down", weight)], largest seed, levels, tie digits). The frame read reads the kind values, bands and rules this graph was given (`set_kind_values`, `set_kind_bands`, `set_rules`) and its learned profile.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None, carry_slot=None, chooser=None, goal_table=None, pre_share_scale=None, measure=None))]
+    #[pyo3(signature = (text, history, seconds, depth, worth, half, goal_kind, pieces, budget, named_budget, keys, frame_fuses, chances, reasons, ledger_share=None, carry_slot=None, chooser=None, goal_table=None, pre_share_scale=None, measure=None, long_term=None, hold=None))]
     fn wake_decide(&self, py: Python<'_>, text: &str, history: Vec<u64>, seconds: f64, depth: i32, worth: HashMap<String, i64>, half: HashMap<String, f64>, goal_kind: Option<String>, pieces: Vec<String>, budget: usize, named_budget: usize,
                    keys: Option<Vec<u64>>, frame_fuses: Option<(usize, u64, u64, u64)>, chances: Option<(Vec<(String, u32, u32)>, Vec<(String, u32, u32)>, (u32, u32), u32)>,
-                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>, carry_slot: Option<String>, chooser: Option<(String, HashMap<String, f64>, u64)>, goal_table: Option<(u32, u32, Vec<(Vec<String>, Vec<(String, u32, u32)>)>, (u32, u32))>, pre_share_scale: Option<f64>, measure: Option<(String, u32)>) -> PyResult<String> {
+                   reasons: Option<(Vec<u64>, Vec<(usize, String, String, f64)>, usize, Vec<u8>, i32)>, ledger_share: Option<f64>, carry_slot: Option<String>, chooser: Option<(String, HashMap<String, f64>, u64)>, goal_table: Option<(u32, u32, Vec<(Vec<String>, Vec<(String, u32, u32)>)>, (u32, u32))>, pre_share_scale: Option<f64>, measure: Option<(String, u32)>, long_term: Option<String>, hold: Option<String>) -> PyResult<String> {
         use cs_decision::estimate::ChanceTable;
         use cs_decision::frame_rows::FrameRead;
         use cs_decision::pick::{Dir, Reason, Reasons, Side};
         use cs_decision::threat_verdict::Record;
+        use cs_decision::memory::{Parts, WakeMemory};
         use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
+        use cs_memory::store::{GameMemory, Partition, Reader};
         let (g, s) = self.game(text)?;
         let goal = self.goal_of(&goal_kind)?;
         let mut pc = Pieces::old_player();
@@ -263,8 +294,7 @@ impl BaseGraph {
             }
         }
         let frame = keys.map(|k| { let f = frame_fuses.unwrap_or((3, 1500, 30_000, 1500)); FrameRead { want: k, params: cs_tactics::sheet::threat_frames::FrameReadParams { max_size: f.0, fuse: f.1, row_fuse: f.2, answer_fuse: f.3, conditional: true, kv: self.kv.clone(), bands: self.bands.clone(), rules: self.rules, deadline: None } } });
-        let chances = chances.map(|c| ChanceTable { by_key: c.0.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), by_facts: c.1.into_iter().map(|x| (x.0, (x.1, x.2))).collect(), total: c.2, floor: c.3 });
-        let reasons = reasons.map(|r| Reasons { keys: r.0, reasons: r.1.into_iter().map(|x| Reason { column: x.0, side: if x.1 == "mover" { Side::Mover } else { Side::Other }, dir: if x.2 == "up" { Dir::Up } else { Dir::Down }, weight: x.3 }).collect(), max_size: r.2, levels: r.3, tie_digits: r.4 });
+        let (chances, reasons) = (chances_of(chances), reasons_of(reasons));
         // PLAN 79.12 B: the last layer among the moves held equal: (mode "fixed" | "weights" | "explore", weights by the name of an input, the seed of one decision); None: the rule decides and no row is logged
         let chooser = match chooser {
             None => None,
@@ -276,24 +306,38 @@ impl BaseGraph {
             }
         };
         // PLAN 79.13 C: the table of the chance of a goal counted in sleep: (the plies of its event, the floor, the levels as (the names of the fields, the cells (key, goals, reached)), the counts of all goals (goals, reached)); None: the wake reads no such table
-        let goal_table = match goal_table {
-            None => None,
-            Some((k, floor, levels, total)) => {
-                use cs_decision::goal_table::{Field, GoalTable, Level};
-                let mut ls = vec![];
-                for (fields, cells) in levels {
-                    let fs: Result<Vec<Field>, String> = fields.iter().map(|n| Field::named(n).ok_or_else(|| format!("no such field of the table of the chance of a goal: {n}"))).collect();
-                    ls.push(Level { fields: fs.map_err(bad)?, cells: cells.into_iter().map(|c| (c.0, (c.1, c.2))).collect() });
-                }
-                Some(GoalTable { k, floor, levels: ls, total })
+        let goal_table = goal_table_of(goal_table).map_err(bad)?;
+        let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
+        // PLAN 79.19 C: the wake reads the tables and the goal through the two memories. The long-term memory is the partition of THIS game made from the tables given (in place, no snapshot made), or, with `long_term` (the path of a partition file written by `memory_write`), read from that file, which must be this game's; the memory of the game at hand is the slot's
+        let measure = match measure { Some((term, d)) => { cs_tactics::measure::Term::parse(&term).map_err(bad)?; Some((term, d, "given by the caller of the wake".to_string())) } None => None };
+        let game = carry_slot.as_ref().and_then(|k| self.games.borrow_mut().remove(k));
+        let memory = match long_term {
+            None => WakeMemory::of(self.key.clone(), Parts { record: Some(Record { worth, half }), chances, reasons, goal_table, measure, ..Default::default() }, game),
+            Some(path) => {
+                let part = Partition::load(std::path::Path::new(&path), &cs_decision::memory::decoders()).map_err(bad)?;
+                if part.key != self.key { return Err(bad(format!("the partition at {path} is of another game ({} @ {}), not of {} @ {}", part.key.name, part.key.rules, self.key.name, self.key.rules))); }
+                WakeMemory { long: Some(Reader::new(part)), game: game.unwrap_or_else(|| GameMemory::new(self.key.clone())), hold }
             }
         };
-        let judge = cs_tactics::ledger::Worth { name: "record".into(), table: worth.clone(), ours_first: false };
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { record: Record { worth, half }, goal, budget, named_budget, frame, previous: carry_slot.as_ref().and_then(|k| self.carry.borrow_mut().remove(k)), chances, reasons, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, goal_table, carry_graph, chance_order, gain_mend, diag_first, read_on, measure: match measure { Some((term, d)) => Some(cs_decision::wake::MeasureGoal { term: cs_tactics::measure::Term::parse(&term).map_err(bad)?, d }), None => None } } };
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { memory, goal, budget, named_budget, frame, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, carry_graph, chance_order, gain_mend, diag_first, read_on } };
         let st = &self.st;
         let d = py.allow_threads(|| decide(st, &g, &s, &history, &judge, &params));
-        if let (Some(k), Some(c)) = (&carry_slot, &d.carried) { self.carry.borrow_mut().insert(k.clone(), c.clone()); }
+        if let Some(k) = &carry_slot { self.games.borrow_mut().insert(k.clone(), d.game.clone()); }
         Ok(d.to_json().to_string())
+    }
+
+    /// PLAN 79.19 C: memory_write(root, worth, half, chances, reasons, goal_table, measure, sample) -> (path, id, parent): the tables the wake reads today, written as the partition of THIS game of the long-term memory under `root` (one file named by its content, in the folder of the game's key); the mined measure (term, d) as a statement that is a conjecture on `sample`. Nothing of the real store is written: the caller names `root`.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    #[pyo3(signature = (root, worth, half, chances=None, reasons=None, goal_table=None, measure=None, sample=None, measures=None))]
+    fn memory_write(&self, root: &str, worth: HashMap<String, i64>, half: HashMap<String, f64>, chances: Option<ChancesWire>, reasons: Option<ReasonsWire>, goal_table: Option<GoalTableWire>, measure: Option<(String, u32)>, sample: Option<String>, measures: Option<Vec<(String, String, u32, String)>>) -> PyResult<(String, String, Option<String>)> {
+        use cs_decision::memory::{Parts, WakeMemory};
+        use cs_decision::threat_verdict::Record;
+        if let Some((term, _)) = &measure { cs_tactics::measure::Term::parse(term).map_err(bad)?; }
+        let parts = Parts { record: Some(Record { worth, half }), chances: chances_of(chances), reasons: reasons_of(reasons), goal_table: goal_table_of(goal_table).map_err(bad)?, measure: measure.map(|(t, d)| (t, d, sample.unwrap_or_default())), more_measures: { let m = measures.unwrap_or_default(); for x in &m { cs_tactics::measure::Term::parse(&x.1).map_err(bad)?; } m } };
+        let m = WakeMemory::of(self.key.clone(), parts, None);
+        let r = m.long.as_ref().expect("the memory of a call has a reader");
+        let path = r.write(std::path::Path::new(root)).map_err(bad)?;
+        Ok((path.to_string_lossy().to_string(), r.id().to_string(), r.parent().map(|x| x.to_string())))
     }
 
     #[pyo3(signature = (text, worth, half, goal_kind=None, rows=None, every_sides=None))]
