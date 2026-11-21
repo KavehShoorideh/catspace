@@ -136,8 +136,9 @@ fn the_open_tactics_and_the_goal_held_are_a_slot_of_the_games_memory_and_the_dec
     assert!(decide(&st, &g, &s, &[], &judge, &q).log.measure.is_none());
 }
 
+/// A LAYER 2 TEST (plan 79.20 part C): the part of the base graph is built from the rules' state (`Static::new` takes the rules' steps, `position` takes the game and its state), not from facts alone, so it is not a test of layer 1; kept here, named for the layer it belongs to.
 #[test]
-fn a_position_recreated_from_its_text_has_the_same_part_of_the_base_graph() {
+fn layer2_a_position_recreated_from_its_text_has_the_same_part_of_the_base_graph() {
     let (g, st) = world();
     let mut rng = Rng::new(7919);
     let (mut n, mut same) = (0, 0);
@@ -155,7 +156,7 @@ fn a_position_recreated_from_its_text_has_the_same_part_of_the_base_graph() {
             s = g.apply(&s, &legal[rng.below(legal.len())]);
         }
     }
-    println!("OBS 79.19 A1 base graph part: {n} positions recreated from their text, the part of the base graph equal in {same}");
+    println!("OBS 79.20 C3 layer 2 base graph part: {n} positions recreated from their text, the part of the base graph equal in {same}");
     assert_eq!(n, same);
 }
 
