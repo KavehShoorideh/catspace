@@ -28,3 +28,5 @@ pub mod steps;
 pub mod store;
 
 pub use fact::{Fact, UnitDecl, Vocabulary};
+// plan 79.23: the one JSON of the layers above (a game's declaration file is read with it; no crate adds the dependency of its own)
+pub use serde_json;

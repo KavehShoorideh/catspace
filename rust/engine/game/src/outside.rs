@@ -2,6 +2,7 @@
 //! side of the stack, not a layer) -- driven over its pipes. The learning layer sees it only as a `Teacher` (cs_learn::watch): a source of moves to watch.
 use crate::kernel::KernelGame;
 use crate::placed::{Kind, NoStep, Place, Placed};
+use crate::rules::{DescriptionNames, StateText};
 use crate::{Game, Role};
 use shakmaty::variant::VariantPosition;
 use shakmaty::{Color, EnPassantMode, Move, Position};
@@ -172,6 +173,20 @@ impl Placed for KernelGame {
     }
     fn relocate(&self, s: &VariantPosition, from: Place, to: Place) -> Option<VariantPosition> {
         self.edited(s, |b| { let p = b.remove_piece_at(square_of(from))?; b.set_piece_at(square_of(to), p); Some(()) })
+    }
+}
+
+/// PLAN 79.23: the kernel's move name in the notation of the description (the binding kernel.rs keeps for the co-play).
+impl DescriptionNames for KernelGame {
+    fn description_name(&self, name: &str) -> String { crate::kernel::uci_to_spec_term(name) }
+}
+
+/// PLAN 79.23 THE TEXT DOOR OF THE KERNEL (rules ingestion): the state as the game's text form, keeping the square a unit passed over on a two-step advance after every such advance (the description's state holds it; the kernel's own writer drops it where no taking is legal), and read back.
+impl StateText for KernelGame {
+    fn state_text(&self, s: &VariantPosition) -> String { shakmaty::fen::Fen::from_setup(s.clone().into_setup(EnPassantMode::Always)).to_string() }
+    fn read_state_text(&self, text: &str) -> Result<VariantPosition, String> {
+        let f: shakmaty::fen::Fen = text.parse().map_err(|e| format!("text {text}: {e}"))?;
+        VariantPosition::from_setup(self.variant, f.into_setup(), self.mode).map_err(|e| format!("position {text}: {e}"))
     }
 }
 
