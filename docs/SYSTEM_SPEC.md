@@ -825,6 +825,11 @@ His addition the same day: the long-term memory is for ANY game the system learn
 (the standard game, its variants, other board games), "properly namespaced, partitioned". A reader sees one game's partition;
 nothing learned in one game is read in another unless checked again there (the last clause is the main agent's READING).
 
+**A layer's test uses only that layer and what is below it** (Kaveh 2026-11-20, on plan 79.19's finding about the game's text
+form: "tests of this layer should not depend on rules, so FEN should not be used"). DECIDED for layer 1: its tests take positions
+as sets of facts and statements, and call nothing of the rules: no move, no legal move, no outcome, no text form of the game.
+READING of the main agent: the same holds for every layer; a test that needs the layer above belongs to that layer. Plan 79.20.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1160,4 +1165,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The go on the small endings: the order of the build; the table in sleep and in the measure only (READING) | 2026-11-20 | 7 (last block before section 8), 13 item 36 |
 | Plan 79.17: the measure of progress in the new engine, mined, held by the wake; two faults that stand | 2026-11-20 | 12, 13 item 37 |
 | The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last six blocks; layer 1 DECIDED, plan 79.19), 13 items 38 and 39 |
+| A layer's test uses only that layer and what is below it; layer 1's tests call nothing of the rules | 2026-11-20 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
