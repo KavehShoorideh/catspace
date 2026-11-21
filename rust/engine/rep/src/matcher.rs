@@ -2,7 +2,7 @@
 //! by the lemma operator in the engine's analysis and by the card corpus in verification, so a lemma means the same in both. Every row examined is counted: the
 //! operator reports it as its measured cost.
 use crate::lemma::{Arg, Lit};
-use cs_game::Fact;
+use crate::fact::Fact;
 use std::collections::{BTreeMap, HashMap};
 
 /// A binding of variables to constants.

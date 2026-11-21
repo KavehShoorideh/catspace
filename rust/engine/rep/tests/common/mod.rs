@@ -1,9 +1,9 @@
 //! PLAN 79.20 PART B: what the tests of layer 1 share. The positions are read from the fixture files (tests/fixtures/*.fixture, made once by
 //! rust/engine/decision/examples/make_layer1_fixtures.rs): each position is a SET OF FACTS, and nothing here asks the rules of the game anything.
 #![allow(dead_code)]
-use cs_game::Fact;
-use cs_memory::statement::decode_facts;
-use cs_memory::store::GameKey;
+use cs_rep::Fact;
+use cs_rep::statement::decode_facts;
+use cs_rep::store::GameKey;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 

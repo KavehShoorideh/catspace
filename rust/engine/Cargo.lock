@@ -90,6 +90,7 @@ name = "cs_game"
 version = "0.1.0"
 dependencies = [
  "cs_gdl",
+ "cs_rep",
  "shakmaty",
 ]
 
@@ -111,6 +112,7 @@ version = "0.1.0"
 dependencies = [
  "cs_game",
  "cs_operator",
+ "cs_rep",
  "serde_json",
 ]
 
@@ -128,6 +130,14 @@ dependencies = [
  "cs_game",
  "cs_operator",
  "cs_tactics",
+]
+
+[[package]]
+name = "cs_rep"
+version = "0.1.0"
+dependencies = [
+ "cs_gdl",
+ "serde_json",
 ]
 
 [[package]]

@@ -30,13 +30,9 @@
 //!   Called by: cs_decision (the wake reads one `Reader` and writes one `GameMemory`), the sleep side (the only caller of `Sleep`), the unit tests. Dependency direction: cs_memory depends on cs_game and cs_operator only; a type of a crate above (a table, the open tactics) is kept behind `Kept` and decoded by a registered function (`Decoders`), never copied here.
 pub mod cards;
 pub mod claim;
-pub mod lemma;
-pub mod matcher;
 pub mod op;
-pub mod sha;
-pub mod snapshot;
-pub mod statement;
-pub mod store;
+// plan 79.21: the lemma language, the matcher, the statement, the store with both memories and the snapshot moved down to the representation crate (cs_rep); re-exported here so every path `cs_memory::lemma::..` keeps resolving
+pub use cs_rep::{lemma, matcher, sha, snapshot, statement, store};
 
 use cs_game::Fact;
 

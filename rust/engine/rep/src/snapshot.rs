@@ -8,7 +8,7 @@
 use crate::claim::{Claim, Rule};
 use crate::lemma::Lemma;
 use crate::sha::content_id;
-use cs_game::{UnitDecl, Vocabulary};
+use crate::fact::{UnitDecl, Vocabulary};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;

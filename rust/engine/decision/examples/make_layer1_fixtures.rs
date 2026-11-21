@@ -1,6 +1,6 @@
 //! PLAN 79.20 PART A: THE MAKER OF THE FIXTURES OF LAYER 1 (SYSTEM_SPEC 11 "a layer's test uses only that layer and what is below it"; piece: representation).
-//! THIS IS NOT A TEST. It is the script that makes the data the tests of cs_memory read: it plays seeded random games of two games (the standard game and one variant of the repo) through the game's kernel
-//! and writes, for each, one file `rust/engine/memory/tests/fixtures/<game>.fixture` of positions as SETS OF FACTS. It is the only place that uses the rules; the tests of layer 1 read the files and call nothing of the rules.
+//! THIS IS NOT A TEST. It is the script that makes the data the tests of cs_rep read: it plays seeded random games of two games (the standard game and one variant of the repo) through the game's kernel
+//! and writes, for each, one file `rust/engine/rep/tests/fixtures/<game>.fixture` of positions as SETS OF FACTS. It is the only place that uses the rules; the tests of layer 1 read the files and call nothing of the rules.
 //! Run once:  cd rust/engine && cargo run --release --offline -p cs_decision --example make_layer1_fixtures -- <out dir>
 //! File format (text, one line each, tab separated; the tag first):
 //!   key      <json {name, rules}>          the game's name and the content address of its rules (what a partition is keyed by)

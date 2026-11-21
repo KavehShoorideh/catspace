@@ -6,6 +6,7 @@ description = "plan 78.1: the Game trait, any GDL text as a game, the chess kern
 
 [dependencies]
 cs_gdl = { path = "../gdl" }
+cs_rep = { path = "../rep" }
 shakmaty = { version = "0.27", features = ["variant"] }
 
 [[bin]]

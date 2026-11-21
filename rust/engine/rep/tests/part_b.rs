@@ -1,8 +1,8 @@
 //! PLAN 79.19 PART B: THE TWO MEMORIES AND THE FOUR CHANGES (SYSTEM_SPEC 11 "two memories", "the go on layer 1"). The reader, the four changes on the long-term memory (a new content-addressed snapshot with its parent, named by the partition of the game), the memory of the game at hand with its log, a typed thing behind its own interface.
-use cs_game::Fact;
-use cs_memory::lemma::Lit;
-use cs_memory::statement::{Change, Holder, Says, Standing, Statement};
-use cs_memory::store::{Decoders, GameKey, GameMemory, Kept, LongTerm, Partition};
+use cs_rep::Fact;
+use cs_rep::lemma::Lit;
+use cs_rep::statement::{Change, Holder, Says, Standing, Statement};
+use cs_rep::store::{Decoders, GameKey, GameMemory, Kept, LongTerm, Partition};
 use serde_json::{json, Value};
 use std::any::Any;
 use std::sync::Arc;

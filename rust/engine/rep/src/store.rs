@@ -4,7 +4,7 @@
 //! A typed thing a memory keeps (a trained model, a table, the open tactics) is a `Kept`: it is reached through its own interface as its own type; its JSON is how a partition is written, and `Decoders` read it back (a type of a crate above is decoded by a function that crate registers; it is never copied here).
 use crate::sha::content_id;
 use crate::statement::{Change, Holder, Standing, Statement};
-use cs_game::Fact;
+use crate::fact::Fact;
 use serde_json::{json, Value};
 use std::any::Any;
 use std::collections::BTreeMap;
