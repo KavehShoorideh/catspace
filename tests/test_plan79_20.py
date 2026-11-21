@@ -44,7 +44,7 @@ def violations(text: str) -> list[str]:
 
 def test_the_sources_of_layer_1_tests_are_there():
     names = {p.name for p in sources()}
-    assert {"layer1.rs", "part_b.rs", "mod.rs"} <= names
+    assert {"layer1.rs", "part_b.rs", "mod.rs", "graph.rs", "history.rs"} <= names
 
 
 def test_no_test_of_layer_1_names_a_rules_crate_a_moving_part_of_the_rules_or_the_games_text_form():

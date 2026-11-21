@@ -26,7 +26,7 @@ fn the_board_is_written_and_read_back_identical() {
         assert_eq!(again.to_json(), b.to_json(), "{}: written and read back", fx.file);
         assert_eq!((again.nodes.clone(), again.links.clone(), again.lines.clone()), (b.nodes.clone(), b.links.clone(), b.lines.clone()));
         assert!(b.lines.len() > 4 && b.directions.len() > 2 && b.names.places.len() > 8 && b.decl.is_some());
-        println!("OBS 79.21 B1 {}: board of {} places, {} directions, {} lines, {} static nodes, {} static links, written and read back identical", fx.file, b.names.places.len(), b.directions.len(), b.lines.len(), b.nodes.len(), b.links.len());
+        println!("OBS 79.21 B-1 {}: board of {} places, {} directions, {} lines, {} static nodes, {} static links, written and read back identical", fx.file, b.names.places.len(), b.directions.len(), b.lines.len(), b.nodes.len(), b.links.len());
     }
 }
 
@@ -65,7 +65,7 @@ fn the_graph_of_a_position_is_built_from_the_board_and_a_set_of_facts_alone() {
                 assert_eq!(again.definitions(b), part.definitions(b), "{}: the same graph from any order", fx.file);
             }
         }
-        println!("OBS 79.21 B2 {}: graphs built from facts alone for {n} positions, {units_total} units read back equal to the facts' units, the tempo read back; facts of other relations (tags, not the graph's) {:?}", fx.file, other_relations);
+        println!("OBS 79.21 B-2 {}: graphs built from facts alone for {n} positions, {units_total} units read back equal to the facts' units, the tempo read back; facts of other relations (tags, not the graph's) {:?}", fx.file, other_relations);
         assert!(n >= 300 && units_total > 5000);
     }
 }
@@ -112,7 +112,7 @@ fn the_door_writes_a_relation_with_its_links_and_the_units_between() {
             }
         }
     }
-    println!("OBS 79.21 B3 the door: {written} relations written onto bare graphs, each with its node id, its links and the units between ({with_between} with some)");
+    println!("OBS 79.21 B-3 the door: {written} relations written onto bare graphs, each with its node id, its links and the units between ({with_between} with some)");
     assert!(written > 1000 && with_between > 100);
 }
 
@@ -122,10 +122,10 @@ const SMALL: &str = "
 (signature col col) (signature row row) (signature col_succ col col) (signature row_succ row row) (signature step heading col row col row)
 (col x) (col y) (col z) (col w) (row 1) (row 2) (row 3)
 (col_succ x y) (col_succ y z) (col_succ z w) (row_succ 1 2) (row_succ 2 3)
-(<= (step up ?c ?r1 ?c ?r2) (col ?c) (row_succ ?r1 ?r2))
-(<= (step down ?c ?r1 ?c ?r2) (col ?c) (row_succ ?r2 ?r1))
-(<= (step right ?c1 ?r ?c2 ?r) (row ?r) (col_succ ?c1 ?c2))
-(<= (step left ?c1 ?r ?c2 ?r) (row ?r) (col_succ ?c2 ?c1))
+(<= (step up ?c ?ra ?c ?rb) (col ?c) (row_succ ?ra ?rb))
+(<= (step down ?c ?ra ?c ?rb) (col ?c) (row_succ ?rb ?ra))
+(<= (step right ?ca ?r ?cb ?r) (row ?r) (col_succ ?ca ?cb))
+(<= (step left ?ca ?r ?cb ?r) (row ?r) (col_succ ?cb ?ca))
 ";
 
 #[test]
@@ -149,5 +149,5 @@ fn a_second_game_with_another_board_loads_from_its_description_and_has_its_graph
     // a step relation that is not a chain is refused
     let bad = cs_rep::steps::Steps { directions: vec!["d".into()], rows: vec![(0, 0, 1), (0, 0, 2)], ..Default::default() };
     assert!(Board::new(&bad, &Names::new(vec!["p".into(), "q".into(), "r".into()], vec![], vec![])).is_err());
-    println!("OBS 79.21 B4 second board: 4 by 3 places, {} lines, {} directions, read from an invented description, graph of a position of facts with other words", b.lines.len(), b.directions.len());
+    println!("OBS 79.21 B-4 second board: 4 by 3 places, {} lines, {} directions, read from an invented description, graph of a position of facts with other words", b.lines.len(), b.directions.len());
 }

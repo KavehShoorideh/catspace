@@ -124,7 +124,7 @@ fn layer2_the_board_of_the_fixture_is_the_board_the_description_gives() {
         let k = KernelGame::new(&fx.name, 518).unwrap();
         let from_rules = board_from_rules(&k, &fx.name, &fx.board);
         assert_eq!(from_rules.to_json(), fx.board.to_json(), "{}: the board of the fixture is the one the description gives now", fx.name);
-        println!("OBS 79.21 B5 layer 2 {}: the board of the fixture equals the board read from the description now ({} places, {} lines)", fx.name, from_rules.names.places.len(), from_rules.lines.len());
+        println!("OBS 79.21 B-5 layer 2 {}: the board of the fixture equals the board read from the description now ({} places, {} lines)", fx.name, from_rules.names.places.len(), from_rules.lines.len());
     }
 }
 
@@ -153,7 +153,7 @@ fn layer2_the_graph_made_the_new_way_equals_the_graph_made_the_old_way_on_every_
                 through_seen += new.throughs.len();
             }
         }
-        println!("OBS 79.21 B6 layer 2 {}: {n} positions, the graph made the new way equals the old way node by node and edge by edge in every field ({nodes} position nodes, {links} position links, {through_seen} lines through; profile learned: {learned}); through the facts the rules give: equal in {via_facts}", fx.name);
+        println!("OBS 79.21 B-6 layer 2 {}: {n} positions, the graph made the new way equals the old way node by node and edge by edge in every field ({nodes} position nodes, {links} position links, {through_seen} lines through; profile learned: {learned}); through the facts the rules give: equal in {via_facts}", fx.name);
         assert!(n >= 300 && learned);
         let _: Vec<Fact> = vec![];
     }
@@ -203,7 +203,7 @@ fn layer2_the_graph_kept_step_by_step_equals_a_fresh_build_at_every_ply_and_on_u
             for s in &states { std::hint::black_box(st.position(&k, s)); }
             t_fresh += t2.elapsed().as_secs_f64();
         }
-        println!("OBS 79.21 B7 layer 2 {}: the graph kept step by step equals a fresh build at {plies} plies and on {undone} undos; units asked of the rules again {asked} of {total} ({:.0} percent); seconds: make {:.4}, make then graph {:.4}, fresh builds of the same positions {:.4}", fx.name, 100.0 * asked as f64 / total as f64, t_make, t_make + t_part, t_fresh);
+        println!("OBS 79.21 B-7 layer 2 {}: the graph kept step by step equals a fresh build at {plies} plies and on {undone} undos; units asked of the rules again {asked} of {total} ({:.0} percent); seconds: make {:.4}, make then graph {:.4}, fresh builds of the same positions {:.4}", fx.name, 100.0 * asked as f64 / total as f64, t_make, t_make + t_part, t_fresh);
     }
 }
 
@@ -231,8 +231,44 @@ fn layer2_a_question_asked_of_the_kept_graph_is_answered_as_on_the_graph_made_fr
                 }
             }
         }
-        println!("OBS 79.21 B8 layer 2 {}: {asked} questions 'is a bearer tied' asked of the kept graph and of the graph made from the position: equal in all ({yes} yes)", fx.name);
+        println!("OBS 79.21 B-8 layer 2 {}: {asked} questions 'is a bearer tied' asked of the kept graph and of the graph made from the position: equal in all ({yes} yes)", fx.name);
         assert!(yes > 0);
+    }
+}
+
+/// THE PROFILE of the one place the wake built a graph for each candidate move (`answers_against`): for every legal move of the side to move in the fixture positions, the answer to "is a bearer tied" in the position after it, the old way (a graph built from the state after the move, then asked) and the new way (the kept graph
+/// changed by the move, asked, changed back). Printed: microseconds a candidate each way, how many units the rules were asked about again, and the equal answers.
+#[test]
+fn layer2_profile_a_candidate_move_asked_of_the_kept_graph_against_a_graph_built_for_it() {
+    use cs_decision::goals::{tied_bearer, tied_bearer_live};
+    use cs_tactics::sheet::keeper::GraphKeeper;
+    use std::time::Instant;
+    for fx in fixtures() {
+        let k = KernelGame::new(&fx.name, 518).unwrap();
+        let st = Static::from_board(fx.board.clone());
+        let (mut n, mut equal, mut t_old, mut t_new, mut asked, mut total) = (0u32, 0u32, 0f64, 0f64, 0usize, 0usize);
+        for moves in &fx.games {
+            for s in replay(&k, moves).iter().step_by(4) {
+                let Some(me) = k.mover(s) else { continue };
+                let mut kp = GraphKeeper::new(&st, &k, s);
+                for m in k.moves(s) {
+                    let after = k.apply(s, &m);
+                    let Some(dp) = k.pass(&after) else { continue };
+                    let t0 = Instant::now();
+                    let a = tied_bearer(&st.position(&k, &dp), me, 1 - me, 0);
+                    t_old += t0.elapsed().as_secs_f64();
+                    let t1 = Instant::now();
+                    kp.make(&st, &k, &dp);
+                    let b = tied_bearer_live(&st, kp.live(), me, 1 - me, 0);
+                    let (x, y) = kp.asked();
+                    kp.undo();
+                    t_new += t1.elapsed().as_secs_f64();
+                    asked += x; total += y; n += 1; equal += (a == b) as u32;
+                }
+            }
+        }
+        println!("OBS 79.21 B-9 profile {}: {n} candidate moves; a graph built for each: {:.1} microseconds a candidate; the kept graph changed by the move, asked and changed back: {:.1} microseconds; units asked of the rules again {:.0} percent; answers equal in {equal} of {n}", fx.name, 1e6 * t_old / n as f64, 1e6 * t_new / n as f64, 100.0 * asked as f64 / total as f64);
+        assert_eq!(equal, n);
     }
 }
 

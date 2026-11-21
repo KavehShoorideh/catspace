@@ -148,3 +148,21 @@ fn the_memory_of_the_game_at_hand_changes_in_place_logs_every_change_and_hands_w
     assert_eq!(handed.log.len(), 6);
     assert!(m.statements().next().is_none() && m.slot_names().is_empty() && m.log().is_empty(), "emptied at the game's end");
 }
+
+/// PLAN 79.21 C: the memory of the game at hand holds the history; the record every search takes is read from it, brought to the keys a caller holds; the game's end empties it.
+#[test]
+fn the_memory_of_the_game_at_hand_holds_the_history_and_the_record_is_read_from_it() {
+    let mut m = GameMemory::new(GameKey::of("g", "rules"));
+    assert!(m.history().is_none());
+    m.sync_history(&[], 10, None);
+    assert_eq!((m.history().unwrap().record().to_vec(), m.history().unwrap().current_key()), (vec![], 10));
+    m.sync_history(&[10], 11, None);
+    m.sync_history(&[10, 11], 12, None);
+    assert_eq!(m.history().unwrap().record().to_vec(), vec![10, 11]);
+    m.sync_history(&[10], 11, None);                                           // the caller took a tempo back
+    assert_eq!((m.history().unwrap().len(), m.history().unwrap().current_key()), (1, 11));
+    m.sync_history(&[3, 4], 5, None);                                          // another game in the same memory: the history is a new one
+    assert_eq!(m.history().unwrap().keys().to_vec(), vec![3, 4, 5]);
+    let _ = m.end();
+    assert!(m.history().is_none(), "emptied at the game's end");
+}

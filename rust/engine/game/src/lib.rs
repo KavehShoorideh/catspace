@@ -15,6 +15,7 @@ pub mod gdl_game;
 pub mod goal_target;   // plan 78.39: the goal's target unit, read from the description
 pub mod kernel;
 pub mod rng;
+pub mod tags;         // plan 79.21: layer 2 writes what the rules read off the history as tags (rights, counters, repeats), kept step by step in make and undo
 pub mod outside;      // the binding to outside engines (their protocol), beside the kernel
 pub mod placed;       // plan 78.43: what stands where, what bears on what, from any place (the question sheet's light reading)
 

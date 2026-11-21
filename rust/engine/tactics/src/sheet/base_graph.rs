@@ -163,10 +163,10 @@ mod tests {
 (signature col col) (signature row row) (signature col_succ col col) (signature row_succ row row) (signature step heading col row col row)
 (col x) (col y) (col z) (col w) (row 1) (row 2) (row 3)
 (col_succ x y) (col_succ y z) (col_succ z w) (row_succ 1 2) (row_succ 2 3)
-(<= (step up ?c ?r1 ?c ?r2) (col ?c) (row_succ ?r1 ?r2))
-(<= (step down ?c ?r1 ?c ?r2) (col ?c) (row_succ ?r2 ?r1))
-(<= (step right ?c1 ?r ?c2 ?r) (row ?r) (col_succ ?c1 ?c2))
-(<= (step left ?c1 ?r ?c2 ?r) (row ?r) (col_succ ?c2 ?c1))
+(<= (step up ?c ?ra ?c ?rb) (col ?c) (row_succ ?ra ?rb))
+(<= (step down ?c ?ra ?c ?rb) (col ?c) (row_succ ?rb ?ra))
+(<= (step right ?ca ?r ?cb ?r) (row ?r) (col_succ ?ca ?cb))
+(<= (step left ?ca ?r ?cb ?r) (row ?r) (col_succ ?cb ?ca))
 ";
 
     fn small() -> Static {
