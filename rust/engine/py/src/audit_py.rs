@@ -89,7 +89,7 @@ pub fn value_at(variant: &str, moves: Vec<String>, root_plies: usize, worth: Has
     let me = g.mover(&root).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("the root is over"))?;
     let judge = Worth { name: "record".into(), table: worth, ours_first: false };
     let mut x = cs_tactics::ledger::Search::with_fuse(&g, &judge, me, fuse);
-    x.history = keys[..k].iter().copied().collect();
+    x.history = cs_memory::history::Seen::of(&keys[..k]);
     x.null_move = null_move;
     x.late_reduce = late_reduce;
     let v = x.value_at(&s, depth, ply, alpha, beta);

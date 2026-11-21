@@ -38,6 +38,37 @@ use cs_game::{Game, Role};
 use cs_rep::graph::Board;
 pub use cs_rep::graph::{FactDecl, Line, LinkRec, LinkType, NodeRec, NodeType, PositionPart, RelRec, UnitRec};
 
+/// PLAN 79.22 PART A, THE COUNT OF GRAPH BUILDS (a measure, never read by a decision): while a counter is on (`builds::start(root key)`) every graph the rules' reading builds is noted with the place that asked and whether it is the graph of the root position (the key given) or another's (a position after a move read), so that a test or a measure can say how many times a decision built the root's graph and where. Off, a call costs one relaxed load.
+pub mod builds {
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+    static ON: AtomicBool = AtomicBool::new(false);
+    static SEEN: Mutex<(u64, BTreeMap<(bool, String), usize>)> = Mutex::new((0, BTreeMap::new()));
+    /// Begin counting; `root` is the key of the position the decision is made at (the counts of an earlier run are dropped).
+    pub fn start(root: u64) { *SEEN.lock().unwrap() = (root, BTreeMap::new()); ON.store(true, Ordering::Relaxed); }
+    /// Stop counting and return the builds as (is the root's graph, the place that asked as file:line, how many).
+    pub fn take() -> Vec<(bool, String, usize)> { ON.store(false, Ordering::Relaxed); std::mem::take(&mut SEEN.lock().unwrap().1).into_iter().map(|((r, p), n)| (r, p, n)).collect() }
+    pub fn on() -> bool { ON.load(Ordering::Relaxed) }
+    pub fn note(at: &'static std::panic::Location<'static>, key: u64) { let mut g = SEEN.lock().unwrap(); let root = g.0 == key; *g.1.entry((root, format!("{}:{}", at.file().rsplit('/').next().unwrap_or(""), at.line()))).or_insert(0) += 1; }
+}
+
+/// PLAN 79.22 PART A. THE ROOT'S GRAPH, MADE ONCE A DECISION AND LENT TO EVERY PART THAT READS IT. INTERFACE.
+///   `Root::of(&Static, g, s) -> Root`            the graph of the position the decision is made at, built from the rules (once).
+///   `Root::from_part(key, PositionPart) -> Root` the same from a graph the game's memory kept (see cs_decision::keep): no build.
+///   `Root::key() / part()`                       the key of the position; the graph, shared by reference count.
+///   `Static::position_in(&self, &Root, g, s) -> Rc<PositionPart>`   the graph of `s`: the root's own (no build) when `s` has the root's key, otherwise built.
+/// WHO OWNS IT: the wake's decision (`cs_decision::wake::decide`) makes it and keeps it for the decision; every part (the threat list, the goals, the reasons' pick, the frame read) BORROWS it as `&Root`. A part that reads other positions (the position after a move) calls `position_in` with the same root and gets a build for them only.
+#[derive(Debug, Clone)]
+pub struct Root { key: u64, part: std::rc::Rc<PositionPart> }
+
+impl Root {
+    pub fn of<G: Game + Placed>(st: &Static, g: &G, s: &G::State) -> Root { Root { key: g.key(s), part: std::rc::Rc::new(st.position(g, s)) } }
+    pub fn from_part(key: u64, part: PositionPart) -> Root { Root { key, part: std::rc::Rc::new(part) } }
+    pub fn key(&self) -> u64 { self.key }
+    pub fn part(&self) -> &std::rc::Rc<PositionPart> { &self.part }
+}
+
 /// THE STATIC PART plus the rules' reading of it: the board of layer 1 (every field of it is reached through `Deref`) and the functions that ask a game how its units step. Built once per game.
 #[derive(Debug, Clone)]
 pub struct Static { board: Board }
@@ -53,10 +84,18 @@ impl Static {
     pub fn board(&self) -> &Board { &self.board }
 
     /// Build the part of one position: the units and the tempo from the game's state as numbers (layer 1 makes the unit nodes), then the relations the rules give, written onto the graph through the door of change.
+    #[track_caller]
     pub fn position<G: Game + Placed>(&self, g: &G, s: &G::State) -> PositionPart {
+        if builds::on() { builds::note(std::panic::Location::caller(), g.key(s)); }
         let mut part = self.board.position_from_units(g.mover(s), g.cells(s));
         self.write_rules(g, s, &mut part);
         part
+    }
+
+    /// The graph of `s` for a decision that holds `root`: the root's own when `s` is its position, else built (see `Root`).
+    #[track_caller]
+    pub fn position_in<G: Game + Placed>(&self, root: &Root, g: &G, s: &G::State) -> std::rc::Rc<PositionPart> {
+        if g.key(s) == root.key { root.part.clone() } else { std::rc::Rc::new(self.position(g, s)) }
     }
 
     /// What the rules say of how each unit steps, written onto a graph that holds the units: bear and may_move for every unit, the shut lines of the side to move, then (once a profile of the kinds is learned) the lines through, by geometry.

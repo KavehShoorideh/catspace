@@ -37,7 +37,7 @@
 //!
 //! TRAP (`trap`): one question for any unit, on quiet routes only: has it a place to go that is not a pure loss. Read with the owner to move and no forcing threat on it (the game refuses a pass otherwise:
 //! then the answer is NOT QUIET, never "trapped").
-use super::base_graph::{PositionPart, Static};
+use super::base_graph::{PositionPart, Root, Static};
 use super::exchange::{estimate_taking, Val};
 use super::fates::{step_between, Cell, Step};
 use super::frames::{claim_kind_word, unit_id, ClaimKind, FrameErr, Seed, Status};
@@ -339,9 +339,12 @@ impl QFrame {
     pub fn new<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seed: &Seed) -> Result<QFrame, FrameErr> { QFrame::new_cap(st, g, s, seed, ROOT_CAP) }
 
     /// 78.60 F: with `cap` below ROOT_CAP the frame is the seed's units and what bears on them (mode 2, at every node of a read too); more than `cap` members is TooLarge (the builder then splits the seed).
-    pub fn new_cap<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seed: &Seed, cap: usize) -> Result<QFrame, FrameErr> {
+    pub fn new_cap<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seed: &Seed, cap: usize) -> Result<QFrame, FrameErr> { QFrame::new_cap_in(st, None, g, s, seed, cap) }
+
+    /// `new_cap` that reads the position's graph from the decision's root when it is lent (PLAN 79.22 PART A: a frame is built on the root's graph, not on a graph made again for each frame).
+    pub fn new_cap_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, seed: &Seed, cap: usize) -> Result<QFrame, FrameErr> {
         let cap = if cap == 0 { ROOT_CAP } else { cap };
-        let part = st.position(g, s);
+        let part = match root { Some(r) => st.position_in(r, g, s), None => Rc::new(st.position(g, s)) };
         let cells = sorted_cells(g, s);
         if cells.len() > 64 { return Err(FrameErr::TooLarge(cells.len())); }
         let ident: Vec<(Cell, u8)> = cells.iter().enumerate().map(|(i, c)| (*c, i as u8)).collect();
@@ -384,22 +387,26 @@ pub fn build_frames<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &
 pub fn build_frames_cap<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &[Seed], cap: usize) -> Built { build_frames_by(st, g, s, seeds, cap, None) }
 
 /// PLAN 79.09 B: `build_frames_cap` that stops at `deadline` (the clock of the step): the seeds are built in the order given and the joining stops; the seeds not built are counted in `unbuilt`.
-pub fn build_frames_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &[Seed], cap: usize, deadline: Option<std::time::Instant>) -> Built {
+pub fn build_frames_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds: &[Seed], cap: usize, deadline: Option<std::time::Instant>) -> Built { build_frames_in(st, None, g, s, seeds, cap, deadline) }
+
+/// `build_frames_by` on the decision's root graph when it is lent (PLAN 79.22 PART A).
+#[allow(clippy::too_many_arguments)]
+pub fn build_frames_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, seeds: &[Seed], cap: usize, deadline: Option<std::time::Instant>) -> Built {
     let expired = || deadline.is_some_and(|d| std::time::Instant::now() >= d);
     let mut unbuilt = 0usize;
-    let part = st.position(g, s);
+    let part = match root { Some(r) => st.position_in(r, g, s), None => Rc::new(st.position(g, s)) };
     let mut frames: Vec<QFrame> = vec![];
     let mut refused = vec![];
     let small = cap != 0 && cap < ROOT_CAP;
     for sd in seeds {
         if expired() { unbuilt += 1; continue; }
-        match QFrame::new_cap(st, g, s, sd, cap) {
+        match QFrame::new_cap_in(st, root, g, s, sd, cap) {
             Ok(f) => { if !frames.iter().any(|x| x.id == f.id) { frames.push(f) } }
             Err(FrameErr::TooLarge(n)) if small && sd.units.len() > 1 => {
                 refused.push(format!("split:{n}"));
                 for c in &sd.units {
                     let one = Seed { units: vec![*c], places: vec![] };
-                    match QFrame::new_cap(st, g, s, &one, cap) { Ok(f) => { if !frames.iter().any(|x| x.id == f.id) { frames.push(f) } } Err(e) => refused.push(e.word()) }
+                    match QFrame::new_cap_in(st, root, g, s, &one, cap) { Ok(f) => { if !frames.iter().any(|x| x.id == f.id) { frames.push(f) } } Err(e) => refused.push(e.word()) }
                 }
             }
             Err(e) => refused.push(e.word()),
@@ -418,7 +425,7 @@ pub fn build_frames_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, seeds
                     seed.units.sort();
                     for p in &frames[j].seed.places { if !seed.places.contains(p) { seed.places.push(*p); } }
                     seed.places.sort();
-                    match QFrame::new_cap(st, g, s, &seed, cap).ok().filter(|f| !f.split) {
+                    match QFrame::new_cap_in(st, root, g, s, &seed, cap).ok().filter(|f| !f.split) {
                         Some(f) => { frames[i] = f; frames.remove(j); continue 'again; }
                         None => { split_joins += 1; stuck_pairs.insert((frames[i].id.clone(), frames[j].id.clone())); continue 'again; }
                     }
@@ -566,7 +573,10 @@ pub struct Answers { pub moves: Vec<Answer>, pub unread: u32, pub tried: u32 }
 pub struct QForce { pub pairs: Vec<QP>, pub stats: QStats }
 
 impl<'a, G: Game + Placed> QReader<'a, G> {
-    pub fn new(g: &'a G, st: &'a Static, frame: &'a QFrame, s: &G::State) -> QReader<'a, G> {
+    pub fn new(g: &'a G, st: &'a Static, frame: &'a QFrame, s: &G::State) -> QReader<'a, G> { QReader::new_in(g, st, frame, s, None) }
+
+    /// `new` that starts with the decision's root graph in its table of positions when `s` is the root (PLAN 79.22 PART A): the reader does not build the graph of the position it reads from.
+    pub fn new_in(g: &'a G, st: &'a Static, frame: &'a QFrame, s: &G::State, root: Option<&Root>) -> QReader<'a, G> {
         let cells = sorted_cells(g, s);
         let ident: Vec<(Cell, u8)> = cells.iter().enumerate().map(|(i, c)| (*c, i as u8)).collect();
         let np = st.names.places.len();
@@ -574,7 +584,9 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         for (c, id) in &ident { omask[c.0.min(1)] |= 1u64 << id; }
         let seed_ids: Vec<u8> = frame.seed.units.iter().filter_map(|c| id_at(&ident, c)).collect();
         let root_p = PlaceSet::from_places(np, frame.places.iter().copied());
-        QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, deadline: None, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np, kv: None, rules: Rules::default(), bands: None, vmode: frame.mode, path: vec![], trap_memo: FxHashMap::default(), causes: vec![] }
+        let mut rd = QReader { g, st, frame, seed_ids, seed_places: frame.seed.places.clone(), root_p, omask, root_ident: Rc::new(ident), fuse: FUSE_QUESTIONS, frame_fuse: FRAME_FUSE, spent: 0, depth: DEPTH, quiet: QUIET_PLIES, ext: EXT, nodes_left: FUSE_QUESTIONS, deadline: None, parts: FxHashMap::default(), exp: FxHashMap::default(), memo: FxHashMap::default(), wit: FxHashMap::default(), stats: QStats::default(), prunes: vec![], via_next: 5, np, kv: None, rules: Rules::default(), bands: None, vmode: frame.mode, path: vec![], trap_memo: FxHashMap::default(), causes: vec![] };
+        if let Some(r) = root { if r.key() == g.key(s) { rd.parts.insert(r.key(), r.part().clone()); } }
+        rd
     }
 
     /// The identity of a root member (index into `frame.members`).
@@ -1100,8 +1112,12 @@ pub fn claims_q_rules<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &
 
 /// PLAN 79.09 B: `claims_q_rules` that stops at `deadline` (the clock of the steps before the search): the questions after it are unread.
 #[allow(clippy::too_many_arguments)]
-pub fn claims_q_rules_by<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64, kv: Option<Rc<Vec<Val>>>, rules: Rules, bands: Option<Rc<Vec<(Val, Val)>>>, deadline: Option<std::time::Instant>) -> QReport {
-    let mut rd = QReader::new(g, st, frame, s);
+pub fn claims_q_rules_by<G: Game + Placed>(g: &G, st: &Static, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64, kv: Option<Rc<Vec<Val>>>, rules: Rules, bands: Option<Rc<Vec<(Val, Val)>>>, deadline: Option<std::time::Instant>) -> QReport { claims_q_rules_in(g, st, None, frame, s, conditional, fuse, kv, rules, bands, deadline) }
+
+/// `claims_q_rules_by` whose reader starts with the decision's root graph (PLAN 79.22 PART A).
+#[allow(clippy::too_many_arguments)]
+pub fn claims_q_rules_in<G: Game + Placed>(g: &G, st: &Static, root: Option<&Root>, frame: &QFrame, s: &G::State, conditional: bool, fuse: u64, kv: Option<Rc<Vec<Val>>>, rules: Rules, bands: Option<Rc<Vec<(Val, Val)>>>, deadline: Option<std::time::Instant>) -> QReport {
+    let mut rd = QReader::new_in(g, st, frame, s, root);
     rd.deadline = deadline;
     rd.fuse = fuse;
     rd.kv = kv;

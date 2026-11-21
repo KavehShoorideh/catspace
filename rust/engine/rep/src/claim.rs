@@ -71,7 +71,7 @@ mod tests {
     use super::*;
 
     fn win_rule() -> Value {
-        json!({"name": "pawn-race", "body": [{"relation": "cell", "args": ["?f", "?r", "us", "pawn"], "neg": false}], "claim": {"class": "win"}, "stats": {}, "meta": {}})
+        json!({"name": "x-race", "body": [{"relation": "cell", "args": ["?f", "?r", "us", "kind_x"], "neg": false}], "claim": {"class": "win"}, "stats": {}, "meta": {}})
     }
 
     #[test]
@@ -83,7 +83,7 @@ mod tests {
         assert!(matches!(Rule::from_json(&win_rule()).unwrap(), Rule::Claim(_)));
         // both a response and a claim: refused; neither: refused; a class that is none of the three: refused
         let mut both = win_rule();
-        both["response"] = json!({"removed": [{"relation": "cell", "args": ["?f", "?r", "us", "pawn"], "neg": false}], "added": []});
+        both["response"] = json!({"removed": [{"relation": "cell", "args": ["?f", "?r", "us", "kind_x"], "neg": false}], "added": []});
         assert!(Rule::from_json(&both).unwrap_err().contains("not both"));
         assert!(Claim::from_json(&both).unwrap_err().contains("not both"));
         let mut neither = win_rule();
@@ -97,11 +97,11 @@ mod tests {
         empty["body"] = json!([]);
         assert!(Rule::from_json(&empty).unwrap_err().contains("positive literal"));
         let mut unsafe_neg = win_rule();
-        unsafe_neg["body"] = json!([{"relation": "cell", "args": ["?f", "?r", "us", "pawn"], "neg": false}, {"relation": "cell", "args": ["?zz", "?r", "them", "pawn"], "neg": true}]);
+        unsafe_neg["body"] = json!([{"relation": "cell", "args": ["?f", "?r", "us", "kind_x"], "neg": false}, {"relation": "cell", "args": ["?zz", "?r", "them", "kind_x"], "neg": true}]);
         assert!(Rule::from_json(&unsafe_neg).unwrap_err().contains("binds"));
         // a response rule is read as a lemma, as ever
-        let l = json!({"name": "x", "body": [{"relation": "cell", "args": ["?f", "?r", "us", "pawn"], "neg": false}],
-                       "response": {"removed": [{"relation": "cell", "args": ["?f", "?r", "us", "pawn"], "neg": false}], "added": []}, "stats": {}, "meta": {}});
+        let l = json!({"name": "x", "body": [{"relation": "cell", "args": ["?f", "?r", "us", "kind_x"], "neg": false}],
+                       "response": {"removed": [{"relation": "cell", "args": ["?f", "?r", "us", "kind_x"], "neg": false}], "added": []}, "stats": {}, "meta": {}});
         assert!(matches!(Rule::from_json(&l).unwrap(), Rule::Response(_)));
     }
 

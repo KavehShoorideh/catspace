@@ -81,24 +81,24 @@ fn solve(mut left: Vec<&Lit>, neg: &[&Lit], b: Binding, idx: &FactIndex, limit: 
 mod tests {
     use super::*;
     fn facts() -> Vec<Fact> {
-        vec![Fact::new("cell", &["a", "1", "w", "rook"]), Fact::new("cell", &["b", "3", "b", "knight"]), Fact::new("cell", &["c", "1", "w", "rook"]),
+        vec![Fact::new("cell", &["a", "1", "w", "kind_x"]), Fact::new("cell", &["b", "3", "b", "kind_y"]), Fact::new("cell", &["c", "1", "w", "kind_x"]),
              Fact::new("attack", &["b", "b", "3", "a", "1"]), Fact::new("guard", &["w", "a", "1"])]
     }
     fn run(body: &[Lit]) -> Vec<Binding> { let mut s = 0; bindings(body, &Binding::new(), &FactIndex::new(&facts()), 100, &mut s).0 }
 
     #[test]
     fn a_join_binds_shared_variables() {
-        let r = run(&[Lit::pos("cell", &["?f", "?r", "?c", "rook"]), Lit::pos("attack", &["?o", "?k", "?x", "?f", "?r"])]);
+        let r = run(&[Lit::pos("cell", &["?f", "?r", "?c", "kind_x"]), Lit::pos("attack", &["?o", "?k", "?x", "?f", "?r"])]);
         assert_eq!(r.len(), 1);
         assert_eq!(r[0]["f"], "a");
         assert_eq!(r[0]["o"], "b");
     }
     #[test]
     fn a_negated_literal_must_fail() {
-        let mut body = vec![Lit::pos("cell", &["?f", "?r", "?c", "rook"])];
+        let mut body = vec![Lit::pos("cell", &["?f", "?r", "?c", "kind_x"])];
         body.push(Lit { neg: true, relation: "guard".into(), args: vec![Arg::Const("w".into()), Arg::Var("f".into()), Arg::Var("r".into())] });
         let r = run(&body);
-        assert_eq!(r.len(), 1, "the rook on a1 is guarded, the one on c1 is not");
+        assert_eq!(r.len(), 1, "the first unit of the kind is guarded, the second is not");
         assert_eq!(r[0]["f"], "c");
     }
     #[test]

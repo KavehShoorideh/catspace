@@ -36,6 +36,64 @@ def test_78_1_the_layer_crates_name_no_chess_object_but_the_kernel_module():
     assert {"lib.rs", "gdl_game.rs", "certify.rs", "rng.rs"} <= set(seen)
 
 
+def _code_and_strings(text: str) -> tuple[str, list[str]]:
+    """PLAN 79.22 PART C: a Rust source without its comments but WITH its string literals: (the code with the strings blanked, the strings). A word in a test string is a word of a game in the layer."""
+    out, strings, i, n = [], [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            strings.append(text[i + 1:j])
+            out.append('""')
+            i = j + 1
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out), strings
+
+
+GAME_WORDS = CHESS_WORDS.replace("|[a-h][1-8]", "").replace("(king|", "(king\\w*|")
+SQUARE = r"\b[a-h][1-8]\b"
+
+
+def game_words_in(text: str) -> list[str]:
+    """The words of a game a source names in its code or in a string literal (comments aside), and the square-like tokens in its strings (a variable named b1 is no square; a string "a1" is)."""
+    code, strings = _code_and_strings(text)
+    found = [m.group(0) for m in re.finditer(GAME_WORDS, code, flags=re.I)]
+    for st in strings:
+        found += [m.group(0) for m in re.finditer(GAME_WORDS, st, flags=re.I)] + [m.group(0) for m in re.finditer(SQUARE, st)]
+    return found
+
+
+def test_79_22_the_representation_crate_names_no_game_word_in_a_string_or_a_test_source():
+    """PLAN 79.22 PART C (SYSTEM_SPEC 15 "no game object named in a layer"): layer 1 (rust/engine/rep) holds no word of a game in its code, its string literals, its test modules and its test sources. The scan above reads code
+    only; this one reads the strings and the tests, where a unit and a place had been named in a matcher test."""
+    rep = ENGINE / "rep"
+    sources = sorted(list((rep / "src").rglob("*.rs")) + list((rep / "tests").rglob("*.rs")))
+    assert {"matcher.rs", "layer1.rs", "mod.rs", "history.rs"} <= {p.name for p in sources}
+    bad = {p.relative_to(ROOT).as_posix(): game_words_in(p.read_text()) for p in sources}
+    bad = {k: v for k, v in bad.items() if v}
+    assert not bad, bad
+    print(f"OBS 79.22 C scan of layer 1: {len(sources)} sources (code, strings, test modules and test sources), no word of a game")
+
+
+def test_79_22_the_scan_sees_a_planted_word():
+    """The negative control: a word of a game in a string, in a test module, in a test source and a square in a string are found; a comment that names one, and a variable named like a square, are not."""
+    assert game_words_in('fn t() { let f = Fact::new("cell", &["a", "1", "w", "rook"]); }')
+    assert game_words_in('#[cfg(test)] mod tests { #[test] fn t() { assert_eq!(1, 1, "the pawn is guarded"); } }')
+    assert game_words_in('let r = run("check");')
+    assert game_words_in('let m = "a1";')
+    assert not game_words_in('let b1 = 3; // the rook on a1\nlet s = "unit";')
+    p = ENGINE / "rep" / "src" / "matcher.rs"
+    assert not game_words_in(p.read_text())
+    assert game_words_in(p.read_text().replace('"kind_x"', '"rook"', 1)), "a unit planted in the matcher's test string is found"
+
+
 def test_78_1_the_kernels_agree_with_their_gdl_texts_by_co_play_and_a_wrong_text_disagrees():
     for v in ("chess", "kingofthehill", "3check"):
         games, plies, states, bad = CE.certify_coplay(v, BASE if v == "chess" else DELTA[v], 3, 5, None if v == "chess" else BASE)

@@ -100,8 +100,8 @@ pub fn validate_body(at: &str, body: &[Lit]) -> Result<(), String> {
 mod tests {
     use super::*;
     fn sample() -> Lemma {
-        Lemma { name: "hang-x".into(), body: vec![Lit::pos("cell", &["?f", "?r", "?s", "knight"]), Lit::pos("attack", &["?o", "?g", "?q", "?f", "?r"])],
-                response: Response { removed: vec![Lit::pos("cell", &["?f", "?r", "?s", "knight"])], added: vec![Lit::pos("cell", &["?x", "?y", "?s", "knight"])] },
+        Lemma { name: "hang-x".into(), body: vec![Lit::pos("cell", &["?f", "?r", "?s", "kind_y"]), Lit::pos("attack", &["?o", "?g", "?q", "?f", "?r"])],
+                response: Response { removed: vec![Lit::pos("cell", &["?f", "?r", "?s", "kind_y"])], added: vec![Lit::pos("cell", &["?x", "?y", "?s", "kind_y"])] },
                 stats: json!({}), meta: json!({}), suggest: false }
     }
     #[test]

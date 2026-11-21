@@ -17,12 +17,12 @@ pub struct Gap { pub depth: i32, pub value: i64, pub first: Option<usize>, pub r
 pub fn gap_audit<G: Game, J: Judge>(g: &G, judge: &J, s: &G::State, history: &[u64], run_nodes: u64, max_depth: i32, big: u64, root_full: bool) -> Option<Gap> {
     let me = g.mover(s)?;
     let mut a = Search::with_fuse(g, judge, me, run_nodes);
-    a.history = history.iter().copied().collect();
+    a.history = cs_rep::history::Seen::of(&history);
     a.root_full = root_full;
     let ln = a.run(s, max_depth);
     if ln.depth == 0 { return None; }
     let mut x = Search::with_fuse(g, judge, me, big);
-    x.history = history.iter().copied().collect();
+    x.history = cs_rep::history::Seen::of(&history);
     let ex: std::collections::HashMap<usize, i64> = x.root_values(s, ln.depth).into_iter().collect();
     let exact_cut = x.cut();
     let ms = g.moves(s);

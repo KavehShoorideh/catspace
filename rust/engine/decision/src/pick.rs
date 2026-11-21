@@ -10,7 +10,7 @@
 //!   Called by: the wake's loop (`wake::decide`, step 6) and the unit tests.
 use cs_game::placed::{Kind, Placed};
 use cs_game::Game;
-use cs_tactics::sheet::base_graph::Static;
+use cs_tactics::sheet::base_graph::{Root, Static};
 use cs_tactics::sheet::patterns::{self, Board, FxHashMap};
 use std::collections::HashSet;
 
@@ -33,8 +33,8 @@ pub struct Reasons { pub keys: Vec<u64>, pub reasons: Vec<Reason>, pub max_size:
 pub struct MoveReasons { pub mv: String, pub carried: Vec<usize>, pub score: f64 }
 
 /// The counts (side to move, other side) of every pattern column on the board of `s`.
-fn counts<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, want: &FxHashMap<u64, usize>) -> FxHashMap<usize, (u32, u32)> {
-    let part = st.position(g, s);
+fn counts<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, want: &FxHashMap<u64, usize>) -> FxHashMap<usize, (u32, u32)> {
+    let part = match root { Some(r) => st.position_in(r, g, s), None => std::rc::Rc::new(st.position(g, s)) };
     let b = Board::new(st, &part, goal);
     let mut m: FxHashMap<usize, (u32, u32)> = FxHashMap::default();
     patterns::count_board(&b, r.max_size, &r.levels, want, &mut m);
@@ -64,13 +64,17 @@ pub fn scores_by<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Optio
 
 /// PLAN 79.12 A (SYSTEM_SPEC 8, the estimates decide among the moves held equal; piece: the wake): `scores_by` where the FIRST `must` moves of the order given (the moves the search holds equal) are scored whatever the clock says, because they are what the estimates decide among; the others follow in order while the clock lasts. The caller puts the equal moves first.
 #[allow(clippy::too_many_arguments)]
-pub fn scores_must<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String], stop: Option<std::time::Instant>, must: usize) -> Vec<MoveReasons> {
+pub fn scores_must<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String], stop: Option<std::time::Instant>, must: usize) -> Vec<MoveReasons> { scores_must_in(st, None, g, s, goal, r, moves, stop, must) }
+
+/// `scores_must` that counts the position `s` on the decision's root graph when it is lent (PLAN 79.22 PART A); the positions after the moves are built.
+#[allow(clippy::too_many_arguments)]
+pub fn scores_must_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, goal: Option<Kind>, r: &Reasons, moves: &[String], stop: Option<std::time::Instant>, must: usize) -> Vec<MoveReasons> {
     let want: FxHashMap<u64, usize> = r.keys.iter().enumerate().map(|(i, k)| (*k, i)).collect();
-    let before = counts(st, g, s, goal, r, &want);
+    let before = counts(st, root, g, s, goal, r, &want);
     moves.iter().enumerate().take_while(|(i, _)| *i < must || !stop.is_some_and(|t| std::time::Instant::now() >= t)).map(|(_, name)| {
         let Some(m) = g.find_move(s, name) else { return MoveReasons { mv: name.clone(), carried: vec![], score: 0.0 } };
         let a = g.apply(s, &m);
-        let after = counts(st, g, &a, goal, r, &want);
+        let after = counts(st, None, g, &a, goal, r, &want);
         let ev = events(&before, &after, r.keys.len());
         let carried: Vec<usize> = r.reasons.iter().enumerate().filter(|(_, x)| ev.contains(&(x.column, x.side, x.dir))).map(|(i, _)| i).collect();
         let score = carried.iter().map(|i| r.reasons[*i].weight).sum();

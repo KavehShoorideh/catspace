@@ -29,7 +29,11 @@ pub struct TheirGoals { pub goals: Vec<Goal>, pub chains: Vec<rule::ChainFix>, p
 pub fn their_goals<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, side: Role) -> TheirGoals { their_goals_with(st, g, s, rec, goal, side, false) }
 
 /// PLAN 79.14 D: `their_goals`, and with `every` the goals are read on EVERY TARGET the proposer gives (one row of the other side for each of its units but the goal kind, no line read, the graph alone) and a goal whose every fact is met is kept, not on the goal unit alone.
-pub fn their_goals_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, side: Role, every: bool) -> TheirGoals {
+pub fn their_goals_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, side: Role, every: bool) -> TheirGoals { their_goals_in(st, None, g, s, rec, goal, side, every) }
+
+/// `their_goals_with` on the decision's root graph when it is lent (PLAN 79.22 PART A).
+#[allow(clippy::too_many_arguments)]
+pub fn their_goals_in<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, root: Option<&cs_tactics::sheet::base_graph::Root>, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, side: Role, every: bool) -> TheirGoals {
     let mut list = ConcreteList::default();
     if every {
         let owner = g.other(side);
@@ -41,7 +45,7 @@ pub fn their_goals_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::St
             list.other.push(row);
         }
     }
-    let gs = goals::goals_with(st, g, s, &list, side, goal, goals::DEPTH, goals::BUDGET, every);
+    let gs = goals::goals_with_in(st, root, g, s, &list, side, goal, goals::DEPTH, goals::BUDGET, every);
     let stakes = Stakes::read(g, s, rec, &gs, goal);
     let chains = rule::named_fixes(&gs, side, &stakes);
     let views = chains.iter().map(|c| {
@@ -96,17 +100,21 @@ pub fn goals_after<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static,
 
 /// PLAN 79.14 D: `goals_after` with `mend`: both sides' goals are read on every target and a goal with every fact met is kept (their_goals_with); the caller's `value` then counts the met goal as reached (gain::chain_value_mended). `mend` false: `goals_after`.
 #[allow(clippy::too_many_arguments)]
-pub fn goals_after_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, order: &[usize], count: usize, stop: Option<std::time::Instant>, value: Option<ValueFn>, mend: bool) -> AfterRead {
+pub fn goals_after_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, order: &[usize], count: usize, stop: Option<std::time::Instant>, value: Option<ValueFn>, mend: bool) -> AfterRead { goals_after_in(st, None, g, s, rec, goal, order, count, stop, value, mend) }
+
+/// `goals_after_with` that reads the root position's goals on the decision's root graph when it is lent (PLAN 79.22 PART A); the positions after the moves are built.
+#[allow(clippy::too_many_arguments)]
+pub fn goals_after_in<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, root: Option<&cs_tactics::sheet::base_graph::Root>, g: &G, s: &G::State, rec: &Record, goal: Option<Kind>, order: &[usize], count: usize, stop: Option<std::time::Instant>, value: Option<ValueFn>, mend: bool) -> AfterRead {
     let t0 = std::time::Instant::now();
     let mut out = AfterRead::default();
     let Some(me) = g.mover(s) else { return out };
     let other = g.other(me);
     let moves = g.moves(s);
-    let before_theirs = their_goals_with(st, g, s, rec, goal, other, mend);
+    let before_theirs = their_goals_in(st, root, g, s, rec, goal, other, mend);
     let before = before_theirs.views.clone();
     if let Some(v) = value {
         let t1 = std::time::Instant::now();
-        let ours = their_goals_with(st, g, s, rec, goal, me, mend);
+        let ours = their_goals_in(st, root, g, s, rec, goal, me, mend);
         out.before = Some(GainPair { ours: v(&ours, me), theirs: v(&before_theirs, other) });
         out.ours_seconds += t1.elapsed().as_secs_f64();
     }

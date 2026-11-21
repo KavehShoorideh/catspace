@@ -105,7 +105,7 @@ fn the_question_finds_a_move_that_lowers_the_term_against_every_reply_and_says_n
     let t = Term::parse(&format!("region(1,{kk})")).unwrap();
     let held = value(&t, &Reader::new(&g, &geo, &s, 0));
     let mut b = Budget::new(20.0, 50_000_000);
-    let (found, cut) = lowering(&g, &geo, &s, 0, &t, &held, 2, &HashSet::new(), &mut b);
+    let (found, cut) = lowering(&g, &geo, &s, 0, &t, &held, 2, &cs_rep::history::Seen::new(), &mut b);
     assert!(!cut);
     let f = found.expect("a line lowers the region");
     assert!(f.moves <= 2);
@@ -114,12 +114,12 @@ fn the_question_finds_a_move_that_lowers_the_term_against_every_reply_and_says_n
     // a term nothing can lower: the turn is 0 at every position where it is our turn, and nothing is below 0
     let turn = Term::parse("turn").unwrap();
     let mut b2 = Budget::new(20.0, 50_000_000);
-    let (none, cut2) = lowering(&g, &geo, &s, 0, &turn, &[0], 2, &HashSet::new(), &mut b2);
+    let (none, cut2) = lowering(&g, &geo, &s, 0, &turn, &[0], 2, &cs_rep::history::Seen::new(), &mut b2);
     assert!(none.is_none() && !cut2);
     // not our move: no question
     let theirs = play(&g, &s, "a2a3");
     let mut b3 = Budget::new(1.0, 1_000_000);
-    assert!(lowering(&g, &geo, &theirs, 0, &t, &held, 2, &HashSet::new(), &mut b3).0.is_none());
+    assert!(lowering(&g, &geo, &theirs, 0, &t, &held, 2, &cs_rep::history::Seen::new(), &mut b3).0.is_none());
 }
 
 /// the game's own end counts: with the end one move off, the question finds it even with a term nothing can lower
@@ -130,7 +130,7 @@ fn the_game_end_found_counts() {
     let s = state("7k/R7/6K1/8/8/8/8/8 w - - 0 1");
     let turn = Term::parse("turn").unwrap();
     let mut b = Budget::new(20.0, 50_000_000);
-    let (found, _) = lowering(&g, &geo, &s, 0, &turn, &[0], 1, &HashSet::new(), &mut b);
+    let (found, _) = lowering(&g, &geo, &s, 0, &turn, &[0], 1, &cs_rep::history::Seen::new(), &mut b);
     let f = found.expect("a move ends the game");
     assert!(f.game_end && f.moves == 1);
     assert_eq!(g.move_name(&s, &g.moves(&s)[f.first]), "a7a8");
@@ -145,7 +145,7 @@ fn control_a_held_value_below_every_reading_finds_no_lowering() {
     let s = state("7k/8/8/8/8/8/R7/K7 w - - 0 1");
     let t = Term::parse(&format!("region(1,{kk})")).unwrap();
     let mut b = Budget::new(20.0, 50_000_000);
-    let (found, _) = lowering(&g, &geo, &s, 0, &t, &[0], 2, &HashSet::new(), &mut b);
+    let (found, _) = lowering(&g, &geo, &s, 0, &t, &[0], 2, &cs_rep::history::Seen::new(), &mut b);
     assert!(found.is_none());
     println!("OBS measure control: a held value of 0 is below every reading of the region: no lowering found");
 }
@@ -162,10 +162,10 @@ fn a_fall_is_counted_against_the_lowest_held_and_a_line_below_the_value_now_only
     let t = Term::parse(&format!("region(1,{kk})")).unwrap();
     let now = value(&t, &Reader::new(&g, &geo, &s, 0));
     let mut b = Budget::new(20.0, 50_000_000);
-    let (f, cut) = question(&g, &geo, &s, 0, &t, &now, &now, 2, &HashSet::new(), &mut b);
+    let (f, cut) = question(&g, &geo, &s, 0, &t, &now, &now, 2, &cs_rep::history::Seen::new(), &mut b);
     assert!(!cut && matches!(f, Some(Found::Fall(_))), "the lowest held is the value now: a fall is found: {f:?}");
     let mut b2 = Budget::new(20.0, 50_000_000);
-    let (r, cut2) = question(&g, &geo, &s, 0, &t, &[0], &now, 2, &HashSet::new(), &mut b2);
+    let (r, cut2) = question(&g, &geo, &s, 0, &t, &[0], &now, 2, &cs_rep::history::Seen::new(), &mut b2);
     assert!(!cut2);
     let r = r.expect("a line below the value now exists");
     assert!(!r.is_fall(), "nothing is below the lowest held of 0: it is a recovery, not a fall: {r:?}");
@@ -185,12 +185,12 @@ fn a_reply_that_raised_the_term_is_asked_against_the_lowest_held() {
     let now = value(&t, &Reader::new(&g, &geo, &s, 0));
     assert!(lower(&lowest, &now), "the reply raised the term: {lowest:?} then {now:?}");
     let mut b = Budget::new(20.0, 50_000_000);
-    let (f, cut) = question(&g, &geo, &s, 0, &t, &lowest, &now, 2, &HashSet::new(), &mut b);
+    let (f, cut) = question(&g, &geo, &s, 0, &t, &lowest, &now, 2, &cs_rep::history::Seen::new(), &mut b);
     assert!(!cut);
     let f = f.expect("some line lowers it");
     // against the value now the old question finds a line; against the lowest the same line is a fall only if it goes below the lowest
     let mut b2 = Budget::new(20.0, 50_000_000);
-    let old = lowering(&g, &geo, &s, 0, &t, &now, 2, &HashSet::new(), &mut b2).0.expect("the old question finds a line below the value now");
+    let old = lowering(&g, &geo, &s, 0, &t, &now, 2, &cs_rep::history::Seen::new(), &mut b2).0.expect("the old question finds a line below the value now");
     println!("OBS measure question 79.18: lowest {lowest:?}, value now {now:?}: found {} (old question's first move {}, new {})", if f.is_fall() { "a fall" } else { "a recovery" }, g.move_name(&s, &g.moves(&s)[old.first]), g.move_name(&s, &g.moves(&s)[f.lowering().first]));
     if f.is_fall() {
         // a fall below the lowest is below the value now as well: the old question finds a line too
@@ -208,10 +208,10 @@ fn a_position_met_before_is_never_the_end_of_a_line_that_counts() {
     let t = Term::parse(&format!("region(1,{kk})")).unwrap();
     let now = value(&t, &Reader::new(&g, &geo, &s, 0));
     let mut b = Budget::new(20.0, 50_000_000);
-    let (free, _) = question(&g, &geo, &s, 0, &t, &now, &now, 1, &HashSet::new(), &mut b);
+    let (free, _) = question(&g, &geo, &s, 0, &t, &now, &now, 1, &cs_rep::history::Seen::new(), &mut b);
     assert!(free.is_some(), "without a record a line of one move lowers the region");
-    let mut seen: HashSet<u64> = HashSet::new();
-    for m in g.moves(&s) { let q = g.apply(&s, &m); for r in g.moves(&q) { seen.insert(g.key(&g.apply(&q, &r))); } }
+    let mut seen = cs_rep::history::Seen::new();
+    for m in g.moves(&s) { let q = g.apply(&s, &m); for r in g.moves(&q) { seen.add(g.key(&g.apply(&q, &r))); } }
     let mut b2 = Budget::new(20.0, 50_000_000);
     let (met, cut) = question(&g, &geo, &s, 0, &t, &now, &now, 1, &seen, &mut b2);
     assert!(!cut && met.is_none(), "every end of a line was met before: none counts: {met:?}");
@@ -226,13 +226,13 @@ fn control_nothing_below_the_lowest_or_the_value_now_finds_nothing_and_a_cut_is_
     let s = state("7k/8/8/8/8/8/R7/K7 w - - 0 1");
     let turn = Term::parse("turn").unwrap();
     let mut b = Budget::new(20.0, 50_000_000);
-    let (f, cut) = question(&g, &geo, &s, 0, &turn, &[0], &[0], 2, &HashSet::new(), &mut b);
+    let (f, cut) = question(&g, &geo, &s, 0, &turn, &[0], &[0], 2, &cs_rep::history::Seen::new(), &mut b);
     assert!(f.is_none() && !cut);
     let kk = kind(&g, "king");
     let t = Term::parse(&format!("region(1,{kk})")).unwrap();
     let now = value(&t, &Reader::new(&g, &geo, &s, 0));
     let mut tiny = Budget::new(20.0, 3);
-    let (f2, cut2) = question(&g, &geo, &s, 0, &t, &[0], &now, 2, &HashSet::new(), &mut tiny);
+    let (f2, cut2) = question(&g, &geo, &s, 0, &t, &[0], &now, 2, &cs_rep::history::Seen::new(), &mut tiny);
     assert!(f2.is_none() && cut2, "a cut question names nothing: {f2:?}");
     println!("OBS measure control 79.18: nothing below the lowest or the value now: no line; a cut budget: a gap");
 }
@@ -254,11 +254,11 @@ fn the_memo_of_the_search_gives_the_same_answers_in_fewer_nodes() {
         let held = value(&t, &Reader::new(&g, &geo, &s, 0));
         let oracle = |gm: &KernelGame, st: &St| -> Option<Verdict> { if gm.mover(st) != Some(0) { return None; } if lower(&value(&t, &Reader::new(gm, &geo, st, 0)), &held) { Some(Verdict::Win) } else { None } };
         // a record: the position two plies on of the first move and the first reply
-        let mut hist: HashSet<u64> = HashSet::new();
+        let mut hist = cs_rep::history::Seen::new();
         let m0 = g.moves(&s)[0].clone();
         let q = g.apply(&s, &m0);
-        if let Some(r0) = g.moves(&q).first() { hist.insert(g.key(&g.apply(&q, r0))); }
-        for rec in [&HashSet::new(), &hist] {
+        if let Some(r0) = g.moves(&q).first() { hist.add(g.key(&g.apply(&q, r0))); }
+        for rec in [&cs_rep::history::Seen::new(), &hist] {
             for depth in [2u32, 4, 5] {
                 let mut b1 = Budget::new(60.0, 400_000_000);
                 let a = toward_with(&g, &s, 0, &oracle, rec, depth, None, &mut b1);

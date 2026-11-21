@@ -19,6 +19,7 @@ pub mod goals;
 pub mod graph;
 pub mod graph_net;
 pub mod graph_prior;
+pub mod keep;
 pub mod lemma_prior;
 pub mod log;
 pub mod memory;

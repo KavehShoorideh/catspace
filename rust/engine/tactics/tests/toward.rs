@@ -3,7 +3,7 @@ use cs_game::gdl_game::GdlGame;
 use cs_game::{Fact, Game};
 use cs_operator::Budget;
 use cs_tactics::toward::{toward, Class, Verdict};
-use std::collections::HashSet;
+use cs_rep::history::Seen;
 
 const TTT: &str = "
 (role x) (role o)
@@ -53,7 +53,7 @@ fn holds(g: &GdlGame, s: &S, cell: (&str, &str), who: &str) -> bool { g.base_fac
 fn name_of(g: &GdlGame, s: &S, i: usize) -> String { g.move_name(s, &g.moves(s)[i]) }
 fn big() -> Budget { Budget::new(60.0, 50_000_000) }
 fn none(_: &GdlGame, _: &S) -> Option<Verdict> { None }
-fn run<O: cs_tactics::toward::LeafOracle<GdlGame>>(g: &GdlGame, s: &S, o: &O, depth: u32) -> cs_tactics::toward::Toward { toward(g, s, X, o, &HashSet::new(), depth, &mut big()) }
+fn run<O: cs_tactics::toward::LeafOracle<GdlGame>>(g: &GdlGame, s: &S, o: &O, depth: u32) -> cs_tactics::toward::Toward { toward(g, s, X, o, &Seen::new(), depth, &mut big()) }
 
 #[test]
 fn with_no_claim_only_the_games_own_outcome_is_known() {
@@ -122,8 +122,8 @@ fn a_position_met_again_is_a_draw() {
     let s = g.initial();
     let m = g.find_move(&s, "(mark 2 2)").unwrap();
     let key = g.key(&g.apply(&s, &m));
-    let mut hist = HashSet::new();
-    hist.insert(key);
+    let mut hist = Seen::new();
+    hist.add(key);
     let r = toward(&g, &s, X, &none, &hist, 1, &mut big());
     assert_eq!(r.of_class(Class::Draw).iter().map(|i| name_of(&g, &s, *i)).collect::<Vec<_>>(), vec!["(mark 2 2)".to_string()], "the position the record already holds is the rules' draw");
 }
@@ -138,7 +138,7 @@ fn the_budget_cut_gives_the_last_completed_depth() {
     // a node fuse that lets two iterations finish and not a third
     let two: u64 = full.reads[..2].iter().map(|r| r.nodes).sum();
     let mut b = Budget::new(60.0, two + 3);
-    let cutr = toward(&g, &s, X, &oracle, &HashSet::new(), 4, &mut b);
+    let cutr = toward(&g, &s, X, &oracle, &Seen::new(), 4, &mut b);
     assert!(cutr.cut);
     assert_eq!(cutr.depth, 2, "the last completed iteration");
     assert!(!cutr.reads.last().unwrap().complete);
@@ -147,11 +147,11 @@ fn the_budget_cut_gives_the_last_completed_depth() {
     assert_eq!(cutr.root.iter().map(|x| (x.0, x.1)).collect::<Vec<_>>(), exact.root.iter().map(|x| (x.0, x.1)).collect::<Vec<_>>());
     // a fuse that cuts the first iteration: nothing is known
     let mut tiny = Budget::new(60.0, 3);
-    let none_done = toward(&g, &s, X, &oracle, &HashSet::new(), 4, &mut tiny);
+    let none_done = toward(&g, &s, X, &oracle, &Seen::new(), 4, &mut tiny);
     assert_eq!((none_done.depth, none_done.best_class()), (0, Class::Unknown));
     // the clock cuts too: a deadline already past
     let mut late = Budget::new(0.0, 50_000_000);
-    let r = toward(&g, &s, X, &oracle, &HashSet::new(), 4, &mut late);
+    let r = toward(&g, &s, X, &oracle, &Seen::new(), 4, &mut late);
     assert!(r.cut && r.depth <= 1);
 }
 

@@ -8,7 +8,12 @@
 //!   `TagKeeper::undo(&mut self) -> bool`                            the last tempo taken back: the history, the tags and the memory return to what they were.
 //!   `TagKeeper::tags() -> BTreeSet<Fact>`                           the tags as they stand; `repeat_tag() -> Fact`: `(repeats n)`, how many earlier positions have the current key (read off the history, never off the facts).
 //!   `TagKeeper::history() / memory()`                                what layer 1 holds.
-//! Called by: the tests, and the wake's binding when a game at hand moves on. A tag's statement id is `tag:<fact>`, its pattern the fact itself (constants), what it says `Holds`, its standing `Fact` (it follows from the rules at this position), its holder ours.
+//!   PLAN 79.22 PART B, THE KEEPER LIVES WITH THE GAME'S MEMORY AND IS KEPT ACROSS DECISIONS:
+//!   `TagKeeper::over(g, s, &FactDecl, GameMemory, keys_before) -> TagKeeper`   a keeper for a position reached with a record of keys before it and no changes seen (a game begun in the middle, or a history that did not continue): the tags are STATED AS FACTS from what the rules give, the history holds the keys as not-known changes, any old tag of the memory is retracted first.
+//!   `TagKeeper::resume(&FactDecl, facts, History, GameMemory) -> TagKeeper`    the keeper taken up again from what layer 1 kept (the position's facts, the history, the memory with its tag statements).
+//!   `TagKeeper::into_parts(self) -> (facts, History, GameMemory)`              what goes back into layer 1 between decisions.
+//!   `TagKeeper::make_over(&mut self, g, after, skipped)`                      `make` for a position reached by several tempos of which the keys of the earlier ones (`skipped`) were seen but not the positions: they are pushed as not-known changes, the change into `after` is the facts' difference.
+//! Called by: the tests, and the wake's keeper (cs_decision::keep) when a game at hand moves on. A tag's statement id is `tag:<fact>`, its pattern the fact itself (constants), what it says `Holds`, its standing `Fact` (it follows from the rules at this position), its holder ours.
 use crate::{Fact, Game};
 use cs_rep::graph::FactDecl;
 use cs_rep::history::History;
@@ -39,6 +44,28 @@ impl TagKeeper {
         TagKeeper { decl: decl.clone(), facts, history: History::new(g.key(s)), memory }
     }
 
+    /// A keeper for a position whose changes were not seen: see the interface above.
+    pub fn over<G: Game>(g: &G, s: &G::State, decl: &FactDecl, mut memory: GameMemory, keys_before: &[u64]) -> TagKeeper {
+        memory.retract_prefix("tag:", "the history did not continue: the tags are stated again as the rules give them");
+        let mut k = TagKeeper::new(g, s, decl, memory);
+        if let Some(first) = keys_before.first() {
+            let mut h = History::new(*first);
+            for key in &keys_before[1..] { h.push_unknown(*key); }
+            h.push_unknown(g.key(s));
+            k.history = h;
+        }
+        k
+    }
+
+    pub fn resume(decl: &FactDecl, facts: BTreeSet<Fact>, history: History, memory: GameMemory) -> TagKeeper { TagKeeper { decl: decl.clone(), facts, history, memory } }
+
+    pub fn into_parts(self) -> (BTreeSet<Fact>, History, GameMemory) { (self.facts, self.history, self.memory) }
+
+    pub fn make_over<G: Game>(&mut self, g: &G, after: &G::State, skipped: &[u64]) {
+        for k in skipped { self.history.push_unknown(*k); }
+        self.make(g, after);
+    }
+
     pub fn make<G: Game>(&mut self, g: &G, after: &G::State) {
         let now: BTreeSet<Fact> = g.base_facts(after).into_iter().collect();
         let change = Change { added: now.difference(&self.facts).cloned().collect(), removed: self.facts.difference(&now).cloned().collect(), keys: vec![] };
@@ -65,5 +92,7 @@ impl TagKeeper {
     pub fn repeat_tag(&self) -> Fact { Fact { relation: "repeats".to_string(), args: vec![self.history.repeats().to_string()] } }
 
     pub fn history(&self) -> &History { &self.history }
+    /// The facts of the position the keeper is at (every fact the rules give, units and tempo included).
+    pub fn facts(&self) -> &BTreeSet<Fact> { &self.facts }
     pub fn memory(&self) -> &GameMemory { &self.memory }
 }

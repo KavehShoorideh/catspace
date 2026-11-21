@@ -32,7 +32,7 @@ use cs_game::placed::Placed;
 use cs_game::{Game, Role};
 use cs_operator::Budget;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 const FAR: i32 = 99;
 
@@ -273,7 +273,7 @@ pub struct Lowering { pub first: usize, pub moves: u32, pub game_end: bool, pub 
 
 /// Is there a move of ours at `s` (we are to move; `side` is the measure's side and the side to move) after which, within `d` of our moves and against every reply, the term is below `held` where it is our turn, or the game's end is ours? The search of toward.rs, deepened ply by ply to 2d - 1 plies and
 /// one more for the reply; a leaf where it is our turn answers "win" when the term there is below `held`. None: no such line in the budget (a cut is a gap, never a result: `Err` of the budget is None as well, `cut` tells which).
-pub fn lowering<G: Game + Placed>(g: &G, geo: &Geometry, s: &G::State, side: Role, term: &Term, held: &[i64], d: u32, history: &HashSet<u64>, b: &mut Budget) -> (Option<Lowering>, bool) {
+pub fn lowering<G: Game + Placed>(g: &G, geo: &Geometry, s: &G::State, side: Role, term: &Term, held: &[i64], d: u32, history: &cs_rep::history::Seen, b: &mut Budget) -> (Option<Lowering>, bool) {
     if g.mover(s) != Some(side) || d == 0 { return (None, false); }
     let oracle = |gm: &G, st: &G::State| -> Option<Verdict> {
         if gm.mover(st) != Some(side) { return None; }
@@ -300,7 +300,7 @@ impl Found {
 /// PLAN 79.18 B: THE QUESTION OF THE HELD GOAL, counted against what was held. `lowest` is the lowest value held so far and `now` the value in the position (never below `lowest`: a value below it is registered as an event before the question is asked). The first reading asks for a line of at most `d` of our moves after which
 /// the term is below `lowest` against every reply; only where that was read to its end and found nothing, and `now` is above `lowest`, a second asks for a line below `now`. A cut (the budget) is a gap: it is returned as `cut` and nothing is said of what was not read. The history keys are the game's record: a position met before is a draw for the search, so it is never the end of a line that counts.
 #[allow(clippy::too_many_arguments)]
-pub fn question<G: Game + Placed>(g: &G, geo: &Geometry, s: &G::State, side: Role, term: &Term, lowest: &[i64], now: &[i64], d: u32, history: &HashSet<u64>, b: &mut Budget) -> (Option<Found>, bool) {
+pub fn question<G: Game + Placed>(g: &G, geo: &Geometry, s: &G::State, side: Role, term: &Term, lowest: &[i64], now: &[i64], d: u32, history: &cs_rep::history::Seen, b: &mut Budget) -> (Option<Found>, bool) {
     let (fall, cut) = lowering(g, geo, s, side, term, lowest, d, history, b);
     if let Some(l) = fall { return (Some(Found::Fall(l)), cut); }
     if cut || !lower(lowest, now) { return (None, cut); }

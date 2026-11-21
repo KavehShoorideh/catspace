@@ -22,7 +22,8 @@ use cs_memory::store::GameMemory;
 use crate::threats::{RespState, ThreatParams};
 use cs_tactics::ledger::{Judge, Search, WIN};
 use cs_tactics::lines::LineParams;
-use cs_tactics::sheet::base_graph::{PositionPart, Static, UnitRec};
+use cs_rep::history::Seen;
+use cs_tactics::sheet::base_graph::{PositionPart, Root, Static, UnitRec};
 use std::collections::HashSet;
 
 /// Which pieces of the wake are on (section 8's steps): `carried` step 1, `frames` step 2, `threats` and `goals` and `two_threat_goals` step 3, `graph_reads` step 3 (the shut lines and the bearers a move brings), `reasons_pick` and `heads` step 6, `after_move` step 4 (PLAN 79.10 A), `direct_names` step 4 (79.10 C).
@@ -74,13 +75,15 @@ pub struct WakeInputs {
     pub diag_first: bool,
     /// PLAN 79.16 A: the search does not stop on a failed first move (`Search::fail_extend`): the clock it may read on is `FAIL_OF_TIE` of the equal reading's share, taken from it; false (the default): the search as it was.
     pub read_on: bool,
+    /// PLAN 79.22 PARTS A AND B: where the game's facts hold its units and its tempo (data the game gives). With it the memory of the game at hand keeps its position between decisions: the root graph is the kept one, changed by the moves played, and the decision's own move is played in the memory at its end (`keep::advance`). None: nothing is kept, the root graph is built once a decision.
+    pub keep: Option<cs_tactics::sheet::base_graph::FactDecl>,
 }
 
 /// PLAN 79.17 D: the term of the measure (cs_tactics::measure) the wake is asked to hold and the depth `d`, in our moves, within which a line that lowers it against every reply is asked for.
 #[derive(Debug, Clone)]
 pub struct MeasureGoal { pub term: cs_tactics::measure::Term, pub d: u32 }
 
-impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { memory: crate::memory::WakeMemory::default(), goal: None, budget: 0, named_budget: 0, frame: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, carry_graph: false, chance_order: false, gain_mend: false, diag_first: false, read_on: false } } }
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { memory: crate::memory::WakeMemory::default(), goal: None, budget: 0, named_budget: 0, frame: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, carry_graph: false, chance_order: false, gain_mend: false, diag_first: false, read_on: false, keep: None } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -195,8 +198,16 @@ pub fn new_bearer_moves<G: Game + Placed>(_st: &Static, g: &G, s: &G::State, pla
     out
 }
 
+/// PLAN 79.22 PART B: the game's memory after the decision, with the move the decision chose played in it (the position at hand, the tags and the history one tempo on) when the game keeps its position (`WakeInputs::keep`).
+fn kept_after<G: Game + Placed>(st: &Static, g: &G, s: &G::State, inp: &WakeInputs, mv: Option<&String>, mut game: cs_memory::store::GameMemory) -> cs_memory::store::GameMemory {
+    if let (Some(decl), Some(name)) = (&inp.keep, mv) {
+        if let Some(m) = g.find_move(s, name) { let after = g.apply(s, &m); crate::keep::advance(st, g, decl, &mut game, &after); }
+    }
+    game
+}
+
 /// THE WHOLE DECISION (see the module doc). Ported so far: the graph reads (`new_bearer_moves` over `params.places`) that name moves read first and unreduced; the search is `cs_tactics::ledger::Search`. A piece asked for and not ported is listed in `unported`.
-fn decide_search<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, history: &[u64], judge: &J, params: &WakeParams) -> WakeDecision {
+fn decide_search<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, seen: &std::sync::Arc<Seen>, judge: &J, params: &WakeParams) -> WakeDecision {
     let me = g.mover(s).unwrap_or(0);
     let mut contributions = vec![];
     let mut named: Vec<String> = vec![];
@@ -207,12 +218,12 @@ fn decide_search<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, h
     }
     let t0 = std::time::Instant::now();
     let mut ls = Search::new(g, judge, me, params.seconds);
-    ls.history = history.iter().copied().collect();
+    ls.history = seen.clone();
     if !named.is_empty() { ls.named.insert(g.key(s), named); }
     let ln = ls.run(s, params.depth);
     contributions.push(Contribution { piece: "search with the count of worths at its end", step: 5, seconds: t0.elapsed().as_secs_f64(), named: vec![], note: String::new() });
     let ended = if ln.value.abs() >= 1_000_000 { "the game itself ends in the line (concrete)".to_string() } else { format!("the settled end: no capture is left to either side after the depth read in full ({} plies)", ln.depth) };
-    WakeDecision { mv: ln.first.clone(), value: ln.value, depth: ln.depth, nodes: ln.nodes, chain: vec![Claim { line: ln.line.clone(), ended, by: "search" }], contributions, unported: params.pieces.unported(), log: DecisionLog::default(), proposal: None, game: params.inputs.memory.game.clone(), named_mine: vec![], named_theirs: vec![], equal: vec![], first: ln.first.clone() }
+    WakeDecision { mv: ln.first.clone(), value: ln.value, depth: ln.depth, nodes: ln.nodes, chain: vec![Claim { line: ln.line.clone(), ended, by: "search" }], contributions, unported: params.pieces.unported(), log: DecisionLog::default(), proposal: None, game: kept_after(st, g, s, &params.inputs, ln.first.as_ref(), params.inputs.memory.game.clone()), named_mine: vec![], named_theirs: vec![], equal: vec![], first: ln.first.clone() }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------ THE INTERFACES OF THE PIECES STILL TO BE PORTED (written before their bodies; each body answers `Unported`)
@@ -277,7 +288,7 @@ pub const MEASURE_NODES: u64 = 20_000_000;
 /// THE RULES: the goal is taken up at the first decision at the value read there; a value lower than the lowest held is a SUBGOAL REACHED (the event of ledger row 24, logged with the position's key) and the lowest held moves to it. THE QUESTION (79.18 B, `cs_tactics::measure::question`) is counted against the LOWEST held: a line within `d` of our moves after which the term is below the lowest held
 /// against every reply (a fall); where none exists, read to its end, and the value now is above the lowest, a line that brings it below the value now (a RECOVERY: logged as one, played, never counted as a subgoal reached); a position met before in the game is never the end of a line that counts. THE GOAL'S STATES (79.18 C): it is DROPPED for good only when the class changed (the units of each side by kind are not
 /// the units it was taken up with); a question read to its end that found no line leaves the goal held and it is asked again at the next decision (the log says how many decisions in a row without a line); a goal the search's end of the game puts to SLEEP (`decide`) stays in what is carried and is woken at the next decision in which the search no longer holds the end.
-pub fn measure_step<G: Game + Placed>(st: &Static, g: &G, s: &G::State, history: &[u64], me: Role, mg: &MeasureGoal, prev: Option<&crate::carry::HeldGoal>, end: std::time::Instant) -> (crate::carry::HeldGoal, crate::log::MeasureLog, Option<String>) {
+pub fn measure_step<G: Game + Placed>(st: &Static, g: &G, s: &G::State, history: &Seen, me: Role, mg: &MeasureGoal, prev: Option<&crate::carry::HeldGoal>, end: std::time::Instant) -> (crate::carry::HeldGoal, crate::log::MeasureLog, Option<String>) {
     use cs_tactics::measure::{lower, question, value, Geometry, Reader};
     let geo = Geometry::new(st);
     let now = value(&mg.term, &Reader::new(g, &geo, s, me));
@@ -303,8 +314,7 @@ pub fn measure_step<G: Game + Placed>(st: &Static, g: &G, s: &G::State, history:
     log.held_after = Some(held.value.clone());
     let t0 = std::time::Instant::now();
     let mut b = cs_tactics::Budget::new(end.saturating_duration_since(t0).as_secs_f64(), MEASURE_NODES);
-    let hist: HashSet<u64> = history.iter().copied().collect();
-    let (found, cut) = question(g, &geo, s, me, &mg.term, &held.value, &now, mg.d, &hist, &mut b);
+    let (found, cut) = question(g, &geo, s, me, &mg.term, &held.value, &now, mg.d, history, &mut b);
     log.seconds = t0.elapsed().as_secs_f64();
     log.nodes = b.nodes;
     log.cut = cut;
@@ -336,13 +346,18 @@ fn until(end: std::time::Instant, frac: f64) -> std::time::Instant { let now = s
 /// THE WHOLE DECISION, by the steps of SYSTEM_SPEC 8 and the rule for choosing a move (rule.rs): (1) the carry, (2) the frames and the rows of the threat list, (3) the threat list and the goals of both sides in order of stake within the budget, (4) THEIR goals that work: our answers; OUR goal with the fewest things in its way:
 /// its fixes; only the moves whose own line was read and not refuted are named, (5) the search reads with the named moves first and in full, ours at the root and theirs at the ply after ours; the judge's value is untouched, (6) among the moves the search holds equal: an answer to their largest standing threat, then a fix of
 /// our chosen goal, then the estimates, (7) the chain of claims and the decision log. With no piece of the whole on this is `decide_search`, the old player. The clock: steps 1 to 4 take what they take (their cost is reported by step); the search is given what is left of `params.seconds` and never less than the old player's share of it.
-pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, history: &[u64], judge: &J, params: &WakeParams) -> WakeDecision {
+pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, history: &[u64], judge: &J, params: &WakeParams) -> WakeDecision { decide_seen(st, g, s, &Seen::of(history), judge, params) }
+
+/// PLAN 79.22 PART B: `decide` with the record as layer 1 keeps it (`History::seen`): every reader of a repeat in the decision (the search, the measure's lines) borrows this one set by reference count; nothing is copied from a list. `decide` is the way in of a caller that holds the keys as a list (a test, a measure).
+pub fn decide_seen<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, history: &std::sync::Arc<Seen>, judge: &J, params: &WakeParams) -> WakeDecision {
     let p = params.pieces;
     if !(p.carried || p.frames || p.threats || p.goals || p.two_threat_goals || p.reasons_pick) { return decide_search(st, g, s, history, judge, params); }
     let t_all = std::time::Instant::now();
     let me = g.mover(s).unwrap_or(0);
     let other = g.other(me);
     let inp = &params.inputs;
+    // PLAN 79.22 PART A: THE ROOT'S GRAPH, MADE ONCE FOR THIS DECISION and lent to every part that reads it (the frame read, the threat list, the goals, the reasons' pick, the carry's digest); a part that reads another position builds that one only
+    let root = crate::keep::root_of(st, g, s, &inp.memory.game);
     // PLAN 79.19 C: what the wake reads comes from the two memories: the tables from the reader of the long-term memory, the open tactics from the memory of the game at hand
     let mem = &inp.memory;
     let rec: &Record = match mem.record() { Some(r) => r, None => empty_record() };
@@ -378,17 +393,17 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     if p.after_move {
         let order = Search::new(g, judge, me, 0.1).deepening_order(s);
         let value = |tg: &crate::after::TheirGoals, side: cs_game::Role| { let ch = |gl: &Goal, sk: &rule::Stakes| table_chance(gl, sk).map_or(0.0, |e| e.chance); if inp.gain_mend { crate::gain::chain_value_mended(&tg.goals, side, &tg.stakes, &ch) } else { crate::gain::chain_value(&tg.goals, side, &tg.stakes, &ch) } };
-        after = crate::after::goals_after_with(st, g, s, rec, inp.goal, &order, count, Some(until(pre_end, AFTER_OF_PRE)), if gain_on { Some(&value) } else { None }, inp.gain_mend && gain_on);
+        after = crate::after::goals_after_in(st, Some(&root), g, s, rec, inp.goal, &order, count, Some(until(pre_end, AFTER_OF_PRE)), if gain_on { Some(&value) } else { None }, inp.gain_mend && gain_on);
         contributions.push(Contribution { piece: "their goals after each move of ours", step: 3, seconds: after.seconds, named: vec![], note: format!("{} positions read, {} not reached by the clock{}", after.rows.len(), after.not_asked.len(), if gain_on { format!("; ours read too, {:.4} s of it", after.ours_seconds) } else { String::new() }) });
     }
     // ---- PLAN 79.14 B: what the two plies since the last decision touched, from the graph (the digest of this position is kept for the next decision)
-    let digest_now: Option<(usize, cs_tactics::sheet::delta::Digest)> = if inp.carry_graph { let part = st.position(g, s); let b = cs_tactics::sheet::patterns::Board::new(st, &part, inp.goal); Some((me, cs_tactics::sheet::delta::Digest::of(&b, &part))) } else { None };
+    let digest_now: Option<(usize, cs_tactics::sheet::delta::Digest)> = if inp.carry_graph { let part = st.position_in(&root, g, s); let b = cs_tactics::sheet::patterns::Board::new(st, &part, inp.goal); Some((me, cs_tactics::sheet::delta::Digest::of(&b, &part))) } else { None };
     let touch_now: Option<cs_tactics::sheet::delta::Touch> = match (&digest_now, previous.and_then(|c| c.digest.as_ref())) { (Some((m, now)), Some((pm, prev))) if m == pm => Some(cs_tactics::sheet::delta::Touch::between(prev, now)), _ => None };
     // ---- steps 1 and 2: the frames and the carry
     let mut frames: Option<FrameRows> = None;
     if p.frames {
         match &inp.frame {
-            Some(fr) => { let mut fr = fr.clone(); fr.params.deadline = Some(until(pre_end, FRAMES_OF_PRE)); let f = crate::frame_rows::frame_read_with(st, g, s, inp.goal, &fr, None, previous.and_then(|c| c.memo.as_ref()), inp.carry_graph); contributions.push(Contribution { piece: "frames and the question read", step: 2, seconds: f.seconds, named: vec![], note: format!("{} frames, {} rows, {} questions, {} frames not reached by the clock{}", f.frames, f.rows.len(), f.questions, f.unread_frames, if inp.carry_graph { format!("; carried: {} frames, {} seeds{}", f.parts.carried, f.parts.seeds_carried, if f.touch.is_none() { " (nothing of the last decision to carry from)" } else { "" }) } else { String::new() }) });
+            Some(fr) => { let mut fr = fr.clone(); fr.params.deadline = Some(until(pre_end, FRAMES_OF_PRE)); let f = crate::frame_rows::frame_read_in(st, Some(&root), g, s, inp.goal, &fr, None, previous.and_then(|c| c.memo.as_ref()), inp.carry_graph); contributions.push(Contribution { piece: "frames and the question read", step: 2, seconds: f.seconds, named: vec![], note: format!("{} frames, {} rows, {} questions, {} frames not reached by the clock{}", f.frames, f.rows.len(), f.questions, f.unread_frames, if inp.carry_graph { format!("; carried: {} frames, {} seeds{}", f.parts.carried, f.parts.seeds_carried, if f.touch.is_none() { " (nothing of the last decision to carry from)" } else { "" }) } else { String::new() }) });
                 // PLAN 79.14 A: the cost of the frame read by part (these are parts of the step above, not steps of their own: step 20 and over)
                 let pt = &f.parts;
                 for (name, secs, note) in [("part of the frame read: the seeds on the board", pt.seeds_s, format!("{} seeds found", pt.seeds)), ("part of the frame read: the frames built", pt.build_s, format!("{} frames built", pt.built)), ("part of the frame read: the claims' questions", pt.claims_s, format!("{} frames asked, {} carried", pt.asked, pt.carried)), ("part of the frame read: the answers' questions", pt.answers_s, String::new())] {
@@ -410,7 +425,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     // ---- step 3: the threat list and the goals
     let t0 = std::time::Instant::now();
     let rows = frames.as_ref().map(|f| carried_out.as_ref().map_or_else(|| f.rows.clone(), |c| c.read.clone()));
-    let tp = ThreatParams { goal: inp.goal, rows, share_table: inp.share_table, deadline: Some(until(pre_end, LIST_OF_PRE)), ..Default::default() };
+    let tp = ThreatParams { goal: inp.goal, rows, share_table: inp.share_table, deadline: Some(until(pre_end, LIST_OF_PRE)), root: Some(&root), ..Default::default() };
     // PLAN 79.14 B: the units of the last decision's every-unit reading whose neighbourhood nothing touched are not asked again
     let held_units = match (inp.carry_graph && p.carried, &previous, &touch_now) { (true, Some(prev), Some(t)) => Some((prev.rows.iter().filter(|r| r.row.every).cloned().collect::<Vec<_>>(), t.clone())), _ => None };
     let gp = GoalParams { budget: if inp.budget > 0 { inp.budget } else { crate::goals::BUDGET }, held: carried_out.as_ref().map(|c| c.held.clone()).unwrap_or_default(), held_units, keep_met: inp.chance_order && goal_table.is_some(), ..Default::default() };
@@ -486,7 +501,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let mut ls = Search::new(g, judge, me, search_secs);
     if inp.read_on { ls.fail_extend = FAIL_OF_TIE * tie; }
     ls.lean = true;          // PLAN 79.16 C: the same answers with one ask of the game's mover a node
-    ls.history = history.iter().copied().collect();
+    ls.history = history.clone();
     ls.verify_ties = true;
     ls.fair_names = p.direct_names;          // PLAN 79.11 A: a named move and an un-named rival are compared by the same reading
     if !named_mine.is_empty() { ls.named.insert(g.key(s), named_mine.clone()); }
@@ -520,7 +535,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     let all_names: Vec<String> = moves.iter().map(|m| g.move_name(s, m)).collect();
     let sc: Option<Vec<MoveReasons>> = match (&reasons, p.reasons_pick) {
         // the moves held equal are scored first (they decide); the others only while the clock of the whole decision lasts (they are logged); one not reached has no score
-        (Some(r), true) => { let order: Vec<String> = equal.iter().cloned().chain(all_names.iter().filter(|n| !equal.contains(n)).cloned()).collect(); Some(crate::pick::scores_must(st, g, s, inp.goal, r, &order, Some(if p.direct_names { until(wall_end, CLAIMS_OF_TAIL) } else { wall_end }), equal.len())) }
+        (Some(r), true) => { let order: Vec<String> = equal.iter().cloned().chain(all_names.iter().filter(|n| !equal.contains(n)).cloned()).collect(); Some(crate::pick::scores_must_in(st, Some(&root), g, s, inp.goal, r, &order, Some(if p.direct_names { until(wall_end, CLAIMS_OF_TAIL) } else { wall_end }), equal.len())) }
         (None, true) => { log.notes.push("the reasons' pick asked for and no reasons given: no estimate of a move, the search's own first move decides among the rest".into()); None }
         _ => None,
     };
@@ -740,7 +755,7 @@ pub fn decide<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State, hist
     if let Some(h) = held_next { carried_next.get_or_insert_with(Carried::default).held = Some(h); }
     log.measure = measure_log;
     log.step_seconds = contributions.iter().map(|c| (c.step, c.piece.to_string(), c.seconds)).collect();
-    WakeDecision { mv, value: ln.value, depth: ln.depth, nodes: ln.nodes, chain, contributions, unported: params.pieces.unported(), log, proposal: Some(prop), game: { let mut game = inp.memory.game.clone(); game.put_slot(crate::memory::CARRIED, carried_next.map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn cs_memory::store::Kept>), "the open tactics and the goal held after this decision"); game }, named_mine, named_theirs, equal, first: ln.first.clone() }
+    WakeDecision { mv: mv.clone(), value: ln.value, depth: ln.depth, nodes: ln.nodes, chain, contributions, unported: params.pieces.unported(), log, proposal: Some(prop), game: { let mut game = kept_after(st, g, s, inp, mv.as_ref(), inp.memory.game.clone()); game.put_slot(crate::memory::CARRIED, carried_next.map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn cs_memory::store::Kept>), "the open tactics and the goal held after this decision"); game }, named_mine, named_theirs, equal, first: ln.first.clone() }
 }
 
 /// PLAN 79.10 A: the fact about one move of ours in words (the units as the game names them): a thing it took out of the way of their chain, a thing it put in the way, or no change. It says what happened; it adds to no value.

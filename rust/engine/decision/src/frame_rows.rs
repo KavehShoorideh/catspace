@@ -93,11 +93,15 @@ pub fn frame_read<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, 
 
 /// PLAN 79.14 B: `frame_read` that asks only what the last decision did not answer (`threat_frames_with`): `prev` is the memo the last decision of this side left (`Carried::memo`), `keep` makes this read leave one. `keep` false: `frame_read`.
 #[allow(clippy::too_many_arguments)]
-pub fn frame_read_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, goal: Option<Kind>, fr: &FrameRead, stake: Option<&dyn Fn(&str, bool) -> Option<f64>>, prev: Option<&cs_tactics::sheet::threat_frames::FrameMemo>, keep: bool) -> FrameRows {
+pub fn frame_read_with<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, g: &G, s: &G::State, goal: Option<Kind>, fr: &FrameRead, stake: Option<&dyn Fn(&str, bool) -> Option<f64>>, prev: Option<&cs_tactics::sheet::threat_frames::FrameMemo>, keep: bool) -> FrameRows { frame_read_in(st, None, g, s, goal, fr, stake, prev, keep) }
+
+/// `frame_read_with` on the decision's root graph when it is lent (PLAN 79.22 PART A).
+#[allow(clippy::too_many_arguments)]
+pub fn frame_read_in<G: Game + Placed>(st: &cs_tactics::sheet::base_graph::Static, root: Option<&cs_tactics::sheet::base_graph::Root>, g: &G, s: &G::State, goal: Option<Kind>, fr: &FrameRead, stake: Option<&dyn Fn(&str, bool) -> Option<f64>>, prev: Option<&cs_tactics::sheet::threat_frames::FrameMemo>, keep: bool) -> FrameRows {
     let t0 = std::time::Instant::now();
     let Some(mover) = g.mover(s) else { return FrameRows::default() };
     let want: FxHashMap<u64, u32> = fr.want.iter().enumerate().map(|(i, k)| (*k, i as u32)).collect();
-    let mut raw = cs_tactics::sheet::threat_frames::threat_frames_with(st, g, s, goal, &want, &fr.params, prev, keep);
+    let mut raw = cs_tactics::sheet::threat_frames::threat_frames_in(st, root, g, s, goal, &want, &fr.params, prev, keep);
     let (memo, touch) = (raw.memo.take(), raw.touch.take());
     let mut out = rows_of(&raw, mover, g.other(mover), g.kind_names().len(), stake, &g.kind_names());
     out.memo = memo; out.touch = touch;
