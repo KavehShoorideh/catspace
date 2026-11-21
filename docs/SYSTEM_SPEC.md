@@ -830,6 +830,15 @@ form: "tests of this layer should not depend on rules, so FEN should not be used
 as sets of facts and statements, and call nothing of the rules: no move, no legal move, no outcome, no text form of the game.
 READING of the main agent: the same holds for every layer; a test that needs the layer above belongs to that layer. Plan 79.20.
 
+**One graph is the representation; the rules are the next layer** (Kaveh 2026-11-20: "One graph should be the board, edges, ranks
+files diagonals squares, and pieces and tempo. Rules go in next layer, right?"). DECIDED by Kaveh: layer 1 is one graph holding the
+board (its places, its lines, which place is next to which), the units on it and the tempo. The rules are layer 2. READING of the
+main agent, PROPOSED until he confirms: (a) the board differs by game, so layer 1 reads the board's part from the game's own
+description and hard-codes none; (b) how a unit steps is a rule, so reach and attack edges are written onto the graph by layer 2
+through layer 1's door of change, and are not part of the bare graph; (c) the state the rules need beyond the units (rights still
+held, the counters) sits in the graph as plain facts, whose meaning layer 2 gives. Not built: today the graph is made by the rules
+(section 13 item 41).
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1172,4 +1181,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Plan 79.17: the measure of progress in the new engine, mined, held by the wake; two faults that stand | 2026-11-20 | 12, 13 item 37 |
 | The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last six blocks; layer 1 DECIDED, plan 79.19), 13 items 38 and 39 |
 | A layer's test uses only that layer and what is below it; layer 1's tests call nothing of the rules | 2026-11-20 | 11 (last block) |
+| One graph is the representation (board, lines, units, tempo); the rules are the next layer | 2026-11-20 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
