@@ -839,6 +839,15 @@ through layer 1's door of change, and are not part of the bare graph; (c) the st
 held, the counters) sits in the graph as plain facts, whose meaning layer 2 gives. Not built: today the graph is made by the rules
 (section 13 item 41).
 
+**Layer 1 holds the history; the rights are layer 2's tags** (Kaveh 2026-11-20, thinking aloud: "the first layer has to include
+history as well, like move counts ... it has to include the whole sequence. So the second layer can come and say, 50 move rule or 3
+move rule"). Kaveh's direction: layer 1 holds the whole sequence of the game; what the rules read off it (a right still held, a
+taking in passing, the counters, a repeat) is said by layer 2. READING of the main agent, PROPOSED: (a) the history is a sequence of
+changes, one a tempo, each the facts added and removed, with the key of each position reached; layer 1 knows no legality; (b) layer 2
+writes what it reads off the history as tags on the nodes (a unit, a place, the tempo), through layer 1's door of change, each with
+what it read so it falls by change; the history is the truth and the tags are kept step by step for speed; (c) a position given
+without its history (a test position, a start in the middle) states the tags as plain facts.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1182,4 +1191,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The layers, each with its work, interface and test (Kaveh thinking out loud, UNDER DISCUSSION) | 2026-11-20 | 11 (last six blocks; layer 1 DECIDED, plan 79.19), 13 items 38 and 39 |
 | A layer's test uses only that layer and what is below it; layer 1's tests call nothing of the rules | 2026-11-20 | 11 (last block) |
 | One graph is the representation (board, lines, units, tempo); the rules are the next layer | 2026-11-20 | 11 (last block) |
+| Layer 1 holds the history as a sequence of changes; rights and counters are layer 2's tags on the graph | 2026-11-20 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
