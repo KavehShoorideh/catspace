@@ -9,7 +9,7 @@
 //!   moves    <names...>                    the record of the moves of that game (data for the layer above; layer 1 ignores it)
 //!   full     <facts>                       the first position of a game, its facts in the canonical text (`encode_facts`)
 //!   delta    <json {added, removed}>       the next position: what was added and removed, each a list of facts in the canonical form, taken by a plain set difference here
-//!   check    <facts>                       after every tenth delta: the position in full, to be equal to the one the deltas built
+//!   recap    <facts>                       after every tenth delta: the position in full, to be equal to the one the deltas built
 //! The next position of a game is the last one with the delta applied.
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
@@ -61,7 +61,7 @@ fn main() {
                 else {
                     let (added, removed): (Vec<Fact>, Vec<Fact>) = (facts.difference(&line[i - 1]).cloned().collect(), line[i - 1].difference(facts).cloned().collect());
                     file += &format!("delta\t{{\"added\":{},\"removed\":{}}}\n", encode_facts(&added), encode_facts(&removed));
-                    if i % CHECKPOINT == 0 { file += &format!("check\t{}\n", encode_facts(&v)); }
+                    if i % CHECKPOINT == 0 { file += &format!("recap\t{}\n", encode_facts(&v)); }
                 }
                 positions += 1;
             }

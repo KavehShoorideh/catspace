@@ -35,7 +35,7 @@ impl Fixture {
 
 fn facts_of(set: &BTreeSet<Fact>) -> Vec<Fact> { set.iter().cloned().collect() }
 
-/// Every fixture file of the directory, in the order of their names. A position after the first is the one before it with the delta applied (plain set operations); every `check` line must equal what the deltas built.
+/// Every fixture file of the directory, in the order of their names. A position after the first is the one before it with the delta applied (plain set operations); every `recap` line must equal what the deltas built.
 pub fn fixtures() -> Vec<Fixture> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures");
     let mut names: Vec<PathBuf> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).filter(|p| p.extension().is_some_and(|x| x == "fixture")).collect();
@@ -61,7 +61,7 @@ pub fn fixtures() -> Vec<Fixture> {
                     games.last_mut().unwrap().push(Pos { facts: facts_of(&s), since: Some((added, removed)) });
                     cur = Some(s);
                 }
-                "check" => { assert_eq!(decode_facts(rest).unwrap(), facts_of(cur.as_ref().unwrap()), "a checkpoint equals what the deltas built"); checks += 1; }
+                "recap" => { assert_eq!(decode_facts(rest).unwrap(), facts_of(cur.as_ref().unwrap()), "a checkpoint equals what the deltas built"); checks += 1; }
                 other => panic!("unknown tag {other}"),
             }
         }

@@ -216,9 +216,9 @@ mod tests {
     #[test]
     fn a_statement_falls_when_a_literal_unifies_with_a_changed_fact_and_not_otherwise() {
         let s = sample(Standing::Fact, Holder::Ours, Says::Holds);
-        let hit = Change { added: vec![Fact::new("cell", &["a", "1", "us", "rook"])], ..Default::default() };
-        let other_relation = Change { added: vec![Fact::new("attack", &["a", "1", "us", "rook"])], ..Default::default() };
-        let other_constant = Change { removed: vec![Fact::new("cell", &["a", "1", "them", "rook"])], ..Default::default() };
+        let hit = Change { added: vec![Fact::new("cell", &["a", "1", "us", "kind_x"])], ..Default::default() };
+        let other_relation = Change { added: vec![Fact::new("attack", &["a", "1", "us", "kind_x"])], ..Default::default() };
+        let other_constant = Change { removed: vec![Fact::new("cell", &["a", "1", "them", "kind_x"])], ..Default::default() };
         assert!(s.falls_by(&hit) && !s.falls_by(&other_relation) && !s.falls_by(&other_constant));
         assert!(s.falls_by(&Change { keys: vec!["key:7".into()], ..Default::default() }) && !s.falls_by(&Change { keys: vec!["key:8".into()], ..Default::default() }));
     }

@@ -2,7 +2,7 @@
 Rust holds the tests (cargo test --release --offline -p cs_rep): rust/engine/rep/tests/layer1.rs reads positions as sets of facts from rust/engine/rep/tests/fixtures/*.fixture.
 THIS file is the scan: no source of a layer-1 test (every .rs file under rust/engine/rep/tests, since plan 79.21 where layer 1 lives; and any under memory/tests) may name a crate that holds the rules, the rules' kernel or description, a moving part of the rules' trait
 (moves, apply, outcome, initial, find_move, move_name, base_facts) or the game's text form. The one name taken from the crate that holds the rules is the type of a fact, `cs_game::Fact` (it is defined there, beside the trait; plan 79.20 part D).
-The fixtures are data: they hold the facts of the games and are not scanned for names, only checked to be there and small.
+The fixtures are data: they hold the facts of the games, which name the game's own words as data, and are not scanned for names in their facts; PLAN 79.22 PART C: their line TAGS (the words that say what a line is) are scanned and name no game.
 """
 from __future__ import annotations
 
@@ -86,3 +86,30 @@ def test_the_representation_crate_depends_on_no_rules_crate_and_its_sources_call
             bad[p.name] = found
     assert not bad, bad
     assert {"lib.rs", "fact.rs", "statement.rs", "store.rs"} <= {p.name for p in SRC.rglob("*.rs")}
+
+
+GAME_WORDS = r"\b(king\w*|queen|rook|bishop|knight|pawn|castl\w*|promot\w*|en passant|check|mate|stalemate|uci|fen|san|chess\w*|shakmaty)\b"
+
+
+def fixture_tags(text: str) -> list[str]:
+    """the tag at the start of each line of a fixture: the words that structure the file (the facts after the tab are the game's data)"""
+    return [line.split("\t")[0] for line in text.splitlines()]
+
+
+def test_the_tags_of_the_fixture_lines_name_no_game():
+    """PLAN 79.22 PART C: a fixture's facts are the game's data, but the tag at the start of each line belongs to layer 1: it says a position, a change, a recap, and no word of a game (a checkpoint had been tagged with a word of the game)."""
+    seen: set[str] = set()
+    for p in sorted((TESTS / "fixtures").glob("*.fixture")):
+        for tag in fixture_tags(p.read_text()):
+            seen.add(tag)
+            assert not re.search(GAME_WORDS, tag, flags=re.I), (p.name, tag)
+    assert seen == {"key", "board", "game", "moves", "full", "delta", "recap"}, seen
+
+
+def test_the_tag_scan_sees_a_planted_tag():
+    """The negative control of the tag scan: the old tag of the checkpoints is found when it is planted back in a fixture's text."""
+    p = sorted((TESTS / "fixtures").glob("*.fixture"))[0]
+    planted = p.read_text().replace("\nrecap\t", "\ncheck\t", 1)
+    assert planted != p.read_text()
+    assert any(re.search(GAME_WORDS, tag, flags=re.I) for tag in fixture_tags(planted))
+    assert not any(re.search(GAME_WORDS, tag, flags=re.I) for tag in fixture_tags(p.read_text()))
