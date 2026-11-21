@@ -46,6 +46,8 @@ impl LiveGraph {
     pub fn tempo(&self) -> Option<Role> { self.mover }
     pub fn units(&self) -> &[LiveUnit] { &self.units }
     pub fn depth(&self) -> usize { self.log.len() }
+    /// PLAN 79.22: the graph is kept between decisions: what it could be taken back to is let go (a game's graph carries no log of the whole game).
+    pub fn settle(&mut self) { self.log.clear(); }
 
     /// One tempo. The log keeps the whole unit list before it (a clone of a few dozen small units: cheaper than the nodes and ids a rebuild makes, and exact).
     pub fn make(&mut self, e: Edit) {

@@ -66,7 +66,7 @@ impl<'a, G: Game> Operator<G> for ClaimOp<'a> {
         let t0 = std::time::Instant::now();
         let before = self.claims.stats();
         let oracle = ClaimOracle { claims: self.claims, memo: RefCell::new(HashMap::new()), spoke: RefCell::new(BTreeMap::new()) };
-        let hist: HashSet<u64> = self.history.iter().copied().collect();
+        let hist: cs_rep::history::Seen = self.history.iter().copied().collect();
         let r = toward::toward(g, s, *role, &oracle, &hist, b.max_depth.unwrap_or(CLAIM_DEPTH), &mut b);
         let after = self.claims.stats();
         let moves = g.moves(s);

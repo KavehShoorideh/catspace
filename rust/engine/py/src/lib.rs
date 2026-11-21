@@ -595,7 +595,7 @@ impl<'a, G: Game, J: cs_tactics::ledger::Judge> cs_operator::Operator<G> for Equ
         let main_seconds = b.seconds_left();
         let mut ls = cs_tactics::ledger::Search::new(g, self.judge, *role, self.params.choice_mode.deepening_seconds(self.params.verify_choice, main_seconds));
         ls.set_fuse(b.max_nodes);
-        ls.history = self.history.iter().copied().collect();
+        ls.history = cs_memory::history::Seen::of(&self.history);
         ls.ordering = self.params.ordering;
         ls.prune = self.params.prune;
         ls.extend = self.params.extend;

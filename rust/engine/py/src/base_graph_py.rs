@@ -29,6 +29,8 @@ pub struct BaseGraph {
     games: std::cell::RefCell<HashMap<String, cs_memory::store::GameMemory>>,
     /// PLAN 79.19: the key of this game's partition of the long-term memory: what the game reports (its name) and the content address of its rules (the description it was built from)
     key: cs_memory::store::GameKey,
+    /// PLAN 79.22: where this game's facts hold its units and its tempo (data the game's files give); with it the memory of a game at hand (a caller's slot) keeps its position between decisions
+    fact_decl: Option<cs_tactics::sheet::base_graph::FactDecl>,
 }
 
 
@@ -163,14 +165,17 @@ impl BaseGraph {
 impl BaseGraph {
     /// BaseGraph(variant, description, static_relations, objects): the game by its variant (its places, kinds and sides), the description's text, the static relations and the objects
     /// (name -> component sorts) its graph vocabulary binds.
+    /// PLAN 79.22: `fact_decl` = (the relation of the state that holds the units, the argument that holds the owner, the argument that holds the kind or None, the relation that holds the tempo or None): the game's own data, from its graph vocabulary file.
     #[new]
-    fn new(variant: &str, description: &str, static_relations: Vec<String>, objects: Vec<(String, Vec<String>)>) -> PyResult<BaseGraph> {
+    #[pyo3(signature = (variant, description, static_relations, objects, fact_decl=None))]
+    fn new(variant: &str, description: &str, static_relations: Vec<String>, objects: Vec<(String, Vec<String>)>, fact_decl: Option<(String, usize, Option<usize>, Option<String>)>) -> PyResult<BaseGraph> {
         let g = KernelGame::new(variant, 518).map_err(bad)?;
         let names = Names::new(g.place_names(), g.kind_names(), g.roles());
         let steps = g.steps(description, &static_relations, &objects).map_err(bad)?;
         let st = Static::new(&steps, &names).map_err(bad)?;
         let geo = cs_tactics::measure::Geometry::new(&st);
-        Ok(BaseGraph { variant: variant.to_string(), st, geo, kv: None, bands: None, rules: Default::default(), games: Default::default(), key: cs_memory::store::GameKey::of(variant, description) })
+        Ok(BaseGraph { variant: variant.to_string(), st, geo, kv: None, bands: None, rules: Default::default(), games: Default::default(), key: cs_memory::store::GameKey::of(variant, description),
+                       fact_decl: fact_decl.map(|d| cs_tactics::sheet::base_graph::FactDecl { units: cs_game::UnitDecl { relation: d.0, owner: d.1, kind: d.2 }, tempo: d.3 }) })
     }
 
     /// kinds() -> the game's own words for its kinds, in the order of the numbers the measure's groups use.
@@ -208,7 +213,7 @@ impl BaseGraph {
     fn measure_lowers(&self, py: Python<'_>, text: &str, side: usize, term: &str, held: Vec<i64>, d: u32, seconds: f64, history: Option<Vec<u64>>) -> PyResult<(Option<String>, u32, bool, bool, u64)> {
         let t = cs_tactics::measure::Term::parse(term).map_err(bad)?;
         let (g, s) = self.game(text)?;
-        let hist: std::collections::HashSet<u64> = history.unwrap_or_default().into_iter().collect();
+        let hist: cs_memory::history::Seen = history.unwrap_or_default().into_iter().collect();
         let geo = &self.geo;
         let r = py.allow_threads(|| { let mut b = cs_tactics::Budget::new(seconds, 400_000_000); let (f, cut) = cs_tactics::measure::lowering(&g, geo, &s, side, &t, &held, d, &hist, &mut b); (f, cut, b.nodes) });
         let name = r.0.as_ref().map(|l| g.move_name(&s, &g.moves(&s)[l.first]));
@@ -281,7 +286,7 @@ impl BaseGraph {
         use cs_decision::pick::{Dir, Reason, Reasons, Side};
         use cs_decision::threat_verdict::Record;
         use cs_decision::memory::{Parts, WakeMemory};
-        use cs_decision::wake::{decide, Pieces, WakeInputs, WakeParams};
+        use cs_decision::wake::{Pieces, WakeInputs, WakeParams};
         use cs_memory::store::{GameMemory, Partition, Reader};
         let (g, s) = self.game(text)?;
         let goal = self.goal_of(&goal_kind)?;
@@ -319,16 +324,24 @@ impl BaseGraph {
                 WakeMemory { long: Some(Reader::new(part)), game: game.unwrap_or_else(|| GameMemory::new(self.key.clone())), hold }
             }
         };
-        // PLAN 79.21 C: the record of the game every search takes is read from the history the game's memory holds (one copy); the caller's keys are the way in, brought to it with `sync_history`
+        // PLAN 79.22 PARTS A AND B: a game at hand (a caller's slot) keeps its position in its memory: the memory is brought to this position by the moves played (the history with its changes, the tags, the graph), built afresh only when the history does not continue; the record every search takes is the history's own set of keys, shared (`History::seen`), never copied from the list. A call with no slot has no game at hand: its keys are the record.
         let mut memory = memory;
-        memory.game.sync_history(&history, cs_game::Game::key(&g, &s), None);
-        let record: Vec<u64> = memory.game.history().map(|h| h.record().to_vec()).unwrap_or_default();
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { memory, goal, budget, named_budget, frame, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, carry_graph, chance_order, gain_mend, diag_first, read_on } };
+        match self.fact_decl.as_ref().filter(|_| carry_slot.is_some()) {
+            Some(decl) => { cs_decision::keep::bring(&self.st, &g, decl, &mut memory.game, &history, &s); }
+            None => memory.game.sync_history(&history, cs_game::Game::key(&g, &s), None),
+        }
+        let seen = memory.game.history().map(|h| h.seen().clone()).unwrap_or_default();
+        let keep = self.fact_decl.clone().filter(|_| carry_slot.is_some());
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { memory, goal, budget, named_budget, frame, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, carry_graph, chance_order, gain_mend, diag_first, read_on, keep } };
         let st = &self.st;
-        let d = py.allow_threads(|| decide(st, &g, &s, &record, &judge, &params));
+        let d = py.allow_threads(|| cs_decision::wake::decide_seen(st, &g, &s, &seen, &judge, &params));
         if let Some(k) = &carry_slot { self.games.borrow_mut().insert(k.clone(), d.game.clone()); }
         Ok(d.to_json().to_string())
     }
+
+    /// PLAN 79.22 PART A, a measure: `graph_builds_start(text)` begins counting the graphs the rules' reading builds (`Static::position`) for a decision at the position `text`, `graph_builds_take()` stops and returns [(is it the root's graph, the place in the source that asked, how many)]. No decision reads it.
+    fn graph_builds_start(&self, text: &str) -> PyResult<()> { let (g, s) = self.game(text)?; cs_tactics::sheet::base_graph::builds::start(cs_game::Game::key(&g, &s)); Ok(()) }
+    fn graph_builds_take(&self) -> Vec<(bool, String, usize)> { cs_tactics::sheet::base_graph::builds::take() }
 
     /// PLAN 79.19 C: memory_write(root, worth, half, chances, reasons, goal_table, measure, sample) -> (path, id, parent): the tables the wake reads today, written as the partition of THIS game of the long-term memory under `root` (one file named by its content, in the folder of the game's key); the mined measure (term, d) as a statement that is a conjecture on `sample`. Nothing of the real store is written: the caller names `root`.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]

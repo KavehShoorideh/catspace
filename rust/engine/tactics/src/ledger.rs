@@ -118,8 +118,10 @@ pub struct Search<'a, G: Game, J: Judge> {
     tt: FxHashMap<u64, Tt>,
     stopped: bool,
     /// INSTANCE KNOWLEDGE (plan 78.8): the keys of the positions the game's record already holds -- reached again, the rules' draw (repetition) is the outcome
-    pub history: std::collections::HashSet<u64>,
-    path: Vec<u64>,
+    /// PLAN 79.22 PART B: the keys of the positions the game has been in (a repeat is the rules' draw), as layer 1 keeps them (`cs_rep::history::Seen`), borrowed by reference count: the search never copies the record.
+    pub history: std::sync::Arc<cs_rep::history::Seen>,
+    /// PLAN 79.22 PART B: the line being walked, kept by the tempos made and taken back (layer 1's `Path`)
+    path: cs_rep::history::Path,
     /// MOVE ORDERING (plan 78.9, game-free): the quiet moves that cut a sibling off at the same ply (killers) and those that cut off anywhere (history, by the
     /// square of the depth) are read early; `ordering` off reads the old order (the comparison)
     pub ordering: bool,
@@ -241,12 +243,12 @@ pub struct Line { pub first: Option<String>, pub value: i64, pub line: Vec<Strin
 
 impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn new(g: &'a G, judge: &'a J, me: Role, seconds: f64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![], fail_extend: 0.0, failed_first: None, lean: false, root_goal: None, root_found: None, root_done: vec![] }
+        Search { g, judge, me, nodes: 0, fuse: NODE_FUSE, deadline: Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0)), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: Default::default(), ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true, killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![], fail_extend: 0.0, failed_first: None, lean: false, root_goal: None, root_found: None, root_done: vec![] }
     }
 
     /// A search bounded by a node fuse alone (no clock): the census reads every position with the same budget.
     pub fn with_fuse(g: &'a G, judge: &'a J, me: Role, nodes: u64) -> Self {
-        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: vec![], ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true,
+        Search { g, judge, me, nodes: 0, fuse: nodes, deadline: Instant::now() + std::time::Duration::from_secs(1 << 30), tt: FxHashMap::default(), stopped: false, history: Default::default(), path: Default::default(), ordering: true, prune: true, null_move: true, late_reduce: true, verify_ties: false, verify_choice: false, choice_mode: ChoiceMode::Slot, reask: false, reask_skip: None, reasked: ReaskCount::default(), root_full: false, fair_names: false, fair_reread: FairCount::default(), extend: true,
                  killers: vec![], hist: FxHashMap::default(), root_first: vec![], root_last: vec![], root_pos: vec![], root_strict: false, named: Default::default(), named_ply: Default::default(), reads: vec![], fail_extend: 0.0, failed_first: None, lean: false, root_goal: None, root_found: None, root_done: vec![] }
     }
 

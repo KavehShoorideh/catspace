@@ -14,7 +14,7 @@
 //! The oracle is a trait so that this crate needs to know nothing of rules or stores: the claim-backed oracle is built where both are visible (cs_decision). Game-free.
 use crate::{won, Budget, Cut};
 use cs_game::{Game, Role};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Instant;
 
 /// What an oracle says of a position, for the SIDE TO MOVE there.
@@ -102,7 +102,7 @@ struct Run<'a, G: Game, O: LeafOracle<G>> {
     g: &'a G,
     role: Role,
     oracle: &'a O,
-    history: &'a HashSet<u64>,
+    history: &'a cs_rep::history::Seen,
     path: Vec<u64>,
     evals: u64,
     horizon: bool,
@@ -178,26 +178,26 @@ impl<'a, G: Game, O: LeafOracle<G>> Run<'a, G, O> {
 
 /// `role` to move at `s` (the root): the class of every root move, deepened from one ply to `max_depth` while the budget lasts. `history`: the keys of the positions the game's
 /// record already holds (a position met again is the rules' draw). The root itself is never asked of the oracle: a claim speaks of positions the line REACHES.
-pub fn toward<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &HashSet<u64>, max_depth: u32, b: &mut Budget) -> Toward {
+pub fn toward<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &cs_rep::history::Seen, max_depth: u32, b: &mut Budget) -> Toward {
     toward_with(g, s, role, oracle, history, max_depth, Some(SILENT_DEPTH), b)
 }
 
 /// PLAN 79.17 (SYSTEM_SPEC 7, the measure of progress; piece: the measure): the same search with the stop at a silent depth as a parameter. `silent_at` None: the search is never stopped for having heard nothing (a leaf oracle that speaks only at some leaves, such as "the measure is
 /// lower here", is silent at depth two and must still be read deeper); `Some(d)`: as `toward`. Nothing else differs.
 #[allow(clippy::too_many_arguments)]
-pub fn toward_with<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &HashSet<u64>, max_depth: u32, silent_at: Option<u32>, b: &mut Budget) -> Toward {
+pub fn toward_with<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &cs_rep::history::Seen, max_depth: u32, silent_at: Option<u32>, b: &mut Budget) -> Toward {
     toward_run(g, s, role, oracle, history, max_depth, silent_at, false, b)
 }
 
 /// PLAN 79.18 (SYSTEM_SPEC 7 the measure of progress, 11 hot paths in Rust; the cost of the held goal's question): `toward_with` with a MEMO of the answers read in an iteration, by position and plies left, so that the same position reached by another order of moves is read once. The
 /// answers are the same as `toward_with`'s (a test compares the roots on constructed positions): a value that rests on the path (a position met again on the line is a draw) is never stored, a bound from a cut is stored as a bound, the memo is emptied at each iteration (the ply is then fixed by the position and the plies left).
 #[allow(clippy::too_many_arguments)]
-pub fn toward_memo<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &HashSet<u64>, max_depth: u32, silent_at: Option<u32>, b: &mut Budget) -> Toward {
+pub fn toward_memo<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &cs_rep::history::Seen, max_depth: u32, silent_at: Option<u32>, b: &mut Budget) -> Toward {
     toward_run(g, s, role, oracle, history, max_depth, silent_at, true, b)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn toward_run<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &HashSet<u64>, max_depth: u32, silent_at: Option<u32>, memo: bool, b: &mut Budget) -> Toward {
+fn toward_run<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle: &O, history: &cs_rep::history::Seen, max_depth: u32, silent_at: Option<u32>, memo: bool, b: &mut Budget) -> Toward {
     let mut out = Toward::default();
     let moves = g.moves(s);
     out.root = (0..moves.len()).map(|i| (i, Class::Unknown, UNKNOWN)).collect();

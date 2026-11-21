@@ -94,7 +94,7 @@ impl<'a, G: Game, J: Judge> Operator<G> for LedgerOp<'a, J> {
         let main_seconds = b.seconds_left();
         let mut ls = Search::new(g, self.judge, *role, self.choice_mode.deepening_seconds(self.verify_choice, main_seconds));
         ls.set_fuse(b.max_nodes);
-        ls.history = self.history.iter().copied().collect();
+        ls.history = cs_rep::history::Seen::of(&self.history);
         ls.ordering = self.ordering;
         ls.prune = self.prune;
         ls.extend = self.extend;

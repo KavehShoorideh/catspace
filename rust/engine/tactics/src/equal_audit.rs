@@ -22,7 +22,7 @@ pub struct Audit { pub depth: i32, pub value: i64, pub run_nodes: u64, pub tie_n
 
 fn fresh<'a, G: Game, J: Judge>(g: &'a G, judge: &'a J, me: cs_game::Role, history: &[u64], fuse: u64, null_move: bool, late_reduce: bool) -> Search<'a, G, J> {
     let mut x = Search::with_fuse(g, judge, me, fuse);
-    x.history = history.iter().copied().collect();
+    x.history = cs_rep::history::Seen::of(&history);
     x.null_move = null_move;
     x.late_reduce = late_reduce;
     x

@@ -228,9 +228,13 @@ pub struct Handed { pub surprised: Vec<Statement>, pub log: Vec<Logged> }
 
 /// THE MEMORY OF THE GAME AT HAND: statements with what they read, and typed slots (the open tactics, the goal held). Written by the wake, changed in place, every change logged.
 #[derive(Clone)]
-pub struct GameMemory { key: Option<GameKey>, statements: BTreeMap<String, Statement>, slots: BTreeMap<String, Arc<dyn Kept>>, log: Vec<Logged>, fallen: Vec<Statement>, history: Option<crate::history::History> }
+pub struct GameMemory { key: Option<GameKey>, statements: BTreeMap<String, Statement>, slots: BTreeMap<String, Arc<dyn Kept>>, log: Vec<Logged>, fallen: Vec<Statement>, history: Option<crate::history::History>, at_hand: Option<AtHand> }
 
-impl Default for GameMemory { fn default() -> GameMemory { GameMemory { key: None, statements: BTreeMap::new(), slots: BTreeMap::new(), log: vec![], fallen: vec![], history: None } } }
+/// PLAN 79.22 PARTS A AND B. THE POSITION AT HAND AS LAYER 1 KEEPS IT BETWEEN DECISIONS: the key of the position the history ends at, the facts the rules gave for it (what the tags are kept from) and the graph kept step by step (`LiveGraph`, the relations layer 2 wrote). Changed by the moves played, never rebuilt unless the history does not continue.
+#[derive(Debug, Clone)]
+pub struct AtHand { pub key: u64, pub facts: std::collections::BTreeSet<Fact>, pub graph: crate::live::LiveGraph }
+
+impl Default for GameMemory { fn default() -> GameMemory { GameMemory { key: None, statements: BTreeMap::new(), slots: BTreeMap::new(), log: vec![], fallen: vec![], history: None, at_hand: None } } }
 
 impl std::fmt::Debug for GameMemory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "GameMemory({} statements, slots {:?}, {} logged)", self.statements.len(), self.slots.keys().collect::<Vec<_>>(), self.log.len()) }
@@ -244,6 +248,19 @@ impl GameMemory {
     /// Bring the history to the record a caller holds as keys (the keys of the positions before the current one, and the current one's): what agrees is kept, the rest is taken back and pushed again (see `History::sync`). Creates the history at the first call.
     pub fn sync_history(&mut self, before: &[u64], current: u64, change: Option<Change>) {
         match &mut self.history { Some(h) => h.sync(before, current, change), None => { let mut h = crate::history::History::new(before.first().copied().unwrap_or(current)); h.sync(before, current, change); self.history = Some(h); } }
+    }
+    /// PLAN 79.22: the position at hand kept between decisions (None: nothing kept, or the history did not continue). `take_at_hand` hands it to layer 2's keeper, which gives it back with `put_at_hand` once it has brought it to the new position.
+    pub fn at_hand(&self) -> Option<&AtHand> { self.at_hand.as_ref() }
+    pub fn take_at_hand(&mut self) -> Option<AtHand> { self.at_hand.take() }
+    pub fn put_at_hand(&mut self, mut a: AtHand) { a.graph.settle(); self.at_hand = Some(a); }
+    /// The history taken out to be kept by layer 2's keeper (None if there is none), and put back.
+    pub fn take_history(&mut self) -> Option<crate::history::History> { self.history.take() }
+    pub fn put_history(&mut self, h: crate::history::History) { self.history = Some(h); }
+    /// RETRACT every statement whose id begins with `prefix` (a layer's own kind of statement, all at once: the history did not continue); returns how many.
+    pub fn retract_prefix(&mut self, prefix: &str, why: &str) -> usize {
+        let ids: Vec<String> = self.statements.keys().filter(|k| k.starts_with(prefix)).cloned().collect();
+        for id in &ids { self.statements.remove(id); self.log.push(Logged { op: "retract", id: id.clone(), why: why.to_string() }); }
+        ids.len()
     }
     /// The history, to push a tempo on or take one back (layer 2's tag keeper holds the history itself; this is for a caller that keeps the game's memory only).
     pub fn history_mut(&mut self) -> &mut crate::history::History { self.history.get_or_insert_with(|| crate::history::History::new(0)) }
@@ -295,6 +312,7 @@ impl GameMemory {
         self.statements.clear();
         self.slots.clear();
         self.history = None;
+        self.at_hand = None;
         h
     }
 }

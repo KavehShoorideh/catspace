@@ -9,5 +9,6 @@
  "objects": {"square": ["file", "rank"]},
  "scales": ["clock"],
  "units": null,
+ "fact_decl": {"units": {"relation": "cell", "owner": 2, "kind": 3}, "tempo": "control"},
  "note": "The vocabulary of a graph reader of chess (plan 78.21): the state relations, chess.gdl's attack and check, the human concepts of rules/concepts/chess.gdl (a delta composed onto the description and onto each variant), and the static geometry worth drawing (the 26 diagonals through diagonal_of; step). Squares are the (file rank) argument pairs: the one object kind `square`. The clock is a numeric scale. Chess knowledge lives only in the rules files named here."
 }

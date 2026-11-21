@@ -32,7 +32,7 @@ pub mod cards;
 pub mod claim;
 pub mod op;
 // plan 79.21: the lemma language, the matcher, the statement, the store with both memories and the snapshot moved down to the representation crate (cs_rep); re-exported here so every path `cs_memory::lemma::..` keeps resolving
-pub use cs_rep::{lemma, matcher, sha, snapshot, statement, store};
+pub use cs_rep::{history, lemma, matcher, sha, snapshot, statement, store};
 
 use cs_game::Fact;
 

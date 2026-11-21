@@ -114,5 +114,60 @@ fn the_graph_kept_step_by_step_equals_the_graph_built_from_each_positions_facts_
     }
 }
 
+#[test]
+fn the_keys_met_equal_a_plain_count_of_the_record_through_every_push_undo_and_sync_of_whole_games() {
+    // PLAN 79.22 PART B: the record every reader of a repeat borrows (`History::seen`) is kept in step; here it is checked against a plain count of the keys, on the fixtures' games, no rule called
+    for fx in fixtures() {
+        let (mut checked, mut seen_again) = (0usize, 0usize);
+        for game in &fx.games {
+            let full = history_of(game);
+            let keys: Vec<u64> = full.keys().to_vec();
+            let mut h = History::new(keys[0]);
+            for (i, p) in game.iter().enumerate().skip(1) {
+                let (added, removed) = p.since.clone().unwrap();
+                if i % 7 == 0 { h.push_unknown(keys[i]); } else { h.push(Change { added, removed, keys: vec![] }, keys[i]); }
+                for k in &keys[..=i] {
+                    assert_eq!(h.seen().count(*k), keys[..i].iter().filter(|x| *x == k).count(), "{}: the count of a key met", fx.file);
+                }
+                assert_eq!(h.repeats(), keys[..i].iter().filter(|x| **x == keys[i]).count());
+                checked += 1;
+                if h.repeats() > 0 { seen_again += 1; }
+            }
+            // taken back tempo by tempo, the set follows; synced to the same keys it is the same
+            let mut back = h.clone();
+            while back.len() > 0 {
+                back.undo();
+                assert_eq!(**back.seen(), back.record().iter().copied().collect(), "{}: the set after an undo is the record", fx.file);
+            }
+            let mut again = History::new(0);
+            again.sync(&keys[..keys.len() - 1], keys[keys.len() - 1], None);
+            assert_eq!(**again.seen(), keys[..keys.len() - 1].iter().copied().collect());
+        }
+        println!("OBS 79.22 B-1 layer 1 {}: the keys met kept in step with {checked} pushes (every seventh with its change not known), the undos and the syncs of {} games equal a plain count of the record; positions that met a key again {seen_again}", fx.file, fx.games.len());
+        assert!(checked > 300);
+    }
+}
+
+#[test]
+fn the_position_at_hand_is_kept_in_the_games_memory_with_its_graph_and_let_go_at_the_end() {
+    use cs_rep::store::{AtHand, GameKey, GameMemory};
+    let mut m = GameMemory::new(GameKey::of("g", "rules"));
+    assert!(m.at_hand().is_none() && m.take_at_hand().is_none());
+    let mut graph = LiveGraph::new(Some(0), vec![LiveUnit { owner: 0, kind: 1, at: 2, bears: vec![3], reach: vec![3], shuts: vec![] }]);
+    graph.make(Edit { tempo: Some(1), removed: vec![], added: vec![], rewrite: vec![], clear_shuts: true, shuts: vec![] });
+    assert_eq!(graph.depth(), 1);
+    m.put_at_hand(AtHand { key: 9, facts: [Fact::new("t", &["x"])].into_iter().collect(), graph });
+    assert_eq!((m.at_hand().unwrap().key, m.at_hand().unwrap().graph.depth()), (9, 0), "a graph kept between decisions carries no log of the game");
+    m.add(cs_rep::store::position_statement("tag:one", &[Fact::new("t", &["x"])], "k"), "a tag").unwrap();
+    m.add(cs_rep::store::position_statement("other", &[Fact::new("t", &["y"])], "k"), "not a tag").unwrap();
+    assert_eq!(m.retract_prefix("tag:", "the history did not continue"), 1);
+    assert!(m.statement("tag:one").is_none() && m.statement("other").is_some());
+    let taken = m.take_at_hand().unwrap();
+    assert_eq!(taken.key, 9);
+    m.put_at_hand(taken);
+    m.end();
+    assert!(m.at_hand().is_none(), "the game's end lets the position go");
+}
+
 #[allow(dead_code)]
 fn _uses(_: &Fixture) {}

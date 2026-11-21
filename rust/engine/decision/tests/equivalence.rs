@@ -30,7 +30,7 @@ fn oracle<G: Game, J: Judge>(g: &G, s: &G::State, seconds: f64, judge: &J, prior
     }
     let left = (seconds * if prior { ledger_share } else { 1.0 } - t0.elapsed().as_secs_f64()).max(0.01);
     let mut ls = tactics::ledger::Search::new(g, judge, me, left);
-    ls.history = history.iter().copied().collect();
+    ls.history = cs_rep::history::Seen::of(&history);
     ls.ordering = ordering;
     ls.prune = prune;
     ls.extend = extend;

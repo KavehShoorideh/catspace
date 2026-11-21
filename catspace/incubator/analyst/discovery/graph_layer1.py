@@ -25,7 +25,9 @@ def model(game: str, variant: "str | None" = None):
     variant = variant or game
     text = texts.get(variant) or texts[game]
     objects = [(name, list(parts)) for name, parts in (gv.get("objects") or {}).items()]
-    return CE.BaseGraph(variant, text, list(gv["static"]), objects)
+    d = gv.get("fact_decl")                                  # plan 79.22: where the game's facts hold its units and its tempo (the game's own data), so that a game at hand keeps its position between decisions
+    decl = None if not d else (d["units"]["relation"], d["units"]["owner"], d["units"].get("kind"), d.get("tempo"))
+    return CE.BaseGraph(variant, text, list(gv["static"]), objects, decl) if decl else CE.BaseGraph(variant, text, list(gv["static"]), objects)
 
 
 class Graph:
