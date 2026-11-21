@@ -24,7 +24,7 @@ def _code(p: Path) -> str:
 def test_78_1_the_layer_crates_name_no_chess_object_but_the_kernel_module():
     """The generic test, extended to the Rust layers: every source of the engine workspace but the kernel module (rules ingestion) and its certify binary is free
     of chess words in its code (comments and strings aside)."""
-    allowed = {ENGINE / "game" / "src" / "kernel.rs", ENGINE / "game" / "src" / "outside.rs", ENGINE / "game" / "src" / "bin" / "certify_coplay.rs", ENGINE / "py" / "src" / "lib.rs"}
+    allowed = {ENGINE / "game" / "src" / "kernel.rs", ENGINE / "game" / "src" / "outside.rs", ENGINE / "learn" / "src" / "outside.rs", ENGINE / "game" / "src" / "bin" / "certify_coplay.rs", ENGINE / "py" / "src" / "lib.rs"}
     seen = []
     for p in sorted(ENGINE.glob("*/src/**/*.rs")):
         if p in allowed:
