@@ -15047,3 +15047,7 @@ THE GUARD, every stage: tests/test_plan79_19.py and test_plan79_20.py pass uncha
 NOT IN THIS PLAN: any change of what the wake decides; the old lemma store's move into the long-term memory; narrowing a statement's read set; layers 3 and up.
 STOP AND SAY if the board cannot be read from a game's description without a rule, or if stage B cannot keep the search's rate: write what was found and hand back, do not work around it.
 LIMITS THAT STAND: as plan 79.19, but for this plan Cargo.toml, Cargo.lock and the certificates change by Kaveh's go.
+
+### PLAN 79.21 AMENDMENT (2026-11-20, at Kaveh's word: "If it doesn't turn out to be faster, we have to figure out why. We don't just dismiss the idea off the bat. We fix it.")
+
+A slower search after the change is not a reason to stop or to set the design aside. The cause is found (a profile, printed as OBS lines), mended, and the rate measured again. The graph of a position is kept step by step in make and undo, never rebuilt at a node. The builder hands back on speed only with a named and measured cause that cannot be mended inside this plan. This replaces the plan's stop on stage B's rate; the stop on a board that cannot be read without a rule stands. Sent to the builder the same turn.

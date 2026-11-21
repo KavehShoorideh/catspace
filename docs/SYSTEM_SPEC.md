@@ -848,6 +848,10 @@ writes what it reads off the history as tags on the nodes (a unit, a place, the 
 what it read so it falls by change; the history is the truth and the tags are kept step by step for speed; (c) a position given
 without its history (a test position, a start in the middle) states the tags as plain facts.
 
+**A slower result is diagnosed and mended, not set aside** (Kaveh 2026-11-20, on the graph of layer 1: "If it doesn't turn out to
+be faster, we have to figure out why. We don't just dismiss the idea off the bat. We fix it."). DECIDED: when a part built to the
+spec measures slower, the cause is found and fixed before the design is questioned. Plan 79.21's amendment.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1192,4 +1196,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | A layer's test uses only that layer and what is below it; layer 1's tests call nothing of the rules | 2026-11-20 | 11 (last block) |
 | One graph is the representation (board, lines, units, tempo); the rules are the next layer | 2026-11-20 | 11 (last block) |
 | Layer 1 holds the history as a sequence of changes; rights and counters are layer 2's tags on the graph | 2026-11-20 | 11 (last block) |
+| A slower result is diagnosed and mended, not set aside | 2026-11-20 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
