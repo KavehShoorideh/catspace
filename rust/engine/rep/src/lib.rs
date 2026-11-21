@@ -15,11 +15,16 @@
 //! STAGE B and C are documented where they are written: `board` (the board read once, the graph of a position from the board and facts) and `history` (the game at hand as a sequence of changes).
 pub mod claim;
 pub mod fact;
+pub mod graph;
+pub mod history;
 pub mod lemma;
+pub mod live;
 pub mod matcher;
+pub mod names;
 pub mod sha;
 pub mod snapshot;
 pub mod statement;
+pub mod steps;
 pub mod store;
 
 pub use fact::{Fact, UnitDecl, Vocabulary};

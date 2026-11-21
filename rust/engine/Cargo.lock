@@ -63,6 +63,7 @@ dependencies = [
  "cs_memory",
  "cs_operator",
  "cs_planning",
+ "cs_rep",
  "cs_tactics",
  "rayon",
  "serde_json",
@@ -146,6 +147,7 @@ version = "0.1.0"
 dependencies = [
  "cs_game",
  "cs_operator",
+ "cs_rep",
  "rustc-hash",
 ]
 

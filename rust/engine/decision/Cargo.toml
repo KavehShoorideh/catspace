@@ -6,6 +6,7 @@ description = "plan 78.2: the decision layer (game-free: it reads only the Game 
 
 [dependencies]
 cs_game = { path = "../game" }
+cs_rep = { path = "../rep" }
 cs_gdl = { path = "../gdl" }
 cs_operator = { path = "../operator" }
 cs_memory = { path = "../memory" }
