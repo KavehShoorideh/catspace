@@ -852,6 +852,13 @@ without its history (a test position, a start in the middle) states the tags as 
 be faster, we have to figure out why. We don't just dismiss the idea off the bat. We fix it."). DECIDED: when a part built to the
 spec measures slower, the cause is found and fixed before the design is questioned. Plan 79.21's amendment.
 
+**The order of work: layer by layer from the base** (Kaveh 2026-11-20: after layer 1's three open things, "work on making layer 2
+like you did for layer 1", "then layer 3 and so on"). DECIDED: each layer in turn gets what layer 1 got: its work said, its
+interface, its own crate or clear place, and a test that uses only that layer and what is below it. Layer 2 (the rules) is a go.
+READING of the main agent: layer 3 (the measure of progress, which Kaveh calls value) cannot be given its interface before item 39
+of section 13 is answered (value as the measure of progress against the rule that subgoals never enter the value); the main agent
+asks before building it.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1201,4 +1208,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | One graph is the representation (board, lines, units, tempo); the rules are the next layer | 2026-11-20 | 11 (last block) |
 | Layer 1 holds the history as a sequence of changes; rights and counters are layer 2's tags on the graph | 2026-11-20 | 11 (last block) |
 | A slower result is diagnosed and mended, not set aside | 2026-11-20 | 11 (last block) |
+| The order of work is layer by layer from the base, each made like layer 1 | 2026-11-20 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
