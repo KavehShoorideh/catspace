@@ -19,7 +19,7 @@ pub mod kernel;
 pub mod rng;
 pub mod rules;         // plan 79.23: layer 2's interface: the game's rules' key, declaration, repeat limit and text door, `Ruled`
 pub mod tags;         // plan 79.21: layer 2 writes what the rules read off the history as tags (rights, counters, repeats), kept step by step in make and undo
-pub mod outside;      // the binding to outside engines (their protocol), beside the kernel
+pub mod outside;      // the kernel's placed reading, text door and description notation (rules ingestion); the outside engine's driver is cs_learn::outside (plan 79.23)
 pub mod placed;       // plan 78.43: what stands where, what bears on what, from any place (the question sheet's light reading)
 
 /// A role, by its index in `Game::roles`.

@@ -231,7 +231,7 @@ fn watch(variant: &str, engine: &str, games: usize, random_plies: usize, movetim
     if variant == "chess960" { opts.push(("UCI_Chess960".into(), "true".into())); } else if variant != "chess" { opts.push(("UCI_Variant".into(), variant.into())); }
     kernel::KernelGame::new(variant, 518).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let v = variant.to_string();
-    struct T(cs_game::outside::UciTeacher);
+    struct T(cs_learn::outside::UciTeacher);
     impl cs_learn::watch::Teacher for T {
         fn name(&self) -> String { "uci".into() }
         fn start(&mut self, start: &str) { self.0.begin(start) }
@@ -245,7 +245,7 @@ fn watch(variant: &str, engine: &str, games: usize, random_plies: usize, movetim
         } else {
             (kernel::KernelGame::new(&v, 518).unwrap(), "startpos".to_string(), String::new())
         }
-    }, || cs_game::outside::UciTeacher::new(engine, &opts, movetime_ms).map(T), games, random_plies, seed, threads);
+    }, || cs_learn::outside::UciTeacher::new(engine, &opts, movetime_ms).map(T), games, random_plies, seed, threads);
     Ok(recs.into_iter().map(|r| (r.start, r.moves, r.outcome)).collect())
 }
 
