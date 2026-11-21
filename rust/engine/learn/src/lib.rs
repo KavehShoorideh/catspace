@@ -8,6 +8,7 @@
 //!   `valuation`   THE VALUATION MINER (plan 76.4c's definition, its loops here): unit-kind counts fit to outcomes by a symmetric ordinal logistic, then the cheapest
 //!                 integer worths that predict as well (one paired standard error, games as clusters) -- signed: a game whose goal is to shed units values them below 0.
 pub mod advice;
+pub mod outside;
 pub mod valuation;
 pub mod watch;
 
