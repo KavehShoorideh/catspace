@@ -3,7 +3,7 @@
 //! INTERFACE. `threat_frames(st, g, s, goal, want, p) -> ThreatFrames`: takes the static graph (with its learned profile), the game and position, the goal kind, the learned seeds' keys (`want`: key to its number) and `FrameReadParams` (fuses, the kind values and bands the read uses, the rules of a
 //! line's end); returns, per frame read, its members as (the mover's own, kind, place), its places (the READ SET of its claims) and, per member the other side bears on (or the read holds lost, both, a threat or conditional), the class and basis of its claim, the units that bear on it and the answers of its
 //! owner. `unit_class` is the class and basis of one member (shared with the binding's `questions_state`). Called by the wake (cs_decision::frame_rows) and by the binding.
-use super::base_graph::Static;
+use super::base_graph::{Root, Static};
 use super::frames::{ClaimKind, Seed, Status};
 use super::patterns::{self, Board, FxHashMap};
 use super::questions::{self as q, QFrame, QReader};
@@ -71,10 +71,14 @@ pub fn threat_frames<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: O
 /// members and places are those of a frame the last decision read to the end, and that nothing the two plies since did touches (`delta::Touch::hits`), is carried with its claims and its answers (counted in `parts.carried`), not asked again; what the read leaves for the next decision is in `memo`.
 /// `prev` is the last decision's memo (ignored when it was made with the other side to move).
 #[allow(clippy::too_many_arguments)]
-pub fn threat_frames_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, want: &FxHashMap<u64, u32>, p: &FrameReadParams, prev: Option<&FrameMemo>, keep: bool) -> ThreatFrames {
+pub fn threat_frames_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>, want: &FxHashMap<u64, u32>, p: &FrameReadParams, prev: Option<&FrameMemo>, keep: bool) -> ThreatFrames { threat_frames_in(st, None, g, s, goal, want, p, prev, keep) }
+
+/// `threat_frames_with` on the decision's root graph when it is lent (PLAN 79.22 PART A): the seeds, the frames, every frame's reader and answers read the position's graph once, the root's.
+#[allow(clippy::too_many_arguments)]
+pub fn threat_frames_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, goal: Option<Kind>, want: &FxHashMap<u64, u32>, p: &FrameReadParams, prev: Option<&FrameMemo>, keep: bool) -> ThreatFrames {
     let mut out = ThreatFrames::default();
     let Some(mover) = g.mover(s) else { return out };
-    let part = st.position(g, s);
+    let part = match root { Some(r) => st.position_in(r, g, s), None => Rc::new(st.position(g, s)) };
     let b = Board::new(st, &part, goal);
     let levels: Vec<u8> = (0..patterns::LEVELS).collect();
     let t_seeds = std::time::Instant::now();
@@ -95,7 +99,7 @@ pub fn threat_frames_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, go
     let worth = |c: &(usize, cs_game::placed::Kind, Place)| p.kv.as_ref().and_then(|kv| kv.get(c.1 as usize).copied()).unwrap_or(0);
     if p.deadline.is_some() { seeds.sort_by_key(|sd| std::cmp::Reverse(sd.units.iter().map(&worth).max().unwrap_or(0))); }
     let t_build = std::time::Instant::now();
-    let mut built = q::build_frames_by(st, g, s, &seeds, p.rules.root_cap, p.deadline);
+    let mut built = q::build_frames_in(st, root, g, s, &seeds, p.rules.root_cap, p.deadline);
     out.parts.build_s = t_build.elapsed().as_secs_f64();
     out.parts.built = built.frames.len();
     out.unbuilt_seeds += built.unbuilt;
@@ -116,7 +120,7 @@ pub fn threat_frames_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, go
         if expired() && carried_of(&out, f0, false).is_none() { out.unread_frames.push(f0.id.clone()); kept_whole = false; continue; }
         // THE WIDENING (78.70 B): the frame as built, and the SMALLEST frame of the same seed (its units and what bears on them, the 78.60 F mode) when that is a strict part of it
         let mut todo: Vec<(QFrame, bool)> = vec![(f0.clone(), false)];
-        if let Ok(sm) = QFrame::new_cap(st, g, s, &f0.seed, q::ROOT_CAP - 1) {
+        if let Ok(sm) = QFrame::new_cap_in(st, root, g, s, &f0.seed, q::ROOT_CAP - 1) {
             if sm.members.len() < f0.members.len() && sm.members.iter().all(|c| f0.members.contains(c)) { todo.push((sm, true)); }
         }
         for (f, small) in &todo {
@@ -125,11 +129,11 @@ pub fn threat_frames_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, go
             let kv = p.kv.clone().map(Rc::new);
             let bands = p.bands.clone().map(Rc::new);
             let t_claims = std::time::Instant::now();
-            let rep = q::claims_q_rules_by(g, st, f, s, p.conditional, p.fuse, kv.clone(), p.rules, bands.clone(), p.deadline);
+            let rep = q::claims_q_rules_in(g, st, root, f, s, p.conditional, p.fuse, kv.clone(), p.rules, bands.clone(), p.deadline);
             out.parts.claims_s += t_claims.elapsed().as_secs_f64();
             out.parts.asked += 1;
             row_q += rep.stats.questions;
-            let mut rd = QReader::new(g, st, f, s);
+            let mut rd = QReader::new_in(g, st, f, s, root);
             rd.fuse = p.answer_fuse;
             rd.deadline = p.deadline;
             rd.kv = kv;

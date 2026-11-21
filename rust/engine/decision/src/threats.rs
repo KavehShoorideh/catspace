@@ -20,7 +20,7 @@ use cs_game::placed::{Kind, Place, Placed};
 use cs_game::{Game, Role};
 use cs_tactics::ledger::{Search, Worth};
 use cs_tactics::lines::{self as L, After, Forced, LineParams, LineRead};
-use cs_tactics::sheet::base_graph::Static;
+use cs_tactics::sheet::base_graph::{PositionPart, Root, Static};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
 
@@ -49,10 +49,17 @@ pub struct ThreatParams<'a> {
     /// PLAN 79.09 B (SYSTEM_SPEC 7, the budget is questions; piece: the wake): the clock of this step (None: the fuses only, as before). With it every line read goes through a shared search that stops at it (a line it cuts is UNREAD, a gap, never a refutation), the rows are read in the order given (the caller's order of stake),
     /// the forced end of the game, the unit of the largest stake, is read first, and what the clock did not reach is listed (`ConcreteList::unasked`, `not_asked`, `ThreatRow::responses_unasked`).
     pub deadline: Option<Instant>,
+    /// PLAN 79.22 PART A: the decision's root graph, lent by the wake (None: the position's graph is built where it is read, as before).
+    pub root: Option<&'a Root>,
+}
+
+/// The graph of `s` for a part that may be lent the decision's root (PLAN 79.22 PART A).
+fn graph_of<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State) -> std::rc::Rc<PositionPart> {
+    match root { Some(r) => st.position_in(r, g, s), None => std::rc::Rc::new(st.position(g, s)) }
 }
 
 impl<'a> Default for ThreatParams<'a> {
-    fn default() -> Self { ThreatParams { depth: DEPTH, fuse: FUSE, sweep_depth: SWEEP_DEPTH, sweep_fuse: SWEEP_FUSE, end_plies: END_PLIES, end_fuse: END_FUSE, goal: None, rows: None, every_sides: None, stake: None, share_table: false, deadline: None } }
+    fn default() -> Self { ThreatParams { depth: DEPTH, fuse: FUSE, sweep_depth: SWEEP_DEPTH, sweep_fuse: SWEEP_FUSE, end_plies: END_PLIES, end_fuse: END_FUSE, goal: None, rows: None, every_sides: None, stake: None, share_table: false, deadline: None, root: None } }
 }
 
 /// What each side is left with after a line (the taker's units lost and taken, and what is left once like for like cancels).
@@ -211,8 +218,11 @@ pub fn response_of(after: &After, passed: Option<&LineRead>, rec: &Record, how: 
 // ------------------------------------------------------------------------------------------------------------------------------ the candidates
 
 /// The candidates from the graph when the caller has no frame read: every unit of either side (not the goal kind) that a unit of the other side bears on.
-pub fn graph_rows<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>) -> Vec<FrameRow> {
-    let part = st.position(g, s);
+pub fn graph_rows<G: Game + Placed>(st: &Static, g: &G, s: &G::State, goal: Option<Kind>) -> Vec<FrameRow> { graph_rows_in(st, None, g, s, goal) }
+
+/// `graph_rows` that reads the position's graph from the decision's root when it is lent (PLAN 79.22 PART A).
+pub fn graph_rows_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, goal: Option<Kind>) -> Vec<FrameRow> {
+    let part = graph_of(st, root, g, s);
     let mut out = vec![];
     for (i, u) in part.units.iter().enumerate() {
         if Some(u.kind) == goal { continue; }
@@ -269,7 +279,7 @@ pub fn concrete_threats<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec:
     let kinds = g.kind_names();
     let lp = LineParams { depth: params.depth, fuse: params.fuse };
     let sp = LineParams { depth: params.sweep_depth, fuse: params.sweep_fuse };
-    let cands = match &params.rows { Some(r) => r.clone(), None => graph_rows(st, g, s, params.goal) };
+    let cands = match &params.rows { Some(r) => r.clone(), None => graph_rows_in(st, params.root, g, s, params.goal) };
     let mut works: Vec<Work> = cands.iter().map(|c| {
         let owner_is_mover = c.unit.owner == mover;
         let stake = c.stake.or_else(|| params.stake.and_then(|f| f(&kinds[c.unit.kind as usize], owner_is_mover)));
@@ -514,7 +524,7 @@ pub fn every_unit_ask_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, l
     let mut rd = Rd::new(g, s, &judge, params.share_table, params.deadline);
     let mover = rd.mover;
     let kinds = g.kind_names();
-    let part = st.position(g, s);
+    let part = graph_of(st, params.root, g, s);
     let lp = LineParams { depth: params.depth, fuse: params.fuse };
     let have: HashSet<(Role, Place)> = list.mover.iter().chain(&list.other).chain(&list.exchange).chain(&list.dropped).filter(|r| !r.goal).filter_map(|r| r.unit.map(|u| (r.owner, u.at))).collect();
     let mut rows: Vec<(ThreatRow, bool)> = vec![];

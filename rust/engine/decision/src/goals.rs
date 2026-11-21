@@ -15,13 +15,14 @@
 //! THE BUDGET (SYSTEM_SPEC 4, 7): a question is one unit asked. Units are asked in the order of their stake (the goal unit has no row to read: its goal is built from the graph and the forcing read first); within `budget` questions every unit is asked; past it a unit is asked only while the last
 //! question changed a fact (a line was read for the unit before it). A unit not asked is listed in `Proposal::unasked` and has no goal: a gap, never a refutation. One pass over the quiet moves serves every unit (`threats::every_unit_ask`): a line is read once however many units it serves.
 use crate::threat_verdict::{Record, VerdictKind};
-use crate::threats::{concrete_threats, every_unit_ask, graph_rows, kind_worths, Ask, ConcreteList, ThreatParams, ThreatRow};
+use crate::threats::{concrete_threats, every_unit_ask, kind_worths, Ask, ConcreteList, ThreatParams, ThreatRow};
 use crate::wake::{new_bearer_moves, UnitRef};
 use cs_game::placed::{Kind, Place, Placed};
 use cs_game::{Game, Role};
 use cs_rep::live::LiveGraph;
 use cs_tactics::sheet::base_graph::{PositionPart, Static};
 use cs_tactics::sheet::keeper::GraphKeeper;
+use cs_tactics::sheet::base_graph::Root;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
 
@@ -83,12 +84,12 @@ pub struct Goal {
 struct Words { roles: Vec<String>, kinds: Vec<String>, places: Vec<String> }
 
 /// One position's graph as the Python's `PositionFacts`: the relations bear, may_move and shut, and the units by the order of their id text (`unit:role:kind:place`, as the Python sorts them).
-struct View { part: PositionPart, bear: HashSet<(usize, Place)>, may: HashSet<(usize, Place)>, shut: HashMap<(usize, Place), Vec<usize>>, ids: Vec<String>, mover: Option<Role> }
+struct View { part: std::rc::Rc<PositionPart>, bear: HashSet<(usize, Place)>, may: HashSet<(usize, Place)>, shut: HashMap<(usize, Place), Vec<usize>>, ids: Vec<String>, mover: Option<Role> }
 
 
 
-fn view<G: Game + Placed>(st: &Static, g: &G, s: &G::State, w: &Words) -> View {
-    let part = st.position(g, s);
+fn view<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, w: &Words) -> View {
+    let part = match root { Some(r) => st.position_in(r, g, s), None => std::rc::Rc::new(st.position(g, s)) };      // PLAN 79.22 PART A: the decision's root graph when the position is the root
     let bear = part.bears.iter().map(|r| (r.unit, r.place)).collect();
     let may = part.moves.iter().map(|r| (r.unit, r.place)).collect();
     let mut shut = HashMap::new();
@@ -194,7 +195,7 @@ fn line_story(f: &View, taker: Role, t: Place, plies: &[Ply]) -> Story {
 
 /// What the builder of one side's goals reads: the game, the position as the side sees it to move, its graph, and the memo of the moves that deal with a stopper or bring a bearer.
 struct Bld<'a, G: Game + Placed> {
-    st: &'a Static, g: &'a G, w: &'a Words, goal: Option<Kind>, taker: Role, owner: Role, s_t: G::State, v: View,
+    st: &'a Static, root: Option<&'a Root>, g: &'a G, w: &'a Words, goal: Option<Kind>, taker: Role, owner: Role, s_t: G::State, v: View,
     afters: std::cell::OnceCell<Vec<(String, G::State, Vec<(Role, Kind, Place)>)>>, bring_memo: std::cell::RefCell<HashMap<Place, Vec<String>>>,
     /// the legal moves of the side as (from, to, takes): read once, for `takes_legally`
     legal: std::cell::OnceCell<Vec<(Place, Place, bool)>>,
@@ -350,7 +351,7 @@ fn build_goal<G: Game + Placed>(b: &Bld<G>, row: &ThreatRow, source: &str) -> Op
             let mut a0 = bearers[0];
             let (mut tied, mut victim): (Vec<UnitRef>, Option<usize>) = (vec![], None);
             // PLAN 79.08 repair 1: the lines the other side's units have through a bearer are the graph's shut relation read with THEM to move (the graph holds the mover's lines): the position after the game's pass
-            let pass_view = b.g.pass(&b.s_t).map(|q| view(b.st, b.g, &q, b.w));
+            let pass_view = b.g.pass(&b.s_t).map(|q| view(b.st, b.root, b.g, &q, b.w));
             if let Some(pv) = &pass_view {
                 for u in &bearers {
                     let bearer = f.u(*u);
@@ -451,7 +452,7 @@ fn goal_unit_goal<G: Game + Placed>(b: &Bld<G>, list: &ConcreteList, s: &G::Stat
     let (taker, owner) = (b.taker, b.owner);
     if list.goal.iter().any(|r| r.owner == owner) { return None; }
     let so = view_state(b.g, s, owner)?;
-    let fo = view(b.st, b.g, &so, b.w);
+    let fo = view(b.st, b.root, b.g, &so, b.w);
     let f = &b.v;
     let uid = *fo.goal_units(owner, b.goal).first()?;
     let target = fo.u(uid);
@@ -506,11 +507,15 @@ pub fn goals<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &Concrete
 
 /// PLAN 79.14 C: `goals` that, with `keep_met`, gives a goal whose every fact is met a fix of its own: the legal moves of the side that take its target (the move that carries the threat out), so that the goal is named like any other, and nearest of all (nothing is in its way). `keep_met` false: `goals`.
 #[allow(clippy::too_many_arguments)]
-pub fn goals_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>, depth: u8, cap: usize, keep_met: bool) -> Vec<Goal> {
+pub fn goals_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>, depth: u8, cap: usize, keep_met: bool) -> Vec<Goal> { goals_with_in(st, None, g, s, list, side, goal, depth, cap, keep_met) }
+
+/// `goals_with` that reads the root's graph from the decision's root when it is lent (PLAN 79.22 PART A).
+#[allow(clippy::too_many_arguments)]
+pub fn goals_with_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, list: &ConcreteList, side: Role, goal: Option<Kind>, depth: u8, cap: usize, keep_met: bool) -> Vec<Goal> {
     let w = Words { roles: g.roles(), kinds: g.kind_names(), places: g.place_names() };
     let Some(s_t) = view_state(g, s, side) else { return vec![] };
-    let v = view(st, g, &s_t, &w);
-    let b = Bld { st, g, w: &w, goal, taker: side, owner: g.other(side), s_t, v, afters: Default::default(), bring_memo: Default::default(), legal: Default::default() };
+    let v = view(st, root, g, &s_t, &w);
+    let b = Bld { st, root, g, w: &w, goal, taker: side, owner: g.other(side), s_t, v, afters: Default::default(), bring_memo: Default::default(), legal: Default::default() };
     let mut out = vec![];
     for r in list.mover.iter().chain(&list.other).chain(&list.exchange).chain(&list.dropped) {
         if r.goal || r.owner == side { continue; }
@@ -758,7 +763,7 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     let mut first_units: Vec<UnitRef> = vec![];
     let mut rows = threats.rows.clone();
     if rows.is_none() {
-        let mut c = graph_rows(st, g, s, threats.goal);
+        let mut c = crate::threats::graph_rows_in(st, threats.root, g, s, threats.goal);
         let by_stake = c.iter().all(|r| threats.stake.is_some_and(|f| f(&kinds[r.unit.kind as usize], r.unit.owner == mover).is_some()));
         let worth = kind_worths(g, s, rec, &c.iter().map(|r| r.unit).collect::<Vec<_>>());
         let key = |r: &crate::threats::FrameRow| -> f64 { if by_stake { threats.stake.and_then(|f| f(&kinds[r.unit.kind as usize], r.unit.owner == mover)).unwrap_or(0.0) } else { worth.get(&r.unit.kind).copied().unwrap_or(0.0) } };
@@ -771,7 +776,7 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     }
     // PLAN 79.09 B: with a clock the frame read's rows are read in the order of the worth of their kind as well (the unit of the largest stake first)
     if threats.deadline.is_some() { if let Some(v) = rows.as_mut() { let w = kind_worths(g, s, rec, &v.iter().map(|r| r.unit).collect::<Vec<_>>()); v.sort_by(|a, b| w.get(&b.unit.kind).copied().unwrap_or(0.0).partial_cmp(&w.get(&a.unit.kind).copied().unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal)); } }
-    let tp = ThreatParams { depth: threats.depth, fuse: threats.fuse, sweep_depth: threats.sweep_depth, sweep_fuse: threats.sweep_fuse, end_plies: threats.end_plies, end_fuse: threats.end_fuse, goal: threats.goal, rows, every_sides: Some(vec![]), stake: threats.stake, share_table: threats.share_table, deadline: threats.deadline };
+    let tp = ThreatParams { depth: threats.depth, fuse: threats.fuse, sweep_depth: threats.sweep_depth, sweep_fuse: threats.sweep_fuse, end_plies: threats.end_plies, end_fuse: threats.end_fuse, goal: threats.goal, rows, every_sides: Some(vec![]), stake: threats.stake, share_table: threats.share_table, deadline: threats.deadline, root: threats.root };
     let mut list = concrete_threats(st, g, s, rec, &tp);
     crate::carry::merge_held(&mut list, &params.held);
     out.seconds.push(("the concrete list of the contested units and the forced end", t0.elapsed().as_secs_f64()));
@@ -790,7 +795,7 @@ pub fn propose<G: Game + Placed>(st: &Static, g: &G, s: &G::State, rec: &Record,
     out.asked = first_asked.iter().copied().chain(ev.asked.iter().map(|a| a.0)).chain(ev.carried.iter().copied()).collect();
     out.unasked = list.unasked.clone();
     let t0 = Instant::now();
-    for &side in &sides { out.goals.extend(goals_with(st, g, s, &list, side, tp.goal, params.depth, params.budget, params.keep_met)); }
+    for &side in &sides { out.goals.extend(goals_with_in(st, threats.root, g, s, &list, side, tp.goal, params.depth, params.budget, params.keep_met)); }
     out.seconds.push(("the goals", t0.elapsed().as_secs_f64()));
     let t0 = Instant::now();
     for &side in &sides { out.two.push((side, two_threat_goals(&list, side, mover, rec, &kinds))); }

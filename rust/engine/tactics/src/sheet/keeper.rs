@@ -9,6 +9,7 @@
 //!   `GraphKeeper::undo(&mut self) -> bool`                   the last tempo taken back (no rule is asked).
 //!   `GraphKeeper::part(&self, &Static) -> PositionPart`      the graph as it now is, equal to `Static::position` on the state (the lines through included once a profile is learned).
 //!   `GraphKeeper::asked() -> (units asked again, units in all)`   what the last make cost in questions to the rules.
+//!   PLAN 79.22 PART A: `GraphKeeper::from_live(LiveGraph)` and `into_live(self)`: the graph is the game's, kept in the game's memory between decisions (`cs_rep::store::AtHand`); the keeper is taken up from it, brought to the position at hand by `make`, and given back.
 //! Called by: the tests, and the layers that walk a sequence of positions (a game being played, a line being read) instead of building the graph of each from nothing.
 use super::base_graph::Static;
 use cs_game::placed::Placed;
@@ -20,7 +21,9 @@ use cs_rep::names::Place;
 pub struct GraphKeeper { live: LiveGraph, asked: (usize, usize) }
 
 impl GraphKeeper {
+    #[track_caller]
     pub fn new<G: Game + Placed>(st: &Static, g: &G, s: &G::State) -> GraphKeeper {
+        if super::base_graph::builds::on() { super::base_graph::builds::note(std::panic::Location::caller(), g.key(s)); }          // a graph asked of the rules from nothing counts as a build
         let mover = g.mover(s);
         let mut units: Vec<LiveUnit> = g.cells(s).into_iter().map(|(owner, kind, at)| LiveUnit { owner, kind, at, bears: g.bearing_from(s, owner, kind, at), reach: g.reach_from(s, owner, kind, at), shuts: vec![] }).collect();
         units.sort_by_key(|u| u.key());
@@ -28,6 +31,11 @@ impl GraphKeeper {
         let n = units.len();
         GraphKeeper { live: LiveGraph::new(mover, units), asked: (n, n) }
     }
+
+    /// The keeper taken up again from the graph the game's memory kept.
+    pub fn from_live(live: LiveGraph) -> GraphKeeper { let n = live.units().len(); GraphKeeper { live, asked: (n, n) } }
+    /// The graph, to go back into the game's memory.
+    pub fn into_live(self) -> LiveGraph { self.live }
 
     pub fn make<G: Game + Placed>(&mut self, st: &Static, g: &G, after: &G::State) {
         let mover = g.mover(after);
