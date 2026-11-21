@@ -1,9 +1,10 @@
 //! PLAN 79.20 PART B: what the tests of layer 1 share. The positions are read from the fixture files (tests/fixtures/*.fixture, made once by
 //! rust/engine/decision/examples/make_layer1_fixtures.rs): each position is a SET OF FACTS, and nothing here asks the rules of the game anything.
 #![allow(dead_code)]
-use cs_game::Fact;
-use cs_memory::statement::decode_facts;
-use cs_memory::store::GameKey;
+use cs_rep::Fact;
+use cs_rep::statement::decode_facts;
+use cs_rep::graph::Board;
+use cs_rep::store::GameKey;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -24,7 +25,7 @@ impl Rng {
 pub struct Pos { pub facts: Vec<Fact>, pub since: Option<(Vec<Fact>, Vec<Fact>)> }
 
 /// One game's file: the key of the game and its generated games, each a line of positions.
-pub struct Fixture { pub file: String, pub key: GameKey, pub games: Vec<Vec<Pos>>, pub checks: usize }
+pub struct Fixture { pub file: String, pub key: GameKey, pub board: Board, pub games: Vec<Vec<Pos>>, pub checks: usize }
 
 impl Fixture {
     pub fn positions(&self) -> impl Iterator<Item = &Pos> { self.games.iter().flatten() }
@@ -42,11 +43,12 @@ pub fn fixtures() -> Vec<Fixture> {
     assert!(names.len() >= 2, "two games' fixtures are expected in {}", dir.display());
     names.iter().map(|path| {
         let text = std::fs::read_to_string(path).unwrap();
-        let (mut key, mut games, mut cur, mut checks): (Option<GameKey>, Vec<Vec<Pos>>, Option<BTreeSet<Fact>>, usize) = (None, vec![], None, 0);
+        let (mut key, mut board, mut games, mut cur, mut checks): (Option<GameKey>, Option<Board>, Vec<Vec<Pos>>, Option<BTreeSet<Fact>>, usize) = (None, None, vec![], None, 0);
         for line in text.lines() {
             let (tag, rest) = line.split_once('\t').unwrap_or((line, ""));
             match tag {
                 "key" => key = Some(GameKey::from_json(&serde_json::from_str(rest).unwrap()).unwrap()),
+                "board" => board = Some(Board::from_json(&serde_json::from_str(rest).unwrap()).unwrap()),
                 "game" => games.push(vec![]),
                 "moves" => {}                                                   // the record of the moves: data for the layer above, unread here
                 "full" => { let s: BTreeSet<Fact> = decode_facts(rest).unwrap().into_iter().collect(); games.last_mut().unwrap().push(Pos { facts: facts_of(&s), since: None }); cur = Some(s); }
@@ -63,6 +65,6 @@ pub fn fixtures() -> Vec<Fixture> {
                 other => panic!("unknown tag {other}"),
             }
         }
-        Fixture { file: path.file_name().unwrap().to_string_lossy().to_string(), key: key.expect("a key"), games, checks }
+        Fixture { file: path.file_name().unwrap().to_string_lossy().to_string(), key: key.expect("a key"), board: board.expect("a board"), games, checks }
     }).collect()
 }

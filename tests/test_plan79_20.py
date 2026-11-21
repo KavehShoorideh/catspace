@@ -1,6 +1,6 @@
 """PLAN 79.20 THE TESTS OF LAYER 1 CALL NOTHING OF THE RULES (SYSTEM_SPEC 11 "a layer's test uses only that layer and what is below it"; ledger row 36; piece: representation).
-Rust holds the tests (cargo test --release --offline -p cs_memory): rust/engine/memory/tests/layer1.rs reads positions as sets of facts from rust/engine/memory/tests/fixtures/*.fixture.
-THIS file is the scan: no source of a layer-1 test (every .rs file under rust/engine/memory/tests) may name a crate that holds the rules, the rules' kernel or description, a moving part of the rules' trait
+Rust holds the tests (cargo test --release --offline -p cs_rep): rust/engine/rep/tests/layer1.rs reads positions as sets of facts from rust/engine/rep/tests/fixtures/*.fixture.
+THIS file is the scan: no source of a layer-1 test (every .rs file under rust/engine/rep/tests, since plan 79.21 where layer 1 lives; and any under memory/tests) may name a crate that holds the rules, the rules' kernel or description, a moving part of the rules' trait
 (moves, apply, outcome, initial, find_move, move_name, base_facts) or the game's text form. The one name taken from the crate that holds the rules is the type of a fact, `cs_game::Fact` (it is defined there, beside the trait; plan 79.20 part D).
 The fixtures are data: they hold the facts of the games and are not scanned for names, only checked to be there and small.
 """
@@ -10,7 +10,9 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TESTS = ROOT / "rust" / "engine" / "memory" / "tests"
+TESTS = ROOT / "rust" / "engine" / "rep" / "tests"                      # plan 79.21: layer 1 and its tests moved to the crate below the rules
+OLD_TESTS = ROOT / "rust" / "engine" / "memory" / "tests"
+SRC = ROOT / "rust" / "engine" / "rep" / "src"
 
 CRATES = r"\b(cs_gdl|cs_decision|cs_tactics|cs_planning|cs_learn|cs_operator)\b"
 RULES_PARTS = r"\b(moves|apply|outcome|initial|find_move|move_name|legal_moves|base_facts|terminal|mover)\b"
@@ -19,7 +21,7 @@ RULES_TEXT = r"(\.gdl\b|\brules/|KernelGame|GdlGame|\bGame\b|\bkernel\b|gdl_game
 
 
 def sources() -> list[Path]:
-    return sorted(TESTS.rglob("*.rs"))
+    return sorted(list(TESTS.rglob("*.rs")) + (list(OLD_TESTS.rglob("*.rs")) if OLD_TESTS.exists() else []))
 
 
 def code_of(text: str) -> str:
@@ -42,7 +44,7 @@ def violations(text: str) -> list[str]:
 
 def test_the_sources_of_layer_1_tests_are_there():
     names = {p.name for p in sources()}
-    assert {"layer1.rs", "part_b.rs", "mod.rs"} <= names
+    assert {"layer1.rs", "part_b.rs", "mod.rs", "graph.rs", "history.rs"} <= names
 
 
 def test_no_test_of_layer_1_names_a_rules_crate_a_moving_part_of_the_rules_or_the_games_text_form():
@@ -69,3 +71,18 @@ def test_the_fixtures_are_there_two_games_and_small():
         head = p.read_text().splitlines()[0]
         assert head.startswith("key\t")
         print(f"OBS 79.20 fixture {p.name}: {p.stat().st_size} bytes")
+
+
+def test_the_representation_crate_depends_on_no_rules_crate_and_its_sources_call_none():
+    """PLAN 79.21: the crate of layer 1 (rust/engine/rep) has no dependency on the crate that holds the rules (cs_game) or any crate above it, and its sources (comments and strings aside) name none; the scan of the tests above covers its tests."""
+    toml = (ROOT / "rust" / "engine" / "rep" / "Cargo.toml").read_text()
+    deps = toml.split("[dependencies]")[1]
+    assert "cs_game" not in deps and not re.search(CRATES.replace("cs_gdl|", ""), deps), deps
+    bad = {}
+    for p in sorted(SRC.rglob("*.rs")):
+        code = code_of(p.read_text())
+        found = [m.group(0) for r in (CRATES.replace("cs_gdl|", ""), r"\bcs_game\b", RULES_TEXT, TEXT_FORM) for m in re.finditer(r, code)]
+        if found:
+            bad[p.name] = found
+    assert not bad, bad
+    assert {"lib.rs", "fact.rs", "statement.rs", "store.rs"} <= {p.name for p in SRC.rglob("*.rs")}

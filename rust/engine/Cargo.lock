@@ -63,6 +63,7 @@ dependencies = [
  "cs_memory",
  "cs_operator",
  "cs_planning",
+ "cs_rep",
  "cs_tactics",
  "rayon",
  "serde_json",
@@ -90,6 +91,7 @@ name = "cs_game"
 version = "0.1.0"
 dependencies = [
  "cs_gdl",
+ "cs_rep",
  "shakmaty",
 ]
 
@@ -111,6 +113,7 @@ version = "0.1.0"
 dependencies = [
  "cs_game",
  "cs_operator",
+ "cs_rep",
  "serde_json",
 ]
 
@@ -131,11 +134,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cs_rep"
+version = "0.1.0"
+dependencies = [
+ "cs_gdl",
+ "serde_json",
+]
+
+[[package]]
 name = "cs_tactics"
 version = "0.1.0"
 dependencies = [
  "cs_game",
  "cs_operator",
+ "cs_rep",
  "rustc-hash",
 ]
 

@@ -319,9 +319,13 @@ impl BaseGraph {
                 WakeMemory { long: Some(Reader::new(part)), game: game.unwrap_or_else(|| GameMemory::new(self.key.clone())), hold }
             }
         };
+        // PLAN 79.21 C: the record of the game every search takes is read from the history the game's memory holds (one copy); the caller's keys are the way in, brought to it with `sync_history`
+        let mut memory = memory;
+        memory.game.sync_history(&history, cs_game::Game::key(&g, &s), None);
+        let record: Vec<u64> = memory.game.history().map(|h| h.record().to_vec()).unwrap_or_default();
         let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { memory, goal, budget, named_budget, frame, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, carry_graph, chance_order, gain_mend, diag_first, read_on } };
         let st = &self.st;
-        let d = py.allow_threads(|| decide(st, &g, &s, &history, &judge, &params));
+        let d = py.allow_threads(|| decide(st, &g, &s, &record, &judge, &params));
         if let Some(k) = &carry_slot { self.games.borrow_mut().insert(k.clone(), d.game.clone()); }
         Ok(d.to_json().to_string())
     }

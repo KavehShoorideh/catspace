@@ -19,7 +19,9 @@ use crate::threats::{concrete_threats, every_unit_ask, graph_rows, kind_worths, 
 use crate::wake::{new_bearer_moves, UnitRef};
 use cs_game::placed::{Kind, Place, Placed};
 use cs_game::{Game, Role};
+use cs_rep::live::LiveGraph;
 use cs_tactics::sheet::base_graph::{PositionPart, Static};
+use cs_tactics::sheet::keeper::GraphKeeper;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
 
@@ -643,9 +645,20 @@ fn goal_unit_borne_on<G: Game + Placed>(g: &G, s: &G::State, attacker: Role, def
     g.cells(s).into_iter().filter(|c| c.0 == attacker && Some(c.1) == goal).any(|c| bearer_counts_of(g, s, defender, c.2) > 0)
 }
 fn bearer_counts_of<G: Game + Placed>(g: &G, s: &G::State, owner: Role, place: Place) -> usize { g.cells(s).into_iter().filter(|c| c.0 == owner && g.bearing_from(s, c.0, c.1, c.2).contains(&place)).count() }
-fn tied_bearer(part: &PositionPart, attacker: Role, defender: Role, t: Place) -> bool {
+pub fn tied_bearer(part: &PositionPart, attacker: Role, defender: Role, t: Place) -> bool {
     let bearers: Vec<usize> = part.bears.iter().filter(|r| r.place == t && part.units[r.unit].owner == attacker).map(|r| r.unit).collect();
     part.shuts.iter().any(|r| part.units[r.unit].owner == defender && r.between.len() == 1 && bearers.contains(&r.between[0]) && part.occupant[r.place as usize] != 0 && part.units[part.occupant[r.place as usize] as usize - 1].owner == attacker)
+}
+
+/// `tied_bearer` asked of the graph as the keeper holds it (plan 79.21: no node, id or link is made for a question that reads only who bears on a place, which lines are shut and who stands between): the same answer as on the part made from the same position.
+pub fn tied_bearer_live(st: &Static, live: &LiveGraph, attacker: Role, defender: Role, t: Place) -> bool {
+    let b = st.board();
+    let (units, occ) = (live.units(), live.occupant(b));
+    let bearers: Vec<usize> = units.iter().enumerate().filter(|(_, u)| u.owner == attacker && u.bears.contains(&t)).map(|(i, _)| i).collect();
+    units.iter().filter(|u| u.owner == defender).any(|u| u.shuts.iter().any(|&q| {
+        let between = live.between(b, &occ, u.at, q);
+        between.len() == 1 && bearers.contains(&between[0]) && occ[q as usize] != 0 && units[occ[q as usize] as usize - 1].owner == attacker
+    }))
 }
 
 /// THE ANSWERS to the goal of `attacker` against `target` (a unit of the other side), generated from the legal moves of the target's owner by the fact each un-meets. Only the facts that are met now are addressed (a fact already unmet needs no answer).
@@ -656,7 +669,8 @@ pub fn answers_against<G: Game + Placed>(st: &Static, g: &G, s: &G::State, attac
     let t = target.at;
     if bearer_counts_of(g, &pd, attacker, t) == 0 { return vec![]; }
     let hold0 = bearer_counts_of(g, &pd, d, t);
-    let tied0 = tied_bearer(&st.position(g, &sd), attacker, d, t);                // the shut lines the graph holds are the mover's: read with the defender to move
+    let mut keeper = GraphKeeper::new(st, g, &sd);                              // plan 79.21: the graph of the position is kept and changed by each move read, never built again for each
+    let tied0 = tied_bearer_live(st, keeper.live(), attacker, d, t);              // the shut lines the graph holds are the mover's: read with the defender to move
     let att0 = goal_unit_borne_on(g, &pd, attacker, d, goal);
     let mut out = vec![];
     for m in g.moves(&sd) {
@@ -666,7 +680,7 @@ pub fn answers_against<G: Game + Placed>(st: &Static, g: &G, s: &G::State, attac
         let mut facts: Vec<&'static str> = vec![];
         if bearer_counts_of(g, &after, attacker, t2) == 0 { facts.push("bears"); }
         if t2 == t && bearer_counts_of(g, &after, d, t) > hold0 { facts.push("unguarded"); }
-        if g.outcome(&after).is_none() && ((!tied0 && g.pass(&after).is_some_and(|dp| tied_bearer(&st.position(g, &dp), attacker, d, t2))) || (!att0 && goal_unit_borne_on(g, &after, attacker, d, goal))) { facts.push("may_take"); }
+        if g.outcome(&after).is_none() && ((!tied0 && g.pass(&after).is_some_and(|dp| { keeper.make(st, g, &dp); let r = tied_bearer_live(st, keeper.live(), attacker, d, t2); keeper.undo(); r })) || (!att0 && goal_unit_borne_on(g, &after, attacker, d, goal))) { facts.push("may_take"); }
         if !facts.is_empty() { out.push(Answer { mv: g.move_name(&sd, &m), facts }); }
     }
     out

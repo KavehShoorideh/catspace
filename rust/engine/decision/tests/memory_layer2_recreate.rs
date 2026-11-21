@@ -1,6 +1,6 @@
 //! PLAN 79.20 PART C: TESTS OF LAYER 2 (the rules and what they say of a position), moved up from plan 79.19's part A (SYSTEM_SPEC 11 "a layer's test uses only that layer and what is below it"; piece: representation, read through the rules).
 //! What leaned on the rules is here, named a test of layer 2: a position recreated from the record of its moves, from the game's text form and from the description's state (and the finding that the text form drops one fact), and the fixtures of layer 1 compared with what the rules say.
-//! The other four tests of 79.19 part A (statements written and read back, falls, patterns against a plain reference, one game's statement not seen by the other's reader) need no rules: they are layer 1's tests in cs_memory (rust/engine/memory/tests/layer1.rs), reading fixtures.
+//! The other four tests of 79.19 part A (statements written and read back, falls, patterns against a plain reference, one game's statement not seen by the other's reader) need no rules: they are layer 1's tests in cs_rep (rust/engine/rep/tests/layer1.rs), reading fixtures.
 //! (This file is in cs_decision's tests because it needs cs_gdl to compose a variant's text and the kernel; cs_memory has no such dependency, and adding one changes Cargo.lock, which the kernels' certificates are keyed by.)
 use cs_game::gdl_game::GdlGame;
 use cs_game::kernel::{uci_to_spec_term, KernelGame};
@@ -92,10 +92,10 @@ fn layer2_a_position_is_recreated_exactly_by_the_record_of_its_moves_by_its_text
 
 // ------------------------------------------------------------------------------------------------------------------------------ the fixtures of layer 1 are what the rules say
 
-/// The fixtures layer 1 reads (rust/engine/memory/tests/fixtures) are data made by a script from the rules; this test, of layer 2, plays each game's record of moves again and compares every position's facts with the file's, and the file's address of the rules with the rules' text now (a changed rule makes the fixtures stale and this fails).
+/// The fixtures layer 1 reads (rust/engine/rep/tests/fixtures) are data made by a script from the rules; this test, of layer 2, plays each game's record of moves again and compares every position's facts with the file's, and the file's address of the rules with the rules' text now (a changed rule makes the fixtures stale and this fails).
 #[test]
 fn layer2_the_fixtures_of_layer_1_are_what_the_rules_say() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../memory/tests/fixtures");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../rep/tests/fixtures");
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).filter(|p| p.extension().is_some_and(|x| x == "fixture")).collect();
     files.sort();
     assert!(files.len() >= 2);

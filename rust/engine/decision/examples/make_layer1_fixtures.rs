@@ -1,9 +1,10 @@
 //! PLAN 79.20 PART A: THE MAKER OF THE FIXTURES OF LAYER 1 (SYSTEM_SPEC 11 "a layer's test uses only that layer and what is below it"; piece: representation).
-//! THIS IS NOT A TEST. It is the script that makes the data the tests of cs_memory read: it plays seeded random games of two games (the standard game and one variant of the repo) through the game's kernel
-//! and writes, for each, one file `rust/engine/memory/tests/fixtures/<game>.fixture` of positions as SETS OF FACTS. It is the only place that uses the rules; the tests of layer 1 read the files and call nothing of the rules.
+//! THIS IS NOT A TEST. It is the script that makes the data the tests of cs_rep read: it plays seeded random games of two games (the standard game and one variant of the repo) through the game's kernel
+//! and writes, for each, one file `rust/engine/rep/tests/fixtures/<game>.fixture` of positions as SETS OF FACTS. It is the only place that uses the rules; the tests of layer 1 read the files and call nothing of the rules.
 //! Run once:  cd rust/engine && cargo run --release --offline -p cs_decision --example make_layer1_fixtures -- <out dir>
 //! File format (text, one line each, tab separated; the tag first):
 //!   key      <json {name, rules}>          the game's name and the content address of its rules (what a partition is keyed by)
+//!   board    <json>                        the game's board as layer 1 reads it (places, kinds, roles, steps by direction, and where the facts hold units and the tempo): `Board::to_json`, read from the game's description by the rules' binding (plan 79.21)
 //!   game     <n>                           a generated game starts
 //!   moves    <names...>                    the record of the moves of that game (data for the layer above; layer 1 ignores it)
 //!   full     <facts>                       the first position of a game, its facts in the canonical text (`encode_facts`)
@@ -11,6 +12,10 @@
 //!   check    <facts>                       after every tenth delta: the position in full, to be equal to the one the deltas built
 //! The next position of a game is the last one with the delta applied.
 use cs_game::kernel::KernelGame;
+use cs_game::placed::Placed;
+use cs_rep::graph::{Board, FactDecl};
+use cs_rep::names::Names;
+use cs_rep::UnitDecl;
 use cs_game::rng::Rng;
 use cs_game::{Fact, Game};
 use cs_gdl::compose;
@@ -34,7 +39,9 @@ fn main() {
         let key = GameKey::of(name, &text);
         let k = KernelGame::new(name, 518).unwrap();
         let mut rng = Rng::new(2020_1120 + name.bytes().fold(0u64, |h, b| h.wrapping_mul(131).wrapping_add(b as u64)));
-        let mut file = format!("key\t{}\n", key.to_json());
+        let steps = k.steps(&text, &["diagonal_of".to_string(), "step".to_string()], &[("square".to_string(), vec!["file".to_string(), "rank".to_string()])]).unwrap();
+        let board = Board::new(&steps, &Names::new(k.place_names(), k.kind_names(), k.roles())).unwrap().with_decl(FactDecl { units: UnitDecl { relation: "cell".into(), owner: 2, kind: Some(3) }, tempo: Some("control".into()) });
+        let mut file = format!("key\t{}\nboard\t{}\n", key.to_json(), board.to_json());
         let mut positions = 0;
         for g in 0..PLAYED {
             let (mut s, mut moves) = (k.initial(), vec![]);

@@ -1,8 +1,8 @@
 //! PLAN 79.19 PART B: THE TWO MEMORIES AND THE FOUR CHANGES (SYSTEM_SPEC 11 "two memories", "the go on layer 1"). The reader, the four changes on the long-term memory (a new content-addressed snapshot with its parent, named by the partition of the game), the memory of the game at hand with its log, a typed thing behind its own interface.
-use cs_game::Fact;
-use cs_memory::lemma::Lit;
-use cs_memory::statement::{Change, Holder, Says, Standing, Statement};
-use cs_memory::store::{Decoders, GameKey, GameMemory, Kept, LongTerm, Partition};
+use cs_rep::Fact;
+use cs_rep::lemma::Lit;
+use cs_rep::statement::{Change, Holder, Says, Standing, Statement};
+use cs_rep::store::{Decoders, GameKey, GameMemory, Kept, LongTerm, Partition};
 use serde_json::{json, Value};
 use std::any::Any;
 use std::sync::Arc;
@@ -147,4 +147,22 @@ fn the_memory_of_the_game_at_hand_changes_in_place_logs_every_change_and_hands_w
     assert_eq!(handed.surprised.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), vec!["believes-r"], "what fell is what surprised it");
     assert_eq!(handed.log.len(), 6);
     assert!(m.statements().next().is_none() && m.slot_names().is_empty() && m.log().is_empty(), "emptied at the game's end");
+}
+
+/// PLAN 79.21 C: the memory of the game at hand holds the history; the record every search takes is read from it, brought to the keys a caller holds; the game's end empties it.
+#[test]
+fn the_memory_of_the_game_at_hand_holds_the_history_and_the_record_is_read_from_it() {
+    let mut m = GameMemory::new(GameKey::of("g", "rules"));
+    assert!(m.history().is_none());
+    m.sync_history(&[], 10, None);
+    assert_eq!((m.history().unwrap().record().to_vec(), m.history().unwrap().current_key()), (vec![], 10));
+    m.sync_history(&[10], 11, None);
+    m.sync_history(&[10, 11], 12, None);
+    assert_eq!(m.history().unwrap().record().to_vec(), vec![10, 11]);
+    m.sync_history(&[10], 11, None);                                           // the caller took a tempo back
+    assert_eq!((m.history().unwrap().len(), m.history().unwrap().current_key()), (1, 11));
+    m.sync_history(&[3, 4], 5, None);                                          // another game in the same memory: the history is a new one
+    assert_eq!(m.history().unwrap().keys().to_vec(), vec![3, 4, 5]);
+    let _ = m.end();
+    assert!(m.history().is_none(), "emptied at the game's end");
 }

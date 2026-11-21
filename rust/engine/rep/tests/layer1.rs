@@ -8,11 +8,11 @@
 //! No move is made, no legal move asked, no outcome read, no text form of the game used, no description loaded; tests/test_plan79_20.py scans this file for the names that would say otherwise.
 mod common;
 use common::{fixtures, Rng};
-use cs_game::Fact;
-use cs_memory::lemma::{Arg, Lit};
-use cs_memory::matcher::{bindings_fused, Binding, FactIndex};
-use cs_memory::statement::{decode_facts, encode_facts, unifies, Change, Holder, Says, Standing, Statement};
-use cs_memory::store::{GameKey, LongTerm};
+use cs_rep::Fact;
+use cs_rep::lemma::{Arg, Lit};
+use cs_rep::matcher::{bindings_fused, Binding, FactIndex};
+use cs_rep::statement::{decode_facts, encode_facts, unifies, Change, Holder, Says, Standing, Statement};
+use cs_rep::store::{GameKey, LongTerm};
 use std::collections::BTreeSet;
 
 // ------------------------------------------------------------------------------------------------------------------------------ (1) a position as a set of facts is written and read back exactly
@@ -97,7 +97,7 @@ fn every_statement_of_every_standing_and_holder_is_written_and_read_back_identic
         for (i, pos) in fx.positions().enumerate().step_by(7) {
             let pat = pattern_from(&pos.facts, &mut rng);
             if pat.iter().all(|l| l.neg) { continue; }
-            let sayings = [Says::Holds, Says::Number(rng.below(1000) as f64 / 7.0), Says::Lower { term: format!("[tuple t{}]", rng.below(9)), within: rng.below(5) as u32 }, Says::Proposes(cs_memory::lemma::Response { removed: vec![pat[0].clone()], added: vec![Lit::pos("moved", &["?m"])] })];
+            let sayings = [Says::Holds, Says::Number(rng.below(1000) as f64 / 7.0), Says::Lower { term: format!("[tuple t{}]", rng.below(9)), within: rng.below(5) as u32 }, Says::Proposes(cs_rep::lemma::Response { removed: vec![pat[0].clone()], added: vec![Lit::pos("moved", &["?m"])] })];
             for st in &standings { for h in [Holder::Ours, Holder::OursAboutOther] { for sa in &sayings {
                 let s = Statement { id: format!("{}-{n}", fx.key.name), pattern: pat.clone(), says: sa.clone(), standing: st.clone(), holder: h, also: vec![format!("position:{i}")] };
                 if s.validate().is_err() { continue; }

@@ -4,7 +4,7 @@
 //! same bindings on the position after as before (tested over generated games of two games), a statement that fell may still bind the same (the over-count is printed by the test).
 use crate::lemma::{validate_body, Arg, Lit, Response};
 use crate::matcher::{bindings_fused, Binding, FactIndex};
-use cs_game::Fact;
+use crate::fact::Fact;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
