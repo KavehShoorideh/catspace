@@ -69,7 +69,7 @@ def test_the_layer_files_name_no_object_of_a_game_and_the_one_reading_is_in_the_
         bad = [m.group(0) for m in re.finditer(GAME_WORDS, txt, flags=re.I)] + [m.group(0) for m in re.finditer(SQUARE, txt)]
         assert not bad, (p.name, bad)
     body = (TACTICS / "src" / "reach.rs").read_text()
-    assert "res_h" in body and "res_t" in body and "open_t" in body, "one reading carries both answers"
+    assert "open_t" in body and "Open { strict: open_h, loose: open_t }" in body and "out.strict" in body and "out.loose" in body, "one reading carries both answers (plan 79.32: the walk is layer 0's, asked with the two masks and answering in `Out`)"
     assert "first_nodes" not in body and "cut2" not in body, "the second reading is gone"
     t = (TACTICS / "tests" / "layer4_goals.rs").read_text()
     assert "the_cost_of_the_second_reading" in t and "LAYER4_DUMP" in t
