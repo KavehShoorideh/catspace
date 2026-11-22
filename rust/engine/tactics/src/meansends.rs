@@ -16,7 +16,7 @@
 //!              (`Won`, `Lost`: the line ends the game and the search read every reply; `Estimated`: it did not), the nodes spent, the deepest depth read in full, and whether the budget cut the reading (a cut is a gap, never a verdict: the answer is the deepest depth finished).
 //!   Called by: this layer's test (rust/engine/tactics/tests/layer4.rs); the wake, the old player's solver (`cs_decision::wake`, the binding's `solve_batch` and `best_move`), the operators (`operators.rs`) and the frames' reads (`lines.rs`) reach the SAME `ledger::Search` directly, past this entry: they are listed in the plan's block and not changed here
 //!   (changing them is a matter of the wake's decisions). One copy of the search: this entry builds a `ledger::Search` with its defaults and runs it; it adds nothing to what it decides.
-use crate::ledger::{Judge, Search, WIN};
+use crate::ledger::{Judge, Search, PROVED};
 use cs_game::{Game, Role};
 use cs_rep::history::Seen;
 use std::sync::Arc;
@@ -64,10 +64,10 @@ pub struct Found {
     pub cut: bool,
 }
 
-/// Whether a value is the game's own end. The ledger's sums are small (a thousand a unit lost, one a unit won) and the game's end is `WIN` less its ply, with the sums of the line's takings added: a sacrifice on the way makes `WIN - ply - 1000`, so the end is read as
-/// above half of `WIN`, never at `WIN - 1000` (the deepening's own stop in `Search::run` is at `WIN - 1000` and so does not stop on such a line: it goes on deeper, which is read as a weakness in the plan's block and not changed here).
+/// Whether a value is the game's own end. The ledger's sums are small and the game's end is `WIN` less its ply, with the sums of the line's takings added: a sacrifice on the way makes `WIN - ply - 1000`, so the end is read as
+/// at or above `PROVED` (half of `WIN`), the ledger's one constant, which is also where the deepening stops (plan 79.26 part B: it stopped at `WIN - 1000` and so did not stop on a line that gives up a unit).
 pub fn ending_of(value: i64) -> Ending {
-    if value >= WIN / 2 { Ending::Won } else if value <= -(WIN / 2) { Ending::Lost } else { Ending::Estimated }
+    if value >= PROVED { Ending::Won } else if value <= -PROVED { Ending::Lost } else { Ending::Estimated }
 }
 
 /// THE ENTRY OF LAYER 4 (see the file's doc).
