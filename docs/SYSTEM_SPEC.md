@@ -859,6 +859,13 @@ READING of the main agent: layer 3 (the measure of progress, which Kaveh calls v
 of section 13 is answered (value as the measure of progress against the rule that subgoals never enter the value); the main agent
 asks before building it.
 
+**Layer 3 holds two implementations: value and the measure of progress** (Kaveh 2026-11-21, answering item 39 of section 13: "You
+can have two different implementations, basically. One is value, one is measure of progress, but I suspect that they will both start
+saying the same thing."). DECIDED: layer 3 has one interface and two implementations behind it, the value (fitted on results only)
+and the measure of progress. They stay two things; the rule that subgoals enter through the prior and never the value stands.
+Kaveh's expectation that the two come to say the same is a thing to MEASURE, not to assume: layer 3's test prints where they agree
+and where they do not. Plan 79.24.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1213,4 +1220,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 1 holds the history as a sequence of changes; rights and counters are layer 2's tags on the graph | 2026-11-20 | 11 (last block) |
 | A slower result is diagnosed and mended, not set aside | 2026-11-20 | 11 (last block) |
 | The order of work is layer by layer from the base, each made like layer 1 | 2026-11-20 | 11 (last block) |
+| Layer 3 holds two implementations, value and the measure of progress; their agreement is measured | 2026-11-21 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
