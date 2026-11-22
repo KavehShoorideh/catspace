@@ -152,6 +152,7 @@ dependencies = [
 name = "cs_tactics"
 version = "0.1.0"
 dependencies = [
+ "cs_base",
  "cs_game",
  "cs_operator",
  "cs_rep",
