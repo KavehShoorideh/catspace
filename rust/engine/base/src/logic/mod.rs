@@ -16,7 +16,7 @@
 //!   `Formula::{Lit, And, Or, Not, Some, Every, AtLeast}`        and, or, not, some (a placeholder over a finite set), every (likewise), at least so many (`AtLeast { count, var, over, body }`).
 //!   `Formula::free_vars(&self) -> BTreeSet<String>`            the placeholders the formula leaves free.
 //!   `Formula::needs(&self) -> BTreeSet<String>`                the placeholders the caller's initial binding must hold: what the formula's filters (`Not`, `Every`, `AtLeast`, a negated literal, a `differ`) read that nothing in the formula binds.
-//!   `Formula::validate(&self)` / `Formula::check(&self, bound)` -> `Result<(), FormulaError>`   the well-formedness: every branch of an `Or` binds the same placeholders besides those already bound outside it. A filter that reads a placeholder nothing binds is
+//!   `Formula::validate(&self)` / `Formula::validate_with(&self, bound)` -> `Result<(), FormulaError>`   the well-formedness: every branch of an `Or` binds the same placeholders besides those already bound outside it. A filter that reads a placeholder nothing binds is
 //!                                                              `FormulaError::Unbound` when the formula is read.
 //!   `answers(&Formula, &Binding, &FactIndex, limit, &mut steps) -> Result<(Vec<Binding>, bool), FormulaError>`   every binding of the free placeholders that makes the formula true over the index, extending the initial binding, as a SET (a binding once; the matcher gives
 //!                                                              one for each row that matches). On a body of literals alone it gives the bindings the matcher gives, as a set (the literals of an `And` are handed to the matcher, the one part that binds a body to facts).
@@ -55,7 +55,7 @@ impl Arg {
     pub fn text(&self) -> String { match self { Arg::Var(v) => format!("?{v}"), Arg::Const(c) => c.clone() } }
 }
 
-/// PLAN 79.28 PART C (SYSTEM_SPEC 11 "Reached means the goal outlasts the reply", 7 goals; ledger row 14), moved to layer 0 by plan 79.30. THE ONE LITERAL OF THE LANGUAGE THAT IS NOT A ROW: `differ(a, b)`, two arguments (placeholders or constants), says that the two stand for
+/// PLAN 79.28 PART C (ledger row 14), moved to layer 0 by plan 79.30. THE ONE LITERAL OF THE LANGUAGE THAT IS NOT A ROW: `differ(a, b)`, two arguments (placeholders or constants), says that the two stand for
 /// DIFFERENT things. It is written and read back as every literal is ({"relation": "differ", "args": ["?x", "?y"], "neg": false}), so a statement stored before it existed reads unchanged (no stored statement used the word as a relation). It is not matched over rows: the matcher
 /// tests it once both arguments are bound (a placeholder it names must be bound by a positive literal that is a row, as for a negated literal). Negated, `differ(a, b)` says they are the SAME. No fact of any game has this relation.
 pub const DIFFER: &str = "differ";

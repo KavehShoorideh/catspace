@@ -1,0 +1,40 @@
+# plan 79.30: a game of many agents at once in a plane with a moving thing, a region and an uncertain act
+game	five a side football, at once on a pitch
+fact	coord	striker	28.5	4.0
+fact	coord	winger	30.0	14.0
+fact	coord	keeper	38.0	6.5
+fact	coord	defender	33.0	5.0
+fact	coord	ball_t0	27.0	4.0
+fact	coord	ball_t1	29.5	5.0
+fact	coord	ball_t2	32.0	6.0
+fact	link	striker	winger	pass
+fact	link	winger	striker	pass
+fact	link	striker	ball_t0	touch
+fact	link	winger	striker	run
+fact	link	defender	striker	mark
+fact	is_a	striker	forward
+fact	is_a	winger	forward
+fact	is_a	keeper	goalkeeper
+fact	is_a	defender	back
+fact	is_a	striker	home
+fact	is_a	winger	home
+fact	is_a	keeper	away
+fact	is_a	defender	away
+fact	seq	ball_x	0	27.0
+fact	seq	ball_x	1	29.5
+fact	seq	ball_x	2	32.0
+fact	seq	ball_x	3	34.0
+fact	seq	ball_x	4	35.5
+fact	region	goal_area	box	36	3	40	10
+fact	region	penalty_area	poly	30	0	40	0	40	14	30	14
+fact	region	offside	half	1	0	-33
+fact	region	danger	disc	38	6.5	5
+fact	outcome	shot	goal	0.3
+fact	outcome	shot	saved	0.5
+fact	outcome	shot	wide	0.2
+fact	result	goal	1
+fact	result	no_goal	0
+fact	chance_node	c_match	goal	0.25	no_goal	0.75
+fact	chance_node	c_miss	goal	0.75	no_goal	0.25
+fact	table	kick	2	2	c_match	c_miss	c_miss	c_match
+fact	turn	run_up	A	kick	no_goal

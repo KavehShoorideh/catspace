@@ -35,7 +35,7 @@ pub trait Metric {
 mod tests {
     use super::*;
 
-    /// One body of checks for any `Metric`: nought only from a point to itself, and the triangle law, over the points given (the same function runs on the graph and on the plane).
+    /// One body of tests for any `Metric`: nought only from a point to itself, and the triangle law, over the points given (the same function runs on the graph and on the plane).
     fn laws<M: Metric>(m: &M, points: &[M::Point], same: &dyn Fn(&M::Point, &M::Point) -> bool) {
         let slack = Num::real(1e-9).unwrap();
         for a in points { for b in points {

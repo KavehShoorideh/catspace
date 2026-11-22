@@ -1,5 +1,5 @@
 //! THE JSON FORM OF A LITERAL (moved from cs_rep's lemma.rs, plan 79.30): {"relation": "attack", "args": ["?s", "e", "?r"], "neg": false}; an argument starting with `?` is a placeholder, any other text a constant.
-//! This is the one place cs_base uses an outside crate (serde_json 1, `float_roundtrip`, already in the lock): `Lit::to_json` and `Lit::from_json` are called by name from the layers above and must keep resolving on `Lit`.
+//! This is the one part where cs_base uses an outside crate (serde_json 1, `float_roundtrip`, already in the lock): `Lit::to_json` and `Lit::from_json` are called by name from the layers above and must keep resolving on `Lit`.
 use super::{Arg, Lit};
 use serde_json::{json, Value};
 

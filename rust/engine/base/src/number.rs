@@ -72,7 +72,7 @@ impl Num {
         match self.0 { Repr::Whole(a) => a.checked_neg().map(Num::whole).ok_or(NumError::Overflow), Repr::Real(r) => Num::real(-r) }
     }
     pub fn abs(&self) -> Result<Num, NumError> { if *self < Num::whole(0) { self.neg() } else { Ok(*self) } }
-    /// The square root of a number that is not negative; of a negative, `NotANumber`.
+    /// The root of a number that is not negative; of a negative, `NotANumber`.
     pub fn sqrt(&self) -> Result<Num, NumError> { if *self < Num::whole(0) { Err(NumError::NotANumber) } else { Num::real(self.as_f64().sqrt()) } }
 }
 

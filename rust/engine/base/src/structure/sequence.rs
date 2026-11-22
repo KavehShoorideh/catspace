@@ -20,7 +20,7 @@ impl<T> Sequence<T> {
 }
 
 impl<T: PartialEq> Sequence<T> {
-    /// The place of the first item equal to this one.
+    /// The position of the first item equal to this one.
     pub fn position_of(&self, t: &T) -> Option<usize> { self.items.iter().position(|x| x == t) }
 }
 

@@ -139,7 +139,7 @@ mod tests {
             assert!(d(&a, &c) <= d(&a, &b) + d(&b, &c) + 1e-9, "triangle (a real root: a rounding margin)");
             assert_eq!(d(&a, &b) == 0.0, a == b);
             assert_eq!(d(&a, &b), d(&b, &a));
-            // the exact form, no root: sqrt(q(a,c)) <= sqrt(q(a,b)) + sqrt(q(b,c)) squared and moved to whole numbers
+            // the exact form, no root: sqrt(q(a,c)) <= sqrt(q(a,b)) + sqrt(q(b,c)) with both sides multiplied out, whole numbers
             let q = |x: &Point, y: &Point| Plane::quadrance(x, y).unwrap();
             let (ab, bc, ac) = (q(&a, &b).as_whole().unwrap(), q(&b, &c).as_whole().unwrap(), q(&a, &c).as_whole().unwrap());
             let lhs = ac - ab - bc;                       // needs 2 sqrt(ab bc) >= lhs
@@ -197,9 +197,9 @@ mod tests {
         let (a, b) = (Point::whole(0, 0), Point::whole(4, 2));
         assert!(between(&a, &b, &Point::whole(2, 1)).unwrap() && between(&a, &b, &a).unwrap() && between(&a, &b, &b).unwrap());
         assert!(!between(&a, &b, &Point::whole(6, 3)).unwrap() && !between(&a, &b, &Point::whole(2, 2)).unwrap());
-        let (d1, d2, d3) = (direction(&a, &b).unwrap(), direction(&a, &Point::whole(2, 1)).unwrap(), direction(&b, &a).unwrap());
-        assert!(d1.same_heading(&d2).unwrap() && !d1.same_heading(&d3).unwrap());
+        let (h_ab, h_ac, h_ba) = (direction(&a, &b).unwrap(), direction(&a, &Point::whole(2, 1)).unwrap(), direction(&b, &a).unwrap());
+        assert!(h_ab.same_heading(&h_ac).unwrap() && !h_ab.same_heading(&h_ba).unwrap());
         assert!(direction(&a, &a).is_none());
-        assert!((d1.angle() - (0.5f64).atan()).abs() < 1e-12);
+        assert!((h_ab.angle() - (0.5f64).atan()).abs() < 1e-12);
     }
 }

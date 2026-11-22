@@ -98,12 +98,12 @@ impl Formula {
         }
     }
 
-    /// The well-formedness that needs no initial binding: see `check`.
-    pub fn validate(&self) -> Result<(), FormulaError> { self.check(&BTreeSet::new()) }
+    /// The well-formedness that needs no initial binding: see `validate_with`.
+    pub fn validate(&self) -> Result<(), FormulaError> { self.validate_with(&BTreeSet::new()) }
 
     /// The well-formedness given the placeholders already bound outside (the caller's initial binding, a quantifier's own placeholder, what the rest of an `And` binds): every branch of an `Or` binds the same placeholders besides those
     /// (a placeholder bound in one branch only would leave the answers of the other without it).
-    pub fn check(&self, bound: &BTreeSet<String>) -> Result<(), FormulaError> {
+    pub fn validate_with(&self, bound: &BTreeSet<String>) -> Result<(), FormulaError> {
         match self {
             Formula::Lit(_) => Ok(()),
             Formula::And(ps) => {
@@ -111,20 +111,20 @@ impl Formula {
                 for (i, p) in ps.iter().enumerate() {
                     let mut inner = bound.clone();
                     inner.extend(ps.iter().enumerate().filter(|(j, _)| *j != i).flat_map(|(_, q)| q.binds()));
-                    p.check(&inner)?;
+                    p.validate_with(&inner)?;
                 }
                 Ok(())
             }
             Formula::Or(ps) => {
-                ps.iter().try_for_each(|p| p.check(bound))?;
+                ps.iter().try_for_each(|p| p.validate_with(bound))?;
                 let new = |p: &Formula| -> BTreeSet<String> { p.binds().into_iter().filter(|v| !bound.contains(v)).collect() };
                 if ps.windows(2).any(|w| new(&w[0]) != new(&w[1])) { Err(FormulaError::BranchesDiffer) } else { Ok(()) }
             }
-            Formula::Not(f) => f.check(bound),
+            Formula::Not(f) => f.validate_with(bound),
             Formula::Some { var, body, .. } | Formula::Every { var, body, .. } | Formula::AtLeast { var, body, .. } => {
                 let mut inner = bound.clone();
                 inner.insert(var.clone());
-                body.check(&inner)
+                body.validate_with(&inner)
             }
         }
     }
@@ -132,7 +132,7 @@ impl Formula {
 
 /// Every binding of the free placeholders that makes the formula true over the index, extending `init`. At most `limit` (the second result says the limit cut the answers). `steps` counts the rows examined (the matcher's) and the values of a domain gone through.
 pub fn answers(f: &Formula, init: &Binding, idx: &FactIndex, limit: usize, steps: &mut u64) -> Result<(Vec<Binding>, bool), FormulaError> {
-    f.check(&init.keys().cloned().collect())?;
+    f.validate_with(&init.keys().cloned().collect())?;
     let mut cut = false;
     let mut all = dedup(eval(f, init, idx, limit, steps, &mut cut)?);                  // the answers are a set: a binding once, where the matcher gives one for each row that matches
     if all.len() > limit { all.truncate(limit); cut = true; }
@@ -158,9 +158,9 @@ fn witnesses(var: &str, over: &Domain, body: &Formula, b: &Binding, idx: &FactIn
     let mut cut = false;
     for v in over.members(idx) {
         *steps += 1;
-        let mut b2 = b.clone();
-        b2.insert(var.to_string(), v);
-        if !eval(body, &b2, idx, 1, steps, &mut cut)?.is_empty() { found += 1; if found >= enough { break; } }
+        let mut bx = b.clone();
+        bx.insert(var.to_string(), v);
+        if !eval(body, &bx, idx, 1, steps, &mut cut)?.is_empty() { found += 1; if found >= enough { break; } }
     }
     Ok(found)
 }
@@ -185,9 +185,9 @@ fn eval(f: &Formula, b: &Binding, idx: &FactIndex, limit: usize, steps: &mut u64
             let mut out = vec![];
             for v in over.members(idx) {
                 *steps += 1;
-                let mut b2 = b.clone();
-                b2.insert(var.clone(), v);
-                for mut r in eval(body, &b2, idx, limit, steps, cut)? { r.remove(var); out.push(r); }
+                let mut bx = b.clone();
+                bx.insert(var.clone(), v);
+                for mut r in eval(body, &bx, idx, limit, steps, cut)? { r.remove(var); out.push(r); }
             }
             Ok(dedup(out))
         }
@@ -324,7 +324,7 @@ mod tests {
         let rel = |m: &mut Maker| -> (String, usize) { m.pick(&[("p".to_string(), 1usize), ("q".to_string(), 1), ("r".to_string(), 2)]) };
         let lit = |m: &mut Maker| -> Formula {
             let (name, arity) = rel(m);
-            let args: Vec<String> = (0..arity).map(|_| m.pick(&["?x".to_string(), "?y".to_string(), "c0".to_string(), "c1".to_string()])).collect();
+            let args: Vec<String> = (0..arity).map(|_| m.pick(&["?x".to_string(), "?y".to_string(), "k0".to_string(), "k1".to_string()])).collect();
             Formula::Lit(Lit { neg: false, relation: name, args: args.iter().map(|a| crate::logic::Arg::parse(a)).collect() })
         };
         if depth == 0 { return lit(m); }
@@ -334,7 +334,7 @@ mod tests {
             2 => Formula::Or((0..2).map(|_| random_formula(m, depth - 1)).collect()),
             3 => Formula::Not(Box::new(random_formula(m, depth - 1))),
             4 => Formula::Some { var: "z".into(), over: Domain::Relation("p".into()), body: Box::new(random_formula(m, depth - 1)) },
-            _ => Formula::Every { var: "z".into(), over: dom(&["c0", "c1"]), body: Box::new(random_formula(m, depth - 1)) },
+            _ => Formula::Every { var: "z".into(), over: dom(&["k0", "k1"]), body: Box::new(random_formula(m, depth - 1)) },
         }
     }
 
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn the_answers_are_exactly_the_assignments_the_plain_meaning_accepts() {
         let mut m = Maker::new(61);
-        let consts: Vec<String> = ["c0", "c1", "c2"].iter().map(|s| s.to_string()).collect();
+        let consts: Vec<String> = ["k0", "k1", "k2"].iter().map(|s| s.to_string()).collect();
         let mut tried = 0;
         for _ in 0..1500 {
             let facts: Vec<Fact> = (0..m.below(8)).map(|_| { match m.below(3) { 0 => Fact::new("p", &[&m.pick(&consts)]), 1 => Fact::new("q", &[&m.pick(&consts)]), _ => Fact::new("r", &[&m.pick(&consts), &m.pick(&consts)]) } }).collect();
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn on_a_body_of_literals_alone_the_formula_gives_the_matcher_bindings() {
         let mut m = Maker::new(62);
-        let consts = ["c0", "c1", "c2", "c3"];
+        let consts = ["k0", "k1", "k2", "k3"];
         for _ in 0..1500 {
             let facts: Vec<Fact> = (0..m.below(14)).map(|_| if m.chance() { Fact::new("p", &[m.pick(&consts)]) } else { Fact::new("r", &[m.pick(&consts), m.pick(&consts)]) }).collect();
             let idx = FactIndex::new(&facts);
@@ -408,7 +408,7 @@ mod tests {
     #[test]
     fn de_morgan_over_a_finite_set_and_at_least_is_monotone_in_the_count() {
         let mut m = Maker::new(63);
-        let consts = ["c0", "c1", "c2"];
+        let consts = ["k0", "k1", "k2"];
         for _ in 0..800 {
             let facts: Vec<Fact> = (0..m.below(6)).map(|_| Fact::new("p", &[m.pick(&consts)])).collect();
             let idx = FactIndex::new(&facts);

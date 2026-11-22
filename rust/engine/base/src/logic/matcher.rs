@@ -1,4 +1,4 @@
-//! THE MATCHER (plan 78.14, moved to layer 0 by plan 79.30): the one place a body of literals is bound to a set of facts -- the join of its positive literals, then the negated ones as failures. Used by the lemma operator in the engine's analysis and by the card corpus in
+//! THE MATCHER (plan 78.14, moved to layer 0 by plan 79.30): the one part that binds a body of literals is bound to a set of facts -- the join of its positive literals, then the negated ones as failures. Used by the lemma operator in the engine's analysis and by the card corpus in
 //! verification, so a lemma means the same in both. Every row examined is counted: the operator reports it as its measured cost. The code is the code of cs_rep's matcher.rs as it stood; only the tests' names of relations were made plain.
 use super::{Arg, Fact, Lit};
 use std::collections::{BTreeMap, HashMap};
