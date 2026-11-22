@@ -17,7 +17,7 @@ impl Arg {
 }
 
 /// PLAN 79.28 PART C (SYSTEM_SPEC 11 "Reached means the goal outlasts the reply", 7 goals; ledger row 14; piece: representation). THE ONE LITERAL OF THE LANGUAGE THAT IS NOT A ROW: `differ(a, b)`, two arguments (placeholders or constants), says that the two stand for DIFFERENT things.
-/// It is written and read back as every literal is ({"relation": "differ", "args": ["?x", "?y"], "neg": false}), so a statement stored before it existed reads unchanged (no stored statement used the word as a relation). It is not matched over rows: the matcher checks it
+/// It is written and read back as every literal is ({"relation": "differ", "args": ["?x", "?y"], "neg": false}), so a statement stored before it existed reads unchanged (no stored statement used the word as a relation). It is not matched over rows: the matcher tests it
 /// once both arguments are bound (a placeholder it names must be bound by a positive literal that is a row, as for a negated literal). Negated, `differ(a, b)` says they are the SAME. No fact of any game has this relation, and `falls_by` reads nothing from it.
 pub const DIFFER: &str = "differ";
 
