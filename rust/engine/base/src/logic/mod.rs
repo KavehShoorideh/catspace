@@ -2,11 +2,11 @@
 //! a row (`differ`), the well-formedness of a body, the index of facts, the matcher, and a FORMULA over literals. Moved here from cs_rep (fact.rs, lemma.rs, matcher.rs), which hands them on under their old paths; nothing above changes.
 //!
 //! INTERFACE (written before the bodies; callers: cs_rep re-exports the first block; cs_memory, cs_game, cs_tactics use them through cs_rep; the second block is new and has no caller yet outside the tests).
-//!   MOVED, THE SAME TEXT AS BEFORE (mod.rs, matcher.rs, json.rs):
+//!   MOVED, THE SAME TEXT AS BEFORE (mod.rs, matcher.rs):
 //!   `Fact { relation: String, args: Vec<String> }`, `Fact::new(&str, &[&str]) -> Fact`, `Display`      a ground fact as text.
 //!   `Arg::{Var(String), Const(String)}`, `Arg::parse(&str) -> Arg`, `Arg::text(&self) -> String`          a placeholder (a text that starts with `?`) or a constant.
 //!   `Lit { neg: bool, relation: String, args: Vec<Arg> }`, `Lit::pos`, `Lit::differ`, `Lit::is_differ`, `Lit::vars(&self) -> BTreeSet<String>`   a literal.
-//!   `Lit::to_json(&self) -> serde_json::Value`, `Lit::from_json(&Value) -> Result<Lit, String>`            its JSON form (json.rs; the one outside crate, serde_json).
+//!   (the JSON form of a literal is NOT here: plan 79.31 part E moved it to cs_rep, which is where statements are written and read; cs_base depends on no crate at all.)
 //!   `DIFFER: &str`                                                                                        the one literal that is not a row: "these two stand for different things".
 //!   `validate_body(at: &str, body: &[Lit]) -> Result<(), String>`                                         a name, at least one positive row literal, every placeholder of a negated or differ literal bound by one.
 //!   `Binding = BTreeMap<String, String>`, `FactIndex::{new(&[Fact]), rows(&str) -> &[Vec<String>], contains(&str, &[String]) -> bool}`.
@@ -25,7 +25,6 @@
 use std::collections::BTreeSet;
 
 pub mod formula;
-pub mod json;
 pub mod matcher;
 
 pub use formula::{answers, holds, Domain, Formula, FormulaError};

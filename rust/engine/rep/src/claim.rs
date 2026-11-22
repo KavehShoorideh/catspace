@@ -1,7 +1,7 @@
 //! PLAN 79.21 STAGE A: THE CLAIM RULE AS DATA (SYSTEM_SPEC 11, the layers; piece: representation). A claim is a statement about a POSITION: "IF body THEN the position's class for the side to move is win / draw / loss", the body written in the
 //! mover's perspective (`us` / `them`) as a lemma's is. The data types (`Class`, `Claim`, `Rule`) and their JSON live here, below the rules, because a snapshot holds them; the READER that binds claims to a game's facts (`Claims`) stays in cs_memory.
 //! JSON: {"name", "body": [lit...], "claim": {"class": "win" | "draw" | "loss"}, "stats": {...}, "meta": {...}}. A rule carries EITHER a `response` or a `claim`, never both.
-use crate::lemma::{validate_body, Lemma, Lit};
+use crate::lemma::{validate_body, Lemma, Lit, LitJson};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
