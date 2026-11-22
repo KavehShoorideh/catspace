@@ -26,6 +26,7 @@
 //! LAWS: lean/ideas/Ideas/Layer0/Choice.lean (in a finite tree of turns without chance exactly one of "A can force P" and "B can force not-P" holds; the lower value is not above the upper; the guarantees of two choosers who hold each other to a value are
 //! that value; against a fixed belief no spread of options beats the best option). The minimax theorem (that every table has such spreads) is proved there from Mathlib's Sion theorem; the program here finds them and the certificate is tested.
 pub mod lp;
+pub mod walk;
 
 use crate::chance::{Belief, ChanceError, Spread};
 use crate::number::{Num, NumError};
