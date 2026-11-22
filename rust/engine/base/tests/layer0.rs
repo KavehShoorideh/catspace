@@ -26,7 +26,15 @@ fn load(name: &str) -> Fixture {
     Fixture { name: name.to_string(), facts, idx }
 }
 
-fn num(s: &str) -> Num { match s.parse::<i64>() { Ok(i) => Num::whole(i), Err(_) => Num::real(s.parse::<f64>().unwrap()).unwrap() } }
+/// A decimal text as the exact fraction it says ("0.3" is three tenths): the chances of a fixture are exact numbers, never reals.
+fn decimal(s: &str) -> Num {
+    match s.split_once('.') {
+        None => Num::whole(s.parse().unwrap()),
+        Some((w, f)) => { let neg = w.starts_with('-'); let (w, after): (i64, i64) = (w.parse::<i64>().unwrap().abs(), f.parse().unwrap()); let d = 10i64.pow(f.len() as u32); let v = Num::frac(w * d + after, d).unwrap(); if neg { v.neg().unwrap() } else { v } }
+    }
+}
+
+fn num(s: &str) -> Num { decimal(s) }
 
 impl Fixture {
     fn graph(&self, both: bool) -> Graph<String, String> {
@@ -57,7 +65,7 @@ impl Fixture {
         }).collect()
     }
     fn spread(&self, act: &str) -> Spread<String> {
-        Spread::new(self.idx.rows("outcome").iter().filter(|r| r[0] == act).map(|r| (r[1].clone(), r[2].parse::<f64>().unwrap())).collect()).unwrap()
+        Spread::new(self.idx.rows("outcome").iter().filter(|r| r[0] == act).map(|r| (r[1].clone(), decimal(&r[2]))).collect()).unwrap()
     }
     fn acts(&self) -> Vec<String> { Set::from_items(self.idx.rows("outcome").iter().map(|r| r[0].clone())).iter().cloned().collect() }
     fn tree(&self, node: &str) -> Tree<i64> {
@@ -70,7 +78,7 @@ impl Fixture {
             return Tree::table(r[1].parse().unwrap(), r[2].parse().unwrap(), r[3..].iter().map(|c| self.tree(c)).collect()).unwrap();
         }
         if let Some(r) = self.idx.rows("chance_node").iter().find(|r| r[0] == node) {
-            return Tree::chance(r[1..].chunks(2).map(|c| (self.tree(&c[0]), c[1].parse().unwrap())).collect()).unwrap();
+            return Tree::chance(r[1..].chunks(2).map(|c| (self.tree(&c[0]), decimal(&c[1]))).collect()).unwrap();
         }
         panic!("no node {node} in {}", self.name)
     }
@@ -247,8 +255,8 @@ fn a_tree_with_chance_has_the_value_the_expectation_worked_by_hand_gives() {
     }
     assert!(with_chance > 100);
     // the fixtures' own chance nodes, by hand: a half, a quarter and a quarter of the results 1, 0 and -1
-    let by_hand_value = Spread::new(vec![(1i64, 0.5), (0, 0.25), (-1, 0.25)]).unwrap().expectation(&|r| Num::whole(*r)).unwrap();
-    assert_eq!(by_hand_value, Num::real(0.25).unwrap());
+    let by_hand_value = Spread::new(vec![(1i64, Num::frac(1, 2).unwrap()), (0, Num::frac(1, 4).unwrap()), (-1, Num::frac(1, 4).unwrap())]).unwrap().expectation(&|r| Num::whole(*r)).unwrap();
+    assert_eq!(by_hand_value, Num::frac(1, 4).unwrap());
     let t = load("turns.fixture").tree("n3");
     assert_eq!(value(&t, &order()).unwrap().lower, by_hand_value);
     // and the fixture's act as the spread of the same fixture, outcome by outcome
@@ -265,11 +273,11 @@ fn a_choice_at_once_has_a_lower_value_below_its_upper_and_the_fixture_says_by_ho
     let fx = load("plane.fixture");
     let t = fx.tree("kick");
     let b = value(&t, &order()).unwrap();
-    assert_eq!((b.lower, b.upper), (Num::real(0.25).unwrap(), Num::real(0.75).unwrap()), "best row against the worst column is a quarter; the best column against the best row holds it to three quarters");
+    assert_eq!((b.lower, b.upper), (Num::frac(1, 4).unwrap(), Num::frac(3, 4).unwrap()), "best row against the worst column is a quarter; the best column against the best row holds it to three quarters");
     assert!(!can_force(&t, Chooser::A, &|x| *x >= 1) && !can_force(&t, Chooser::B, &|x| *x < 1));
-    assert_eq!(force_chance(&t, Chooser::A, &|x| *x >= 1).unwrap(), Num::real(0.25).unwrap());
+    assert_eq!(force_chance(&t, Chooser::A, &|x| *x >= 1).unwrap(), Num::frac(1, 4).unwrap());
     let run = fx.tree("run_up");
-    assert_eq!(value(&run, &order()).unwrap().lower, Num::real(0.25).unwrap());
+    assert_eq!(value(&run, &order()).unwrap().lower, Num::frac(1, 4).unwrap());
 }
 
 /// Sets against logic: the members of a kind, counted as sets, are the bindings the matcher gives for the same question.

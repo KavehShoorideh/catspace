@@ -33,7 +33,7 @@ def base_sources() -> list[Path]:
 def test_cs_base_sources_name_no_game_and_no_word_of_a_world():
     files = base_sources()
     names = {p.name for p in files}
-    assert {"lib.rs", "mod.rs", "number.rs", "sets.rs", "chance.rs", "choice.rs", "maker.rs", "layer0.rs", "Cargo.toml", "matcher.rs", "formula.rs", "geometry.rs", "graph.rs", "sequence.rs"} <= names
+    assert {"lib.rs", "mod.rs", "number.rs", "sets.rs", "chance.rs", "lp.rs", "maker.rs", "layer0.rs", "Cargo.toml", "matcher.rs", "formula.rs", "geometry.rs", "graph.rs", "sequence.rs"} <= names
     bad = {}
     for p in files:
         hits = [m.group(0) for m in WORLD.finditer(p.read_text())]
@@ -43,20 +43,21 @@ def test_cs_base_sources_name_no_game_and_no_word_of_a_world():
     print(f"OBS 79.30 scan: {len(files)} sources of cs_base (code, comments, strings, tests) hold none of the world words; the fixtures are the only place a game is named")
 
 
-def test_cs_base_depends_on_no_crate_of_ours_and_on_one_outside_crate_only():
+def test_cs_base_depends_on_no_crate_of_ours_and_on_no_outside_crate():
+    # plan 79.31 part E: the one outside crate (serde_json, for the JSON of a literal) went to cs_rep; cs_base depends on nothing
     toml = (BASE / "Cargo.toml").read_text()
     deps = toml.split("[dependencies]", 1)[1]
     names = re.findall(r"^([A-Za-z0-9_\-]+)\s*=", deps, flags=re.M)
-    assert names == ["serde_json"], names
+    assert names == [], names
     assert "path" not in deps and "cs_" not in deps, "no crate of ours"
     members = (ROOT / "rust" / "engine" / "Cargo.toml").read_text()
     assert '"base"' in members
     lock = (ROOT / "rust" / "engine" / "Cargo.lock").read_text()
     block = lock.split('name = "cs_base"', 1)[1].split("[[package]]", 1)[0]
-    assert 'dependencies = [\n "serde_json",\n]' in block, block
+    assert "dependencies" not in block, block
     # the layers above read cs_base only through cs_rep; the dependency points down
     assert "cs_base" in (REP / "Cargo.toml").read_text()
-    print("OBS 79.30 scan: cs_base's Cargo file lists serde_json and nothing of ours; the lock gives cs_base the one dependency; cs_rep depends on cs_base")
+    print("OBS 79.30 scan (as changed by 79.31): cs_base's Cargo file lists nothing; the lock gives cs_base no dependency; cs_rep depends on cs_base")
 
 
 def test_cs_rep_hands_on_the_moved_items_and_defines_none_of_them():

@@ -12,7 +12,7 @@ use cs_game::placed::Placed;
 use cs_game::rules::{Ruled, StateText};
 use cs_game::{Fact, Game, Role};
 use cs_rep::history::Seen;
-use cs_rep::lemma::{Arg, Lit};
+use cs_rep::lemma::{Arg, Lit, LitJson};
 use cs_rep::statement::{Holder, Says, Standing, Statement};
 use cs_tactics::ledger::Count;
 use cs_tactics::meansends::{ask, ask_with, search, Answer, Ask, Goal, Question, Reply};

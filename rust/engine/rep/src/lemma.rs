@@ -11,6 +11,40 @@ use std::collections::BTreeSet;
 // plan 79.30: the argument, the literal, the one literal that is not a row, and the check of a body moved down to layer 0 (cs_base::logic); every old path resolves here.
 pub use cs_base::logic::{validate_body, Arg, Lit, DIFFER};
 
+/// THE JSON FORM OF A LITERAL (plan 79.31 part E; it was `Lit::to_json` and `Lit::from_json` inside cs_base, which now has no outside crate): {"relation": "attack", "args": ["?s", "e", "?r"], "neg": false}; an argument starting with `?` is a placeholder,
+/// any other text a constant. A trait here, because a literal is cs_base's: a caller brings it into scope (`use cs_rep::lemma::LitJson;`) and writes `Lit::to_json` and `Lit::from_json` as before.
+pub trait LitJson: Sized {
+    fn to_json(&self) -> Value;
+    fn from_json(v: &Value) -> Result<Self, String>;
+}
+
+impl LitJson for Lit {
+    fn to_json(&self) -> Value { json!({"relation": self.relation, "args": self.args.iter().map(|a| a.text()).collect::<Vec<_>>(), "neg": self.neg}) }
+
+    fn from_json(v: &Value) -> Result<Lit, String> {
+        let relation = v.get("relation").and_then(|x| x.as_str()).ok_or("a literal has a relation")?.to_string();
+        let args = v.get("args").and_then(|x| x.as_array()).ok_or("a literal has args")?
+            .iter().map(|a| a.as_str().map(Arg::parse).ok_or_else(|| "an argument is text".to_string())).collect::<Result<Vec<_>, _>>()?;
+        Ok(Lit { neg: v.get("neg").and_then(|x| x.as_bool()).unwrap_or(false), relation, args })
+    }
+}
+
+#[cfg(test)]
+mod lit_json_tests {
+    use super::*;
+
+    #[test]
+    fn a_literal_is_written_and_read_back_identical() {
+        for l in [Lit::pos("r", &["?x", "c"]), Lit::differ("?x", "?y"), Lit::pos("r", &["?x"]).negated(), Lit::pos("p", &[])] {
+            assert_eq!(Lit::from_json(&l.to_json()).unwrap(), l);
+        }
+        assert_eq!(Lit::pos("r", &["?x", "c"]).to_json(), json!({"relation": "r", "args": ["?x", "c"], "neg": false}));
+        assert!(!Lit::from_json(&json!({"relation": "r", "args": []})).unwrap().neg, "neg may be left out");
+        assert!(Lit::from_json(&json!({"args": []})).is_err());
+        assert!(Lit::from_json(&json!({"relation": "r", "args": [1]})).is_err());
+    }
+}
+
 /// The effect of a move on the state's facts, over the delta relations.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Response { pub removed: Vec<Lit>, pub added: Vec<Lit> }

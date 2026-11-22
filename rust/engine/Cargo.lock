@@ -57,9 +57,6 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 [[package]]
 name = "cs_base"
 version = "0.1.0"
-dependencies = [
- "serde_json",
-]
 
 [[package]]
 name = "cs_decision"
@@ -155,6 +152,7 @@ dependencies = [
 name = "cs_tactics"
 version = "0.1.0"
 dependencies = [
+ "cs_base",
  "cs_game",
  "cs_operator",
  "cs_rep",

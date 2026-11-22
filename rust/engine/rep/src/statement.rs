@@ -2,7 +2,7 @@
 //! A statement is a pattern over the graph's facts with placeholders (the lemma language as it is: `lemma::Lit`, bound by `matcher`, the one join), what it says of the pattern, its standing, its holder, and what it read. It is written to JSON and read back identical.
 //! A statement FALLS when something it read changes (`falls_by`): a fact a change added or removed that unifies with a literal of its pattern (positive or negated), or a key the change names that is in its `also`. The reading is conservative on purpose: a statement that did not fall has the
 //! same bindings on the position after as before (tested over generated games of two games), a statement that fell may still bind the same (the over-count is printed by the test).
-use crate::lemma::{validate_body, Arg, Lit, Response};
+use crate::lemma::{validate_body, Arg, Lit, LitJson, Response};
 use crate::matcher::{bindings_fused, Binding, FactIndex};
 use crate::fact::Fact;
 use serde_json::{json, Value};

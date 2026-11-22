@@ -53,7 +53,7 @@ def test_layer_4_names_no_crate_above_it_calls_no_outside_program_and_lets_no_cl
     assert "data/" not in t and "sys.path" not in t and "artifacts" not in t and "stockfish" not in t.lower()
     assert "seconds: None" in t and "seconds: Some" not in t, "the test asks by nodes only"
     # the manifest: the crate's dependencies are layers 1 to 3 and the operator interface; nothing of the wake, the planning or the learning
-    cargo = (TACTICS / "Cargo.toml").read_text().split("[dependencies]")[1]
+    cargo = (TACTICS / "Cargo.toml").read_text().split("[dependencies]")[1].split("\n[")[0]      # plan 79.31: the [dependencies] table only; a dev-dependency (cs_base, layer 0, for the test of the meaning) is below
     deps = sorted(re.findall(r"^(cs_\w+)\s*=", cargo, flags=re.M))
     assert deps == ["cs_game", "cs_operator", "cs_rep", "cs_value"], deps
     # the entry is read by the test through the one door

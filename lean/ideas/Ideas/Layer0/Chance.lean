@@ -4,6 +4,8 @@ import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Tactic.Ring
 import Mathlib.Algebra.BigOperators.Field
 import Mathlib.Data.Real.Basic
+import Mathlib.Tactic.FieldSimp
+import Mathlib.Algebra.BigOperators.Fin
 
 /-!
 # Layer 0, chance (plan 79.30; SYSTEM_SPEC 11 "Layer 0 holds six things" item 5)
@@ -63,5 +65,43 @@ theorem given_nonneg (s : Finset α) (p : α → ℝ) (P : α → Prop) [Decidab
     (h0 : ∀ x ∈ s, 0 ≤ p x) {x : α} (hx : x ∈ s.filter P) : 0 ≤ p x / (∑ y ∈ s.filter P, p y) := by
   apply div_nonneg (h0 x (Finset.mem_filter.mp hx).1)
   exact Finset.sum_nonneg fun y hy => h0 y (Finset.mem_filter.mp hy).1
+
+/-! ## The belief (plan 79.31 part C) -/
+
+/-- THE BELIEF AFTER WHAT WAS SEEN: each chance weighed by how likely its supposition made what was seen, and made whole again. -/
+noncomputable def post (s : Finset α) (p l : α → ℝ) (x : α) : ℝ := p x * l x / ∑ y ∈ s, p y * l y
+
+/-- A BELIEF CHANGED BY WHAT IS SEEN SUMS TO ONE, when some supposition could have made what was seen (Rust: `a_belief_changed_by_what_is_seen_is_weighed_by_the_likelihoods_and_sums_to_one`). -/
+theorem belief_sums_to_one (s : Finset α) (p l : α → ℝ) (hc : ∑ y ∈ s, p y * l y ≠ 0) : ∑ x ∈ s, post s p l x = 1 := by
+  unfold post
+  rw [← Finset.sum_div]
+  exact div_self hc
+
+/-- THE CHANGE BY TWO SIGHTINGS IS THE CHANGE BY BOTH TOGETHER: the likelihoods multiply (Rust: `two_sightings_change_a_belief_as_both_together_and_in_either_order`). -/
+theorem belief_two_sightings (s : Finset α) (p l₁ l₂ : α → ℝ) (h1 : ∑ y ∈ s, p y * l₁ y ≠ 0) (x : α) :
+    post s (post s p l₁) l₂ x = post s p (fun y => l₁ y * l₂ y) x := by
+  have hsum : ∑ y ∈ s, post s p l₁ y * l₂ y = (∑ y ∈ s, p y * (l₁ y * l₂ y)) / ∑ y ∈ s, p y * l₁ y := by
+    unfold post
+    rw [Finset.sum_div]
+    exact Finset.sum_congr rfl fun y _ => by ring
+  unfold post at hsum ⊢
+  rw [hsum]
+  by_cases h2 : ∑ y ∈ s, p y * (l₁ y * l₂ y) = 0
+  · simp [h2]
+  · field_simp
+
+/-! ## Worked examples (plan 79.31 part H): the same numbers as the Rust tests `expectation_by_hand_and_the_condition_of_chance_nought` and `a_belief_changed_by_what_is_seen_...` -/
+
+/-- THE EXPECTATION OF THE SPREAD (2 : 1/2, 4 : 1/4, 10 : 1/4) IS 9/2. -/
+theorem example_expectation : expectation (Finset.univ : Finset (Fin 3)) ![1/2, 1/4, 1/4] ![2, 4, 10] = 9 / 2 := by
+  simp [expectation, Fin.sum_univ_three]; norm_num
+
+/-- THE BELIEF (1/2, 1/3, 1/6) SEEN WITH THE LIKELIHOODS (1/10, 1/2, 1) IS (3/23, 10/23, 10/23): the first chance. -/
+theorem example_belief_first : post (Finset.univ : Finset (Fin 3)) ![1/2, 1/3, 1/6] ![1/10, 1/2, 1] 0 = 3 / 23 := by
+  simp [post, Fin.sum_univ_three]; norm_num
+
+/-- the second chance of the same belief. -/
+theorem example_belief_second : post (Finset.univ : Finset (Fin 3)) ![1/2, 1/3, 1/6] ![1/10, 1/2, 1] 1 = 10 / 23 := by
+  simp [post, Fin.sum_univ_three]; norm_num
 
 end Ideas.Layer0.Chance

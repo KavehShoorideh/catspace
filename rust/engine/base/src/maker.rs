@@ -4,6 +4,7 @@
 //!   `Maker::new(seed: u64)`, `next_u64()`, `below(n: u64) -> u64`, `range(lo: i64, hi: i64) -> i64` (both ends in), `fraction() -> f64` (in [0, 1)), `pick<T: Clone>(&[T]) -> T`, `chance() -> bool`.
 //!   `random_tree(&mut Maker, depth: u32, shape: Shape) -> Tree<i64>`: a tree of choices with whole results; `Shape { tables: bool, chance: bool }` says whether choices at once and by chance may be made.
 use crate::choice::{Chooser, Tree};
+use crate::number::Num;
 
 /// SplitMix64: small, fast, the same on every machine.
 #[derive(Debug, Clone)]
@@ -32,7 +33,7 @@ impl Maker {
 #[derive(Debug, Clone, Copy)]
 pub struct Shape { pub tables: bool, pub chance: bool }
 
-/// A tree of choices with whole results between -9 and 9, `depth` levels deep at most. Chances are quarters (exact in `f64`), so sums are exact.
+/// A tree of choices with whole results between -9 and 9, `depth` levels deep at most. Chances are quarters (exact fractions), so sums are exactly one.
 pub fn random_tree(m: &mut Maker, depth: u32, shape: Shape) -> Tree<i64> {
     if depth == 0 || m.below(5) == 0 { return Tree::Result(m.range(-9, 9)); }
     let mut kinds = vec![0u8, 1];                            // 0 and 1: a turn of A or of B; 2: a table; 3: a chance
@@ -53,10 +54,10 @@ pub fn random_tree(m: &mut Maker, depth: u32, shape: Shape) -> Tree<i64> {
             let n = 1 + m.below(3) as usize;
             // quarters that sum to one: n outcomes share four quarters, each at least none
             let mut left = 4u64;
-            let outs: Vec<(Tree<i64>, f64)> = (0..n).map(|i| {
+            let outs: Vec<(Tree<i64>, Num)> = (0..n).map(|i| {
                 let q = if i + 1 == n { left } else { m.below(left + 1) };
                 left -= q;
-                (random_tree(m, depth - 1, shape), q as f64 / 4.0)
+                (random_tree(m, depth - 1, shape), Num::frac(q as i64, 4).expect("a quarter"))
             }).collect();
             Tree::chance(outs).expect("chances sum to one")
         }
