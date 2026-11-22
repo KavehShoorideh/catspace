@@ -66,9 +66,9 @@ def test_the_entry_reaches_only_the_search_and_no_module_of_a_layer_above():
     code = code_of(src)
     uses = re.findall(r"^\s*use ([\w:{}, ]+);", code, flags=re.M)
     crate_uses = [u for u in uses if u.startswith("crate::")]
-    assert crate_uses == ["crate::ledger::{Judge, Search, PROVED}"], crate_uses
+    assert crate_uses == ["crate::ledger::{Judge, Search, PROVED}", "crate::reach"], crate_uses  # plan 79.27: the entry with goals also reaches the statements' body
     assert not re.search(NOT_THE_SEARCH, "\n".join(uses)), uses
-    assert "pub fn search<" in src and src.count("pub fn ") == 2, "one entry (and the reading of its ending)"
+    assert "pub fn search<" in src and "pub fn ask<" in src and src.count("pub fn ") == 5, "the reading of the old goals, its ending, and (plan 79.27) the entry with goals: ask, ask_with, Answer::reached"
     print("OBS 79.25 scan: the entry uses the ledger search and nothing else of cs_tactics")
 
 
@@ -88,13 +88,13 @@ def test_the_scans_see_what_they_are_for():
 
 def test_the_fixtures_are_small_in_the_format_the_test_reads_and_name_no_player():
     files = sorted(FIXTURES.glob("*.fixture"))
-    assert [p.name for p in files] == ["before.fixture", "puzzle.fixture", "quiet.fixture", "ratchet.fixture", "worth.fixture"], [p.name for p in files]  # plan 79.26 added before.fixture and worth.fixture
+    assert [p.name for p in files] == ["before.fixture", "goals.fixture", "pairs.fixture", "puzzle.fixture", "quiet.fixture", "ratchet.fixture", "worth.fixture"], [p.name for p in files]  # plan 79.26 added before.fixture and worth.fixture, plan 79.27 goals.fixture and pairs.fixture
     total = sum(p.stat().st_size for p in files)
     assert total < 500_000
     tags = {}
     for p in files:
         lines = p.read_text().splitlines()
-        assert lines[0].startswith("game\t") or p.name in ("ratchet.fixture", "before.fixture", "worth.fixture")
+        assert lines[0].startswith("game\t") or p.name in ("ratchet.fixture", "before.fixture", "worth.fixture", "goals.fixture", "pairs.fixture")
         tags[p.name] = {l.split("\t")[0] for l in lines}
         print(f"OBS 79.25 fixture {p.name}: {p.stat().st_size} bytes, {len(lines)} lines")
         for l in lines:
