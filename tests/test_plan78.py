@@ -89,9 +89,9 @@ def test_79_22_the_scan_sees_a_planted_word():
     assert game_words_in('let r = run("check");')
     assert game_words_in('let m = "a1";')
     assert not game_words_in('let b1 = 3; // the rook on a1\nlet s = "unit";')
-    p = ENGINE / "rep" / "src" / "matcher.rs"
+    p = ENGINE / "base" / "src" / "logic" / "matcher.rs"          # plan 79.30: the matcher moved down to layer 0
     assert not game_words_in(p.read_text())
-    assert game_words_in(p.read_text().replace('"kind_x"', '"rook"', 1)), "a unit planted in the matcher's test string is found"
+    assert game_words_in(p.read_text().replace('"k1"', '"rook"', 1)), "a unit planted in the matcher's test string is found"
 
 
 def test_78_1_the_kernels_agree_with_their_gdl_texts_by_co_play_and_a_wrong_text_disagrees():

@@ -14,7 +14,7 @@ ENGINE = ROOT / "rust" / "engine"
 TACTICS = ENGINE / "tactics"
 FIXTURES = TACTICS / "tests" / "fixtures"
 DISCOVERY = ROOT / "catspace" / "incubator" / "analyst" / "discovery"
-LAYER_FILES = [TACTICS / "src" / "meansends.rs", TACTICS / "src" / "reach.rs", ENGINE / "rep" / "src" / "matcher.rs", TACTICS / "tests" / "layer4_goals.rs"]
+LAYER_FILES = [TACTICS / "src" / "meansends.rs", TACTICS / "src" / "reach.rs", ENGINE / "base" / "src" / "logic" / "matcher.rs", TACTICS / "tests" / "layer4_goals.rs"]
 GAME_WORDS = r"\b(king\w*|queen\w*|rook\w*|bishop\w*|knight\w*|pawn\w*|castl\w*|promot\w*|en passant|check\w*|mate|stalemate|uci|fen|san|chess\w*|shakmaty)\b"
 SQUARE = r"\b[a-h][1-8]\b"
 
@@ -67,7 +67,7 @@ def test_the_layer_files_name_no_object_of_a_game_and_the_test_has_the_new_answe
         assert word in t, word
     src = (TACTICS / "src" / "meansends.rs").read_text()
     assert "pub struct Touched" in src and "Touched(Touched)" in src and "OutOfReach" in src and "NotSettled" in src
-    lem = (ENGINE / "rep" / "src" / "lemma.rs").read_text()
+    lem = (ENGINE / "base" / "src" / "logic" / "mod.rs").read_text()          # plan 79.30: the literal moved down to layer 0
     assert 'pub const DIFFER: &str = "differ"' in lem
     print("OBS 79.28 scan: the entry, the body, layer 1's language and matcher and both tests name no object of a game; the answer has its fourth case, the language its one literal that is not a row")
 
