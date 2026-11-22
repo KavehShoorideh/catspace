@@ -90,6 +90,8 @@ impl Judge for Worth {
 }
 
 pub const WIN: i64 = 1 << 40;
+/// PLAN 79.26 PART B: a value at or above this (or at or below its negative) is the game's own end, whatever the line gave up on the way: the end is `WIN` less its ply and the judge's sum of the units taken is added to it (a sacrifice makes it `WIN - ply - LOSS` and, with a record's worths, `WIN - ply - a worth`), a sum far below half of `WIN`.
+pub const PROVED: i64 = WIN / 2;
 const NULL_MIN_DEPTH: i32 = 3;          // the null move at nodes this deep or deeper
 const NULL_R: i32 = 2;                  // ... read this much shallower
 const ZUGZWANG_UNITS: usize = 3;        // ... only while the mover keeps more units than this
@@ -711,7 +713,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             let (line, lost) = self.line_of(s, d as usize + 8);
             let fi = self.tt.get(&self.g.key(s)).map(|e| e.best);
             out = Line { first: line.first().cloned(), value: v, line, lost, depth: d, nodes: self.nodes, first_index: fi };
-            if v.abs() >= WIN - 1000 { break; }                // the game's own outcome is read: no deeper line changes it
+            if v.abs() >= PROVED { break; }                    // the game's own outcome is read, whatever was given up on the way (plan 79.26 B: it was `WIN - 1000`, which a line that gives up a unit does not reach): no deeper line changes it
         }
         out.nodes = self.nodes;
         out

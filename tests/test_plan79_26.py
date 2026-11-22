@@ -40,8 +40,12 @@ def test_the_layer_files_still_name_no_word_of_a_game_and_the_test_uses_both_jud
         bad = [m.group(0) for m in re.finditer(GAME_WORDS, txt, flags=re.I)] + [m.group(0) for m in re.finditer(SQUARE, txt)]
         assert not bad, (p.name, bad)
     t = (TACTICS / "tests" / "layer4.rs").read_text()
-    assert "Which::Wake" in t and "Which::Plain" in t and "worth.fixture" in t
+    assert "Which::Wake" in t and "Which::Plain" in t and "worth.fixture" in t and "before.fixture" in t
     assert "seconds: None" in t and "seconds: Some" not in t, "still nodes only"
+    src = (TACTICS / "src" / "meansends.rs").read_text()
+    assert "PROVED" in src, "the entry reads an end by the ledger's one constant, the one the deepening stops at"
+    led = (TACTICS / "src" / "ledger.rs").read_text()
+    assert "pub const PROVED: i64 = WIN / 2;" in led and "if v.abs() >= PROVED { break; }" in led, "the deepening stops on an end proved whatever was given up"
     print("OBS 79.26 scan: layer 4's entry and test name no word of a game; the test reads both judges and the nodes of before")
 
 

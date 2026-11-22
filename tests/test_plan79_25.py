@@ -66,7 +66,7 @@ def test_the_entry_reaches_only_the_search_and_no_module_of_a_layer_above():
     code = code_of(src)
     uses = re.findall(r"^\s*use ([\w:{}, ]+);", code, flags=re.M)
     crate_uses = [u for u in uses if u.startswith("crate::")]
-    assert crate_uses == ["crate::ledger::{Judge, Search, WIN}"], crate_uses
+    assert crate_uses == ["crate::ledger::{Judge, Search, PROVED}"], crate_uses
     assert not re.search(NOT_THE_SEARCH, "\n".join(uses)), uses
     assert "pub fn search<" in src and src.count("pub fn ") == 2, "one entry (and the reading of its ending)"
     print("OBS 79.25 scan: the entry uses the ledger search and nothing else of cs_tactics")

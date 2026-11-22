@@ -342,6 +342,40 @@ fn proofs_with(wh: Which) {
     }
 }
 
+/// PLAN 79.26 PART B: the deepening stops on an end proved by force whatever was given up on the way. The nodes the positions with a proved end needed BEFORE that change are in before.fixture (per judge and budget); now no
+/// position needs more, the ones whose line gives up a unit need fewer, and what was proved before is proved still (the same ending); no false proof appears (the test above).
+#[test]
+fn an_end_proved_by_force_stops_the_deepening_whatever_was_given_up_and_no_position_needs_more_nodes_than_before() {
+    let (text, _) = fixture("before.fixture");
+    let rows: Vec<Vec<String>> = text.lines().filter(|l| l.starts_with("before\t")).map(|l| l.split('\t').map(|x| x.to_string()).collect()).collect();
+    assert!(rows.len() >= 300, "the nodes of before are in the fixture: {}", rows.len());
+    for wh in WHICH {
+        let (fx, ps, all) = answers(wh);
+        let g = open(fx);
+        let name = match wh { Which::Plain => "plain", Which::Wake => "wake" };
+        let (mut n, mut fewer, mut same, mut gave, mut gave_fewer, mut more) = (0, 0, 0, 0, 0, vec![]);
+        let (mut before_sum, mut now_sum, mut gave_before, mut gave_now) = (0u64, 0u64, 0u64, 0u64);
+        for r in rows.iter().filter(|r| r[1] == name) {
+            let (id, b, was, ending): (&str, usize, u64, &str) = (&r[2], r[3].parse().unwrap(), r[4].parse().unwrap(), &r[5]);
+            let i = ps.iter().position(|p| p.id == id).unwrap_or_else(|| panic!("{id} is a position of the fixture"));
+            let f = &all[b][i];
+            assert_eq!(format!("{:?}", f.ending), ending, "{id} at budget {}: what was proved before is proved still, to the same side", BUDGETS[b]);
+            let s = g.read_state_text(&ps[i].text).unwrap();
+            let me = g.mover(&s).unwrap();
+            let gave_up = f.taken.iter().any(|(owner, _)| *owner == me);
+            n += 1;
+            before_sum += was; now_sum += f.nodes;
+            if gave_up { gave += 1; gave_before += was; gave_now += f.nodes; }
+            if f.nodes > was { more.push(format!("{id}@{b}: {} against {}", f.nodes, was)); }
+            else if f.nodes < was { fewer += 1; if gave_up { gave_fewer += 1; } }
+            else { same += 1; }
+        }
+        println!("OBS 79.26 B nodes of proved ends ({}): {n} positions at three budgets; more nodes than before {}; the same {same}; fewer {fewer}; of those whose line gives up a unit of ours {gave}, fewer {gave_fewer}; nodes summed before {before_sum} now {now_sum}; of the sacrifices before {gave_before} now {gave_now}", wh.label(), more.len());
+        assert!(more.is_empty(), "no position needs more nodes than before: {:?}", &more[..more.len().min(8)]);
+        assert!(gave == 0 || gave_fewer > 0, "a proved end that gives up a unit is proved at fewer nodes in some positions");
+    }
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------ (4) quiet positions are not this layer's
 
 #[test]
