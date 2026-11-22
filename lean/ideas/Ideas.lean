@@ -59,3 +59,9 @@ import Ideas.Spec.Chess
 import Ideas.Spec.NextEquiv
 import Ideas.Spec.DeadPosition
 import Ideas.Spec.LegalEquiv
+import Ideas.Layer0.Number
+import Ideas.Layer0.Sets
+import Ideas.Layer0.Logic
+import Ideas.Layer0.Structure
+import Ideas.Layer0.Chance
+import Ideas.Layer0.Choice

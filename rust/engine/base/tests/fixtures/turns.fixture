@@ -1,0 +1,64 @@
+# plan 79.30: a game of turns on finite places
+game	a king and a rook against a king (chess, three by three)
+fact	link	a1	a2	step
+fact	link	a1	b1	step
+fact	link	a1	b2	step
+fact	link	a2	a3	step
+fact	link	a2	b1	step
+fact	link	a2	b2	step
+fact	link	a2	b3	step
+fact	link	a3	b2	step
+fact	link	a3	b3	step
+fact	link	b1	b2	step
+fact	link	b1	c1	step
+fact	link	b1	c2	step
+fact	link	b2	b3	step
+fact	link	b2	c1	step
+fact	link	b2	c2	step
+fact	link	b2	c3	step
+fact	link	b3	c2	step
+fact	link	b3	c3	step
+fact	link	c1	c2	step
+fact	link	c2	c3	step
+fact	coord	a1	0	0
+fact	coord	a2	0	1
+fact	coord	a3	0	2
+fact	coord	b1	1	0
+fact	coord	b2	1	1
+fact	coord	b3	1	2
+fact	coord	c1	2	0
+fact	coord	c2	2	1
+fact	coord	c3	2	2
+fact	at	wk	a1
+fact	at	wr	b1
+fact	at	bk	c3
+fact	is_a	wk	king
+fact	is_a	bk	king
+fact	is_a	wr	rook
+fact	is_a	wk	white
+fact	is_a	wr	white
+fact	is_a	bk	black
+fact	seq	material	0	9
+fact	seq	material	1	9
+fact	seq	material	2	9
+fact	seq	material	3	5
+fact	seq	material	4	5
+fact	seq	material	5	5
+fact	region	corner	disc	0	0	1
+fact	region	centre	box	1	1	1	1
+fact	region	wide	poly	0	0	2	0	2	2	0	2
+fact	region	far_side	half	1	0	-2
+fact	outcome	reply	retreat	0.5
+fact	outcome	reply	advance	0.25
+fact	outcome	reply	attack	0.25
+fact	result	win	1
+fact	result	draw	0
+fact	result	loss	-1
+fact	turn	n0	A	n1	n2
+fact	turn	n1	B	draw	win
+fact	turn	n2	B	win	win
+fact	result	r_retreat	1
+fact	result	r_advance	0
+fact	result	r_attack	-1
+fact	chance_node	n3	r_retreat	0.5	r_advance	0.25	r_attack	0.25
+fact	turn	n4	A	n3	draw

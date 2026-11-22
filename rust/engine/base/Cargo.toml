@@ -1,0 +1,10 @@
+[package]
+name = "cs_base"
+version = "0.1.0"
+edition = "2021"
+description = "plan 79.30: layer 0, mathematics and logic, as one crate at the bottom: logic, sets, number, structure, chance, choice. Depends on no crate of ours; names no game and no thing of a world."
+
+# One outside crate, for the JSON form of a literal only (`logic::json`): serde_json 1, with the float_roundtrip feature the layers above already use. It is in the lock already; the
+# reason it is here and not in cs_rep is that `Lit::to_json` and `Lit::from_json` are called by name from layers above, and a trait would move every one of those callers.
+[dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
