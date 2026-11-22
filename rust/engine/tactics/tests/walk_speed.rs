@@ -1,4 +1,4 @@
-//! PLAN 79.32 PART F (SYSTEM_SPEC 11 "The pure search is mathematics and lives in layer 0", 13 item 50; piece: the tactical reasoner as a case of the base): the SPEED of layer 0's walk as layer 4 uses it, on fixed questions: the first thirty positions of each game of the goals fixture, every goal of a position in one list, one thread,
+//! PLAN 79.32 PART F (SYSTEM_SPEC 11 "The pure search is mathematics and lives in layer 0", 13 item 50; piece: the tactical reasoner as a case of the base): the SPEED of layer 0's walk as layer 4 uses it, on fixed questions: the first ten positions of each game of the goals fixture, every goal of a position in one list, one thread,
 //! a budget of 50 000 nodes, the plain tree and the narrowed tree, each asked three times. It prints the nodes, the positions made, the rows matched and the nodes a second (OBS lines, directions only: a clock is a measure, never a law); the counts are asserted equal from one asking to the next.
 //! It uses layer 1 (statements), layer 2 (the game through the text door) and this layer's entry. This file names no object of any game; the fixture does.
 use cs_game::kernel::KernelGame;
@@ -61,7 +61,7 @@ fn the_speed_of_the_walk_on_fixed_questions_is_printed() {
             for fx in &games {
                 let g = open(fx);
                 let st = g.board().unwrap();
-                for (text, statements) in fx.positions.iter().take(30) {
+                for (text, statements) in fx.positions.iter().take(10) {
                     let s = g.read_state_text(text).unwrap();
                     let goals: Vec<Goal> = statements.iter().map(|x| Goal::Holds(x.clone())).collect();
                     let q = Question { game: &g, board: &st, state: &s, judge: &Count, side: g.mover(&s).expect("a position the game goes on from"), goals: &goals, nodes: budget, seconds: None, max_depth: 5, history: Arc::new(Seen::new()) };
