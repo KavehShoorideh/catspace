@@ -13,7 +13,8 @@ INTERFACE.
   defender_reply(text, moves, legal) -> str        the table's reply that holds longest (the move's own name, one of `legal`) at the position reached from `text` by `moves`
   ending_of(text, moves, outcome, unfinished) -> str   how a game ended: "won" (the stronger side's), "stalemate", "unit_lost" (insufficient material left), "repetition" (a position met three times), "quiet_rule" (the game's rule on quiet plies), "cap" (the ply cap), "other"
   coverage(starts) -> {bin: count}                 the starts by the table's distance, bins of five
-Called by: whole_79_17.py, measure_miner_79_17.py, the print scripts, the tests.
+  distance(text) -> int                            PLAN 79.24: the table's distance at a position (0 where the game is over); far_table_games(cls, n, seed): the table's shortest lines from the far starts
+Called by: whole_79_17.py, measure_miner_79_17.py, the print scripts (layer3_fixtures_print.py too, plan 79.24), the tests.
 """
 from __future__ import annotations
 
@@ -129,6 +130,12 @@ def ending_of(text: str, moves: list, outcome: "int | None", unfinished: bool, a
     return "other"
 
 
+def distance(text: str) -> int:
+    """PLAN 79.24 PART C: the table's distance (to the next irreversible move) at a position, 0 where the game is over; a MEASURE of a fixture's position, made in the maker and never read by the wake or the layer's value."""
+    b = chess.Board(text)
+    return 0 if b.is_game_over() else abs(tables().probe_dtz(b))
+
+
 def coverage(starts: list) -> dict:
     out: dict = {}
     for s in starts:
@@ -221,6 +228,11 @@ def generated_games(cls: str, n: int, seed: int) -> tuple:
 def table_games(cls: str, n: int, seed: int) -> list:
     """The table's own shortest lines (both sides the table's): used only to test October's lesson, never as the teacher."""
     return [{"text": st["text"], "moves": _play_out(st, None), "attacker_white": st["attacker_white"], "source": "table", "dtz": st["dtz"]} for st in sample_starts(cls, n, seed)]
+
+
+def far_table_games(cls: str, n: int, seed: int, pool: int = 20) -> list:
+    """PLAN 79.24 PART C: the table's own shortest lines from the far starts of the class (a fixture's lines; never the teacher)."""
+    return [{"text": st["text"], "moves": _play_out(st, None), "attacker_white": st["attacker_white"], "source": "table", "dtz": st["dtz"]} for st in far_starts(cls, n, seed, pool)]
 
 
 def far_starts(cls: str, n: int, seed: int, pool: int = 20) -> list:

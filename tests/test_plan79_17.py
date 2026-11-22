@@ -38,7 +38,7 @@ def test_the_measure_scripts_name_no_game_object_and_only_the_oracle_of_the_meas
             assert not re.search(rf"\b{w}\b", low), (name, w)
         assert not re.search(r"ladder_oracle|leaf_ask|stockfish|analyse_pos|cs_learn|anthropic|syzygy|\blo\.", low), name
     users = [p.name for p in (ROOT / "catspace").rglob("*.py") if "measure_oracle_79_17" in p.read_text() and p.name not in ("measure_oracle_79_17.py",)]
-    assert set(users) <= {"whole_79_17.py", "measure_miner_79_17.py", "whole_79_17_print.py", "measure_miner_79_17_print.py"}, users
+    assert set(users) <= {"whole_79_17.py", "measure_miner_79_17.py", "whole_79_17_print.py", "measure_miner_79_17_print.py", "layer3_fixtures_print.py"}, users
     assert "syzygy" not in "".join((DIR / n).read_text() for n in ("whole_play.py", "whole_79_16.py", "whole_79_14.py")).lower()
     for crate in ("tactics", "decision"):
         assert "cs_learn" not in (ROOT / "rust" / "engine" / crate / "Cargo.toml").read_text()

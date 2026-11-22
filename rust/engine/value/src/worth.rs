@@ -38,7 +38,6 @@ fn softmax3(z: [f64; 3]) -> [f64; 3] {
     [e[0] / s, e[1] / s, e[2] / s]
 }
 
-fn num(v: &Json, k: &str) -> Result<f64, String> { v.get(k).and_then(|x| x.as_f64()).ok_or_else(|| format!("{k} is a number")) }
 fn nums(v: &Json, k: &str) -> Result<Vec<f64>, String> { v.get(k).and_then(|x| x.as_array()).ok_or_else(|| format!("{k} is a list"))?.iter().map(|x| x.as_f64().ok_or_else(|| format!("{k} holds numbers"))).collect() }
 fn text(v: &Json, k: &str) -> Result<String, String> { v.get(k).and_then(|x| x.as_str()).map(|s| s.to_string()).ok_or_else(|| format!("{k} is a text")) }
 fn three(v: Vec<f64>, k: &str) -> Result<[f64; 3], String> { <[f64; 3]>::try_from(v).map_err(|_| format!("{k} has three entries")) }
