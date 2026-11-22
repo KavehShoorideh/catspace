@@ -33,7 +33,7 @@ def base_sources() -> list[Path]:
 def test_cs_base_sources_name_no_game_and_no_word_of_a_world():
     files = base_sources()
     names = {p.name for p in files}
-    assert {"lib.rs", "mod.rs", "number.rs", "sets.rs", "chance.rs", "choice.rs", "maker.rs", "layer0.rs", "Cargo.toml", "matcher.rs", "formula.rs", "geometry.rs", "graph.rs", "sequence.rs"} <= names
+    assert {"lib.rs", "mod.rs", "number.rs", "sets.rs", "chance.rs", "lp.rs", "maker.rs", "layer0.rs", "Cargo.toml", "matcher.rs", "formula.rs", "geometry.rs", "graph.rs", "sequence.rs"} <= names
     bad = {}
     for p in files:
         hits = [m.group(0) for m in WORLD.finditer(p.read_text())]
