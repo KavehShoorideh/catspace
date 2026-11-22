@@ -64,9 +64,10 @@ pub struct Found {
     pub cut: bool,
 }
 
-/// How near the game's own end a value is: the ledger's sums are small, the game's end is above or below all of them.
+/// Whether a value is the game's own end. The ledger's sums are small (a thousand a unit lost, one a unit won) and the game's end is `WIN` less its ply, with the sums of the line's takings added: a sacrifice on the way makes `WIN - ply - 1000`, so the end is read as
+/// above half of `WIN`, never at `WIN - 1000` (the deepening's own stop in `Search::run` is at `WIN - 1000` and so does not stop on such a line: it goes on deeper, which is read as a weakness in the plan's block and not changed here).
 pub fn ending_of(value: i64) -> Ending {
-    if value >= WIN - 1000 { Ending::Won } else if value <= -(WIN - 1000) { Ending::Lost } else { Ending::Estimated }
+    if value >= WIN / 2 { Ending::Won } else if value <= -(WIN / 2) { Ending::Lost } else { Ending::Estimated }
 }
 
 /// THE ENTRY OF LAYER 4 (see the file's doc).
