@@ -949,6 +949,16 @@ that another chooser is an opponent then follows from layer 2's results and laye
 reading assumes nothing of wants, but the value reading takes one order and assumes the other reversed: to be widened to an order
 for each chooser (item 49).
 
+**Layer 0 is made right; nothing of a second game is built; it is applied to the game at hand** (Kaveh 2026-11-22: "continue
+building and making this layer right and fixing all the bugs that you saw. I don't want you to actually build anything soccer
+related ... What I want is the tools and concepts in this layer to be able to handle a game like soccer. Not exactly, but like be
+extensible ... I want to directly apply it to chess. So what's coming is chess, but try to keep it generic"). DECIDED: the go on
+section 13 item 49 (an order for each chooser, the mixed choice, the belief); the faults of the 79.30 READ are mended; no rules,
+player or search of a second game is ever part of this work; layer 0 is judged by its use in the game at hand and by being open
+to extension, not by covering the second game exactly. READING of the main agent: the one small fixture of facts of a second
+kind stays as test data only (it is what shows a notion is not shaped by one game) and is not grown; say so if it should go.
+Plan 79.31.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1178,8 +1188,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     each touched by one move, such that no one reply undoes both; then one of them is reached a move later. (iii) A goal about
     a unit names the place the unit stood on when the goal was written, so it is lost when the unit moves. PROPOSED: a goal
     names a unit by a mark that follows it through its moves (layer 1's history knows where each unit went).
-49. From 2026-11-22. Your direction: a belief about the opponent, and choosing by chance. PROPOSED as plan 79.31, waiting for
-    your go: add to layer 0 (i) the mixed choice for a choice at once (the best spread over one's options and the one value, by
+49. From 2026-11-22. Your direction: a belief about the opponent, and choosing by chance. GO given 2026-11-22 (plan 79.31);
+    was proposed as: add to layer 0 (i) the mixed choice for a choice at once (the best spread over one's options and the one value, by
     a small linear program; the law that the two sides' guarantees meet stated in Lean, proved or left open and said), (ii) the
     belief: a spread over suppositions, its change by what is seen, and the best choice against it. What is believed of a given
     opponent is left to the layer of the opponent.
@@ -1348,4 +1358,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 0 must be able to say two unlike games of opposed sides; the layers above serve the game at hand (contents of layer 0 PROPOSED) | 2026-11-22 | 11 (last block) |
 | Layer 0 holds six things (logic and proof, sets, number, structure, chance, opposed choice); the go to build it | 2026-11-22 | 11 (last block) |
 | A belief about the opponent and choosing by chance: layer 0 gives the form, the layer of the opponent the content (direction; details PROPOSED) | 2026-11-22 | 11 (last block), 13 item 49 |
+| Layer 0 made right and applied to the game at hand; nothing of a second game built; open to extension | 2026-11-22 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
