@@ -65,6 +65,7 @@ dependencies = [
  "cs_planning",
  "cs_rep",
  "cs_tactics",
+ "cs_value",
  "rayon",
  "serde_json",
 ]
@@ -131,6 +132,7 @@ dependencies = [
  "cs_game",
  "cs_operator",
  "cs_tactics",
+ "cs_value",
 ]
 
 [[package]]
@@ -148,7 +150,16 @@ dependencies = [
  "cs_game",
  "cs_operator",
  "cs_rep",
+ "cs_value",
  "rustc-hash",
+]
+
+[[package]]
+name = "cs_value"
+version = "0.1.0"
+dependencies = [
+ "cs_game",
+ "cs_rep",
 ]
 
 [[package]]

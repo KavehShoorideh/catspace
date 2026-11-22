@@ -10,6 +10,7 @@ cs_rep = { path = "../rep" }
 cs_gdl = { path = "../gdl" }
 cs_operator = { path = "../operator" }
 cs_memory = { path = "../memory" }
+cs_value = { path = "../value" }
 cs_tactics = { path = "../tactics" }
 cs_planning = { path = "../planning" }
 rayon = "1"

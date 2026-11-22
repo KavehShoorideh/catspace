@@ -289,9 +289,12 @@ pub const MEASURE_NODES: u64 = 20_000_000;
 /// against every reply (a fall); where none exists, read to its end, and the value now is above the lowest, a line that brings it below the value now (a RECOVERY: logged as one, played, never counted as a subgoal reached); a position met before in the game is never the end of a line that counts. THE GOAL'S STATES (79.18 C): it is DROPPED for good only when the class changed (the units of each side by kind are not
 /// the units it was taken up with); a question read to its end that found no line leaves the goal held and it is asked again at the next decision (the log says how many decisions in a row without a line); a goal the search's end of the game puts to SLEEP (`decide`) stays in what is carried and is woken at the next decision in which the search no longer holds the end.
 pub fn measure_step<G: Game + Placed>(st: &Static, g: &G, s: &G::State, history: &Seen, me: Role, mg: &MeasureGoal, prev: Option<&crate::carry::HeldGoal>, end: std::time::Instant) -> (crate::carry::HeldGoal, crate::log::MeasureLog, Option<String>) {
-    use cs_tactics::measure::{lower, question, value, Geometry, Reader};
+    use cs_tactics::measure::{lower, question, Geometry};
+    use cs_value::{Assess, Question};
     let geo = Geometry::new(st);
-    let now = value(&mg.term, &Reader::new(g, &geo, s, me));
+    // PLAN 79.24: the numbers of the held term are read through layer 3's one question (the same code as the value of a position is asked by), not by a copy
+    let progress = cs_value::progress::Progress::given(mg.term.clone(), mg.d, &geo, cs_memory::statement::Standing::Conjecture("held as given by the caller of the wake".into()));
+    let now = progress.assess(&Question { game: g, state: s, side: me }).ok().and_then(|a| a.raw).unwrap_or_default();
     let mut class: Vec<(bool, u8)> = g.cells(s).iter().map(|(o, k, _)| (*o != me, *k)).collect();
     class.sort();
     let text = mg.term.text();
