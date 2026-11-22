@@ -20,6 +20,7 @@ Two laws about the finite trees of `cs_base::choice`:
 
 and the link between the two readings: in a tree of turns the value reaches `k` exactly when A can force "at least `k`" (`value_ge_iff_canForce`).
 Plan 79.31 adds: determinacy for a SET of choosers (`coalition_exactly_one`), the certificate law of the mixed choice (`guarantees_meet_of_certificate`), the law of a choice against a belief (`no_mix_beats_best`), and worked examples whose numbers the Rust tests repeat.
+Plan 79.32 adds the laws the walk of `cs_base::choice::walk` keeps its answers by: met within n steps is met within every depth from n on (`canIn_mono`), not met within m steps is not met within any fewer (`not_canIn_of_le`), and the set can force P exactly when it can within some number of steps (`canS_iff_canIn`).
 THE MINIMAX THEOREM (that every table has spreads that meet, `minimax_exists`) IS PROVED, from Mathlib's Sion-von Neumann theorem (`Sion.exists_isSaddlePointOn`) on the two simplexes with the bilinear payoff; the Rust program that finds the spreads has the certificate (`guarantees_meet_of_certificate`) tested on every table it solves.
 THE LEAN TREES ARE MODELS: the Rust `Tree` is a separate type; what ties them is the Rust tests on made cases and the worked examples, which the Rust tests repeat with the same numbers.
 -/
@@ -178,6 +179,73 @@ theorem coalition_exactly_one (S : ℕ → Prop) (t : GTree) : canS S t ↔ ¬ c
     by_cases h : S w
     · simp only [canS, canRest, h, if_true, ih, not_forall]
     · simp only [canS, canRest, h, if_false, ih, not_exists]
+
+/-! ## The walk of layer 0 (plan 79.32 part A): met within n steps, and what the walk keeps -/
+
+open Classical in
+/-- THE SET S CAN FORCE P WITHIN k STEPS, the reading of `cs_base::choice::walk::Walk`: a result decides; a node that is not a result and has no step left does not meet P; at the turn of a member some option does within one step fewer;
+at any other turn every option does. (A choice in turn has at least one option in the Rust tree; a node with none is the same here as in `canS`.) -/
+noncomputable def canIn (S : ℕ → Prop) : ℕ → GTree → Prop
+  | _, .leaf b => b = true
+  | 0, .turn _ _ _ => False
+  | k + 1, .turn w _ c => if S w then ∃ i, canIn S k (c i) else ∀ i, canIn S k (c i)
+
+/-- MET WITHIN k STEPS IS MET WITHIN k + 1. -/
+theorem canIn_succ (S : ℕ → Prop) : ∀ (k : ℕ) (t : GTree), canIn S k t → canIn S (k + 1) t
+  | _, .leaf b, h => by simpa [canIn] using h
+  | 0, .turn _ _ _, h => by simp [canIn] at h
+  | k + 1, .turn w _ c, h => by
+      by_cases hw : S w
+      · simp only [canIn, hw, if_true] at h ⊢
+        obtain ⟨i, hi⟩ := h
+        exact ⟨i, canIn_succ S k (c i) hi⟩
+      · simp only [canIn, hw, if_false] at h ⊢
+        exact fun i => canIn_succ S k (c i) (h i)
+
+/-- WHAT THE WALK KEEPS WHEN A PROPERTY IS MET: met within n steps, it is met within every depth from n on (Rust: the kept entry `reach`, used where `reach <= depth`; `walk.rs`). -/
+theorem canIn_mono (S : ℕ → Prop) {k m : ℕ} (hkm : k ≤ m) (t : GTree) (h : canIn S k t) : canIn S m t := by
+  induction hkm with
+  | refl => exact h
+  | step _ ih => exact canIn_succ S _ t ih
+
+/-- WHAT THE WALK KEEPS WHEN A PROPERTY IS NOT MET: not met within m steps, it is not met within any fewer (Rust: the kept entry `fail`, used where `fail >= depth`). -/
+theorem not_canIn_of_le (S : ℕ → Prop) {k m : ℕ} (hkm : k ≤ m) (t : GTree) (h : ¬ canIn S m t) : ¬ canIn S k t :=
+  fun hk => h (canIn_mono S hkm t hk)
+
+/-- THE SET CAN FORCE P EXACTLY WHEN IT CAN WITHIN SOME NUMBER OF STEPS: a depth large enough reads the whole finite tree, so the walk with no limit is the reading `canS`
+(Rust: `can_force_set` is the walk over the explicit tree; `the_set_and_the_rest_are_determined_with_any_number_of_choosers`). -/
+theorem canS_iff_canIn (S : ℕ → Prop) (t : GTree) : canS S t ↔ ∃ k, canIn S k t := by
+  induction t with
+  | leaf b => simp [canS, canIn]
+  | turn w n c ih =>
+    by_cases hw : S w
+    · simp only [canS, hw, if_true]
+      constructor
+      · rintro ⟨i, hi⟩
+        obtain ⟨k, hk⟩ := (ih i).1 hi
+        refine ⟨k + 1, ?_⟩
+        simp only [canIn, hw, if_true]
+        exact ⟨i, hk⟩
+      · rintro ⟨k, hk⟩
+        cases k with
+        | zero => simp [canIn] at hk
+        | succ k =>
+          simp only [canIn, hw, if_true] at hk
+          obtain ⟨i, hi⟩ := hk
+          exact ⟨i, (ih i).2 ⟨k, hi⟩⟩
+    · simp only [canS, hw, if_false]
+      constructor
+      · intro h
+        choose f hf using fun i => (ih i).1 (h i)
+        refine ⟨Finset.univ.sup f + 1, ?_⟩
+        simp only [canIn, hw, if_false]
+        exact fun i => canIn_mono S (Finset.le_sup (f := f) (Finset.mem_univ i)) _ (hf i)
+      · rintro ⟨k, hk⟩
+        cases k with
+        | zero => simp [canIn] at hk
+        | succ k =>
+          simp only [canIn, hw, if_false] at hk
+          exact fun i => (ih i).2 ⟨k, hk i⟩
 
 /-! ## The mixed choice (plan 79.31 part B): the certificate -/
 
