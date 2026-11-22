@@ -102,6 +102,12 @@ pub fn search<G: Game, J: Judge>(ask: &Ask<G, J>) -> Found {
 /// HOW THE BUDGET IS SPENT: in the order of the list, in groups: the statement goals form one group (one tree serves them all, `reach.rs`) placed where the first of them stands; each of the two old goals is a group of its own. Each group in turn gets an equal share of what is left (what it does not spend goes on to the later ones), and inside the tree the first open goal in the
 /// list steers the order of moves. The upper layer's opinion enters as that order, never as a value. A list of one answers exactly as the question of that goal alone.
 /// Called by: this layer's tests; no caller above is moved onto it in plan 79.27 (the wake, the question's search of 79.17 and the goals' what-ifs reach the searches directly: they are listed in the plan's block).
+///
+/// PLAN 79.28 PARTS A AND B (SYSTEM_SPEC 11 "Reached means the goal outlasts the reply"; ledger rows 36, 14; piece: tactical reasoner): THE MEANING OF AN ANSWER CHANGES, THE SHAPE OF THE QUESTION DOES NOT. A statement is HELD at a position when it binds there and the side asking is to move there or the game is over there. REACHED: the side has a
+/// way of moving such that, on every reply, a position where the statement is held is met within the depth (the position asked counts, at nought plies: a statement that binds at the root with the side to move is reached at once). So a statement that binds only right after a move of the side, and that some reply unbinds, is not reached by that move.
+/// TOUCHED (a fourth answer, said apart, never counted as reached): the statement is not reached within the depth, but the side can force it to bind right after a move of its own (the other side to move, the game not over) in a way that some reply of the other side then unbinds; the answer holds the line to that position, the bindings there and
+/// the reply that unbinds it (read in the depth, so the line is one ply shorter than the depth). OUT OF REACH: every line of the depth read, the statement neither reached nor touched. NOT SETTLED: the budget cut the reading, of either kind (a statement not reached but whose touching was not read in full is not settled, not out of reach).
+/// The answer of a reached goal says the plies and the bindings at the position where it is held. The two old goals answer as before. `both` lists the pairs one line reaches in this meaning (each held at some position of the line; each reached).
 pub enum Goal {
     /// a statement the side wants to hold
     Holds(Statement),
@@ -141,15 +147,30 @@ pub struct Reached {
     pub found: Option<Found>,
 }
 
+/// A goal touched (plan 79.28): the pattern binds after a move of the side and a reply unbinds it, and the goal is not reached within the depth. `line` ends at the position where it binds (`bindings` are read there), `reply` is a reply that leaves it unbound.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Touched {
+    pub first: Option<usize>,
+    pub first_name: Option<String>,
+    pub line: Vec<String>,
+    pub plies: i32,
+    pub reply: String,
+    pub bindings: Vec<Binding>,
+    pub taken: Vec<(Role, String)>,
+    pub value: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Answer {
     Reached(Reached),
+    Touched(Touched),
     OutOfReach { depth: i32 },
     NotSettled { depth: i32, best: Option<Found> },
 }
 
 impl Answer {
     pub fn reached(&self) -> Option<&Reached> { if let Answer::Reached(r) = self { Some(r) } else { None } }
+    pub fn touched(&self) -> Option<&Touched> { if let Answer::Touched(r) = self { Some(r) } else { None } }
 }
 
 /// One line that reaches two goals of the list at once (both patterns bind somewhere along it).
@@ -169,6 +190,9 @@ pub struct Reply {
     /// where the cost of the statements' tree went: positions made on the live graph, rows matched
     pub makes: u64,
     pub matches: u64,
+    /// nodes of the statements' tree spent reading the goals held (the first reading) and reading the goals touched (the second)
+    pub nodes_held: u64,
+    pub nodes_touched: u64,
 }
 
 /// THE ENTRY WITH GOALS, with the narrowing of the statements' tree given (the entry of the layer is `ask`, which narrows; the test reads the tree without it to measure the narrowing).
@@ -182,6 +206,7 @@ pub fn ask_with<G: Game + Placed, J: Judge>(q: &Question<G, J>, narrow: reach::N
     let mut left = q.nodes;
     let mut spent = 0u64;
     let (mut makes, mut matches) = (0, 0);
+    let (mut nodes_held, mut nodes_touched) = (0u64, 0u64);
     let mut reads: Vec<reach::Read> = vec![];
     let mut tree_goals: Vec<Statement> = vec![];
     for (gi, grp) in groups.iter().enumerate() {
@@ -190,10 +215,11 @@ pub fn ask_with<G: Game + Placed, J: Judge>(q: &Question<G, J>, narrow: reach::N
             Goal::Holds(_) => {
                 tree_goals = grp.iter().map(|&i| if let Goal::Holds(s) = &q.goals[i] { s.clone() } else { unreachable!() }).collect();
                 let r = reach::read(&reach::Ask { game: q.game, board: q.board, state: q.state, judge: q.judge, side: q.side, goals: &tree_goals, nodes: share, seconds: q.seconds, max_depth: q.max_depth, history: q.history.clone(), narrow });
-                left -= r.nodes.min(left); spent += r.nodes; makes += r.makes; matches += r.matches;
+                left -= r.nodes.min(left); spent += r.nodes; makes += r.makes; matches += r.matches; nodes_held += r.reads[0].1; nodes_touched += r.reads[1].1;
                 for (k, &i) in grp.iter().enumerate() {
                     answers[i] = Some(match &r.outcomes[k] {
                         reach::Outcome::Reached(l) => Answer::Reached(Reached { first: l.first, first_name: l.names.first().cloned(), line: l.names.clone(), plies: l.plies, bindings: l.bindings.clone(), taken: l.taken.clone(), value: l.value, found: None }),
+                        reach::Outcome::Touched(t) => Answer::Touched(Touched { first: t.line.first, first_name: t.line.names.first().cloned(), line: t.line.names.clone(), plies: t.line.plies, reply: t.reply.clone(), bindings: t.line.bindings.clone(), taken: t.line.taken.clone(), value: t.line.value }),
                         reach::Outcome::Out { depth } => Answer::OutOfReach { depth: *depth },
                         reach::Outcome::Unsettled { depth } => Answer::NotSettled { depth: *depth, best: None },
                     });
@@ -233,7 +259,7 @@ pub fn ask_with<G: Game + Placed, J: Judge>(q: &Question<G, J>, narrow: reach::N
             both.push(Both { goals: (statements[a], statements[b]), line: line.names.clone(), one_reply_meets_both: one });
         } }
     }
-    Reply { answers: answers.into_iter().map(|a| a.expect("every goal is answered")).collect(), both, nodes: spent, makes, matches }
+    Reply { answers: answers.into_iter().map(|a| a.expect("every goal is answered")).collect(), both, nodes: spent, makes, matches, nodes_held, nodes_touched }
 }
 
 /// THE ENTRY OF LAYER 4 (see the block above).
