@@ -904,6 +904,17 @@ layer 1's (the block "The go on layer 1" says layer 1 is the language); the mean
 2026-11-20 put the tempo in layer 1; what stays in layer 1 is that the states come in a sequence). NOT BUILT as a move of code:
 cs_rep holds the language and the rows for bearing, moving and tempo today; whether crates move is not decided.
 
+**Layer 0 is wide enough for two unlike games; the layers above need not be** (Kaveh 2026-11-22: "Let's say chess versus soccer.
+If we can handle these two games, we're golden"; "I'm not saying all the above layers have to handle these two games ... but I
+think layer 0 should be generic enough that should be able to handle both"). DECIDED: the scope is games of opposed sides; layer 0
+must be able to say both a game of turns on finite places and a game of many agents acting at once in continuous space and time
+with uncertain outcomes; layers 1 and up are built for the game at hand only. PROPOSED by the main agent, not confirmed: layer 0
+holds nine things (things and kinds; statements; quantity and order; space in the abstract with the finite graph and the plane as
+cases; time and change; agency; the logic of opposed choice with turns, choices at once and chance as cases; chance; proof), each
+an interface with more than one case and its laws stated in Lean, in one crate at the bottom that names no game. PROPOSED test:
+no game is named, and each notion is used by fixtures of facts written from both games; the second game is said, not played.
+Nothing built.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1293,4 +1304,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 4 is asked with an ordered list of goals and answers each; it does not choose by worth | 2026-11-21 | 11 (last block) |
 | Reached means the goal outlasts the reply; held for one ply is touched | 2026-11-22 | 11 (last block) |
 | Layer 0 is mathematics and logic; layer 1 what is seen in one state; layer 2 what links states; 1 and 2 by hand for now | 2026-11-22 | 11 (last block) |
+| Layer 0 must be able to say two unlike games of opposed sides; the layers above serve the game at hand (contents of layer 0 PROPOSED) | 2026-11-22 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
