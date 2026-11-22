@@ -30,7 +30,7 @@ fn load(name: &str) -> Fixture {
 fn decimal(s: &str) -> Num {
     match s.split_once('.') {
         None => Num::whole(s.parse().unwrap()),
-        Some((w, f)) => { let neg = w.starts_with('-'); let (w, f2): (i64, i64) = (w.parse::<i64>().unwrap().abs(), f.parse().unwrap()); let d = 10i64.pow(f.len() as u32); let v = Num::frac(w * d + f2, d).unwrap(); if neg { v.neg().unwrap() } else { v } }
+        Some((w, f)) => { let neg = w.starts_with('-'); let (w, after): (i64, i64) = (w.parse::<i64>().unwrap().abs(), f.parse().unwrap()); let d = 10i64.pow(f.len() as u32); let v = Num::frac(w * d + after, d).unwrap(); if neg { v.neg().unwrap() } else { v } }
     }
 }
 

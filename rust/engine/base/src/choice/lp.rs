@@ -1,9 +1,9 @@
-//! LAYER 0, MODULE 6 (opposed choice), THE LINEAR PROGRAM OF THE MIXED CHOICE (plan 79.31 part B; SYSTEM_SPEC 11 "Layer 0 is made right", "Belief about the opponent, and choosing by chance").
+//! LAYER 0, MODULE 6 (opposed choice), THE LINEAR PROGRAM OF THE MIXED CHOICE (plan 79.31 part B; SYSTEM_SPEC 11 "Layer 0 is made right", the block on belief and choosing by chance).
 //! A small simplex written here over the exact numbers of `number` (no outside crate). It solves ONE thing: a table of numbers where one chooser picks a row, the other a column, both at once, the first wanting the number high and the second low.
 //!
 //! INTERFACE (caller: `choice::mixed_value` and `choice::mixed_table`; tests).
 //!   `solve_matrix_game(&[Vec<Num>]) -> Result<MatrixGame, LpError>`; `MatrixGame { value, row, col }`: the value of the table, the best spread over the rows (a chance for each row, summing to one) and the best spread over the columns.
-//!     The row spread guarantees at least `value` against every column; the column spread holds the row chooser to at most `value` against every row; both are checked by `MatrixGame::guarantees_meet`.
+//!     The row spread guarantees at least `value` against every column; the column spread holds the row chooser to at most `value` against every row; both are tested by `MatrixGame::guarantees_meet`.
 //!   `LpError::{Empty, Ragged, NotExact, Overflow}`: the table has no row or column, its rows differ in length, an entry is a real number (the program is exact and does not read reals), a number left the range of the exact numbers.
 //!     An exact number that overflows is SAID (`Overflow`); there is no fall back to a floating answer.
 //! METHOD: add a constant so every entry is at least one; then the column chooser's side is "maximise the sum of y subject to A y <= 1, y >= 0", a program that starts feasible at nought; the simplex with the smallest-index rule (no cycling) ends with the value 1/Z less
@@ -153,7 +153,7 @@ mod tests {
     }
 
     /// The two guarantees meet on every table the maker makes: the row spread gets at least the value against every column, the column spread gives at most the value against every row.
-    /// (Ideas.Layer0.Choice.guarantees_meet_of_certificate proves that two such spreads give the value; that a table has them is the minimax theorem, which is OPEN in Lean and is here tried on cases.)
+    /// Mirrors Ideas.Layer0.Choice.guarantees_meet_of_certificate, certificate_value_unique (two such spreads give THE value). That a table has them is the minimax theorem, which is OPEN in Lean and is here tried on cases.
     #[test]
     fn the_guarantees_of_the_two_choosers_meet_on_made_tables() {
         let mut m = Maker::new(91);

@@ -1,8 +1,8 @@
-//! LAYER 0, MODULE 6: OPPOSED CHOICE (plan 79.30; plan 79.31 parts A, B and C: choosers with wants of their own, the mixed choice, the choice against a belief; SYSTEM_SPEC 11 "Layer 0 holds six things" item 6, "Layer 0 is made right", "Belief about the opponent,
-//! and choosing by chance", section 13 item 49). The logic of choosers: "there is a choice such that for every counter-choice". THE MEANING that the search of layer 4 is held against (plan 79.31 part F, a test in cs_tactics); the search is not moved here.
+//! LAYER 0, MODULE 6: OPPOSED CHOICE (plan 79.30; plan 79.31 parts A, B and C: choosers with wants of their own, the mixed choice, the choice against a belief; SYSTEM_SPEC 11 "Layer 0 holds six things" item 6, "Layer 0 is made right", the block on belief and
+//! choosing by chance, section 13 item 49). The logic of choosers: "there is a choice such that for every counter-choice". THE MEANING that the search of layer 4 is held against (plan 79.31 part F, a test in cs_tactics); the search is not moved here.
 //!
 //! WHO WANTS WHAT IS NOT ASSUMED. A CHOOSER is an identity (`Chooser::new(id)`), any number of them. Each has an ORDER of its own over results (`Wants`). Two choosers are OPPOSED when one order is the reverse of the other on the results of a tree, ALLIED when
-//! the orders agree on them (both hold when every result is a tie). That the other chooser is an opponent is never read off the form of a tree: it is asked of the orders (`Wants::opposed`, `Wants::allied`), and a reading that needs it says so and refuses a tree whose orders do not give it.
+//! the orders agree on them (both hold when every result is a tie). That one chooser is set against another is never read off the form of a tree: it is asked of the orders (`Wants::opposed`, `Wants::allied`), and a reading that needs it says so and refuses a tree whose orders do not give it.
 //!
 //! INTERFACE (callers: tests of layer 0 now; layer 4's test as the meaning to be held against; layers above that say who wants what).
 //!   `Chooser`, `Party = Set<Chooser>` (choosers that pick as one). `Chooser::A`, `Chooser::B` are the first two identities, kept for the two-chooser calls.
@@ -24,7 +24,7 @@
 //!     better: `mix_expectation` is a weighted mean and no mean is above its best part); choosing by chance pays only against a side that reads the chooser in turn, which is the mixed choice, not this.
 //!   `ChoiceError::{NoOption, BadTable, BadParty, NoOrder(Chooser), NotCovered(Chooser), SplitParty, NotAllied, NotOpposed, NotZeroSum, Chance(ChanceError), Number(NumError), Lp(LpError)}`.
 //! LAWS: lean/ideas/Ideas/Layer0/Choice.lean (in a finite tree of turns without chance exactly one of "A can force P" and "B can force not-P" holds; the lower value is not above the upper; the guarantees of two choosers who hold each other to a value are
-//! that value; against a fixed belief no spread of options beats the best option). The minimax theorem itself (that every table has such spreads) is OPEN in Lean and said so there; the program here finds them and the certificate is checked.
+//! that value; against a fixed belief no spread of options beats the best option). The minimax theorem itself (that every table has such spreads) is OPEN in Lean and said so there; the program here finds them and the certificate is tested.
 pub mod lp;
 
 use crate::chance::{Belief, ChanceError, Spread};
@@ -455,6 +455,7 @@ mod tests {
         assert!(apart > 0 && tables > apart, "the maker makes tables, some with a saddle and some without ({apart} of {tables} apart)");
     }
 
+    /// Worked examples with the numbers of the Lean module: Mirrors Ideas.Layer0.Choice.example_pennies_low, example_pennies_up, example_saddle_low, example_saddle_up, example_coin_low.
     #[test]
     fn matching_pennies_has_no_pure_saddle_and_the_mixed_choice_is_worth_nought() {
         // A wins (1) when the two picks match, loses (-1) when they differ
@@ -492,6 +493,7 @@ mod tests {
         }
     }
 
+    /// Mirrors Ideas.Layer0.Choice.example_coin_low (the coin or the sure one is worth 2).
     #[test]
     fn a_tree_with_chance_is_weighed_by_the_chances_and_forcing_says_the_least_chance() {
         // A picks between a coin (half for the result 4, half for 0) and a sure 1; B has no say
@@ -568,6 +570,28 @@ mod tests {
         assert!(can_force_set(&tb, &party(&[Chooser::A, c]), &wins));
         assert!(!can_force_set(&tb, &party(&[Chooser::A]), &wins), "a party counts as the set's own only when all its members are in the set");
         assert_eq!(tb.choosers(), party(&[Chooser::A, Chooser::B, c]));
+    }
+
+    /// Mirrors Ideas.Layer0.Choice.coalition_exactly_one: with any number of choosers in turn, for any set of them exactly one of "the set can force P" and "the rest can force not-P" holds.
+    #[test]
+    fn the_set_and_the_rest_are_determined_with_any_number_of_choosers() {
+        fn made(m: &mut Maker, depth: u32) -> Tree<i64> {
+            if depth == 0 || m.below(4) == 0 { return Tree::Result(m.range(-9, 9)); }
+            let n = 1 + m.below(3);
+            Tree::turn(Chooser::new(m.below(4) as u32), (0..n).map(|_| made(m, depth - 1)).collect()).unwrap()
+        }
+        let mut m = Maker::new(53);
+        let mut both_sides = 0;
+        for _ in 0..3000 {
+            let t = made(&mut m, 5);
+            let set: Party = (0..4).filter(|_| m.chance()).map(Chooser::new).collect();
+            let rest: Party = (0..4).map(Chooser::new).filter(|c| !set.contains(c)).collect();
+            let k = m.range(-9, 9);
+            let (a, b) = (can_force_set(&t, &set, &|r| *r >= k), can_force_set(&t, &rest, &|r| *r < k));
+            assert!(a ^ b, "exactly one of the two: {a} {b} on {t:?}");
+            if a { both_sides += 1; }
+        }
+        assert!(both_sides > 300 && both_sides < 2700, "the set wins sometimes and the rest sometimes ({both_sides})");
     }
 
     #[test]

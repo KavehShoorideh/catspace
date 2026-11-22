@@ -2,6 +2,9 @@ import Mathlib.Data.Real.Basic
 import Mathlib.Data.Finset.Lattice.Fold
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Algebra.Order.BigOperators.Ring.Finset
+import Mathlib.Algebra.BigOperators.Fin
+import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.FinCases
 
 /-!
 # Layer 0, opposed choice (plan 79.30; SYSTEM_SPEC 11 "Layer 0 holds six things" item 6)
@@ -12,7 +15,9 @@ Two laws about the finite trees of `cs_base::choice`:
 2. In a finite tree with choices in turn, choices AT ONCE (pure choices only) and choices by chance, the LOWER value is not above the UPPER value (`low_le_up`).
 
 and the link between the two readings: in a tree of turns the value reaches `k` exactly when A can force "at least `k`" (`value_ge_iff_canForce`).
-Nothing here is mixed choice: that is not built, and the laws say nothing of it.
+Plan 79.31 adds: determinacy for a SET of choosers (`coalition_exactly_one`), the certificate law of the mixed choice (`guarantees_meet_of_certificate`), the law of a choice against a belief (`no_mix_beats_best`), and worked examples whose numbers the Rust tests repeat.
+THE MINIMAX THEOREM ITSELF (that every table has spreads that meet) IS OPEN: it is not stated here, nothing leans on it, and the Rust program that finds the spreads has its certificate checked on every table it solves.
+THE LEAN TREES ARE MODELS: the Rust `Tree` is a separate type; what ties them is the Rust tests on made cases and the worked examples, which the Rust tests repeat with the same numbers.
 -/
 
 namespace Ideas.Layer0.Choice
@@ -140,5 +145,129 @@ theorem low_eq_up_of_tableFree : ∀ t : CT, tableFree t → low t = up t := by
   | turnB n hn c ih => intro h; simp only [low, up]; exact Finset.inf'_congr _ rfl fun i _ => ih i (h i)
   | table r k hr hk cells ih => intro h; exact h.elim
   | chance n w hw c ih => intro h; simp only [low, up]; exact Finset.sum_congr rfl fun i _ => by rw [ih i (h i)]
+
+/-! ## A set of choosers (plan 79.31 part A): determinacy for a coalition -/
+
+/-- A tree of choices in turn by any number of choosers (each identified by a number). -/
+inductive GTree
+  | leaf (b : Bool)
+  | turn (who : ℕ) (n : ℕ) (c : Fin n → GTree)
+
+open Classical in
+/-- THE SET S CAN FORCE P: at the turn of a member some option does; at any other turn every option does. -/
+noncomputable def canS (S : ℕ → Prop) : GTree → Prop
+  | .leaf b => b = true
+  | .turn w _ c => if S w then ∃ i, canS S (c i) else ∀ i, canS S (c i)
+
+open Classical in
+/-- THE REST CAN FORCE NOT-P: at the turn of a member of S every option does; at any other turn some option does. -/
+noncomputable def canRest (S : ℕ → Prop) : GTree → Prop
+  | .leaf b => b = false
+  | .turn w _ c => if S w then ∀ i, canRest S (c i) else ∃ i, canRest S (c i)
+
+/-- EXACTLY ONE OF "THE SET CAN FORCE P" AND "THE REST CAN FORCE NOT-P" HOLDS, for any set of choosers: the case of one chooser against one is `exactly_one`
+(Rust: `a_set_of_one_is_the_old_reading_and_a_set_of_allied_choosers_can_force_what_none_can_alone`, and `the_set_and_the_rest_are_determined_with_any_number_of_choosers`). -/
+theorem coalition_exactly_one (S : ℕ → Prop) (t : GTree) : canS S t ↔ ¬ canRest S t := by
+  induction t with
+  | leaf b => cases b <;> simp [canS, canRest]
+  | turn w n c ih =>
+    by_cases h : S w
+    · simp only [canS, canRest, h, if_true, ih, not_forall]
+    · simp only [canS, canRest, h, if_false, ih, not_exists]
+
+/-! ## The mixed choice (plan 79.31 part B): the certificate -/
+
+/-- THE GUARANTEES MEET. If the row chooser's spread `x` gets at least `v` against every column and the column chooser's spread `y` gives at most `v` against every row, then no spread of the row chooser
+guarantees more than `v` (first half) and no spread of the column chooser holds the row chooser to less than `v` (second half): `v` is THE value (Rust: `the_guarantees_of_the_two_choosers_meet_on_made_tables` checks this
+certificate on every table the program solves). That every table HAS such spreads is the minimax theorem: OPEN, not proved here. -/
+theorem guarantees_meet_of_certificate {m n : ℕ} (A : Fin m → Fin n → ℝ) (x : Fin m → ℝ) (y : Fin n → ℝ) (v : ℝ)
+    (hy0 : ∀ j, 0 ≤ y j) (hy1 : ∑ j, y j = 1) (hx0 : ∀ i, 0 ≤ x i) (hx1 : ∑ i, x i = 1)
+    (hrow : ∀ j, v ≤ ∑ i, x i * A i j) (hcol : ∀ i, ∑ j, A i j * y j ≤ v) :
+    (∀ x' : Fin m → ℝ, (∀ i, 0 ≤ x' i) → ∑ i, x' i = 1 → ∀ w, (∀ j, w ≤ ∑ i, x' i * A i j) → w ≤ v) ∧
+    (∀ y' : Fin n → ℝ, (∀ j, 0 ≤ y' j) → ∑ j, y' j = 1 → ∀ w, (∀ i, ∑ j, A i j * y' j ≤ w) → v ≤ w) := by
+  constructor
+  · intro x' hx0' hx1' w hw
+    calc w = ∑ j, y j * w := by rw [← Finset.sum_mul, hy1, one_mul]
+      _ ≤ ∑ j, y j * ∑ i, x' i * A i j := Finset.sum_le_sum fun j _ => mul_le_mul_of_nonneg_left (hw j) (hy0 j)
+      _ = ∑ i, x' i * ∑ j, A i j * y j := by
+          simp_rw [Finset.mul_sum]
+          rw [Finset.sum_comm]
+          exact Finset.sum_congr rfl fun i _ => Finset.sum_congr rfl fun j _ => by ring
+      _ ≤ ∑ i, x' i * v := Finset.sum_le_sum fun i _ => mul_le_mul_of_nonneg_left (hcol i) (hx0' i)
+      _ = v := by rw [← Finset.sum_mul, hx1', one_mul]
+  · intro y' hy0' hy1' w hw
+    calc v = ∑ j, y' j * v := by rw [← Finset.sum_mul, hy1', one_mul]
+      _ ≤ ∑ j, y' j * ∑ i, x i * A i j := Finset.sum_le_sum fun j _ => mul_le_mul_of_nonneg_left (hrow j) (hy0' j)
+      _ = ∑ i, x i * ∑ j, A i j * y' j := by
+          simp_rw [Finset.mul_sum]
+          rw [Finset.sum_comm]
+          exact Finset.sum_congr rfl fun i _ => Finset.sum_congr rfl fun j _ => by ring
+      _ ≤ ∑ i, x i * w := Finset.sum_le_sum fun i _ => mul_le_mul_of_nonneg_left (hw i) (hx0 i)
+      _ = w := by rw [← Finset.sum_mul, hx1, one_mul]
+
+/-- TWO CERTIFICATES GIVE ONE VALUE: if two pairs of spreads each have the meeting property, with values `v` and `v'`, then `v = v'`. -/
+theorem certificate_value_unique {m n : ℕ} (A : Fin m → Fin n → ℝ) (x x' : Fin m → ℝ) (y y' : Fin n → ℝ) (v v' : ℝ)
+    (hy0 : ∀ j, 0 ≤ y j) (hy1 : ∑ j, y j = 1) (hx0 : ∀ i, 0 ≤ x i) (hx1 : ∑ i, x i = 1)
+    (hrow : ∀ j, v ≤ ∑ i, x i * A i j) (hcol : ∀ i, ∑ j, A i j * y j ≤ v)
+    (hy0' : ∀ j, 0 ≤ y' j) (hy1' : ∑ j, y' j = 1) (hx0' : ∀ i, 0 ≤ x' i) (hx1' : ∑ i, x' i = 1)
+    (hrow' : ∀ j, v' ≤ ∑ i, x' i * A i j) (hcol' : ∀ i, ∑ j, A i j * y' j ≤ v') : v = v' := by
+  have h := guarantees_meet_of_certificate A x y v hy0 hy1 hx0 hx1 hrow hcol
+  have h' := guarantees_meet_of_certificate A x' y' v' hy0' hy1' hx0' hx1' hrow' hcol'
+  exact le_antisymm (h.2 y' hy0' hy1' v' hcol') (h'.2 y hy0 hy1 v hcol)
+
+/-! ## A choice against a belief (plan 79.31 part C): no spread of the options beats the best option -/
+
+/-- AGAINST A FIXED BELIEF A SPREAD OF THE OPTIONS DOES NOT BEAT THE BEST OPTION: a weighted mean is not above its greatest part
+(Rust: `against_a_fixed_belief_a_single_option_is_best_and_no_mixing_gains`). -/
+theorem no_mix_beats_best {ι : Type*} (s : Finset ι) (hne : s.Nonempty) (w e : ι → ℝ) (hw0 : ∀ i ∈ s, 0 ≤ w i) (hw1 : ∑ i ∈ s, w i = 1) :
+    ∑ i ∈ s, w i * e i ≤ s.sup' hne e := by
+  calc ∑ i ∈ s, w i * e i ≤ ∑ i ∈ s, w i * s.sup' hne e :=
+        Finset.sum_le_sum fun i hi => mul_le_mul_of_nonneg_left (Finset.le_sup' e hi) (hw0 i hi)
+    _ = s.sup' hne e := by rw [← Finset.sum_mul, hw1, one_mul]
+
+/-- AND THE BEST OPTION IS ONE OF THE OPTIONS: some single option has the greatest expectation. -/
+theorem best_is_an_option {ι : Type*} (s : Finset ι) (hne : s.Nonempty) (e : ι → ℝ) : ∃ i ∈ s, e i = s.sup' hne e :=
+  (Finset.exists_mem_eq_sup' hne e).imp fun _ h => ⟨h.1, h.2.symm⟩
+
+/-! ## Worked examples (plan 79.31 part H): the same trees and the same numbers as the Rust tests -/
+
+private theorem sup'_two (f : Fin 2 → ℝ) (h : (Finset.univ : Finset (Fin 2)).Nonempty) : Finset.univ.sup' h f = max (f 0) (f 1) := by
+  apply le_antisymm
+  · apply Finset.sup'_le
+    intro i _
+    fin_cases i <;> simp
+  · exact max_le (Finset.le_sup' f (Finset.mem_univ _)) (Finset.le_sup' f (Finset.mem_univ _))
+
+private theorem inf'_two (f : Fin 2 → ℝ) (h : (Finset.univ : Finset (Fin 2)).Nonempty) : Finset.univ.inf' h f = min (f 0) (f 1) := by
+  apply le_antisymm
+  · exact le_min (Finset.inf'_le f (Finset.mem_univ _)) (Finset.inf'_le f (Finset.mem_univ _))
+  · apply Finset.le_inf'
+    intro i _
+    fin_cases i <;> simp
+
+/-- MATCHING PENNIES: the table [[1, -1], [-1, 1]] has the lower value -1 and the upper value 1
+(Rust: `matching_pennies_has_no_pure_saddle_and_the_mixed_choice_is_worth_nought`). -/
+theorem example_pennies_low :
+    low (.table 2 2 (by norm_num) (by norm_num) ![![.leaf 1, .leaf (-1)], ![.leaf (-1), .leaf 1]]) = -1 := by
+  simp [low, sup'_two, inf'_two]
+
+theorem example_pennies_up :
+    up (.table 2 2 (by norm_num) (by norm_num) ![![.leaf 1, .leaf (-1)], ![.leaf (-1), .leaf 1]]) = 1 := by
+  simp [up, sup'_two, inf'_two]
+
+/-- A TABLE WITH A SADDLE: [[3, 2], [1, 0]] has the value 2, both ways (the same Rust test). -/
+theorem example_saddle_low :
+    low (.table 2 2 (by norm_num) (by norm_num) ![![.leaf 3, .leaf 2], ![.leaf 1, .leaf 0]]) = 2 := by
+  simp [low, sup'_two, inf'_two]; norm_num
+
+theorem example_saddle_up :
+    up (.table 2 2 (by norm_num) (by norm_num) ![![.leaf 3, .leaf 2], ![.leaf 1, .leaf 0]]) = 2 := by
+  simp [up, sup'_two, inf'_two]; norm_num
+
+/-- A COIN OR A SURE ONE: A picks between a coin (1/2 for 4, 1/2 for 0) and a sure 1: the value is 2
+(Rust: `a_tree_with_chance_is_weighed_by_the_chances_and_forcing_says_the_least_chance`). -/
+theorem example_coin_low :
+    low (.turnA 2 (by norm_num) ![.chance 2 ![1/2, 1/2] (by intro i; fin_cases i <;> norm_num) ![.leaf 4, .leaf 0], .leaf 1]) = 2 := by
+  simp [low, sup'_two, Fin.sum_univ_two]; norm_num
 
 end Ideas.Layer0.Choice

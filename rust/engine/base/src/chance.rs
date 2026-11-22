@@ -1,4 +1,4 @@
-//! LAYER 0, MODULE 5: CHANCE (plan 79.30; plan 79.31 parts C and D: exact chances and the belief; SYSTEM_SPEC 11 "Layer 0 holds six things" item 5, "Belief about the opponent, and choosing by chance", "Layer 0 is made right").
+//! LAYER 0, MODULE 5: CHANCE (plan 79.30; plan 79.31 parts C and D: exact chances and the belief; SYSTEM_SPEC 11 "Layer 0 holds six things" item 5, the block on belief and choosing by chance, "Layer 0 is made right").
 //!
 //! INTERFACE (callers: choice's chance nodes, its mixed choices and its choice against a belief; any layer above that reads an uncertain act or says what it believes).
 //!   `Spread<T>`: a finite spread of outcomes with their chances. A chance is a `Num`, between nought and one. When every chance is EXACT (whole or fraction) the chances must sum to EXACTLY one; the tolerance `SUM_TOLERANCE` (1e-9) is used only when a real
@@ -217,6 +217,7 @@ mod tests {
         assert_eq!(p.chance_of(&|(x, _)| *x == 1).unwrap(), a.chance_of(&|x| *x == 1).unwrap());
     }
 
+    /// Mirrors Ideas.Layer0.Chance.example_expectation (the spread 2: a half, 4: a quarter, 10: a quarter is worth 9/2).
     #[test]
     fn expectation_by_hand_and_the_condition_of_chance_nought() {
         let s = Spread::new(vec![(2, q(1, 2)), (4, q(1, 4)), (10, q(1, 4))]).unwrap();
@@ -230,7 +231,7 @@ mod tests {
         assert_eq!(thirds.given(&|x| *x != 2).unwrap().outcomes()[0].1, q(1, 2));
     }
 
-    /// Mirrors Ideas.Layer0.Chance.belief_sums_to_one: a belief changed by what is seen is a spread again, exactly.
+    /// Mirrors Ideas.Layer0.Chance.belief_sums_to_one, example_belief_first, example_belief_second: a belief changed by what is seen is a spread again, exactly.
     #[test]
     fn a_belief_changed_by_what_is_seen_is_weighed_by_the_likelihoods_and_sums_to_one() {
         let prior = Belief::new(Spread::new(vec![("a", q(1, 2)), ("b", q(1, 3)), ("c", q(1, 6))]).unwrap());

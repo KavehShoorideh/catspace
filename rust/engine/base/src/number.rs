@@ -138,7 +138,7 @@ impl Num {
         }
     }
     pub fn abs(&self) -> Result<Num, NumError> { if *self < Num::whole(0) { self.neg() } else { Ok(*self) } }
-    /// The root of a number that is not negative; of a negative, `NotANumber`. The root is a real unless it is a whole number or a fraction both of whose terms are perfect squares.
+    /// The root of a number that is not negative; of a negative, `NotANumber`. The root is a real unless it is a whole number or a fraction both of whose terms are the second power of a whole number.
     pub fn sqrt(&self) -> Result<Num, NumError> {
         if *self < Num::whole(0) { return Err(NumError::NotANumber); }
         if let Some((n, d)) = self.as_ratio() {
@@ -211,6 +211,7 @@ mod tests {
         assert_eq!(r(1e30).as_whole(), None, "a real beyond the whole range stays a real");
     }
 
+    /// Mirrors Ideas.Layer0.Number.frac_one_whole, frac_le_iff (the order of fractions is by cross products).
     #[test]
     fn a_fraction_is_in_lowest_terms_and_a_denominator_of_one_is_the_whole_number() {
         assert_eq!(q(2, 4).as_ratio(), Some((1, 2)));
@@ -280,7 +281,7 @@ mod tests {
         }
     }
 
-    /// Mirrors Ideas.Layer0.Number.frac_add: fractions add exactly (a/b + c/d = (a d + c b) / (b d)), and the four operations undo each other with no rounding.
+    /// Mirrors Ideas.Layer0.Number.frac_add_val, frac_mul_val, frac_scale and the worked examples example_third_sixth, example_tenths, example_ninths: fractions add exactly (a/b + c/d = (a d + c b) / (b d)), and the four operations undo each other with no rounding.
     #[test]
     fn fractions_are_exact_in_the_four_operations() {
         assert_eq!(q(1, 3).add(&q(1, 6)).unwrap(), q(1, 2));
