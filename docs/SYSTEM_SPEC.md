@@ -915,6 +915,22 @@ an interface with more than one case and its laws stated in Lean, in one crate a
 no game is named, and each notion is used by fixtures of facts written from both games; the second game is said, not played.
 Nothing built.
 
+**Layer 0 holds six things, and is built** (Kaveh 2026-11-22, to the six below: "Great. Okay, now build this layer 0 with unit
+tests so that it's self-consistent and I hopefully never need to change it again"). DECIDED; this replaces the nine PROPOSED in
+the block above. The test of belonging: could it be said to one who has never seen any world. (1) LOGIC AND PROOF: relations,
+placeholders, and, or, not, equal and differ, every, some, at least so many, matching a pattern against facts; proof in Lean.
+(2) SETS AND COUNTING: a set, membership, a kind as a set, how many. (3) NUMBER AND ORDER: whole and real numbers, comparison,
+arithmetic. (4) STRUCTURE, three pure forms that layer 1 points at: a graph (nodes and links), a sequence (items in order),
+geometry (points, distance, direction, region, inside). (5) CHANCE: probability and expectation. (6) OPPOSED CHOICE: choosers, a
+set of options, an order of preference over results, and the form "there is a choice such that for every counter-choice", with
+choices in turn, choices at once and a choice by chance as its cases. TAKEN OUT of the nine as seen or told: that an object is
+the same one as before, time and events, the places a game has (layer 1); who controls what and what is wanted (layer 2 and up).
+READING of the main agent for the build (plan 79.30), kept until Kaveh says otherwise: one crate at the bottom that depends on no
+other crate of ours and names no game and no thing of a world; the pattern language and its matcher move down into it and layer
+1 hands them on under their old names; each of (4) and (6) is an interface with more than one case; the laws of each are stated
+in Lean and the tests name the law they mirror; the test uses fixtures of facts from two unlike games, the second said and not
+played; for choices at once only pure choices are read (the lower and the upper value), mixed choices are not built and said so.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1305,4 +1321,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Reached means the goal outlasts the reply; held for one ply is touched | 2026-11-22 | 11 (last block) |
 | Layer 0 is mathematics and logic; layer 1 what is seen in one state; layer 2 what links states; 1 and 2 by hand for now | 2026-11-22 | 11 (last block) |
 | Layer 0 must be able to say two unlike games of opposed sides; the layers above serve the game at hand (contents of layer 0 PROPOSED) | 2026-11-22 | 11 (last block) |
+| Layer 0 holds six things (logic and proof, sets, number, structure, chance, opposed choice); the go to build it | 2026-11-22 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
