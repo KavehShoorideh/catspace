@@ -1,6 +1,6 @@
 # plan 78: THE END-TO-END SYSTEM's workspace -- one crate per layer; the loops and the slow parts in Rust (Kaveh 2026-11-04).
 [workspace]
-members = ["gdl", "rep", "game", "operator", "memory", "tactics", "planning", "decision", "learn", "py"]
+members = ["gdl", "rep", "game", "value", "operator", "memory", "tactics", "planning", "decision", "learn", "py"]
 resolver = "2"
 
 [profile.release]
