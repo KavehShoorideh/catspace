@@ -11,10 +11,8 @@ pub mod wdl;
 use cs_game::{Game, Role};
 use std::collections::HashMap;
 
-/// Our units less theirs by the valuation (a kind the table does not name counts 0).
-pub fn measure<G: Game>(g: &G, s: &G::State, me: Role, worth: &HashMap<String, i64>) -> i64 {
-    g.units(s).iter().map(|(owner, kind)| { let w = *worth.get(kind).unwrap_or(&0); if *owner == me { w } else { -w } }).sum()
-}
+/// Our units less theirs by the valuation (a kind the table does not name counts 0). PLAN 79.24: this is layer 3's `material` (cs_value::worth), the one copy.
+pub fn measure<G: Game>(g: &G, s: &G::State, me: Role, worth: &HashMap<String, i64>) -> i64 { cs_value::worth::material(g, s, me, worth) }
 
 /// The value of a terminal state for `me` on the measure's scale: a win above every measure, a loss below, anything else level.
 fn terminal_value(v: &[i64], me: Role) -> i64 {

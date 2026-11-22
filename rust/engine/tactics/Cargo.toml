@@ -8,4 +8,5 @@ description = "plan 78.2: the tactics layer (game-free: it reads only the Game t
 cs_game = { path = "../game" }
 cs_rep = { path = "../rep" }
 cs_operator = { path = "../operator" }
+cs_value = { path = "../value" }
 rustc-hash = "2.1"
