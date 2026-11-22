@@ -967,8 +967,8 @@ not of a layer: that was too coarse. The reading of a tree of choices (there is 
 recursion, with what was already answered kept by the sameness of nodes) names no game and is mathematics: it is layer 0's, as
 an algorithm over an interface in which a node gives its options when asked, so that no tree is built. NOT layer 0's: which
 options a node has (layer 2), what is asked for (the goal, from above), the order in which options are tried, the narrowing by
-what a goal reads, the budget and the clock; these stay in the layer that asks (layer 4). READING of the main agent, PROPOSED as
-plan 79.32, no go yet: layer 0's forms become interfaces that cost nothing when compiled (choice over a node that gives options
+what a goal reads, the budget and the clock; these stay in the layer that asks (layer 4). READING of the main agent, GO given the same day
+(plan 79.32, after 79.31 is merged): layer 0's forms become interfaces that cost nothing when compiled (choice over a node that gives options
 on demand; number as an interface so the hot path uses bare whole numbers); the search of layer 4 becomes a case of layer 0's
 algorithm, one copy where there are two; a test of speed for each form; the comparison of plan 79.31 part F is the safety net.
 See section 13 item 50.
@@ -1209,7 +1209,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     opponent is left to the layer of the opponent.
     (iii) An order for each chooser in the value reading, with opposed and allied as named cases, so that layer 0 assumes no
     winning and losing; that the game at hand is one of opposite wants is said by layer 2.
-50. From 2026-11-22. You agreed the pure search is layer 0's. PROPOSED as plan 79.32, waiting for your go: the search of layer 4
+50. From 2026-11-22. You agreed the pure search is layer 0's. GO given 2026-11-22 ("Agreed. Go"); plan 79.32, to be written and
+    started when plan 79.31 is merged, since both change the same files. Was proposed as: the search of layer 4
     is rebuilt as a case of layer 0's algorithm over a node that gives its options on demand, with layer 4 keeping the order of
     options, the narrowing and the budget; nodes and answers must not change and the time must not rise (measured, mended if it
     does). It touches the most speed-sensitive code we have.
