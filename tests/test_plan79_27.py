@@ -33,7 +33,7 @@ def test_the_goals_fixture_holds_two_games_with_lists_of_patterns_and_no_verdict
             kinds.add(g["kind"])
             goals += 1
             assert g["pattern"] and all(set(l) == {"relation", "args", "neg"} for l in g["pattern"])
-            assert {l["relation"] for l in g["pattern"]} <= {"unit", "bear", "may_move", "on_line", "on_edge", "tempo"}
+            assert {l["relation"] for l in g["pattern"]} <= {"unit", "bear", "may_move", "on_line", "on_edge", "tempo", "differ"}   # plan 79.28: layer 1's differ literal
     assert len(kinds) >= 4
     assert not any(re.search(r"\b(reached|out of reach|verdict)\b", l.split("\t", 1)[1]) for l in lines if l.startswith("pos\t")), "no verdict is written"
     print(f"OBS 79.27 scan: goals.fixture holds {len(pos)} positions of games {games}, {goals} goals of {len(kinds)} kinds ({sorted(kinds)}), patterns over layer 1's graph relations, no verdict")
