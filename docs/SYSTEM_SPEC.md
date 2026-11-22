@@ -866,6 +866,14 @@ and the measure of progress. They stay two things; the rule that subgoals enter 
 Kaveh's expectation that the two come to say the same is a thing to MEASURE, not to assume: layer 3's test prints where they agree
 and where they do not. Plan 79.24.
 
+**Layer 4 takes a goal as an input** (Kaveh 2026-11-21: "Layer 4 needs to work towards the sub-goal. I think without a
+sub-goal, it's not going to make sense"; then "Right, layer 4 has to take a goal as an input"). DECIDED: the question to the
+means-ends layer carries the goal it works toward; the layer says how the goal is reached, and does not choose it.
+READING of the main agent, kept until Kaveh says otherwise: the goal is a statement in layer 1's form, a pattern over the graph
+that a side wants to hold; taking a unit and ending the game are two goals among others; the answer is reached by force, out of
+reach within the depth read, or not settled; the value judges the line's end and the goal never changes a value (rule 7); the
+layer above chooses which goal to ask, and layer 4's test takes its goals from fixtures. Plan 79.27.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1077,7 +1085,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     only if every move of both sides is equal; the test's judge is the plain count. Found: what in the means-ends crate belongs to
     the layer above (the sheet, the census, the reasons, the scenarios) is listed, not moved.
 46. From plan 79.26 and your word of 2026-11-21 ("Layer 4 needs to work towards the sub-goal"). Layer 4's entry takes no goal:
-    its one built-in aim is to take units or end the game. PROPOSED, not decided: the question to layer 4 carries a goal, a
+    its one built-in aim is to take units or end the game. DECIDED by Kaveh 2026-11-21 that the entry takes a goal as an input (section 11, last block; plan 79.27); the form is the main agent's reading: the question to layer 4 carries a goal, a
     statement in layer 1's form that the side wants made true; the search reads the moves that serve it and the replies to them
     and answers reached by force, refuted, or not settled; taking a unit and ending the game are two goals among others; the
     value still judges the line's end (rule 7 stands); the layer above chooses which goal to ask. Also open: with the wake's
@@ -1238,4 +1246,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | A slower result is diagnosed and mended, not set aside | 2026-11-20 | 11 (last block) |
 | The order of work is layer by layer from the base, each made like layer 1 | 2026-11-20 | 11 (last block) |
 | Layer 3 holds two implementations, value and the measure of progress; their agreement is measured | 2026-11-21 | 11 (last block) |
+| Layer 4 takes a goal as an input; the layer above chooses it | 2026-11-21 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
