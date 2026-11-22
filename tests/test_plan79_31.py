@@ -5,7 +5,7 @@ Rust holds the unit tests (rust/engine/base) and the test that holds the reading
   (3) the readings of part A exist as signatures: a chooser is an identity, a party is a set of choosers, a choice at once is between two parties, opposed and allied are asked of the orders, the readings take a set;
   (4) the mixed choice, the belief and the choice against a belief exist; the exact fractions are in the number type and a chance is a number;
   (5) the JSON of a literal is written and read in cs_rep (a trait), and no outside crate is in cs_base's sources;
-  (6) layer 0's laws of this plan are theorems in Lean, none is a sorry, and the one law not proved (the minimax theorem) is not stated as proved anywhere;
+  (6) layer 0's laws of this plan are theorems in Lean, none is a sorry (the minimax theorem is proved, from Mathlib's Sion theorem);
   (7) the representation uses layer 0's set where it is the same thing (part G);
   (8) the test is in the gate after the one of 79.30.
 """
@@ -119,7 +119,7 @@ def test_the_laws_of_this_plan_are_theorems_and_nothing_is_a_sorry():
     needed = {"Number": ["frac_add_val", "frac_mul_val", "frac_le_iff", "frac_one_whole", "frac_scale", "example_third_sixth", "example_tenths", "example_ninths"],
               "Chance": ["belief_sums_to_one", "belief_two_sightings", "example_expectation", "example_belief_first", "example_belief_second"],
               "Choice": ["coalition_exactly_one", "guarantees_meet_of_certificate", "certificate_value_unique", "no_mix_beats_best", "best_is_an_option", "example_pennies_low", "example_pennies_up",
-                         "example_saddle_low", "example_saddle_up", "example_coin_low"]}
+                         "example_saddle_low", "example_saddle_up", "example_coin_low", "minimax_exists"]}
     for module, names in needed.items():
         code = lean_code(module)
         for n in names:
@@ -127,12 +127,12 @@ def test_the_laws_of_this_plan_are_theorems_and_nothing_is_a_sorry():
     for module in ("Logic", "Sets", "Number", "Structure", "Chance", "Choice"):
         code = lean_code(module)
         assert not re.search(r"\bsorry\b|native_decide|\bdecide\b|^axiom\b|\baxiom\s", code, flags=re.M), module
-    # the minimax theorem is OPEN: it is said so in the Choice file, and no theorem of that name is stated
+    # the minimax theorem is proved (Mathlib's Sion theorem on the two simplexes), and no comment in the Rust or the Lean calls it open or leans on a sorry
     text = (LEAN / "Choice.lean").read_text()
-    assert "minimax theorem" in text and "OPEN" in text and not re.search(r"theorem\s+minimax", text)
+    assert "Sion.exists_isSaddlePointOn" in text and not re.search(r"\bOPEN\b", text)
     # every Rust test that names a theorem still resolves (the scan of 79.30 covers all sources, these included)
     P30.test_every_law_a_rust_test_says_it_mirrors_is_a_theorem_and_the_lean_files_are_clean()
-    print("OBS 79.31 scan: the new laws are theorems with no sorry, no enumeration, no axiom; the minimax theorem is said to be OPEN and is not stated")
+    print("OBS 79.31 scan: the new laws are theorems with no sorry, no enumeration, no axiom; the minimax theorem is proved from Mathlib's Sion theorem")
 
 
 def test_the_representation_uses_layer_0s_set_for_the_facts_of_a_position():

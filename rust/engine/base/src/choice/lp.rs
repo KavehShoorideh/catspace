@@ -153,7 +153,7 @@ mod tests {
     }
 
     /// The two guarantees meet on every table the maker makes: the row spread gets at least the value against every column, the column spread gives at most the value against every row.
-    /// Mirrors Ideas.Layer0.Choice.guarantees_meet_of_certificate, certificate_value_unique (two such spreads give THE value). That a table has them is the minimax theorem, which is OPEN in Lean and is here tried on cases.
+    /// Mirrors Ideas.Layer0.Choice.guarantees_meet_of_certificate, certificate_value_unique (two such spreads give THE value). Mirrors Ideas.Layer0.Choice.minimax_exists (that a table has such spreads, proved in Lean from Mathlib's Sion theorem), here tried on made tables.
     #[test]
     fn the_guarantees_of_the_two_choosers_meet_on_made_tables() {
         let mut m = Maker::new(91);

@@ -5,6 +5,10 @@ import Mathlib.Algebra.Order.BigOperators.Ring.Finset
 import Mathlib.Algebra.BigOperators.Fin
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.FinCases
+import Mathlib.Topology.Sion
+import Mathlib.Analysis.Convex.StdSimplex
+import Mathlib.Analysis.Convex.Function
+import Mathlib.Topology.Algebra.Module.FiniteDimension
 
 /-!
 # Layer 0, opposed choice (plan 79.30; SYSTEM_SPEC 11 "Layer 0 holds six things" item 6)
@@ -16,7 +20,7 @@ Two laws about the finite trees of `cs_base::choice`:
 
 and the link between the two readings: in a tree of turns the value reaches `k` exactly when A can force "at least `k`" (`value_ge_iff_canForce`).
 Plan 79.31 adds: determinacy for a SET of choosers (`coalition_exactly_one`), the certificate law of the mixed choice (`guarantees_meet_of_certificate`), the law of a choice against a belief (`no_mix_beats_best`), and worked examples whose numbers the Rust tests repeat.
-THE MINIMAX THEOREM ITSELF (that every table has spreads that meet) IS OPEN: it is not stated here, nothing leans on it, and the Rust program that finds the spreads has its certificate checked on every table it solves.
+THE MINIMAX THEOREM (that every table has spreads that meet, `minimax_exists`) IS PROVED, from Mathlib's Sion-von Neumann theorem (`Sion.exists_isSaddlePointOn`) on the two simplexes with the bilinear payoff; the Rust program that finds the spreads has the certificate (`guarantees_meet_of_certificate`) tested on every table it solves.
 THE LEAN TREES ARE MODELS: the Rust `Tree` is a separate type; what ties them is the Rust tests on made cases and the worked examples, which the Rust tests repeat with the same numbers.
 -/
 
@@ -179,7 +183,7 @@ theorem coalition_exactly_one (S : ℕ → Prop) (t : GTree) : canS S t ↔ ¬ c
 
 /-- THE GUARANTEES MEET. If the row chooser's spread `x` gets at least `v` against every column and the column chooser's spread `y` gives at most `v` against every row, then no spread of the row chooser
 guarantees more than `v` (first half) and no spread of the column chooser holds the row chooser to less than `v` (second half): `v` is THE value (Rust: `the_guarantees_of_the_two_choosers_meet_on_made_tables` checks this
-certificate on every table the program solves). That every table HAS such spreads is the minimax theorem: OPEN, not proved here. -/
+certificate on every table the program solves). That every table HAS such spreads is `minimax_exists` below. -/
 theorem guarantees_meet_of_certificate {m n : ℕ} (A : Fin m → Fin n → ℝ) (x : Fin m → ℝ) (y : Fin n → ℝ) (v : ℝ)
     (hy0 : ∀ j, 0 ≤ y j) (hy1 : ∑ j, y j = 1) (hx0 : ∀ i, 0 ≤ x i) (hx1 : ∑ i, x i = 1)
     (hrow : ∀ j, v ≤ ∑ i, x i * A i j) (hcol : ∀ i, ∑ j, A i j * y j ≤ v) :
@@ -269,5 +273,66 @@ theorem example_saddle_up :
 theorem example_coin_low :
     low (.turnA 2 (by norm_num) ![.chance 2 ![1/2, 1/2] (by intro i; fin_cases i <;> norm_num) ![.leaf 4, .leaf 0], .leaf 1]) = 2 := by
   simp [low, sup'_two, Fin.sum_univ_two]; norm_num
+
+/-! ## The minimax theorem for a table (plan 79.31 part B) -/
+
+/-- THE MINIMAX THEOREM FOR A TABLE: every table of real numbers with a row and a column has a spread of the rows and a spread of the columns and a number `v` such that the row spread gets at least `v` against every column
+and the column spread gives at most `v` against every row (so, by `guarantees_meet_of_certificate`, `v` is the value). PROVED by Mathlib's Sion-von Neumann theorem: the two simplexes are convex and compact and the payoff is
+bilinear, so continuous and linear in each spread; a saddle point read at the pure rows and columns gives the two guarantees. (Rust: the program `solve_matrix_game` finds such spreads exactly, and
+`the_guarantees_of_the_two_choosers_meet_on_made_tables` tests the certificate on every table it solves.) -/
+theorem minimax_exists {m n : ℕ} (hm : 0 < m) (hn : 0 < n) (A : Fin m → Fin n → ℝ) :
+    ∃ (x : Fin m → ℝ) (y : Fin n → ℝ) (v : ℝ), (∀ i, 0 ≤ x i) ∧ ∑ i, x i = 1 ∧ (∀ j, 0 ≤ y j) ∧ ∑ j, y j = 1 ∧
+      (∀ j, v ≤ ∑ i, x i * A i j) ∧ (∀ i, ∑ j, A i j * y j ≤ v) := by
+  classical
+  haveI : Nonempty (Fin m) := ⟨⟨0, hm⟩⟩
+  haveI : Nonempty (Fin n) := ⟨⟨0, hn⟩⟩
+  let f : (Fin n → ℝ) → (Fin m → ℝ) → ℝ := fun c r => ∑ i, ∑ j, r i * (A i j * c j)
+  have hfc : ∀ r : Fin m → ℝ, ∃ L : (Fin n → ℝ) →ₗ[ℝ] ℝ, ∀ c, L c = f c r := fun r =>
+    ⟨∑ j, (∑ i, r i * A i j) • (LinearMap.proj j : (Fin n → ℝ) →ₗ[ℝ] ℝ), fun c => by
+      simp only [f, LinearMap.sum_apply, LinearMap.smul_apply, LinearMap.proj_apply, smul_eq_mul]
+      rw [Finset.sum_comm]
+      refine Finset.sum_congr rfl fun j _ => ?_
+      rw [Finset.sum_mul]
+      exact Finset.sum_congr rfl fun i _ => by ring⟩
+  have hfr : ∀ c : Fin n → ℝ, ∃ L : (Fin m → ℝ) →ₗ[ℝ] ℝ, ∀ r, L r = f c r := fun c =>
+    ⟨∑ i, (∑ j, A i j * c j) • (LinearMap.proj i : (Fin m → ℝ) →ₗ[ℝ] ℝ), fun r => by
+      simp only [f, LinearMap.sum_apply, LinearMap.smul_apply, LinearMap.proj_apply, smul_eq_mul]
+      refine Finset.sum_congr rfl fun i _ => ?_
+      rw [Finset.sum_mul]
+      exact Finset.sum_congr rfl fun j _ => by ring⟩
+  have cont_c : ∀ r : Fin m → ℝ, Continuous fun c : Fin n → ℝ => f c r := fun r => by
+    obtain ⟨L, hL⟩ := hfc r
+    have : (fun c => f c r) = fun c => L c := funext fun c => (hL c).symm
+    rw [this]
+    exact L.continuous_of_finiteDimensional
+  have cont_r : ∀ c : Fin n → ℝ, Continuous fun r : Fin m → ℝ => f c r := fun c => by
+    obtain ⟨L, hL⟩ := hfr c
+    have : (fun r => f c r) = fun r => L r := funext fun r => (hL r).symm
+    rw [this]
+    exact L.continuous_of_finiteDimensional
+  have hX := convex_stdSimplex ℝ (Fin n)
+  have hY := convex_stdSimplex ℝ (Fin m)
+  obtain ⟨a, ha, b, hb, hab⟩ := Sion.exists_isSaddlePointOn (X := stdSimplex ℝ (Fin n)) (Y := stdSimplex ℝ (Fin m)) (f := f)
+    ⟨_, single_mem_stdSimplex ℝ (⟨0, hn⟩ : Fin n)⟩ hX (isCompact_stdSimplex ℝ (Fin n))
+    (fun r _ => (cont_c r).lowerSemicontinuous.lowerSemicontinuousOn _)
+    (fun r _ => by
+      obtain ⟨L, hL⟩ := hfc r
+      have : (fun c => f c r) = fun c => L c := funext fun c => (hL c).symm
+      rw [this]; exact (L.convexOn hX).quasiconvexOn)
+    hY ⟨_, single_mem_stdSimplex ℝ (⟨0, hm⟩ : Fin m)⟩ (isCompact_stdSimplex ℝ (Fin m))
+    (fun c _ => (cont_r c).upperSemicontinuous.upperSemicontinuousOn _)
+    (fun c _ => by
+      obtain ⟨L, hL⟩ := hfr c
+      have : (fun r => f c r) = fun r => L r := funext fun r => (hL r).symm
+      rw [this]; exact (L.concaveOn hY).quasiconcaveOn)
+  have hrow : ∀ i : Fin m, ∑ j, A i j * a j ≤ f a b := by
+    intro i
+    have h := hab a ha (Pi.single i 1) (single_mem_stdSimplex ℝ i)
+    simpa [f, Pi.single_apply] using h
+  have hcol : ∀ j : Fin n, f a b ≤ ∑ i, b i * A i j := by
+    intro j
+    have h := hab (Pi.single j 1) (single_mem_stdSimplex ℝ j) b hb
+    simpa [f, Pi.single_apply] using h
+  exact ⟨b, a, f a b, hb.1, hb.2, ha.1, ha.2, hcol, hrow⟩
 
 end Ideas.Layer0.Choice

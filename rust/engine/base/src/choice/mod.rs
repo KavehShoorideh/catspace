@@ -24,7 +24,7 @@
 //!     better: `mix_expectation` is a weighted mean and no mean is above its best part); choosing by chance pays only against a side that reads the chooser in turn, which is the mixed choice, not this.
 //!   `ChoiceError::{NoOption, BadTable, BadParty, NoOrder(Chooser), NotCovered(Chooser), SplitParty, NotAllied, NotOpposed, NotZeroSum, Chance(ChanceError), Number(NumError), Lp(LpError)}`.
 //! LAWS: lean/ideas/Ideas/Layer0/Choice.lean (in a finite tree of turns without chance exactly one of "A can force P" and "B can force not-P" holds; the lower value is not above the upper; the guarantees of two choosers who hold each other to a value are
-//! that value; against a fixed belief no spread of options beats the best option). The minimax theorem itself (that every table has such spreads) is OPEN in Lean and said so there; the program here finds them and the certificate is tested.
+//! that value; against a fixed belief no spread of options beats the best option). The minimax theorem (that every table has such spreads) is proved there from Mathlib's Sion theorem; the program here finds them and the certificate is tested.
 pub mod lp;
 
 use crate::chance::{Belief, ChanceError, Spread};
