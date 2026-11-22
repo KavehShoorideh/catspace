@@ -1,11 +1,14 @@
-"""PLAN 79.27 PART C AND PLAN 79.28 PART C: THE MAKER OF LAYER 4'S GOALS FIXTURE (SYSTEM_SPEC 11 "Layer 4 takes a goal as an input", "Reached means the goal outlasts the reply", "the layers"; ledger rows 36, 14; piece: tactical reasoner).
+"""PLAN 79.27 PART C, PLAN 79.28 PART C AND PLAN 79.29 PART B: THE MAKER OF LAYER 4'S GOALS FIXTURE (SYSTEM_SPEC 11 "Layer 4 takes a goal as an input", "Reached means the goal outlasts the reply", "the layers"; ledger rows 36, 14; piece: tactical reasoner).
 A PRINTING SCRIPT (it may name the games' units because it only writes a data file). It writes rust/engine/tactics/tests/fixtures/goals.fixture: for two games (the standard game and a variant with a second way to end it), positions met in seeded random games, each with a LIST of
 goals that are neither a gain nor the game's end: patterns over the facts of layer 1's graph (relations unit, bear, may_move, on_line, on_edge; layer 1's `graph_facts`), written with placeholders (a word starting with ?) and the constants of the position:
   bears      a unit of the side to move bears on a named unit of the other side (the named unit by its kind and place)
   two bear   two DIFFERENT units of the side bear on one unit of the other (plan 79.28: written with layer 1's `differ` literal, any two units; the unit is the one of the other side that the most units of the side bear on, ties by the seed)
   on a line  a unit of the side stands on a line through the named unit's place (a line is named as the graph names it)
   on edge    a unit of the kind of the side's unit that is nearest the far edge (not a pawn, not a king; ties by the seed) stands on the far edge (where it may change kind)
-  may take   a unit of the side may move to the named unit's place while a named unit of the other side does not bear on it (a negated literal)
+  may take   a unit of the side may move to the named unit's place while ANOTHER named unit of the other side, standing where it stands, does not bear on it (a negated literal)
+PLAN 79.29 PART B (the maker wrote two kinds of goal that mean nothing, read on the board in the report of 79.28): (1) a goal that names one unit twice: the "may take" goal named the same unit as the target and as the unit that must not bear, and a unit does not bear on its own place;
+(2) a goal with a negated literal about a unit and no literal that keeps that unit in place: it held once the unit left. Now every negated literal about a unit goes with the literal that says the unit stands there, and no goal names one unit twice (the unit that must not bear is
+another unit than the target; a position with no other unit of the other side gets no list).
 No verdict is written: the reference in the test decides what is reached. Seeded; the same file every time.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.layer4_goals_print OUT_FILE
@@ -53,8 +56,12 @@ def goals_of(b: "chess.Board", rng: random.Random) -> list:
     nearest = min(gap(sq) for sq, _ in runners)
     k = KINDS[rng.choice([p for sq, p in runners if gap(sq) == nearest]).piece_type]
     out.append(("on_edge", [lit("unit", ROLE[me], k, "?p"), lit("on_edge", "?p", "north" if me else "south")]))
-    osq, op = rng.choice(theirs)
-    out.append(("may_take", [lit("unit", ROLE[me], "?k", "?p"), lit("may_move", ROLE[me], "?k", "?p", t), lit("bear", ROLE[them], KINDS[op.piece_type], chess.square_name(osq), t, neg=True)]))
+    others = [(sq, p) for sq, p in theirs if sq != tsq]
+    if not others:
+        return []
+    osq, op = rng.choice(others)
+    on, ok = chess.square_name(osq), KINDS[op.piece_type]
+    out.append(("may_take", [lit("unit", ROLE[me], "?k", "?p"), lit("may_move", ROLE[me], "?k", "?p", t), lit("unit", ROLE[them], ok, on), lit("bear", ROLE[them], ok, on, t, neg=True)]))
     rng.shuffle(out)
     return out
 
@@ -80,7 +87,7 @@ def positions(cls, rng: random.Random, n: int) -> list:
 
 def main(argv: "list | None" = None) -> int:
     out = Path((argv or sys.argv[1:])[0])
-    lines = ["note\tplan 79.28 part C (first made in plan 79.27 part C): positions of two games with lists of goals (patterns over layer 1's graph facts); no verdict is written, the reference in the test decides what is reached"]
+    lines = ["note\tplan 79.29 part B (first made in plan 79.27 part C, changed in 79.28 part C): positions of two games with lists of goals (patterns over layer 1's graph facts); no verdict is written, the reference in the test decides what is reached"]
     total = 0
     for gi, (name, cls, decl) in enumerate(GAMES):
         rng = random.Random(7927 + gi)
@@ -89,7 +96,7 @@ def main(argv: "list | None" = None) -> int:
             lines.append(f"pos\t{name}-{i}\t{fen}\t" + json.dumps([{"kind": kind, "pattern": pat} for kind, pat in gs], separators=(",", ":")))
             total += len(gs)
     out.write_text("\n".join(lines) + "\n")
-    print(f"OBS 79.28 goals fixture: {len(GAMES) * PER_GAME} positions of {len(GAMES)} games, {total} goals, written to {out}")
+    print(f"OBS 79.29 goals fixture: {len(GAMES) * PER_GAME} positions of {len(GAMES)} games, {total} goals, written to {out}")
     return 0
 
 

@@ -107,9 +107,13 @@ pub struct Read {
     pub cut: bool,
     /// no line met the depth limit in the last iteration: deeper reading changes nothing
     pub exhausted: bool,
-    /// nodes spent by the first reading (held) and by the second (touched)
-    pub reads: Vec<(i32, u64)>,
+    /// where the calls went (plan 79.29 part A)
+    pub diag: Diag,
 }
+
+/// PLAN 79.29 PART A: where the calls of the one tree go, by what they are asked: the goals held only, the goals touched only (already known to bind after a move; the other answer is still asked), or both.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Diag { pub calls_held: u64, pub calls_touched: u64, pub calls_both: u64 }
 
 #[derive(Clone, Copy)]
 struct Entry { reach: u8, fail: i16 }
@@ -135,11 +139,13 @@ struct Tree<'a, G: Game + Placed, J: Judge> {
     makes: u64,
     matches: u64,
     horizon: bool,
-    taint: bool,
+    /// a line met a position of its own path (the rules' repeat): bit 0 for the held answer, bit 1 for the touched (a fail entry rests on the line when its own bit is set)
+    taint: u8,
     /// the places and kinds the goals' literals name, by goal (for the order)
     names: Vec<Vec<String>>,
     place_names: Vec<String>,
     kind_names: Vec<String>,
+    diag: Diag,
 }
 
 fn consts(pattern: &[Lit]) -> Vec<String> { pattern.iter().flat_map(|l| l.args.iter().filter_map(|a| if let Arg::Const(c) = a { Some(c.clone()) } else { None })).collect() }
@@ -153,8 +159,9 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
         let all: Vec<Lit> = a.goals.iter().flat_map(|s| s.pattern.iter().cloned()).collect();
         Tree {
             g: a.game, st: a.board, me: a.side, judge: a.judge, goals: a.goals.to_vec(), reader: FactReader::new(a.board, Some(&all)), keeper: GraphKeeper::new(a.board, a.game, a.state), history: a.history.clone(), path: Path::new(),
-            nodes: 0, fuse: a.nodes, deadline: a.seconds.map(|s| Instant::now() + std::time::Duration::from_secs_f64(s.max(0.0))), narrow: a.narrow, table: HashMap::new(), holds: HashMap::new(), makes: 0, matches: 0, horizon: false, taint: false,
+            nodes: 0, fuse: a.nodes, deadline: a.seconds.map(|s| Instant::now() + std::time::Duration::from_secs_f64(s.max(0.0))), narrow: a.narrow, table: HashMap::new(), holds: HashMap::new(), makes: 0, matches: 0, horizon: false, taint: 0,
             names: a.goals.iter().map(|s| consts(&s.pattern)).collect(), place_names: a.game.place_names(), kind_names: a.game.kind_names(),
+            diag: Diag::default(),
         }
     }
 
@@ -216,11 +223,14 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
         v.into_iter().map(|(i, _, m)| { let q = self.g.apply(s, &m); (i, m, q) }).collect()
     }
 
-    /// The answers for the goals of `open` at `s` (the keeper holds the parent of `s`, or `s` itself at the root: `at_root`), `depth` plies left. `res[g]` is the plies to reach g, or NONE; goals not asked are left NONE. `after_mine`: `s` was made by a move of the side asking.
-    /// `touch` selects the reading: false, a goal is reached where it is held; true, it is also met where it binds after a move of the side and a reply unbinds it.
+    /// The answers for the goals of `open_h` (reached: held) and of `open_t` (reached or touched: held, or bound after a move of the side and unbound by some reply) at `s`, in ONE reading (plan 79.29 part A). The keeper holds the parent of `s`, or `s` itself at the root: `at_root`. `depth` plies left.
+    /// `res_h[g]` is the plies to reach g as held, or NONE; `res_t[g]` the plies to meet g as held or touched, or NONE (a goal asked only in one of the two is left NONE in the other; a number is the plies of the line found, and where the answer came from the other reading's table it is
+    /// an upper bound of them: only whether it is NONE and whether it is within the depth are read). The second answer is a superset of the first (a goal held is met), so a goal found held is found in both, and a goal not met in the second is not held in the first.
+    /// `after_mine`: `s` was made by a move of the side asking.
     #[allow(clippy::too_many_arguments)]
-    fn go(&mut self, s: &G::State, depth: u8, open: u64, ply: i32, at_root: bool, after_mine: bool, touch: bool, res: &mut [u8]) -> Result<(), Cut> {
+    fn go(&mut self, s: &G::State, depth: u8, open_h: u64, open_t: u64, ply: i32, at_root: bool, after_mine: bool, res_h: &mut [u8], res_t: &mut [u8]) -> Result<(), Cut> {
         self.spend()?;
+        match (open_h != 0, open_t != 0) { (true, true) => self.diag.calls_both += 1, (true, false) => self.diag.calls_held += 1, _ => self.diag.calls_touched += 1 }
         let key = self.g.key(s);
         let mut made = at_root;
         let cached = if self.narrow.table { self.holds.get(&key).copied() } else { None };
@@ -233,77 +243,115 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
         let undo = |t: &mut Self, made_here: bool| { if made_here && !at_root { t.keeper.undo(); } };
         let made_here = made && !at_root;
         let hit = self.held(s, mask);
-        for i in 0..self.goals.len() { if open & (1 << i) != 0 && hit & (1 << i) != 0 { res[i] = 0; } }
-        let mut left = open & !hit;
-        if left == 0 { undo(self, made_here); return Ok(()); }
+        let k = self.goals.len();
+        for i in 0..k { if hit & (1 << i) != 0 { if open_h & (1 << i) != 0 { res_h[i] = 0; } if open_t & (1 << i) != 0 { res_t[i] = 0; } } }
+        let mut left_h = open_h & !hit;
+        let mut left_t = open_t & !hit;
+        if left_h | left_t == 0 { undo(self, made_here); return Ok(()); }
         if self.g.outcome(s).is_some() { undo(self, made_here); return Ok(()); }
         if ply > 0 {
             if self.history.contains(&key) { undo(self, made_here); return Ok(()); }
-            if self.path.contains(&key) { self.taint = true; undo(self, made_here); return Ok(()); }
+            if self.path.contains(&key) { self.taint |= (left_h != 0) as u8 | (((left_t != 0) as u8) << 1); undo(self, made_here); return Ok(()); }
         }
-        if depth == 0 { self.horizon = true; undo(self, made_here); return Ok(()); }
+        if depth == 0 { if left_h != 0 { self.horizon = true; } undo(self, made_here); return Ok(()); }
         if self.narrow.table {
-            for i in 0..self.goals.len() {
-                if left & (1 << i) == 0 { continue; }
-                if let Some(e) = self.table.get(&(key, tix(i, touch, after_mine))) {
-                    if e.reach != NONE && e.reach <= depth { res[i] = e.reach; left &= !(1 << i); }
-                    else if e.fail >= depth as i16 { left &= !(1 << i); }
+            for i in 0..k {
+                let b = 1u64 << i;
+                if left_h | left_t == 0 { break; }
+                if left_h & b == 0 && left_t & b == 0 { continue; }
+                // the first answer's table: reached within the depth settles both answers; failed within the depth settles it
+                let eh = self.table.get(&(key, tix(i, false, false))).copied();
+                if let Some(e) = eh {
+                    if e.reach != NONE && e.reach <= depth {
+                        if left_h & b != 0 { res_h[i] = e.reach; }
+                        if left_t & b != 0 { res_t[i] = e.reach; }
+                        left_h &= !b; left_t &= !b;
+                        continue;
+                    }
+                    if e.fail >= depth as i16 { left_h &= !b; }
+                }
+                // the second answer's table: reached within the depth settles it; failed within the depth settles both
+                if left_t & b != 0 {
+                    if let Some(e) = self.table.get(&(key, tix(i, true, after_mine))).copied() {
+                        if e.reach != NONE && e.reach <= depth { res_t[i] = e.reach; left_t &= !b; }
+                        else if e.fail >= depth as i16 { left_t &= !b; left_h &= !b; }
+                    }
                 }
             }
-            if left == 0 { undo(self, made_here); return Ok(()); }
+            if left_h | left_t == 0 { undo(self, made_here); return Ok(()); }
         }
         if !made { self.keeper.make(self.st, self.g, s); self.makes += 1; made = true; }
         let made_here = made && !at_root;
         let taint_before = self.taint;
-        self.taint = false;
-        let steer = (0..self.goals.len()).find(|i| left & (1 << i) != 0);
+        self.taint = 0;
+        let steer = (0..k).find(|i| (left_h | left_t) & (1 << i) != 0);
         let kids = self.children(s, steer);
-        let k = self.goals.len();
-        // the second reading's own leaf: the pattern binds here after a move of the side (the other side to move, the game not over) and some reply leaves it unbound
-        if touch && after_mine && ply >= 1 {
-            let cand = left & mask;
+        // the second answer's own leaf: the pattern binds here after a move of the side (the other side to move, the game not over) and some reply leaves it unbound
+        if left_t != 0 && after_mine && ply >= 1 {
+            let cand = left_t & mask;
             if cand != 0 {
                 let mut unbound = 0u64;
                 for (_, _, q) in &kids { unbound |= cand & !self.bind_mask_of(q); if unbound == cand { break; } }
-                for i in 0..k { if unbound & (1 << i) != 0 { res[i] = 0; } }
-                left &= !unbound;
-                if left == 0 { self.taint |= taint_before; undo(self, made_here); return Ok(()); }
+                for i in 0..k { if unbound & (1 << i) != 0 { res_t[i] = 0; } }
+                left_t &= !unbound;
+                if left_h | left_t == 0 { self.taint |= taint_before; undo(self, made_here); return Ok(()); }
             }
         }
-        let asked = left;
+        let (asked_h, asked_t) = (left_h, left_t);
         let maxing = self.g.mover(s) == Some(self.me);
         self.path.push(key);
         let mut result: Result<(), Cut> = Ok(());
         if maxing {
-            let mut todo = left;
+            let (mut todo_h, mut todo_t) = (left_h, left_t);
             for (_, _, q) in &kids {
-                let mut sub = vec![NONE; k];
-                match self.go(q, depth - 1, todo, ply + 1, false, true, touch, &mut sub) { Ok(()) => {}, Err(c) => { result = Err(c); break; } }
-                for i in 0..k { if todo & (1 << i) != 0 && sub[i] != NONE { res[i] = sub[i] + 1; todo &= !(1 << i); } }
-                if todo == 0 { break; }
+                let (mut sub_h, mut sub_t) = (vec![NONE; k], vec![NONE; k]);
+                match self.go(q, depth - 1, todo_h, todo_t, ply + 1, false, true, &mut sub_h, &mut sub_t) { Ok(()) => {}, Err(c) => { result = Err(c); break; } }
+                for i in 0..k {
+                    let b = 1u64 << i;
+                    if todo_h & b != 0 && sub_h[i] != NONE { res_h[i] = sub_h[i] + 1; todo_h &= !b; if todo_t & b != 0 && sub_t[i] == NONE { sub_t[i] = sub_h[i]; } }
+                    if todo_t & b != 0 && sub_t[i] != NONE { res_t[i] = sub_t[i] + 1; todo_t &= !b; }
+                }
+                if todo_h | todo_t == 0 { break; }
             }
-            left = todo;
+            left_h = todo_h; left_t = todo_t;
         } else {
-            let mut alive = left;
-            let mut worst = vec![0u8; k];
-            if kids.is_empty() { alive = 0; }
+            let (mut alive_h, mut alive_t) = (left_h, left_t);
+            let (mut worst_h, mut worst_t) = (vec![0u8; k], vec![0u8; k]);
+            if kids.is_empty() { alive_h = 0; alive_t = 0; }
             for (_, _, q) in &kids {
-                let mut sub = vec![NONE; k];
-                match self.go(q, depth - 1, alive, ply + 1, false, false, touch, &mut sub) { Ok(()) => {}, Err(c) => { result = Err(c); break; } }
-                for i in 0..k { if alive & (1 << i) != 0 { if sub[i] == NONE { alive &= !(1 << i); } else { worst[i] = worst[i].max(sub[i] + 1); } } }
-                if alive == 0 { break; }
+                let (mut sub_h, mut sub_t) = (vec![NONE; k], vec![NONE; k]);
+                match self.go(q, depth - 1, alive_h, alive_t, ply + 1, false, false, &mut sub_h, &mut sub_t) { Ok(()) => {}, Err(c) => { result = Err(c); break; } }
+                for i in 0..k {
+                    let b = 1u64 << i;
+                    if alive_h & b != 0 { if sub_h[i] == NONE { alive_h &= !b; } else { worst_h[i] = worst_h[i].max(sub_h[i] + 1); } }
+                    if alive_t & b != 0 { if sub_t[i] == NONE { alive_t &= !b; alive_h &= !b; } else { worst_t[i] = worst_t[i].max(sub_t[i] + 1); } }
+                }
+                if alive_h | alive_t == 0 { break; }
             }
-            if result.is_ok() { for i in 0..k { if alive & (1 << i) != 0 { res[i] = worst[i]; } } }
-            left = if result.is_ok() { left & !alive } else { left };
+            if result.is_ok() {
+                for i in 0..k {
+                    let b = 1u64 << i;
+                    if alive_h & b != 0 { res_h[i] = worst_h[i]; }
+                    if alive_t & b != 0 { res_t[i] = worst_t[i]; }
+                }
+                left_h &= !alive_h; left_t &= !alive_t;
+            }
         }
         self.path.pop();
         if made_here { self.keeper.undo(); }
         if result.is_ok() && self.narrow.table {
             for i in 0..k {
-                if asked & (1 << i) == 0 { continue; }
-                let ix = tix(i, touch, after_mine);
-                if res[i] != NONE { self.table.entry((key, ix)).and_modify(|e| e.reach = e.reach.min(res[i])).or_insert(Entry { reach: res[i], fail: -1 }); }
-                else if left & (1 << i) != 0 && !self.taint { self.table.entry((key, ix)).and_modify(|e| e.fail = e.fail.max(depth as i16)).or_insert(Entry { reach: NONE, fail: depth as i16 }); }
+                let b = 1u64 << i;
+                if asked_h & b != 0 {
+                    let ix = tix(i, false, false);
+                    if res_h[i] != NONE { self.table.entry((key, ix)).and_modify(|e| e.reach = e.reach.min(res_h[i])).or_insert(Entry { reach: res_h[i], fail: -1 }); }
+                    else if left_h & b != 0 && self.taint & 1 == 0 { self.table.entry((key, ix)).and_modify(|e| e.fail = e.fail.max(depth as i16)).or_insert(Entry { reach: NONE, fail: depth as i16 }); }
+                }
+                if asked_t & b != 0 {
+                    let ix = tix(i, true, after_mine);
+                    if res_t[i] != NONE { self.table.entry((key, ix)).and_modify(|e| e.reach = e.reach.min(res_t[i])).or_insert(Entry { reach: res_t[i], fail: -1 }); }
+                    else if left_t & b != 0 && self.taint & 2 == 0 { self.table.entry((key, ix)).and_modify(|e| e.fail = e.fail.max(depth as i16)).or_insert(Entry { reach: NONE, fail: depth as i16 }); }
+                }
             }
         }
         self.taint |= taint_before;
@@ -338,9 +386,9 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
             self.path.push(key); pushed += 1;
             for (i, m) in kids {
                 let q = self.g.apply(&s, &m);
-                let mut sub = vec![NONE; self.goals.len()];
+                let (mut sub, mut unused) = (vec![NONE; self.goals.len()], vec![NONE; self.goals.len()]);
                 let before = self.taint;
-                self.go(&q, left - 1, one, ply + 1, false, mover == Some(self.me), false, &mut sub).ok();
+                self.go(&q, left - 1, one, 0, ply + 1, false, mover == Some(self.me), &mut sub, &mut unused).ok();
                 self.taint = before;
                 if mover == Some(self.me) {
                     if sub[gi] != NONE { pick = Some((i, m, q, sub[gi])); break; }
@@ -398,8 +446,9 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
                 let q = self.g.apply(&s, &m);
                 let (mut sub_t, mut sub_r) = (vec![NONE; self.goals.len()], vec![NONE; self.goals.len()]);
                 let before = self.taint;
-                self.go(&q, left - 1, one, ply + 1, false, mover == Some(self.me), true, &mut sub_t).ok();
-                if sub_t[gi] != NONE && mover != Some(self.me) { self.go(&q, left - 1, one, ply + 1, false, false, false, &mut sub_r).ok(); }
+                // the one reading asks both answers where the reply is read (the goal must be met and not reached), the second alone where the side moves
+                let ask_held = if mover != Some(self.me) { one } else { 0 };
+                self.go(&q, left - 1, ask_held, one, ply + 1, false, mover == Some(self.me), &mut sub_r, &mut sub_t).ok();
                 self.taint = before;
                 if sub_t[gi] != NONE && (mover == Some(self.me) || sub_r[gi] == NONE) { pick = Some((i, m, q)); break; }
             }
@@ -425,60 +474,45 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
 pub fn read<G: Game + Placed, J: Judge>(a: &Ask<G, J>) -> Read {
     let k = a.goals.len();
     let mut t = Tree::new(a);
-    let mut outcomes: Vec<Option<Outcome>> = vec![None; k];
     let mut found_at = vec![NONE; k];
     let mut touch_at = vec![NONE; k];
     let mut depth_done = 0;
     let mut cut = false;
     let mut exhausted = false;
     let all: u64 = if k == 64 { u64::MAX } else { (1u64 << k) - 1 };
-    let mut open = all;
-    // THE FIRST READING: the goals held. A goal held at the root is reached in nought plies, so the loop starts at depth 0 and reads it the same way
+    // the goals still open for reached (held), and for touched (held or touched: until it is met once)
+    let (mut open_h, mut open_t) = (all, all);
+    // ONE READING, deepened a ply at a time: it asks both answers of the goals open. A goal held at the root is reached in nought plies, so the loop starts at depth 0. A goal is touched only if it is not reached within the depth the reading finishes: a goal met by the second answer at some depth
+    // is touched when the loop ends having read in full and not reached it.
     for d in 0..=(a.max_depth.clamp(0, 254)) {
-        if open == 0 { break; }
+        if open_h == 0 { break; }
         t.horizon = false;
-        t.taint = false;
-        let mut res = vec![NONE; k];
-        let r = t.go(a.state, d as u8, open, 0, true, false, false, &mut res);
-        match r {
+        t.taint = 0;
+        let (mut res_h, mut res_t) = (vec![NONE; k], vec![NONE; k]);
+        match t.go(a.state, d as u8, open_h, open_t, 0, true, false, &mut res_h, &mut res_t) {
             Ok(()) => {
                 depth_done = d;
-                for i in 0..k { if open & (1 << i) != 0 && res[i] != NONE { found_at[i] = d as u8; outcomes[i] = Some(Outcome::Unsettled { depth: d }); open &= !(1 << i); } }
+                for i in 0..k {
+                    let b = 1u64 << i;
+                    if open_h & b != 0 && res_h[i] != NONE { found_at[i] = d as u8; open_h &= !b; open_t &= !b; }
+                    if open_t & b != 0 && res_t[i] != NONE { touch_at[i] = d as u8; open_t &= !b; }
+                }
                 if !t.horizon { exhausted = true; break; }
             }
-            Err(Cut) => {
-                cut = true;
-                break;
-            }
-        }
-    }
-    let first_nodes = t.nodes;
-    // THE SECOND READING, for the goals the first settled as not reached: held or touched, to the depth the first read in full
-    let mut cut2 = false;
-    if !cut && open != 0 {
-        let mut open2 = open;
-        for d in 0..=depth_done {
-            if open2 == 0 { break; }
-            t.horizon = false;
-            t.taint = false;
-            let mut res = vec![NONE; k];
-            match t.go(a.state, d as u8, open2, 0, true, false, true, &mut res) {
-                Ok(()) => { for i in 0..k { if open2 & (1 << i) != 0 && res[i] != NONE { touch_at[i] = d as u8; open2 &= !(1 << i); } } }
-                Err(Cut) => { cut2 = true; break; }
-            }
+            Err(Cut) => { cut = true; break; }
         }
     }
     // the line of every reached goal, and of every goal touched
     let mut done: Vec<Option<Outcome>> = vec![None; k];
     for i in 0..k {
         if found_at[i] != NONE { done[i] = Some(Outcome::Reached(t.extract(a.state, i, found_at[i]))); }
-        else if touch_at[i] != NONE { done[i] = Some(Outcome::Touched(t.extract_touch(a.state, i, touch_at[i]))); }
+        else if !cut && touch_at[i] != NONE { done[i] = Some(Outcome::Touched(t.extract_touch(a.state, i, touch_at[i]))); }
     }
     let outcomes = (0..k).map(|i| match done[i].take() {
         Some(o) => o,
-        None => if cut || cut2 { Outcome::Unsettled { depth: depth_done } } else { Outcome::Out { depth: if exhausted { a.max_depth } else { depth_done } } },
+        None => if cut { Outcome::Unsettled { depth: depth_done } } else { Outcome::Out { depth: if exhausted { a.max_depth } else { depth_done } } },
     }).collect();
-    Read { outcomes, nodes: t.nodes, makes: t.makes, matches: t.matches, depth: depth_done, cut: cut || cut2, exhausted, reads: vec![(0, first_nodes), (1, t.nodes - first_nodes)] }
+    Read { outcomes, nodes: t.nodes, makes: t.makes, matches: t.matches, depth: depth_done, cut, exhausted, diag: t.diag }
 }
 
 /// Whether one reply of the other side leaves both goals out of reach: read in full from the position after `first`, a state of the line (the other side to move), `plies_left` plies to read. None where the budget cut the reading.
@@ -489,9 +523,9 @@ pub fn one_reply_meets<G: Game + Placed, J: Judge>(a: &Ask<G, J>, after_first: &
     let mut meets = false;
     for m in a.game.moves(after_first) {
         let q = a.game.apply(after_first, &m);
-        let mut sub = vec![NONE; k];
+        let (mut sub, mut unused) = (vec![NONE; k], vec![NONE; k]);
         t.keeper.make(t.st, t.g, &q);
-        let r = t.go(&q, (plies_left - 1).max(0) as u8, both, 1, true, false, false, &mut sub);
+        let r = t.go(&q, (plies_left - 1).max(0) as u8, both, 0, 1, true, false, &mut sub, &mut unused);
         if r.is_err() { return (None, t.nodes); }
         if sub[goals.0] == NONE && sub[goals.1] == NONE { meets = true; }
         t.keeper.undo();

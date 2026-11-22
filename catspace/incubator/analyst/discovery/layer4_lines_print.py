@@ -1,12 +1,13 @@
-"""PLAN 79.28 PART E: LINES FOR A READER (SYSTEM_SPEC 11 "Reached means the goal outlasts the reply", "Layer 4 takes a goal as an input"; ledger rows 36, 14; piece: tactical reasoner).
+"""PLAN 79.28 PART E AND PLAN 79.29 PART C: LINES FOR A READER (SYSTEM_SPEC 11 "Reached means the goal outlasts the reply", "Layer 4 takes a goal as an input"; ledger rows 36, 14; piece: tactical reasoner).
 A PRINTING SCRIPT (it may name the games' units because it only writes text for a person). It reads the answers layer 4 gave at the top budget (one JSON line each, written by rust/engine/tactics/tests/layer4_goals.rs when LAYER4_ANSWERS_OUT is set) and writes, for
 TWELVE REACHED and SIX TOUCHED answers chosen by a FIXED RULE across the kinds of goal, text a person can read against a board: the position, the goal in plain words, the line, the position at its end (for a touched goal also the reply that undoes it and the position after it).
 THE RULE (nothing is chosen by hand and nothing by the answer's look): the kinds in alphabetical order; within a kind, the answers of the status asked with at least one ply (a goal reached in nought plies has no line to read), the longest lines first, ties by the position's id; one answer of each kind in turn, round and round,
-until the count is reached or no kind has one left. The judge of the lines is the reader (the main agent), who reads them against the board and says what a strong player would not agree with; nothing here judges.
+until the count is reached or no kind has one left. PLAN 79.29 PART C: each line also says what the answer carries of what it TOOK from the other side, what it GAVE UP of the side's own, and the judge's value of the line for the side (layer 3's count through
+the ledger's judge: units taken, kinds changed); and a goal REACHED AT NOUGHT PLIES (held in the position asked, the side to move: no line to read) is said so, with the count of them, and three of them (the same rule: kinds alphabetical, one of each kind in turn, ties by the position's id) are shown after the lines. The judge of the lines is the reader (the main agent), who reads them against the board and says what a strong player would not agree with; nothing here judges.
 
   .venv/bin/python -m catspace.incubator.analyst.discovery.layer4_lines_print ANSWERS_JSONL [OUT_FILE]
 
-OUT_FILE defaults to artifacts/experiments/whole_79_28/lines.txt (catspace.io.paths).
+OUT_FILE defaults to artifacts/experiments/whole_79_29/lines.txt (catspace.io.paths).
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from catspace.io import paths
 
 BOARDS = {"chess": chess.Board, "kingofthehill": chess.variant.KingOfTheHillBoard}
 WANT = {"reached": 12, "touched": 6}
+ROOT_HELD = 3
 
 
 def board_of(game: str, text: str) -> "chess.Board":
@@ -41,6 +43,29 @@ def pick(rows: list, status: str, count: int) -> list:
             if by_kind[k] and len(chosen) < count:
                 chosen.append(by_kind[k].pop(0))
     return chosen
+
+
+def root_held(rows: list, count: int) -> list:
+    """The reached answers held at nought plies (the pattern binds in the position asked, with the side to move), by the same rule: kinds alphabetical, one of each kind in turn, ties by the position's id."""
+    by_kind: dict = {}
+    for r in rows:
+        if r["status"] == "reached" and r.get("plies", 0) == 0:
+            by_kind.setdefault(r["kind"], []).append(r)
+    for k in by_kind:
+        by_kind[k].sort(key=lambda r: (r["position"], r["goal"]))
+    chosen = []
+    while len(chosen) < count and any(by_kind.values()):
+        for k in sorted(by_kind):
+            if by_kind[k] and len(chosen) < count:
+                chosen.append(by_kind[k].pop(0))
+    return chosen
+
+
+def cost(r: dict) -> str:
+    """What the answer says the line took, gave up, and the judge's value for the side."""
+    took, gave = r.get("took", []), r.get("gave", [])
+    say = lambda xs: ", ".join(xs) if xs else "nothing"
+    return f"WHAT THE LINE TOOK: {say(took)}; WHAT IT GAVE UP: {say(gave)}; THE JUDGE'S VALUE FOR THE SIDE: {r.get('value', 0)}"
 
 
 def words(r: dict, b: "chess.Board") -> str:
@@ -97,7 +122,7 @@ def entry(n: int, r: dict) -> str:
     b = board_of(r["game"], r["text"])
     text, end = san_line(b, r["line"])
     out = [f"--- {n}. {r['status'].upper()} ({r['kind']}), position {r['position']}, {r['plies']} plies; the reference says {r['reference']}",
-           "THE POSITION", show(b), f"THE GOAL: {words(r, b)}", f"THE LINE: {text}"]
+           "THE POSITION", show(b), f"THE GOAL: {words(r, b)}", f"THE LINE: {text}", cost(r)]
     if r["status"] == "reached":
         out += ["THE POSITION AT ITS END (the goal holds here, and the side to move is the side that asked, or the game is over)", show(end), found(r)]
     else:
@@ -110,13 +135,21 @@ def entry(n: int, r: dict) -> str:
     return "\n".join(x for x in out if x)
 
 
+def entry_root(n: int, r: dict) -> str:
+    b = board_of(r["game"], r["text"])
+    return "\n".join(x for x in [f"--- {n}. REACHED AT NOUGHT PLIES ({r['kind']}), position {r['position']}; the reference says {r['reference']}",
+                                 "THE POSITION (the goal is held here already, the side that asked is to move: there is no line to read)", show(b), f"THE GOAL: {words(r, b)}", cost(r), found(r)] if x)
+
+
 def main(argv: "list | None" = None) -> int:
     args = argv or sys.argv[1:]
     rows = [json.loads(l) for l in Path(args[0]).read_text().splitlines() if l.strip()]
-    out = Path(args[1]) if len(args) > 1 else Path(paths.experiment("whole_79_28", "lines.txt"))
+    out = Path(args[1]) if len(args) > 1 else Path(paths.experiment("whole_79_29", "lines.txt"))
     chosen = {s: pick(rows, s, n) for s, n in WANT.items()}
-    head = [f"PLAN 79.28 PART E: layer 4's answers at the top budget ({rows[0]['budget']} nodes, depth 5 plies) for a reader; the rule that chose them is in layer4_lines_print.py",
-            f"answers: {len(rows)}; reached {sum(r['status'] == 'reached' for r in rows)}, touched {sum(r['status'] == 'touched' for r in rows)}; shown: {len(chosen['reached'])} reached, {len(chosen['touched'])} touched", ""]
+    roots = root_held(rows, ROOT_HELD)
+    n_root = sum(r["status"] == "reached" and r.get("plies", 0) == 0 for r in rows)
+    head = [f"PLAN 79.28 PART E AND 79.29 PART C: layer 4's answers at the top budget ({rows[0]['budget']} nodes, depth 5 plies) for a reader; the rule that chose them is in layer4_lines_print.py",
+            f"answers: {len(rows)}; reached {sum(r['status'] == 'reached' for r in rows)} (of these held at nought plies, the pattern binding in the position asked with the side to move: {n_root}), touched {sum(r['status'] == 'touched' for r in rows)}; shown: {len(chosen['reached'])} reached, {len(chosen['touched'])} touched, then {len(roots)} held at nought plies", ""]
     body = []
     n = 0
     for s in ("reached", "touched"):
@@ -124,9 +157,13 @@ def main(argv: "list | None" = None) -> int:
             n += 1
             body.append(entry(n, r))
             body.append("")
+    for r in roots:
+        n += 1
+        body.append(entry_root(n, r))
+        body.append("")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(head + body))
-    print(f"OBS 79.28 lines: {len(chosen['reached'])} reached and {len(chosen['touched'])} touched answers written to {out}")
+    print(f"OBS 79.29 lines: {len(chosen['reached'])} reached and {len(chosen['touched'])} touched answers written to {out}, and {len(roots)} of the {n_root} held at nought plies")
     return 0
 
 
