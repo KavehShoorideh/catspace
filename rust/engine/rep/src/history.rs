@@ -12,13 +12,14 @@
 //!   `History::seen() -> &Arc<Seen>`                         PLAN 79.22 PART B: THE KEYS MET, the record as a counted set, kept in step by `push`, `undo` and `sync`, and handed by reference count (never copied) to every reader of a repeat: the search, the measure's lines, the wake. ONE WAY to read a repeat; `Seen::contains / count`.
 //!   `Path` (`push / pop / contains`)                       the keys on the line a search walks, made and taken back with its tempos: the search's own repeats, read the way `Seen` reads the record's.
 //!   `History::push_unknown(key)`                            a position reached whose change was not seen (the caller skipped it): the key is kept, the change is marked not known.
-//!   `History::facts_at(start, i) -> BTreeSet<Fact>`         the facts of position i, derived from the whole history: the facts of the first position and every change up to i applied in order.
+//!   `History::facts_at(start, i) -> Set<Fact>`         the facts of position i, derived from the whole history: the facts of the first position and every change up to i applied in order.
 //!   `History::sync(&mut self, before: &[u64], current: u64, change: Option<Change>)`   bring the history to a record a caller holds as keys only (the binding's way in): keeps what agrees, takes back what does not, pushes the new positions (the last with `change`, the others with none known).
 //!   `to_json / from_json`                                   a history written and read back identical (keys as text, since a key is a 64 bit number).
 use crate::fact::Fact;
 use crate::statement::Change;
 use serde_json::{json, Value};
-use std::collections::{BTreeSet, HashMap};
+use cs_base::sets::Set;   // plan 79.31 part G: the facts of a position are a set of facts, which is what layer 0's set is (the same ordered set underneath, so nothing is slower)
+use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
@@ -70,7 +71,7 @@ impl Path {
 pub struct History { keys: Vec<u64>, changes: Vec<Change>, known: Vec<bool>, seen: Arc<Seen> }
 
 /// Apply a change to a set of facts: what it removed goes, what it added stays.
-pub fn apply_change(set: &mut BTreeSet<Fact>, ch: &Change) {
+pub fn apply_change(set: &mut Set<Fact>, ch: &Change) {
     for f in &ch.removed { set.remove(f); }
     for f in &ch.added { set.insert(f.clone()); }
 }
@@ -115,9 +116,9 @@ impl History {
     }
 
     /// The facts of position `i`, derived from the whole history: the facts of the first position and every change up to `i` applied in order. Positions whose change is not known cannot be derived: an error.
-    pub fn facts_at(&self, start: &[Fact], i: usize) -> Result<BTreeSet<Fact>, String> {
+    pub fn facts_at(&self, start: &[Fact], i: usize) -> Result<Set<Fact>, String> {
         if i > self.changes.len() { return Err(format!("no position {i}: the history has {}", self.keys.len())); }
-        let mut set: BTreeSet<Fact> = start.iter().cloned().collect();
+        let mut set: Set<Fact> = start.iter().cloned().collect();
         for j in 0..i {
             if !self.known[j] { return Err(format!("the change into position {} was not given", j + 1)); }
             apply_change(&mut set, &self.changes[j]);

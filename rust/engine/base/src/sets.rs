@@ -1,7 +1,7 @@
 //! LAYER 0, MODULE 2: SETS AND COUNTING (plan 79.30; SYSTEM_SPEC 11 "Layer 0 holds six things" item 2).
 //!
 //! INTERFACE (callers: logic's `Domain::Set`, structure's node sets, choice's option sets, and any layer above that needs "the things of one kind").
-//!   `Set<T: Ord + Clone>`: `new()`, `from_items(impl IntoIterator<Item = T>)`, `insert(T) -> bool` (true when new), `contains(&T) -> bool`, `len() -> usize` (how many), `is_empty()`, `iter()` (in order),
+//!   `Set<T: Ord + Clone>`: `new()`, `from_items(impl IntoIterator<Item = T>)`, `insert(T) -> bool` (true when new), `remove(&T) -> bool` (true when it was there; plan 79.31 part G, for the one who keeps a set that changes), `contains(&T) -> bool`, `len() -> usize` (how many), `is_empty()`, `iter()` (in order),
 //!     `union(&Set) -> Set`, `meet(&Set) -> Set` (the members of both), `minus(&Set) -> Set`, `is_part_of(&Set) -> bool` (every member of this one is in the other), `is_disjoint(&Set) -> bool`.
 //!   `Kinds<T: Ord + Clone, K: Ord + Clone>`: a kind as a set of the things that are of it. `new()`, `add(K, T)` (the thing is of the kind), `members(&K) -> Set<T>`, `kinds_of(&T) -> Set<K>`, `is_a(&T, &K) -> bool`,
 //!     `count(&K) -> usize`, `kinds() -> Set<K>`.
@@ -19,6 +19,8 @@ impl<T: Ord + Clone> Set<T> {
     pub fn from_items(items: impl IntoIterator<Item = T>) -> Set<T> { Set { items: items.into_iter().collect() } }
     /// Add a member; true when it was not there.
     pub fn insert(&mut self, t: T) -> bool { self.items.insert(t) }
+    /// Take a member away; true when it was there.
+    pub fn remove(&mut self, t: &T) -> bool { self.items.remove(t) }
     pub fn contains(&self, t: &T) -> bool { self.items.contains(t) }
     /// How many members.
     pub fn len(&self) -> usize { self.items.len() }
@@ -33,6 +35,8 @@ impl<T: Ord + Clone> Set<T> {
     pub fn is_part_of(&self, o: &Set<T>) -> bool { self.items.is_subset(&o.items) }
     pub fn is_disjoint(&self, o: &Set<T>) -> bool { self.items.is_disjoint(&o.items) }
 }
+
+impl<T: Ord + Clone> IntoIterator for Set<T> { type Item = T; type IntoIter = std::collections::btree_set::IntoIter<T>; fn into_iter(self) -> Self::IntoIter { self.items.into_iter() } }
 
 impl<T: Ord + Clone> FromIterator<T> for Set<T> { fn from_iter<I: IntoIterator<Item = T>>(i: I) -> Set<T> { Set::from_items(i) } }
 
@@ -93,6 +97,14 @@ mod tests {
             assert_eq!(a.minus(&b).union(&a.meet(&b)), a);
             assert!(a.minus(&b).is_disjoint(&b));
         }
+    }
+
+    #[test]
+    fn a_member_taken_away_is_gone_and_a_set_is_read_member_by_member_in_order() {
+        let mut s = Set::from_items([3, 1, 2]);
+        assert!(s.remove(&2) && !s.remove(&2) && !s.contains(&2) && s.len() == 2);
+        assert!(s.insert(2) && s.contains(&2));
+        assert_eq!(s.into_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
     }
 
     #[test]
