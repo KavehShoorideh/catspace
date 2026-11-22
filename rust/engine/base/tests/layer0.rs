@@ -1,4 +1,4 @@
-//! PLAN 79.30 (SYSTEM_SPEC 11 "Layer 0 holds six things"): the tests that cross modules and the two fixtures of facts. The Rust here names no game and no thing of a world; the fixture texts do (one game of turns on finite places, one game of many agents at once in a plane).
+//! PLAN 79.30 (SYSTEM_SPEC 11 "Layer 0 holds six things"): the tests that cross modules and the two fixtures of facts. The Rust here names no game and no thing of a world; the fixture texts do (one game of turns on a finite set of points, one game of many agents at once in a plane).
 //! (a) the formula against the matcher, (b) the graph's distance against a path found, (c) the value of a tree of turns against the forcing reading, (d) a tree with chance against the expectation worked by hand in `chance`,
 //! (e) every one of the six modules is used by both fixtures.
 use cs_base::chance::Spread;
