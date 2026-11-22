@@ -30,7 +30,8 @@ const BUDGETS: [u64; 3] = [5_000, 50_000, 500_000];
 const DEPTH: i32 = 5;
 /// THE FLOORS (what the layer did when this test was written, not a claim about its strength): over the goals of the fixture, at each budget, the goals the layer says reached, the goals it says touched, and the goals it settles (reached, touched or out of reach).
 const FLOOR_REACHED: [usize; 3] = [131, 134, 134];
-const FLOOR_TOUCHED: [usize; 3] = [6, 96, 103];
+/// (plan 79.29 part A: 6 at the smallest budget in 79.28; one goal that was touched there is now not settled, because the one reading that carries both answers did not finish it inside the budget while 12 other goals are newly settled there; the floors are reset in part B.)
+const FLOOR_TOUCHED: [usize; 3] = [5, 96, 103];
 const FLOOR_SETTLED: [usize; 3] = [159, 366, 400];
 /// What a kind of goal must be at least, in the reference, in the cases of its kind (plan 79.28 part C).
 const KIND_FLOOR: usize = 10;
@@ -550,20 +551,20 @@ fn each_part_of_the_narrowing_alone_is_measured_beside_the_plain_tree_and_answer
 }
 
 #[test]
-fn where_the_nodes_go_between_reading_the_goals_held_and_reading_the_goals_touched() {
+fn where_the_nodes_go_between_the_calls_asking_the_goals_held_the_goals_touched_and_both() {
     let (games, _rows) = table();
     for &budget in BUDGETS.iter() {
-        let (mut held, mut touched, mut total, mut makes, mut matches) = (0u64, 0u64, 0u64, 0u64, 0u64);
+        let (mut held, mut touched, mut both, mut total, mut makes, mut matches) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
         for fx in games {
             let res: Vec<Reply> = par(fx, fx.positions.len(), &|g, st, p| {
                 let s = g.read_state_text(&fx.positions[p].text).unwrap();
                 ask(&question(g, st, &s, &holds_goals(&fx.positions[p]), budget, &Count))
             });
-            for r in res { held += r.nodes_held; touched += r.nodes_touched; total += r.nodes; makes += r.makes; matches += r.matches; }
+            for r in res { held += r.diag.calls_held; touched += r.diag.calls_touched; both += r.diag.calls_both; total += r.nodes; makes += r.makes; matches += r.matches; }
         }
-        println!("OBS 79.28 where the nodes go at {budget} nodes (the list of each position): nodes {total}, reading the goals held {held}, reading the goals touched {touched}; positions made on the live graph {makes}, rows matched {matches}");
-        println!("OBS 79.28 the rest of the nodes at {budget} nodes: {} (the reading of whether one reply meets both goals of a pair)", total - held - touched);
-        assert!(held + touched <= total);
+        println!("OBS 79.29 where the nodes go at {budget} nodes (the list of each position, one reading for both answers): nodes {total}, of the calls of the tree: asking the goals held only {held}, touched only {touched}, both {both}; positions made on the live graph {makes}, rows matched {matches}");
+        println!("OBS 79.29 the rest of the nodes at {budget} nodes: {} (the reading of whether one reply meets both goals of a pair)", total - held - touched - both);
+        assert!(held + touched + both <= total);
     }
 }
 
@@ -581,9 +582,9 @@ fn the_questions_of_plan_79_27_are_asked_again_under_the_new_meaning() {
                 let s = g.read_state_text(&fx.positions[p].text).unwrap();
                 ask(&question(g, st, &s, &holds_goals(&fx.positions[p]), budget, &Count))
             });
-            for r in res { nodes += r.nodes; makes += r.makes; matches += r.matches; held += r.nodes_held; touched += r.nodes_touched; for a in &r.answers { stat[status(a) as usize] += 1; } }
+            for r in res { nodes += r.nodes; makes += r.makes; matches += r.matches; held += r.diag.calls_held; touched += r.diag.calls_touched; for a in &r.answers { stat[status(a) as usize] += 1; } }
         }
-        println!("OBS 79.28 the questions of 79.27 under the new meaning at {budget} nodes: nodes one tree {nodes} (held {held}, touched {touched}); positions made {makes}; rows matched {matches}; reached {}, touched {}, out of reach {}, not settled {}", stat[0], stat[1], stat[2], stat[3]);
+        println!("OBS 79.29 the questions of 79.27 under the new meaning at {budget} nodes: nodes one tree {nodes} (calls asking held only {held}, touched only {touched}); positions made {makes}; rows matched {matches}; reached {}, touched {}, out of reach {}, not settled {}", stat[0], stat[1], stat[2], stat[3]);
     }
     println!("OBS 79.28 the questions of 79.27 read under the new meaning in {:.1} s", t0.elapsed().as_secs_f64());
     if std::env::var("LAYER4_TRANSITIONS").is_err() { return; }
@@ -705,13 +706,17 @@ fn the_answers_at_the_top_budget_are_written_for_the_reader_when_asked() {
     let (games, rows) = table();
     let top = BUDGETS.len() - 1;
     let mut lines: Vec<String> = vec![];
+    let opened: Vec<R> = games.iter().map(open).collect();
     for r in rows {
         let (fx, p) = (&games[r.game], &games[r.game].positions[r.pos]);
+        let me = { let g = &opened[r.game]; g.mover(&g.read_state_text(&p.text).unwrap()).unwrap() };
+        // what the line took from the other side and gave up of the side's own (owner of the unit taken against the side asking), and the judge's value of the line for the side
+        let split = |t: &Vec<(Role, String)>| (t.iter().filter(|(o, _)| *o != me).map(|(_, k)| k.clone()).collect::<Vec<_>>(), t.iter().filter(|(o, _)| *o == me).map(|(_, k)| k.clone()).collect::<Vec<_>>());
         let mut o = cs_rep::serde_json::json!({"game": fx.name, "position": p.id, "text": p.text, "goal": r.goal, "kind": r.kind, "pattern": p.goals[r.goal].pattern.iter().map(|l| l.to_json()).collect::<Vec<_>>(), "reference": format!("{:?}", r.reference), "budget": BUDGETS[top]});
         let bind = |b: &Vec<cs_rep::matcher::Binding>| b.iter().take(3).map(|x| cs_rep::serde_json::json!(x)).collect::<Vec<_>>();
         match &r.list[top] {
-            Answer::Reached(x) => { o["status"] = "reached".into(); o["line"] = x.line.clone().into(); o["plies"] = x.plies.into(); o["bindings"] = bind(&x.bindings).into(); }
-            Answer::Touched(x) => { o["status"] = "touched".into(); o["line"] = x.line.clone().into(); o["plies"] = x.plies.into(); o["reply"] = x.reply.clone().into(); o["bindings"] = bind(&x.bindings).into(); }
+            Answer::Reached(x) => { o["status"] = "reached".into(); o["line"] = x.line.clone().into(); o["plies"] = x.plies.into(); o["bindings"] = bind(&x.bindings).into(); let (took, gave) = split(&x.taken); o["took"] = took.into(); o["gave"] = gave.into(); o["value"] = x.value.into(); }
+            Answer::Touched(x) => { o["status"] = "touched".into(); o["line"] = x.line.clone().into(); o["plies"] = x.plies.into(); o["reply"] = x.reply.clone().into(); o["bindings"] = bind(&x.bindings).into(); let (took, gave) = split(&x.taken); o["took"] = took.into(); o["gave"] = gave.into(); o["value"] = x.value.into(); }
             Answer::OutOfReach { depth } => { o["status"] = "out".into(); o["depth"] = (*depth).into(); }
             Answer::NotSettled { depth, .. } => { o["status"] = "not_settled".into(); o["depth"] = (*depth).into(); }
         }
@@ -719,4 +724,43 @@ fn the_answers_at_the_top_budget_are_written_for_the_reader_when_asked() {
     }
     std::fs::write(&out, lines.join("\n") + "\n").unwrap();
     println!("OBS 79.28 answers written: {} lines to {out}", lines.len());
+}
+
+/// PLAN 79.29 PART A: the cost of the second reading, on the questions of 79.28 (goals.fixture) and of 79.27 (goals_79_27.fixture), one tree per position (the list of each position), at the three budgets: nodes in all, nodes of each reading, the goals settled and what the first reading knew where the second expanded.
+/// With LAYER4_DUMP=<file> every answer of every goal is written (the status, the plies, the line, the reply, the bindings) one line each, so that the answers of two builds are compared by a program and not by eye.
+#[test]
+fn the_cost_of_the_second_reading_is_counted_where_it_goes_and_the_answers_are_dumped_when_asked() {
+    let mut dump: Vec<String> = vec![];
+    for name in ["goals.fixture", "goals_79_27.fixture"] {
+        let games = read_goals_from(name);
+        for &budget in BUDGETS.iter() {
+            let mut nodes = 0u64;
+            let mut diag = cs_tactics::reach::Diag::default();
+            let mut stat = [0usize; 4];
+            for fx in &games {
+                let res: Vec<Reply> = par(fx, fx.positions.len(), &|g, st, p| {
+                    let s = g.read_state_text(&fx.positions[p].text).unwrap();
+                    ask(&question(g, st, &s, &holds_goals(&fx.positions[p]), budget, &Count))
+                });
+                for (p, r) in res.iter().enumerate() {
+                    nodes += r.nodes;
+                    let d = r.diag;
+                    diag.calls_held += d.calls_held; diag.calls_touched += d.calls_touched; diag.calls_both += d.calls_both;
+                    for (k, a) in r.answers.iter().enumerate() {
+                        stat[status(a) as usize] += 1;
+                        let body = match a {
+                            Answer::Reached(x) => format!("reached\t{}\t{}\t{}\t{}", x.plies, x.line.join(" "), "", x.bindings.len()),
+                            Answer::Touched(x) => format!("touched\t{}\t{}\t{}\t{}", x.plies, x.line.join(" "), x.reply, x.bindings.len()),
+                            Answer::OutOfReach { depth } => format!("out\t{depth}\t\t\t0"),
+                            Answer::NotSettled { depth, .. } => format!("not_settled\t{depth}\t\t\t0"),
+                        };
+                        dump.push(format!("{name}\t{budget}\t{}\t{}\t{k}\t{body}", fx.name, fx.positions[p].id));
+                    }
+                }
+            }
+            println!("OBS 79.29 {name} at {budget} nodes: nodes {nodes}; reached {}, touched {}, out of reach {}, not settled {}; settled {}", stat[0], stat[1], stat[2], stat[3], stat[0] + stat[1] + stat[2]);
+            println!("OBS 79.29 {name} at {budget} nodes, calls of the tree asking held only {}, touched only {}, both {}", diag.calls_held, diag.calls_touched, diag.calls_both);
+        }
+    }
+    if let Ok(out) = std::env::var("LAYER4_DUMP") { std::fs::write(&out, dump.join("\n") + "\n").unwrap(); println!("OBS 79.29 answers dumped: {} lines to {out}", dump.len()); }
 }

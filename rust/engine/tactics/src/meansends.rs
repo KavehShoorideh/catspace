@@ -190,9 +190,8 @@ pub struct Reply {
     /// where the cost of the statements' tree went: positions made on the live graph, rows matched
     pub makes: u64,
     pub matches: u64,
-    /// nodes of the statements' tree spent reading the goals held (the first reading) and reading the goals touched (the second)
-    pub nodes_held: u64,
-    pub nodes_touched: u64,
+    /// plan 79.29 part A: where the calls of the statements' one tree went, by what they were asked (summed over the groups)
+    pub diag: reach::Diag,
 }
 
 /// THE ENTRY WITH GOALS, with the narrowing of the statements' tree given (the entry of the layer is `ask`, which narrows; the test reads the tree without it to measure the narrowing).
@@ -206,7 +205,7 @@ pub fn ask_with<G: Game + Placed, J: Judge>(q: &Question<G, J>, narrow: reach::N
     let mut left = q.nodes;
     let mut spent = 0u64;
     let (mut makes, mut matches) = (0, 0);
-    let (mut nodes_held, mut nodes_touched) = (0u64, 0u64);
+    let mut diag = reach::Diag::default();
     let mut reads: Vec<reach::Read> = vec![];
     let mut tree_goals: Vec<Statement> = vec![];
     for (gi, grp) in groups.iter().enumerate() {
@@ -215,7 +214,8 @@ pub fn ask_with<G: Game + Placed, J: Judge>(q: &Question<G, J>, narrow: reach::N
             Goal::Holds(_) => {
                 tree_goals = grp.iter().map(|&i| if let Goal::Holds(s) = &q.goals[i] { s.clone() } else { unreachable!() }).collect();
                 let r = reach::read(&reach::Ask { game: q.game, board: q.board, state: q.state, judge: q.judge, side: q.side, goals: &tree_goals, nodes: share, seconds: q.seconds, max_depth: q.max_depth, history: q.history.clone(), narrow });
-                left -= r.nodes.min(left); spent += r.nodes; makes += r.makes; matches += r.matches; nodes_held += r.reads[0].1; nodes_touched += r.reads[1].1;
+                left -= r.nodes.min(left); spent += r.nodes; makes += r.makes; matches += r.matches; 
+                diag.calls_held += r.diag.calls_held; diag.calls_touched += r.diag.calls_touched; diag.calls_both += r.diag.calls_both;
                 for (k, &i) in grp.iter().enumerate() {
                     answers[i] = Some(match &r.outcomes[k] {
                         reach::Outcome::Reached(l) => Answer::Reached(Reached { first: l.first, first_name: l.names.first().cloned(), line: l.names.clone(), plies: l.plies, bindings: l.bindings.clone(), taken: l.taken.clone(), value: l.value, found: None }),
@@ -259,7 +259,7 @@ pub fn ask_with<G: Game + Placed, J: Judge>(q: &Question<G, J>, narrow: reach::N
             both.push(Both { goals: (statements[a], statements[b]), line: line.names.clone(), one_reply_meets_both: one });
         } }
     }
-    Reply { answers: answers.into_iter().map(|a| a.expect("every goal is answered")).collect(), both, nodes: spent, makes, matches, nodes_held, nodes_touched }
+    Reply { answers: answers.into_iter().map(|a| a.expect("every goal is answered")).collect(), both, nodes: spent, makes, matches, diag }
 }
 
 /// THE ENTRY OF LAYER 4 (see the block above).
