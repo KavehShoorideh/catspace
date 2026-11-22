@@ -29,10 +29,11 @@ const BUDGETS: [u64; 3] = [5_000, 50_000, 500_000];
 /// The depth in plies the goals are asked and the reference reads to: the side, the reply, the side.
 const DEPTH: i32 = 5;
 /// THE FLOORS (what the layer did when this test was written, not a claim about its strength): over the goals of the fixture, at each budget, the goals the layer says reached, the goals it says touched, and the goals it settles (reached, touched or out of reach).
-const FLOOR_REACHED: [usize; 3] = [131, 134, 134];
-/// (plan 79.29 part A: 6 at the smallest budget in 79.28; one goal that was touched there is now not settled, because the one reading that carries both answers did not finish it inside the budget while 12 other goals are newly settled there; the floors are reset in part B.)
-const FLOOR_TOUCHED: [usize; 3] = [5, 96, 103];
-const FLOOR_SETTLED: [usize; 3] = [159, 366, 400];
+/// PLAN 79.29 PART B: RESET from the run on the remade fixture (no goal names one unit twice, every negated literal goes with the literal that keeps its unit in place). Side by side with the floors of 79.28 on the old fixture (reached 131, 134, 134; touched 6 then 5 after part A, 96, 103; settled 159, 366, 400):
+/// now reached 107, 110, 110; touched 1, 98, 110; settled 139, 384, 400.
+const FLOOR_REACHED: [usize; 3] = [107, 110, 110];
+const FLOOR_TOUCHED: [usize; 3] = [1, 98, 110];
+const FLOOR_SETTLED: [usize; 3] = [139, 384, 400];
 /// What a kind of goal must be at least, in the reference, in the cases of its kind (plan 79.28 part C).
 const KIND_FLOOR: usize = 10;
 
@@ -388,6 +389,7 @@ fn the_layer_agrees_with_the_reference_on_every_goal_at_three_budgets() {
     let (games, rows) = table();
     let mut kinds: BTreeSet<&str> = BTreeSet::new();
     for r in rows { kinds.insert(&r.kind); }
+    let mut seen: Vec<(usize, usize, usize)> = vec![];
     for b in 0..BUDGETS.len() {
         let (mut reached, mut touched, mut out, mut unsettled, mut contradictions, mut exact, mut line_gap) = (0, 0, 0, 0, 0, 0, 0);
         let mut per_kind: BTreeMap<&str, [usize; 5]> = BTreeMap::new();
@@ -404,8 +406,12 @@ fn the_layer_agrees_with_the_reference_on_every_goal_at_three_budgets() {
         for (k, c) in &per_kind { println!("OBS 79.28 list at {} nodes, kind {k}: reached {}, touched {}, out of reach {}, not settled {}, contradictions {}", BUDGETS[b], c[0], c[1], c[2], c[3], c[4]); }
         assert_eq!(contradictions, 0, "every settled answer is the reference's: reached only where it reaches, touched only where it touches, out of reach only where it does neither");
         assert_eq!(line_gap, 0, "a line is never shorter than the reference's fewest plies");
-        assert!(reached >= FLOOR_REACHED[b] && touched >= FLOOR_TOUCHED[b] && reached + touched + out >= FLOOR_SETTLED[b], "the floors: reached {reached} touched {touched} settled {}", reached + touched + out);
+        seen.push((reached, touched, reached + touched + out));
         if b == BUDGETS.len() - 1 { assert_eq!(unsettled, 0, "at the top budget every goal of this depth is settled"); assert_eq!(exact, rows.len(), "at the top budget the layer says exactly what the reference does"); }
+    }
+    println!("OBS 79.29 observed (reached, touched, settled) at the three budgets: {:?}; floors: reached {FLOOR_REACHED:?}, touched {FLOOR_TOUCHED:?}, settled {FLOOR_SETTLED:?}", seen);
+    for (b, &(reached, touched, settled)) in seen.iter().enumerate() {
+        assert!(reached >= FLOOR_REACHED[b] && touched >= FLOOR_TOUCHED[b] && settled >= FLOOR_SETTLED[b], "the floors at {} nodes: reached {reached} touched {touched} settled {settled}", BUDGETS[b]);
     }
     println!("OBS 79.28 kinds: {:?} on {} games", kinds, games.len());
 }
@@ -644,7 +650,7 @@ fn the_two_old_goals_answer_as_the_ledger_search_did_when_asked_in_a_list_of_one
 fn positions_where_one_line_reaches_two_goals_are_read_from_the_fixture_the_reference_made() {
     let games = read_goals();
     if std::env::var("LAYER4_MAKE_PAIRS").is_ok() {
-        let mut lines = vec!["note\tplan 79.28 part D: positions where ONE line reaches two goals of the goals fixture within the depth, in the meaning of plan 79.28 (each pattern held along one line against every reply), found by the reference, each goal also reached alone; made by running layer4_goals.rs with LAYER4_MAKE_PAIRS=1".to_string()];
+        let mut lines = vec!["note\tplan 79.29 part B (first made in plan 79.28 part D): positions where ONE line reaches two goals of the goals fixture within the depth, in the meaning of plan 79.28 (each pattern held along one line against every reply), found by the reference, each goal also reached alone; made by running layer4_goals.rs with LAYER4_MAKE_PAIRS=1".to_string()];
         for fx in &games {
             lines.push(format!("game\t{}\t{}", fx.name, fx.decl));
             let found: Vec<Vec<(usize, usize, usize)>> = par(fx, fx.positions.len(), &|g, st, p| {
