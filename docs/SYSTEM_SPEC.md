@@ -882,6 +882,12 @@ what cost, and the layer above chooses; it spends its budget in the order of the
 order, never as a value. A list of possible goals is kept (READING: in the memory of the game at hand, carried across moves, a
 goal falling when what it read changes; not built in plan 79.27). Plan 79.27 amendment.
 
+**Reached means the goal outlasts the reply** (proposed by the main agent in the report of plan 79.27; Kaveh 2026-11-22:
+"ok"). DECIDED: layer 4 says a goal is reached only if it still holds after the other side's reply, whatever that reply is; a
+goal that holds for one ply and is then undone is said apart as touched and never counted as reached. READING of the main agent
+for the exact form: reached is the pattern binding at a position where the asking side is to move or the game is over, on every
+reply. Plan 79.28.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1099,8 +1105,8 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     value still judges the line's end (rule 7 stands); the layer above chooses which goal to ask. Also open: with the wake's
     judge the layer claims a gain in 9 of 61 positions the outside engine calls quiet; not yet read one by one.
 47. From plan 79.27 (2026-11-21). Choices the builder made where the spec is silent, kept until you say otherwise: a goal is
-    reached when its pattern binds at any position of the line, the root included, for one ply or more (PROPOSED by the main
-    agent instead: reached means it still holds after the other side's best reply, and what holds for one ply only is said apart);
+    reached when its pattern binds at any position of the line, the root included, for one ply or more (DECIDED otherwise by Kaveh 2026-11-22, section 11 last block, plan 79.28; as proposed by the main
+    agent: reached means it still holds after the other side's best reply, and what holds for one ply only is said apart);
     the budget is shared equally between the statements as one group and each old goal; one tree holds at most 64 goals; "one
     reply meets both" means a reply after which both goals are out of reach within the plies left. Open: the pattern language
     cannot say two different units; the search of 78.36 and the new one share their deepening and memo as two copies.
@@ -1262,4 +1268,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 3 holds two implementations, value and the measure of progress; their agreement is measured | 2026-11-21 | 11 (last block) |
 | Layer 4 takes a goal as an input; the layer above chooses it | 2026-11-21 | 11 (last block) |
 | Layer 4 is asked with an ordered list of goals and answers each; it does not choose by worth | 2026-11-21 | 11 (last block) |
+| Reached means the goal outlasts the reply; held for one ply is touched | 2026-11-22 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
