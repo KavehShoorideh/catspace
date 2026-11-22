@@ -1,0 +1,13 @@
+//! LAYER 0, MODULE 6: OPPOSED CHOICE (plan 79.30; SYSTEM_SPEC 11 "Layer 0 holds six things" item 6). The logic of two choosers who want opposite things: "there is a choice such that for every counter-choice". THE MEANING that the search of layer 4 must agree with;
+//! the search is not moved or changed here, and a comparison with it is not part of this plan.
+//!
+//! INTERFACE (callers: tests of layer 0 now; layer 4 later, as the meaning to be held against).
+//!   `Chooser::{A, B}`, `Chooser::other()`.
+//!   `Tree<R>`: a finite tree whose nodes are a result `Tree::Result(R)`; a choice IN TURN by one chooser `Tree::Turn { by, options }` (at least one option); a choice AT ONCE by two choosers `Tree::Table { rows, cols, cells }` (A picks a row, B a column, cells in
+//!     row-major order, each a tree); a choice BY CHANCE `Tree::Chance(Spread<Tree<R>>)`. Made by `Tree::turn(by, options) -> Result<Tree, ChoiceError>`, `Tree::table(rows, cols, cells) -> Result<Tree, ChoiceError>`, `Tree::chance(Vec<(Tree, f64)>) -> Result<Tree, ChoiceError>`.
+//!   `Order<R>`: an order of preference over results for a chooser, by a score (more is better): `Order::by(impl Fn(&R) -> Num)`, `prefers(&R, &R) -> bool`, `compare(&R, &R) -> Ordering`, `reversed() -> Order<R>`. Two choosers who want opposite things: B's order is A's reversed.
+//!   READING ONE, CAN FORCE: `can_force(&Tree, who: Chooser, holds: &dyn Fn(&R) -> bool) -> bool` (`who` can make the property hold of the result against every counter-choice; in turn: some option of its own, every option of the other; at once, PURE choices only:
+//!     a row of its own such that every column of the other; by chance: every outcome of positive chance); `force_chance(&Tree, who, holds) -> Result<Num, NumError>` (the least chance with which `who` can make it hold: chance nodes are weighed by their chances).
+//!   READING TWO, VALUE: `value(&Tree, a_order: &Order<R>) -> Result<Bounds, NumError>`, `Bounds { lower, upper }`, the values for A when the two want opposite things. Without a choice at once lower equals upper. For a choice at once only PURE choices are read:
+//!     the LOWER value is what A can make sure of (best row against worst column), the UPPER is what B can hold A down to (best column for B against A's best row). MIXED CHOICES (a chance over rows or columns) ARE NOT BUILT; a table with no pure saddle has lower below upper and says only that.
+//!   LAWS: lean/ideas/Ideas/Layer0/Choice.lean (in a finite tree of turns without chance exactly one of "A can force P" and "B can force not-P" holds; the lower value is not above the upper).
