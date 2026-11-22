@@ -22,7 +22,7 @@
 //!     (whether answers are kept by key across the walk).
 //!   `Walk<S, T, N>`: `new(space, steer)`, `go(depth, ask, later, by_own, &mut out) -> Result<(), Cut>` (the reading at the node the space is at), `line_push(key)`, `line_pop()` (a caller that walks a line by hand keeps the line's keys), `horizon`, `taint` (read and
 //!     reset by the caller between deepenings), and the space and the steer as public fields (the caller keeps what it counts in them).
-//!   THE CASES: layer 4's position and steering (cs_tactics::reach); the explicit tree (`TreeSpace`, for the forcing reading of `choice::can_force_set`, and `TreeSpace::value` for the readings that weigh numbers: `guarantee`, `value`, `force_chance`).
+//!   THE CASES: layer 4's position and steering (the module `reach` of the tactical layer); the explicit tree (`TreeSpace`, for the forcing reading of `choice::can_force_set`, and `TreeSpace::value` for the readings that weigh numbers: `guarantee`, `value`, `force_chance`).
 //! LAWS: lean/ideas/Ideas/Layer0/Choice.lean (what the forcing reading is: coalition_exactly_one; what the kept answers rely on: stated there).
 use std::collections::HashMap;
 use std::fmt::Debug;

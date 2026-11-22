@@ -1,5 +1,5 @@
-//! PLAN 79.32 PART F (LAYER 0'S TEST OF SPEED; SYSTEM_SPEC 11 "The pure search is mathematics and lives in layer 0", 13 item 50). A made implicit tree of a fixed size is walked by `choice::walk::Walk`: no tree is built, a node is a number and its options are computed when asked, stepped into and back out of in place.
-//! It prints OBS lines (nodes read, seconds, nodes a second, whole numbers of two sizes as the depth and the steps) and asserts the answer against a plain recursion written apart in this file over the same implicit tree. The speed is printed, never asserted: a number of nodes a second is a measure, not a law.
+//! PLAN 79.32 PART F (LAYER 0'S TEST OF SPEED; SYSTEM_SPEC 11 "The pure search is mathematics and lives in layer 0", 13 item 50). A made implicit tree of a fixed size is walked by `choice::walk::Walk`: no tree is built, a node is a number and its options are computed when asked, stepped into and back out of on the spot.
+//! It prints OBS lines (nodes read, seconds, nodes a second, whole numbers of two sizes as the depth and the steps) and asserts the answer against a plain recursion written apart in this test over the same implicit tree. The speed is printed, never asserted: a number of nodes a second is a measure, not a law.
 use cs_base::choice::walk::{Ask, Cut, Look, Out, Space, Steer, Walk, Whole};
 use std::time::Instant;
 
