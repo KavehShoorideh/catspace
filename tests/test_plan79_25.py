@@ -88,20 +88,20 @@ def test_the_scans_see_what_they_are_for():
 
 def test_the_fixtures_are_small_in_the_format_the_test_reads_and_name_no_player():
     files = sorted(FIXTURES.glob("*.fixture"))
-    assert [p.name for p in files] == ["puzzle.fixture", "quiet.fixture", "ratchet.fixture"], [p.name for p in files]
+    assert [p.name for p in files] == ["before.fixture", "puzzle.fixture", "quiet.fixture", "ratchet.fixture", "worth.fixture"], [p.name for p in files]  # plan 79.26 added before.fixture and worth.fixture
     total = sum(p.stat().st_size for p in files)
     assert total < 500_000
     tags = {}
     for p in files:
         lines = p.read_text().splitlines()
-        assert lines[0].startswith("game\t") or p.name == "ratchet.fixture"
+        assert lines[0].startswith("game\t") or p.name in ("ratchet.fixture", "before.fixture", "worth.fixture")
         tags[p.name] = {l.split("\t")[0] for l in lines}
         print(f"OBS 79.25 fixture {p.name}: {p.stat().st_size} bytes, {len(lines)} lines")
         for l in lines:
             assert not re.search(r"\b(elo|rating|player|user|white_name|black_name|site)\b", l, flags=re.I), l[:80]
     assert tags["puzzle.fixture"] == {"game", "rule", "puzzle"}, tags
     assert tags["quiet.fixture"] == {"game", "rule", "quiet"}, tags
-    assert tags["ratchet.fixture"] == {"note", "floor"}, tags
+    assert tags["ratchet.fixture"] == {"note", "floor", "wake_floor"}, tags
     pz = [l.split("\t") for l in (FIXTURES / "puzzle.fixture").read_text().splitlines() if l.startswith("puzzle\t")]
     assert len(pz) >= 300 and all(len(x) == 8 for x in pz)
     assert all(int(x[3]) == (len(x[7].split()) + 1) // 2 for x in pz), "our moves is read off the solution"
