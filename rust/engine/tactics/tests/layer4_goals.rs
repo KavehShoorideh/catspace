@@ -770,3 +770,35 @@ fn the_cost_of_the_second_reading_is_counted_where_it_goes_and_the_answers_are_d
     }
     if let Ok(out) = std::env::var("LAYER4_DUMP") { std::fs::write(&out, dump.join("\n") + "\n").unwrap(); println!("OBS 79.29 answers dumped: {} lines to {out}", dump.len()); }
 }
+
+/// PLAN 79.32 PART B, THE BASELINE: with LAYER4_BASELINE=<file> every question of this file's fixtures is asked at every budget (the list of each position under the four variants of the narrowing, and each goal alone narrowed) and the WHOLE reply is written, one line each: the answers (status, plies, line, reply,
+/// bindings, taken, value), the pairs, the nodes, the positions made, the rows matched and where the calls went. Two builds are compared by a program (scripts/whole_79_32_compare.py), never by eye. It prints nothing and asserts nothing when the variable is not set.
+#[test]
+fn the_whole_reply_of_every_question_is_written_when_asked_for_the_comparison_of_two_builds() {
+    let Ok(out) = std::env::var("LAYER4_BASELINE") else { return };
+    let variants = [("plain", PLAIN), ("table", cs_tactics::reach::Narrow { table: true, order: false }), ("order", cs_tactics::reach::Narrow { table: false, order: true }), ("both", NARROWED)];
+    let mut lines: Vec<String> = vec![];
+    for name in ["goals.fixture", "goals_79_27.fixture"] {
+        for fx in &read_goals_from(name) {
+            let per: Vec<Vec<String>> = par(fx, fx.positions.len(), &|g, st, p| {
+                let s = g.read_state_text(&fx.positions[p].text).unwrap();
+                let goals = holds_goals(&fx.positions[p]);
+                let mut v = vec![];
+                for &b in BUDGETS.iter() {
+                    for (vn, nar) in &variants {
+                        let r = ask_with(&question(g, st, &s, &goals, b, &Count), *nar);
+                        v.push(format!("{name}\t{}\t{}\t{b}\t{vn}\tlist\t{r:?}", fx.name, fx.positions[p].id));
+                    }
+                    for k in 0..goals.len() {
+                        let r = ask(&question(g, st, &s, &goals[k..k + 1], b, &Count));
+                        v.push(format!("{name}\t{}\t{}\t{b}\tboth\talone{k}\t{r:?}", fx.name, fx.positions[p].id));
+                    }
+                }
+                v
+            });
+            lines.extend(per.into_iter().flatten());
+        }
+    }
+    std::fs::write(&out, lines.join("\n") + "\n").unwrap();
+    println!("OBS 79.32 baseline written: {} questions to {out}", lines.len());
+}
