@@ -164,7 +164,7 @@ mod tests {
         }
     }
 
-    /// Mirrors Ideas.Layer0.Choice.lower_le_upper.
+    /// Mirrors Ideas.Layer0.Choice.low_le_up and Ideas.Layer0.Choice.low_eq_up_of_tableFree.
     #[test]
     fn the_lower_value_is_not_above_the_upper_and_they_meet_without_a_choice_at_once() {
         let mut m = Maker::new(42);
@@ -194,7 +194,7 @@ mod tests {
         assert!(can_force(&s, Chooser::A, &|r| *r >= 2));
     }
 
-    /// The value of a tree of turns against the forcing reading: A makes sure of at least k exactly when A can force "at least k".
+    /// Mirrors Ideas.Layer0.Choice.value_ge_iff_canForce. The value of a tree of turns against the forcing reading: A makes sure of at least k exactly when A can force "at least k".
     #[test]
     fn the_value_of_a_tree_of_turns_agrees_with_the_forcing_reading() {
         let mut m = Maker::new(43);
