@@ -5,5 +5,6 @@ edition = "2021"
 description = "plan 79.21: layer 1, the REPRESENTATION, below the rules: the fact, the statement and its two memories, the board and the graph of a position, the history of a game. Depends on no rules crate (not cs_game); reads a game's description only for its board."
 
 [dependencies]
+cs_base = { path = "../base" }
 cs_gdl = { path = "../gdl" }
 serde_json = { version = "1", features = ["float_roundtrip"] }

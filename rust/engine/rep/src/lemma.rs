@@ -8,37 +8,8 @@
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Arg { Var(String), Const(String) }
-
-impl Arg {
-    pub fn parse(s: &str) -> Arg { match s.strip_prefix('?') { Some(v) => Arg::Var(v.to_string()), None => Arg::Const(s.to_string()) } }
-    pub fn text(&self) -> String { match self { Arg::Var(v) => format!("?{v}"), Arg::Const(c) => c.clone() } }
-}
-
-/// PLAN 79.28 PART C (SYSTEM_SPEC 11 "Reached means the goal outlasts the reply", 7 goals; ledger row 14; piece: representation). THE ONE LITERAL OF THE LANGUAGE THAT IS NOT A ROW: `differ(a, b)`, two arguments (placeholders or constants), says that the two stand for DIFFERENT things.
-/// It is written and read back as every literal is ({"relation": "differ", "args": ["?x", "?y"], "neg": false}), so a statement stored before it existed reads unchanged (no stored statement used the word as a relation). It is not matched over rows: the matcher tests it
-/// once both arguments are bound (a placeholder it names must be bound by a positive literal that is a row, as for a negated literal). Negated, `differ(a, b)` says they are the SAME. No fact of any game has this relation, and `falls_by` reads nothing from it.
-pub const DIFFER: &str = "differ";
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Lit { pub neg: bool, pub relation: String, pub args: Vec<Arg> }
-
-impl Lit {
-    /// The literal that says two placeholders (or a placeholder and a constant) stand for different things.
-    pub fn differ(a: &str, b: &str) -> Lit { Lit::pos(DIFFER, &[a, b]) }
-    /// Whether this is the language's one literal that is not a row.
-    pub fn is_differ(&self) -> bool { self.relation == DIFFER }
-    pub fn pos(relation: &str, args: &[&str]) -> Lit { Lit { neg: false, relation: relation.to_string(), args: args.iter().map(|a| Arg::parse(a)).collect() } }
-    pub fn vars(&self) -> BTreeSet<String> { self.args.iter().filter_map(|a| if let Arg::Var(v) = a { Some(v.clone()) } else { None }).collect() }
-    pub fn to_json(&self) -> Value { json!({"relation": self.relation, "args": self.args.iter().map(|a| a.text()).collect::<Vec<_>>(), "neg": self.neg}) }
-    pub fn from_json(v: &Value) -> Result<Lit, String> {
-        let relation = v.get("relation").and_then(|x| x.as_str()).ok_or("a literal has a relation")?.to_string();
-        let args = v.get("args").and_then(|x| x.as_array()).ok_or("a literal has args")?
-            .iter().map(|a| a.as_str().map(Arg::parse).ok_or_else(|| "an argument is text".to_string())).collect::<Result<Vec<_>, _>>()?;
-        Ok(Lit { neg: v.get("neg").and_then(|x| x.as_bool()).unwrap_or(false), relation, args })
-    }
-}
+// plan 79.30: the argument, the literal, the one literal that is not a row, and the check of a body moved down to layer 0 (cs_base::logic); every old path resolves here.
+pub use cs_base::logic::{validate_body, Arg, Lit, DIFFER};
 
 /// The effect of a move on the state's facts, over the delta relations.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -92,18 +63,6 @@ impl Lemma {
 
     /// The relations the body reads.
     pub fn body_relations(&self) -> BTreeSet<String> { self.body.iter().map(|l| l.relation.clone()).collect() }
-}
-
-/// The well-formedness of a body (a lemma's or a claim's): a name, at least one positive literal, negated literals safe (every variable bound by a positive one).
-pub fn validate_body(at: &str, body: &[Lit]) -> Result<(), String> {
-    if at.is_empty() { return Err("a lemma needs a name".into()); }
-    if !body.iter().any(|l| !l.neg && !l.is_differ()) { return Err(format!("{at}: the body needs a positive literal")); }
-    let bound: BTreeSet<String> = body.iter().filter(|l| !l.neg && !l.is_differ()).flat_map(|l| l.vars()).collect();
-    for l in body.iter().filter(|l| l.neg || l.is_differ()) {
-        if l.is_differ() && l.args.len() != 2 { return Err(format!("{at}: differ takes two arguments")); }
-        if let Some(v) = l.vars().into_iter().find(|v| !bound.contains(v)) { return Err(format!("{at}: the {} literal {} uses ?{v}, which no positive literal binds", if l.neg { "negated" } else { "differ" }, l.relation)); }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

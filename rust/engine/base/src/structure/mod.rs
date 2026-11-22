@@ -13,3 +13,50 @@
 //!     `Direction { dx: Num, dy: Num }`, `direction(from, to) -> Option<Direction>` (None when they are one point), `Direction::same_heading(&Direction) -> Result<bool, NumError>`, `Direction::angle() -> f64`;
 //!     `Region::{HalfPlane { a, b, c }, Box { lo, hi }, Disc { centre, radius }, Polygon(Vec<Point>), Union(Vec<Region>), Meet(Vec<Region>)}`, `Region::union(self, Region)`, `Region::meet(self, Region)`;
 //!     `Region::inside(&self, &Point) -> Result<bool, NumError>` (the edge is inside: a half plane is `a x + b y + c >= 0`); `between(a, b, p) -> Result<bool, NumError>` (p lies on the straight run from a to b, ends included).
+//!   (`ChainError::TwoAfter` is kept for a caller that builds the successor map from rows and finds a node with two successors; `chains` itself takes one successor per node and so can only say `TwoBefore` and `Closed`.)
+use crate::number::Num;
+
+pub mod geometry;
+pub mod graph;
+pub mod sequence;
+
+pub use geometry::{between, direction, Direction, Plane, Point, Region};
+pub use graph::{chains, Chain, ChainError, Chains, Graph};
+pub use sequence::Sequence;
+
+/// ONE INTERFACE OF DISTANCE that the graph (in steps) and the plane (straight line) both give.
+pub trait Metric {
+    type Point;
+    /// The distance from one point to another; None when there is none (no path, or the number overflowed).
+    fn distance(&self, a: &Self::Point, b: &Self::Point) -> Option<Num>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One body of checks for any `Metric`: nought only from a point to itself, and the triangle law, over the points given (the same function runs on the graph and on the plane).
+    fn laws<M: Metric>(m: &M, points: &[M::Point], same: &dyn Fn(&M::Point, &M::Point) -> bool) {
+        let slack = Num::real(1e-9).unwrap();
+        for a in points { for b in points {
+            if let Some(d) = m.distance(a, b) { assert_eq!(d == Num::whole(0), same(a, b)); assert!(d >= Num::whole(0)); }
+            for c in points {
+                if let (Some(x), Some(y), Some(z)) = (m.distance(a, b), m.distance(b, c), m.distance(a, c)) { assert!(z <= x.add(&y).unwrap().add(&slack).unwrap()); }
+            }
+        } }
+    }
+
+    #[test]
+    fn one_interface_of_distance_is_given_by_the_graph_and_by_the_plane() {
+        let mut g: Graph<u8, u8> = Graph::new();
+        for (a, b) in [(0, 1), (1, 2), (2, 3), (3, 4), (1, 4)] { g.add_both(a, b, 0); }
+        g.add_node(9);
+        laws(&g, &[0, 1, 2, 3, 4, 9], &|a, b| a == b);
+        assert_eq!(g.distance(&0, &3), Some(Num::whole(3)));
+        assert_eq!(g.distance(&0, &9), None);
+        let pts: Vec<Point> = (-2..=2).flat_map(|x| (-2..=2).map(move |y| Point::whole(x, y))).collect();
+        laws(&Plane, &pts, &|a, b| a == b);
+        // the plane's distance is a whole number where the root is exact and the graph's is always whole: one type, one order
+        assert!(Plane.distance(&Point::whole(0, 0), &Point::whole(1, 1)).unwrap() > g.distance(&0, &1).unwrap());
+    }
+}

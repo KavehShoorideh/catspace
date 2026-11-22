@@ -16,6 +16,7 @@
 //!   unit `unit:<side>:<kind>:<place text>`; relation nodes `bear(<unit id>,<place id>)`, `may_move(..)`, `shut(..)` (for the side to move), `through(..)` (for both sides, from the profile of the kinds).
 //! PLAIN LINKS: on_line, next, on_edge, edge_distance, line_along, reverse, edge_of, unit_on, unit_kind, unit_side. RELATION LINKS (the same for bear, may_move, shut, through): by, at_place, at_unit, along, between.
 use crate::fact::{Fact, UnitDecl};
+use cs_base::structure::ChainError;
 use crate::names::{Kind, Names, Place, PlaceSet, Role, Side};
 use crate::steps::Steps;
 use serde_json::{json, Value};
@@ -120,25 +121,18 @@ impl Board {
             if next[d][f as usize].replace(t).is_some_and(|x| x != t) { return Err(format!("direction {} gives two places after one: it is not a chain", steps.directions[d])); }
             if prev[d][t as usize].replace(f).is_some_and(|x| x != f) { return Err(format!("direction {} gives two places before one: it is not a chain", steps.directions[d])); }
         }
-        let reverse: Vec<Option<usize>> = (0..nd).map(|d| (0..nd).find(|&e| next[e] == prev[d] && prev[d].iter().any(|x| x.is_some()))).collect();
-        // lines: for the first direction of each pair (or a direction with no reverse), the maximal chains of at least two places
-        let mut lines: Vec<Line> = vec![];
-        for d in 0..nd {
-            if reverse[d].is_some_and(|e| e < d) { continue; }
-            let mut seen = vec![false; np];
-            for p in 0..np {
-                if next[d][p].is_none() || prev[d][p].is_some() { continue; }
-                let mut places = vec![p as Place];
-                seen[p] = true;
-                let mut at = p;
-                while let Some(q) = next[d][at] { places.push(q); seen[q as usize] = true; at = q as usize; }
-                lines.push(Line { direction: d, places });
-            }
-            if (0..np).any(|p| next[d][p].is_some() && !seen[p]) { return Err(format!("direction {} has a closed chain: layer 1 does not read it", steps.directions[d])); }
-        }
+        // plan 79.30: the chains of the successor maps (the reverse of each direction, the maximal lines, the steps to the end of each) are cs_base's, the pure core of this graph; what stays here is the reading of the rows, the names and the node ids.
+        let next_by_number: Vec<Vec<Option<u32>>> = next.iter().map(|v| v.iter().map(|o| o.map(|p| p as u32)).collect()).collect();
+        let found = cs_base::structure::chains(&next_by_number).map_err(|e| match e {
+            ChainError::Closed(d) => format!("direction {} has a closed chain: layer 1 does not read it", steps.directions[d]),
+            ChainError::TwoBefore(d) => format!("direction {} gives two places before one: it is not a chain", steps.directions[d]),
+            ChainError::TwoAfter(d) => format!("direction {} gives two places after one: it is not a chain", steps.directions[d]),
+        })?;
+        let reverse: Vec<Option<usize>> = found.reverse;
+        let lines: Vec<Line> = found.lines.into_iter().map(|c| Line { direction: c.label, places: c.nodes.into_iter().map(|p| p as Place).collect() }).collect();
         let mut place_lines: Vec<Vec<(u32, u16)>> = vec![vec![]; np];
         for (li, l) in lines.iter().enumerate() { for (i, p) in l.places.iter().enumerate() { place_lines[*p as usize].push((li as u32, i as u16)); } }
-        let edge_distance: Vec<Vec<u16>> = (0..nd).map(|d| (0..np).map(|p| { let (mut n, mut at) = (0u16, p); while let Some(q) = next[d][at] { n += 1; at = q as usize; if n as usize > np { break; } } n }).collect()).collect();
+        let edge_distance: Vec<Vec<u16>> = found.distance_to_end;
 
         let mut nodes: Vec<NodeRec> = vec![];
         let mut push = |kind: NodeType, id: String| -> u32 { nodes.push(NodeRec { kind, id }); nodes.len() as u32 - 1 };
