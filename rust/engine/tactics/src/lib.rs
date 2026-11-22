@@ -12,6 +12,7 @@ pub mod lines;
 pub mod meansends;
 pub mod measure;
 pub mod operators;
+pub mod reach;
 pub mod reason;
 pub mod scenario;
 pub mod sheet;
