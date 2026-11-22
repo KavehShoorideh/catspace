@@ -26,6 +26,8 @@
 //! LAWS: lean/ideas/Ideas/Layer0/Choice.lean (in a finite tree of turns without chance exactly one of "A can force P" and "B can force not-P" holds; the lower value is not above the upper; the guarantees of two choosers who hold each other to a value are
 //! that value; against a fixed belief no spread of options beats the best option). The minimax theorem (that every table has such spreads) is proved there from Mathlib's Sion theorem; the program here finds them and the certificate is tested.
 pub mod lp;
+pub mod tree_space;
+pub mod walk;
 
 use crate::chance::{Belief, ChanceError, Spread};
 use crate::number::{Num, NumError};
@@ -198,25 +200,11 @@ impl<R: 'static> Wants<R> {
 
 // ------------------------------------------------------------------------------------------------------------------------------ reading one: forcing
 
-/// The two sides of a choice at once as the set sees them: whether the row party and the column party are the set's own.
-fn own(side: &Party, row_party: &Party, col_party: &Party) -> (bool, bool) { (row_party.is_part_of(side), col_party.is_part_of(side)) }
-
-/// READING ONE. Whether the set `who` can make the property hold of the result against every counter-choice of the rest. At once, pure choices only.
+/// READING ONE. Whether the set `who` can make the property hold of the result against every counter-choice of the rest. At once, pure choices only. PLAN 79.32: it is the walk of `walk::Walk` over the tree as a `TreeSpace` (property 0, no depth limit, nothing steering).
 pub fn can_force_set<R>(t: &Tree<R>, who: &Party, holds: &dyn Fn(&R) -> bool) -> bool {
-    match t {
-        Tree::Result(r) => holds(r),
-        Tree::Turn { by, options } => if who.contains(by) { options.iter().any(|o| can_force_set(o, who, holds)) } else { options.iter().all(|o| can_force_set(o, who, holds)) },
-        Tree::Table { row_party, col_party, rows, cols, cells } => {
-            let c = |i: usize, j: usize| can_force_set(&cells[i * cols + j], who, holds);
-            match own(who, row_party, col_party) {
-                (true, true) => (0..*rows).any(|i| (0..*cols).any(|j| c(i, j))),
-                (true, false) => (0..*rows).any(|i| (0..*cols).all(|j| c(i, j))),
-                (false, true) => (0..*cols).any(|j| (0..*rows).all(|i| c(i, j))),
-                (false, false) => (0..*rows).all(|i| (0..*cols).all(|j| c(i, j))),
-            }
-        }
-        Tree::Chance(s) => s.outcomes().iter().all(|(o, p)| *p <= Num::whole(0) || can_force_set(o, who, holds)),
-    }
+    let mut w = walk::Walk::<_, _, u16>::new(tree_space::TreeSpace::forcing(t, who, holds), tree_space::Free);
+    let mut out = walk::Out::<u16>::none();
+    w.go(walk::Whole::down(<u16 as walk::Whole>::NONE), walk::Ask { strict: 1, loose: 0 }, false, false, &mut out).is_ok() && out.strict[0] != <u16 as walk::Whole>::NONE
 }
 
 /// READING ONE for one chooser: the case of a set of one.
@@ -226,37 +214,8 @@ fn pick(vals: impl IntoIterator<Item = Num>, best: bool) -> Num {
     vals.into_iter().reduce(|a, b| if best { a.max(b) } else { a.min(b) }).expect("a choice has an option")
 }
 
-/// What the set can make sure of in a score it wants more of, the rest acting against it: at the turn of a member the best option, at any other turn the worst, by chance the expectation, at once (pure choices) by whether the parties are the set's own.
-fn secure<R>(t: &Tree<R>, side: &Party, score: &dyn Fn(&R) -> Result<Num, NumError>) -> Result<Num, NumError> {
-    match t {
-        Tree::Result(r) => score(r),
-        Tree::Turn { by, options } => {
-            let vals = options.iter().map(|o| secure(o, side, score)).collect::<Result<Vec<_>, _>>()?;
-            Ok(pick(vals, side.contains(by)))
-        }
-        Tree::Table { row_party, col_party, rows, cols, cells } => {
-            let cell = |i: usize, j: usize| secure(&cells[i * cols + j], side, score);
-            let grid = (0..*rows).map(|i| (0..*cols).map(|j| cell(i, j)).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?;
-            Ok(pure_choice(&grid, own(side, row_party, col_party)))
-        }
-        Tree::Chance(s) => {
-            let mut acc = Num::whole(0);
-            for (o, p) in s.outcomes() { acc = acc.add(&secure(o, side, score)?.mul(p)?)?; }
-            Ok(acc)
-        }
-    }
-}
-
-/// The value of a grid of cells for the set when each party that is its own picks the best and the others the worst (pure choices).
-fn pure_choice(grid: &[Vec<Num>], own: (bool, bool)) -> Num {
-    let (rows, cols) = (grid.len(), grid[0].len());
-    match own {
-        (true, true) => pick(grid.iter().flatten().copied(), true),
-        (true, false) => pick((0..rows).map(|i| pick(grid[i].iter().copied(), false)), true),
-        (false, true) => pick((0..cols).map(|j| pick((0..rows).map(|i| grid[i][j]), false)), true),
-        (false, false) => pick(grid.iter().flatten().copied(), false),
-    }
-}
+/// What the set can make sure of in a score it wants more of, the rest acting against it: at the turn of a member the best option, at any other turn the worst, by chance the expectation, at once (pure choices) by whether the parties are the set's own. PLAN 79.32: one fold over the tree as a `TreeSpace`.
+fn secure<R>(t: &Tree<R>, side: &Party, score: &dyn Fn(&R) -> Result<Num, NumError>) -> Result<Num, NumError> { tree_space::TreeSpace::valuing(t, side).value(&mut |r| score(r)) }
 
 /// The least chance with which the set can make the property hold (chance nodes weighed by their chances).
 pub fn force_chance_set<R>(t: &Tree<R>, who: &Party, holds: &dyn Fn(&R) -> bool) -> Result<Num, NumError> { secure(t, who, &|r| Ok(Num::whole(holds(r) as i64))) }

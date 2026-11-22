@@ -55,7 +55,7 @@ def test_layer_4_names_no_crate_above_it_calls_no_outside_program_and_lets_no_cl
     # the manifest: the crate's dependencies are layers 1 to 3 and the operator interface; nothing of the wake, the planning or the learning
     cargo = (TACTICS / "Cargo.toml").read_text().split("[dependencies]")[1].split("\n[")[0]      # plan 79.31: the [dependencies] table only; a dev-dependency (cs_base, layer 0, for the test of the meaning) is below
     deps = sorted(re.findall(r"^(cs_\w+)\s*=", cargo, flags=re.M))
-    assert deps == ["cs_game", "cs_operator", "cs_rep", "cs_value"], deps
+    assert deps == ["cs_base", "cs_game", "cs_operator", "cs_rep", "cs_value"], deps
     # the entry is read by the test through the one door
     assert "cs_tactics::meansends::{search, Ask, Ending, Found}" in t
     print("OBS 79.25 scan: the layer's entry and test name no crate above it, no outside program, no clock that decides; the manifest of cs_tactics holds cs_game, cs_operator, cs_rep, cs_value only")

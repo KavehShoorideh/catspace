@@ -6,10 +6,10 @@ description = "plan 78.2: the tactics layer (game-free: it reads only the Game t
 
 [dependencies]
 cs_game = { path = "../game" }
+cs_base = { path = "../base" }
 cs_rep = { path = "../rep" }
 cs_operator = { path = "../operator" }
 cs_value = { path = "../value" }
 rustc-hash = "2.1"
 
 [dev-dependencies]
-cs_base = { path = "../base" }

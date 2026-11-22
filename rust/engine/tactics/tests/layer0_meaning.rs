@@ -135,6 +135,9 @@ fn unfold(g: &R, facts: &Facts, s: &<R as Game>::State, me: Role, depth: i32, pa
     Tree::turn(Chooser::new(g.mover(s).expect("a position the game goes on from") as u32), options).expect("a move was played")
 }
 
+/// PLAN 79.32 PART B: with LAYER0_BASELINE=<file> the whole reply of every question asked here is written (sorted), for the comparison of two builds by a program.
+static DUMP: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 struct Row { game: String, pos: String, goal: usize, depth: i32, layer0: bool, control: bool, with_control: bool, ask: Option<bool>, ask_plies: Option<i32> }
 
 fn statement(id: &str, pattern: Vec<Lit>) -> Statement { Statement { id: id.to_string(), pattern, says: Says::Holds, standing: Standing::Fact, holder: Holder::Ours, also: vec![] } }
@@ -152,6 +155,7 @@ fn compare(fx: &GameFx, with_control: bool) -> Vec<Row> {
             let wrong = if with_control { unfold(g, &facts, &s, me, d, &mut vec![], &p.goals, 0, false) } else { Tree::Result(Held { mask: 0 }) };
             let q = Question { game: g, board: st, state: &s, judge: &Count, side: me, goals: &goals, nodes: NODES, seconds: None, max_depth: d, history: Arc::new(Seen::new()) };
             let reply = ask(&q);
+            if std::env::var("LAYER0_BASELINE").is_ok() { DUMP.lock().unwrap().push(format!("{}\t{}\t{d}\t{reply:?}", fx.name, p.id)); }
             for k in 0..p.goals.len() {
                 let layer0 = can_force_set(&tree, &party(&[Chooser::new(me as u32)]), &|h: &Held| h.mask >> k & 1 == 1);
                 let (a, plies) = match &reply.answers[k] { Answer::Reached(r) => (Some(true), Some(r.plies)), Answer::NotSettled { .. } => (None, None), _ => (Some(false), None) };
@@ -200,6 +204,7 @@ fn the_layer_0_reading_of_reached_is_the_answer_layer_4_gives_on_the_game_at_han
         positions.len(), goals.len(), DEPTHS, compared, unsettled, forced, disagree.len(), shorter_or_longer, t0.elapsed().as_secs_f64());
     println!("OBS 79.31 negative control (a held position read where the pattern binds anywhere on the line, the meaning of plan 79.27): layer 4 and the control apart in {control_apart} of {controlled} answers");
     for d in &disagree { println!("DISAGREE {d}"); }
+    if let Ok(out) = std::env::var("LAYER0_BASELINE") { let mut v = DUMP.lock().unwrap().clone(); v.sort(); std::fs::write(&out, v.join("\n") + "\n").unwrap(); println!("OBS 79.32 baseline written: {} questions to {out}", v.len()); }
     assert!(control_apart > 0, "the control must disagree: the test is able to tell the meanings apart");
     assert!(compared > 0 && forced > 0 && forced < compared, "the goals are of both kinds");
     assert!(disagree.is_empty(), "{} disagreements: {:?}", disagree.len(), &disagree[..disagree.len().min(5)]);
