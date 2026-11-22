@@ -874,6 +874,14 @@ that a side wants to hold; taking a unit and ending the game are two goals among
 reach within the depth read, or not settled; the value judges the line's end and the goal never changes a value (rule 7); the
 layer above chooses which goal to ask, and layer 4's test takes its goals from fixtures. Plan 79.27.
 
+**Layer 4 is asked with a list of possible goals** (Kaveh 2026-11-21: "maybe even multiple potential goals, or maybe we need
+to maintain a list of possible goals and then layer 4 can pick out of those possible goals"; on the main agent's proposal, "Yes,
+do it, please"). DECIDED: the entry of layer 4 takes an ordered list of goals with one budget and returns one answer for each
+goal, and any line that reaches two at once. Layer 4 does not choose among goals by worth: it reports what is reachable and at
+what cost, and the layer above chooses; it spends its budget in the order of the list, so the upper layer's opinion enters as an
+order, never as a value. A list of possible goals is kept (READING: in the memory of the game at hand, carried across moves, a
+goal falling when what it read changes; not built in plan 79.27). Plan 79.27 amendment.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1247,4 +1255,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The order of work is layer by layer from the base, each made like layer 1 | 2026-11-20 | 11 (last block) |
 | Layer 3 holds two implementations, value and the measure of progress; their agreement is measured | 2026-11-21 | 11 (last block) |
 | Layer 4 takes a goal as an input; the layer above chooses it | 2026-11-21 | 11 (last block) |
+| Layer 4 is asked with an ordered list of goals and answers each; it does not choose by worth | 2026-11-21 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
