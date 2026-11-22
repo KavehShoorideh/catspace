@@ -959,6 +959,20 @@ to extension, not by covering the second game exactly. READING of the main agent
 kind stays as test data only (it is what shows a notion is not shaped by one game) and is not grown; say so if it should go.
 Plan 79.31.
 
+**The pure search is mathematics and lives in layer 0; what steers it does not** (Kaveh 2026-11-22: "all of this in Rust, because
+this is all going to be in the hot path ... the most invoked thing is going to be this layer 0"; then: "the search has to be in
+layer 0. Is that because search is a mathematical thing and should live outside? I buy that"). DECIDED as a principle. THIS AMENDS
+the line of the block "Layers 0, 1 and 2 by what they hold" that the search and the matcher as running programs are machinery and
+not of a layer: that was too coarse. The reading of a tree of choices (there is a choice such that for every counter-choice, by
+recursion, with what was already answered kept by the sameness of nodes) names no game and is mathematics: it is layer 0's, as
+an algorithm over an interface in which a node gives its options when asked, so that no tree is built. NOT layer 0's: which
+options a node has (layer 2), what is asked for (the goal, from above), the order in which options are tried, the narrowing by
+what a goal reads, the budget and the clock; these stay in the layer that asks (layer 4). READING of the main agent, PROPOSED as
+plan 79.32, no go yet: layer 0's forms become interfaces that cost nothing when compiled (choice over a node that gives options
+on demand; number as an interface so the hot path uses bare whole numbers); the search of layer 4 becomes a case of layer 0's
+algorithm, one copy where there are two; a test of speed for each form; the comparison of plan 79.31 part F is the safety net.
+See section 13 item 50.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1195,6 +1209,10 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     opponent is left to the layer of the opponent.
     (iii) An order for each chooser in the value reading, with opposed and allied as named cases, so that layer 0 assumes no
     winning and losing; that the game at hand is one of opposite wants is said by layer 2.
+50. From 2026-11-22. You agreed the pure search is layer 0's. PROPOSED as plan 79.32, waiting for your go: the search of layer 4
+    is rebuilt as a case of layer 0's algorithm over a node that gives its options on demand, with layer 4 keeping the order of
+    options, the narrowing and the budget; nodes and answers must not change and the time must not rise (measured, mended if it
+    does). It touches the most speed-sensitive code we have.
 28. From plan 79.09 (2026-11-19). Choices the builder made where the spec is silent, kept until you say otherwise: the steps before the
     search get what the search and its equal reading leave of the clock; a line cut by the clock is a gap and never a refutation; an
     estimate that did not reach a move does not decide. Three readings of your words that plan 79.10 builds on, mine: when every fix of
@@ -1359,4 +1377,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 0 holds six things (logic and proof, sets, number, structure, chance, opposed choice); the go to build it | 2026-11-22 | 11 (last block) |
 | A belief about the opponent and choosing by chance: layer 0 gives the form, the layer of the opponent the content (direction; details PROPOSED) | 2026-11-22 | 11 (last block), 13 item 49 |
 | Layer 0 made right and applied to the game at hand; nothing of a second game built; open to extension | 2026-11-22 | 11 (last block) |
+| The pure search (the reading of a tree of choices) is layer 0's; options, goal, order and budget are not | 2026-11-22 | 11 (last block), 13 item 50 |
 | What was replaced | 2026-11-16 | 14 |
