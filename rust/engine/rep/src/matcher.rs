@@ -47,20 +47,29 @@ pub fn bindings(body: &[Lit], init: &Binding, idx: &FactIndex, limit: usize, ste
 /// `bindings` with a fuse on the rows examined by THIS call: a join that runs past it stops, and the result says it was cut (a body of loosely connected literals can
 /// fail only after a combinatorial search; the fuse bounds the cost of asking).
 pub fn bindings_fused(body: &[Lit], init: &Binding, idx: &FactIndex, limit: usize, steps: &mut u64, fuse: u64) -> (Vec<Binding>, bool) {
-    let pos: Vec<&Lit> = body.iter().filter(|l| !l.neg).collect();
-    let neg: Vec<&Lit> = body.iter().filter(|l| l.neg).collect();
+    let pos: Vec<&Lit> = body.iter().filter(|l| !l.neg && !l.is_differ()).collect();
+    let neg: Vec<&Lit> = body.iter().filter(|l| l.neg && !l.is_differ()).collect();
+    let diffs: Vec<&Lit> = body.iter().filter(|l| l.is_differ() && l.args.len() == 2).collect();
     let mut out = vec![];
     let mut truncated = false;
     let ceiling = steps.saturating_add(fuse);
-    solve(pos, &neg, init.clone(), idx, limit, steps, ceiling, &mut out, &mut truncated);
+    solve(pos, &neg, &diffs, init.clone(), idx, limit, steps, ceiling, &mut out, &mut truncated);
     (out, truncated)
 }
 
+/// What a `differ` literal says under a binding: Some(true) it holds, Some(false) it fails, None an argument is not bound yet. (`differ(a, b)` needs a != b; negated, a == b.)
+fn differ_says(d: &Lit, b: &Binding) -> Option<bool> {
+    fn val<'a>(a: &'a Arg, b: &'a Binding) -> Option<&'a str> { match a { Arg::Const(c) => Some(c.as_str()), Arg::Var(x) => b.get(x).map(|s| s.as_str()) } }
+    match (val(&d.args[0], b), val(&d.args[1], b)) { (Some(x), Some(y)) => Some((x != y) != d.neg), _ => None }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn solve(mut left: Vec<&Lit>, neg: &[&Lit], b: Binding, idx: &FactIndex, limit: usize, steps: &mut u64, ceiling: u64, out: &mut Vec<Binding>, truncated: &mut bool) {
+fn solve(mut left: Vec<&Lit>, neg: &[&Lit], diffs: &[&Lit], b: Binding, idx: &FactIndex, limit: usize, steps: &mut u64, ceiling: u64, out: &mut Vec<Binding>, truncated: &mut bool) {
     if *truncated { return; }
     if *steps >= ceiling { *truncated = true; return; }
+    if diffs.iter().any(|d| differ_says(d, &b) == Some(false)) { return; }
     if left.is_empty() {
+        if diffs.iter().any(|d| differ_says(d, &b) != Some(true)) { return; }
         for n in neg {
             let hit = idx.rows(&n.relation).iter().any(|r| { *steps += 1; unify(n, r, &b).is_some() });
             if hit { return; }
@@ -73,7 +82,7 @@ fn solve(mut left: Vec<&Lit>, neg: &[&Lit], b: Binding, idx: &FactIndex, limit: 
     let lit = left.swap_remove(best);
     for row in idx.rows(&lit.relation) {
         *steps += 1;
-        if let Some(nb) = unify(lit, row, &b) { solve(left.clone(), neg, nb, idx, limit, steps, ceiling, out, truncated); if *truncated { return; } }
+        if let Some(nb) = unify(lit, row, &b) { solve(left.clone(), neg, diffs, nb, idx, limit, steps, ceiling, out, truncated); if *truncated { return; } }
     }
 }
 

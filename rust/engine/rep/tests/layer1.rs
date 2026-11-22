@@ -230,3 +230,57 @@ fn a_statement_written_under_one_game_is_not_seen_by_a_reader_of_the_other() {
     assert!(store.reader(&same_name_other_rules).is_none());
     println!("OBS 79.20 B5: a statement written under {} is read by its reader and not by the reader of {}; the same name with the other game's rules is a third, empty partition", keys[0].name, keys[1].name);
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------ (6) PLAN 79.28 PART C: two placeholders that stand for different things
+
+/// The plain reference of a pattern with `differ` literals: the rows are joined by `reference` without them, and each binding is then kept only if every differ literal holds (a != b; a negated one, a == b), the arguments read off the binding or as constants.
+fn reference_with_differ(pat: &[Lit], facts: &[Fact]) -> BTreeSet<Binding> {
+    let rows: Vec<Lit> = pat.iter().filter(|l| l.relation != "differ").cloned().collect();
+    let diffs: Vec<&Lit> = pat.iter().filter(|l| l.relation == "differ").collect();
+    reference(&rows, facts).into_iter().filter(|b| diffs.iter().all(|d| {
+        let val = |a: &Arg| match a { Arg::Const(c) => c.clone(), Arg::Var(v) => b[v].clone() };
+        (val(&d.args[0]) != val(&d.args[1])) != d.neg
+    })).collect()
+}
+
+#[test]
+fn a_pattern_with_a_differ_literal_binds_exactly_where_the_plain_reference_says_and_old_statements_read_unchanged() {
+    for fx in fixtures() {
+        let mut rng = Rng::new(7_928);
+        let (mut checked, mut cut_something, mut same) = (0, 0, 0);
+        for pos in fx.positions().step_by(3) {
+            for _ in 0..8 {
+                let mut pat = pattern_from(&pos.facts, &mut rng);
+                if pat.iter().all(|l| l.neg) { continue; }
+                let plain = reference(&pat, &pos.facts);
+                // two placeholders the positive literals bind said to differ, or (a negated differ) to be the same
+                let vars: Vec<String> = pat.iter().filter(|l| !l.neg).flat_map(|l| l.vars()).collect::<BTreeSet<_>>().into_iter().collect();
+                if vars.len() < 2 { continue; }
+                let (a, b) = (rng.below(vars.len()), rng.below(vars.len()));
+                if a == b { continue; }
+                let mut d = Lit::differ(&format!("?{}", vars[a]), &format!("?{}", vars[b]));
+                if rng.below(4) == 0 { d.neg = true; same += 1; }
+                pat.push(d);
+                let (fast, slow) = (bound(&pat, &pos.facts), reference_with_differ(&pat, &pos.facts));
+                assert_eq!(fast, slow, "{}: {pat:?}", fx.file);
+                checked += 1;
+                cut_something += (fast.len() < plain.len()) as u32;
+            }
+        }
+        println!("OBS 79.28 C1 {}: {checked} patterns with a differ literal ({same} negated) agree with the plain reference; the literal cut some binding in {cut_something}", fx.file);
+        assert!(checked > 100 && cut_something > 10 && same > 5);
+    }
+    // a differ literal is read back as it was written, in a statement, and a placeholder it names must be bound by a row literal
+    let s = statement_of("two-units".into(), vec![Lit::pos("unit", &["?s", "?k1", "?p1"]), Lit::pos("unit", &["?s", "?k2", "?p2"]), Lit::differ("?p1", "?p2")]);
+    assert!(s.validate().is_ok());
+    assert_eq!(Statement::from_json(&serde_json::from_str(&s.to_json().to_string()).unwrap()).unwrap(), s);
+    assert!(statement_of("loose".into(), vec![Lit::pos("unit", &["?s", "?k1", "?p1"]), Lit::differ("?p1", "?q")]).validate().is_err(), "a placeholder only a differ literal names is refused");
+    assert!(statement_of("alone".into(), vec![Lit::differ("a", "b")]).validate().is_err(), "a differ literal is no row: a body of it alone is refused");
+    // a statement stored before the literal existed, as the text it was stored in, reads back the same and writes the same text
+    let old = r#"{"id":"old","pattern":[{"relation":"unit","args":["?s","?k","?p"],"neg":false},{"relation":"bear","args":["?s","?k","?p","?t"],"neg":false},{"relation":"unit","args":["?s","kind_z","?t"],"neg":true}],"says":{"kind":"holds"},"standing":{"kind":"fact"},"holder":"ours","also":[]}"#;
+    let v: serde_json::Value = serde_json::from_str(old).unwrap();
+    let read = Statement::from_json(&v).unwrap();
+    assert_eq!(read.pattern.len(), 3);
+    assert_eq!(read.to_json(), v, "an old statement is written back as it was");
+    println!("OBS 79.28 C2: a statement with a differ literal is written and read back identical; an old statement (no differ) reads and writes the same text; a loose or lone differ literal is refused");
+}
