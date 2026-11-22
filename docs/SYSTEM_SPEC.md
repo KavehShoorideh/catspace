@@ -888,6 +888,22 @@ goal that holds for one ply and is then undone is said apart as touched and neve
 for the exact form: reached is the pattern binding at a position where the asking side is to move or the game is over, on every
 reply. Plan 79.28.
 
+**Layers 0, 1 and 2 by what they hold** (Kaveh 2026-11-22: "Layer 1 is all of the observables. Layer 2 is the base rules of the
+game"; "if there is a layer 0, that is mathematics and logic"; to the cut below: "Yes, I agree with everything you said and the
+line that you want to hold"). DECIDED. LAYER 0 is mathematics and logic, the same for every game and for none: the logic of
+statements (placeholders, and, not, two differ, matching a pattern against facts), number and order, proof (Lean), and the logic
+of a game of two sides in the abstract (for every reply there is an answer). It is given once and is never extracted or learned
+for a game. The search and the matcher as running programs are machinery, not a layer of knowledge; layer 0 is what they may
+assume. LAYER 1 is what is seen in one state: the objects, the places, and the relations of space that show in one frozen state
+(next to, on one line, on the edge, between), and the history as the sequence of states seen. LAYER 2 is what links one state to
+the next and what ends the game: what may move where, what bears on what, whose turn it is, what a rule reads off the history,
+the end and its result. It is learned by being told or by watching the states change; watching is the evidence for layer 2 and
+does not move its content into layer 1. FOR NOW layers 1 and 2 are supplied by hand for the game at hand; machinery that extracts
+them from a game is later work, not built. WHAT THIS CHANGES in what is written above: the pattern language is layer 0's, not
+layer 1's (the block "The go on layer 1" says layer 1 is the language); the meaning of the tempo is layer 2's (the block of
+2026-11-20 put the tempo in layer 1; what stays in layer 1 is that the states come in a sequence). NOT BUILT as a move of code:
+cs_rep holds the language and the rows for bearing, moving and tempo today; whether crates move is not decided.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1276,4 +1292,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 4 takes a goal as an input; the layer above chooses it | 2026-11-21 | 11 (last block) |
 | Layer 4 is asked with an ordered list of goals and answers each; it does not choose by worth | 2026-11-21 | 11 (last block) |
 | Reached means the goal outlasts the reply; held for one ply is touched | 2026-11-22 | 11 (last block) |
+| Layer 0 is mathematics and logic; layer 1 what is seen in one state; layer 2 what links states; 1 and 2 by hand for now | 2026-11-22 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
