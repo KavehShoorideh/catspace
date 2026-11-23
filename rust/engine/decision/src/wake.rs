@@ -12,6 +12,7 @@
 //!   `lines_onto`        (ported, step 3) the lines of a side's units onto a place that exactly ONE unit shuts, that unit, who bears on its place and who holds it (the graph's relations only).
 //!   `goal_unit_lines`   (ported, step 3) `lines_onto` for the goal unit of each side, the lines of the side not to move read after the game's pass.
 //!   `new_bearer_moves`  (ported, step 3) the legal moves after which a unit of the mover bears on a given place where fewer did before (the bearer a move brings, a discovered line included; no edited position is needed).
+use cs_game::relations::{PartRelations};
 use cs_game::placed::{Kind, Place, Placed};
 use cs_game::{Game, Role};
 use crate::log::{DecisionLog, GoalLog, MoveLog, RowLog};
@@ -142,9 +143,9 @@ pub struct LineOnto { pub unit: UnitRef, pub blocker: UnitRef, pub bearers: Vec<
 
 /// The lines of `side`'s units onto `place` that exactly one unit shuts, read from a position's graph. The graph computes `shuts` for the side to move, so for the other side the caller hands the position after the game's pass (`goal_unit_lines`).
 pub fn lines_onto(part: &PositionPart, place: Place, side: Role) -> Vec<LineOnto> {
-    let bears: HashSet<(usize, Place)> = part.bears.iter().map(|r| (r.unit, r.place)).collect();
+    let bears: HashSet<(usize, Place)> = part.bears().iter().map(|r| (r.unit, r.place)).collect();
     let mut out = vec![];
-    for r in &part.shuts {
+    for r in part.shuts() {
         if r.place != place || part.units[r.unit].owner != side || r.between.len() != 1 { continue; }
         let bi = r.between[0];
         let b = &part.units[bi];

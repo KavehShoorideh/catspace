@@ -72,7 +72,7 @@ fn store(memory: &mut GameMemory, tk: TagKeeper, gk: GraphKeeper, key: u64) {
 pub fn root_of<G: Game + Placed>(st: &Static, g: &G, s: &G::State, memory: &GameMemory) -> Root {
     let key = g.key(s);
     match memory.at_hand() {
-        Some(at) if at.key == key => Root::from_part(key, at.graph.part(st.board())),
+        Some(at) if at.key == key => Root::from_part(key, st.part_of(&at.graph)),
         _ => Root::of(st, g, s),
     }
 }

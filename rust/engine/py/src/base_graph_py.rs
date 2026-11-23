@@ -1,5 +1,6 @@
 //! PLAN 78.52: the Python entry of the layer-1 graph (cs_tactics::sheet::base_graph and base_statements). A `BaseGraph` holds the static part of one game (built once from the rules'
 //! description through `Placed::steps`); `position(text)` returns the per-position part as plain node and link lists. Game-free: every name arrives as data.
+use cs_game::relations::{PartRelations};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
 use cs_game::Game;
@@ -545,7 +546,7 @@ impl BaseGraph {
         for l in &self.st.links { *sl.entry(l.kind.word()).or_default() += 1; }
         d.set_item("static_nodes", sn)?;
         d.set_item("static_links", sl)?;
-        d.set_item("node_types", NodeType::ALL.iter().map(|t| t.word()).collect::<Vec<_>>())?;
+        d.set_item("node_types", cs_tactics::sheet::base_graph::node_words())?;
         d.set_item("link_types", LinkType::ALL.iter().map(|t| t.word()).collect::<Vec<_>>())?;
         d.into_py_any(py)
     }
@@ -708,10 +709,10 @@ impl BaseGraph {
         let ns = self.st.nodes.len() as u32;
         let Some(m) = p.mover else { return Ok((0, 0, true)) };
         let key = |p: &cs_tactics::sheet::base_graph::PositionPart, from: usize| -> std::collections::BTreeSet<(usize, u16)> {
-            p.shuts[from..].iter().filter(|r| r.between.len() == 1 && p.units[r.unit].owner == m).map(|r| (r.unit, r.place)).collect()
+            p.shuts()[from..].iter().filter(|r| r.between.len() == 1 && p.units[r.unit].owner == m).map(|r| (r.unit, r.place)).collect()
         };
         let a = key(&p, 0);
-        let before = p.shuts.len();
+        let before = p.shuts().len();
         for ui in 0..p.units.len() { if p.units[ui].owner == m { self.st.first_blocker_shuts(&g, &s, ui, &mut p, ns); } }
         let b = key(&p, before);
         Ok((a.len(), b.len(), a == b))
@@ -751,8 +752,8 @@ impl BaseGraph {
         let p = self.st.position(&g, &s);
         let Some(m) = p.mover else { return Ok((0, 0, 0, 0, 0)) };
         let other = |r: &cs_tactics::sheet::base_graph::RelRec| p.units[r.unit].owner == m && match p.occupant[r.place as usize] { 0 => false, i => p.units[i as usize - 1].owner != m };
-        let t: std::collections::BTreeSet<(usize, u16)> = p.throughs.iter().filter(|r| other(r)).map(|r| (r.unit, r.place)).collect();
-        let sh: std::collections::BTreeSet<(usize, u16)> = p.shuts.iter().filter(|r| r.between.len() == 1 && other(r)).map(|r| (r.unit, r.place)).collect();
+        let t: std::collections::BTreeSet<(usize, u16)> = p.throughs().iter().filter(|r| other(r)).map(|r| (r.unit, r.place)).collect();
+        let sh: std::collections::BTreeSet<(usize, u16)> = p.shuts().iter().filter(|r| r.between.len() == 1 && other(r)).map(|r| (r.unit, r.place)).collect();
         Ok((t.len(), sh.len(), t.intersection(&sh).count(), t.difference(&sh).count(), sh.difference(&t).count()))
     }
 

@@ -3,6 +3,7 @@
 //! (2) On EVERY position of both fixture games the graph made the new way (the units and the tempo from facts or numbers by layer 1, the relations written through the door by layer 2) equals the graph made the OLD way node by node and edge by edge: the old way is kept here as a
 //!     reference, the code of plan 78.52 as it was before this plan (a copy, so that a change of either shows). Also through the facts the rules give: the same.
 //! (3) What layer 2 hands over is the rules' reading only: the graph from a set of facts plus the rules' relations is the graph from the rules' cells plus the same relations.
+use cs_game::relations::{PartRelations, BEAR, MAY_MOVE, SHUT, THROUGH};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{NoStep, Placed};
 use cs_game::{Fact, Game};
@@ -38,7 +39,7 @@ fn old_relation(st: &Board, part: &mut PositionPart, kind: NodeType, ui: usize, 
     RelRec { unit: ui, place: to, along, between, node }
 }
 
-fn old_position<G: Game + Placed>(st: &Board, g: &G, s: &G::State) -> PositionPart {
+fn old_position<G: Game + Placed>(st: &Static, g: &G, s: &G::State) -> PositionPart {
     let np = st.names.places.len();
     let ns = st.nodes.len() as u32;
     let mover = g.mover(s);
@@ -59,25 +60,25 @@ fn old_position<G: Game + Placed>(st: &Board, g: &G, s: &G::State) -> PositionPa
         occupant[at as usize] = units.len() as u16 + 1;
         units.push(UnitRec { owner, side, kind, at, node });
     }
-    let mut part = PositionPart { mover, nodes, links, units, bears: vec![], moves: vec![], shuts: vec![], throughs: vec![], occupant };
+    let mut part = PositionPart { mover, nodes, links, units, rels: Default::default(), occupant };
     for ui in 0..part.units.len() {
         let u = part.units[ui];
-        for p in g.bearing_from(s, u.owner, u.kind, u.at) { let r = old_relation(st, &mut part, NodeType::Bear, ui, p, ns); part.bears.push(r); }
-        for p in g.reach_from(s, u.owner, u.kind, u.at) { let r = old_relation(st, &mut part, NodeType::MayMove, ui, p, ns); part.moves.push(r); }
+        for p in g.bearing_from(s, u.owner, u.kind, u.at) { let r = old_relation(st, &mut part, NodeType::Relation(BEAR), ui, p, ns); part.rels[BEAR.slot as usize].push(r); }
+        for p in g.reach_from(s, u.owner, u.kind, u.at) { let r = old_relation(st, &mut part, NodeType::Relation(MAY_MOVE), ui, p, ns); part.rels[MAY_MOVE.slot as usize].push(r); }
     }
     if let Some(m) = mover {
         for ui in 0..part.units.len() {
             let u = part.units[ui];
             if u.owner != m { continue; }
             for &(l, i) in &st.place_lines[u.at as usize] {
-                let ends: Vec<i32> = part.bears.iter().filter(|r| r.unit == ui && r.along.contains(&l)).map(|r| st.index_on(l, r.place) - i as i32).collect();
+                let ends: Vec<i32> = part.bears().iter().filter(|r| r.unit == ui && r.along.contains(&l)).map(|r| st.index_on(l, r.place) - i as i32).collect();
                 for sign in [1i32, -1] {
                     let Some(far) = ends.iter().filter(|d| d.signum() == sign).map(|d| d.abs()).max() else { continue };
                     let line = &st.lines[l as usize];
                     let mut k = i as i32 + sign * (far + 1);
                     while k >= 0 && (k as usize) < line.places.len() {
                         let q = line.places[k as usize];
-                        if let (NoStep::LineShut, _) = g.why_not(s, u.at, q) { let r = old_relation(st, &mut part, NodeType::Shut, ui, q, ns); part.shuts.push(r); }
+                        if let (NoStep::LineShut, _) = g.why_not(s, u.at, q) { let r = old_relation(st, &mut part, NodeType::Relation(SHUT), ui, q, ns); part.rels[SHUT.slot as usize].push(r); }
                         k += sign;
                     }
                 }
@@ -86,7 +87,7 @@ fn old_position<G: Game + Placed>(st: &Board, g: &G, s: &G::State) -> PositionPa
     }
     if !st.cont.is_empty() {
         let mut found: Vec<(usize, u16)> = vec![];
-        for r in &part.bears {
+        for r in part.bears().clone().iter() {
             let u = part.units[r.unit];
             let b = part.occupant[r.place as usize];
             if b == 0 { continue; }
@@ -108,14 +109,14 @@ fn old_position<G: Game + Placed>(st: &Board, g: &G, s: &G::State) -> PositionPa
         }
         found.sort_unstable();
         found.dedup();
-        for (ui, q) in found { let r = old_relation(st, &mut part, NodeType::Through, ui, q, ns); part.throughs.push(r); }
+        for (ui, q) in found { let r = old_relation(st, &mut part, NodeType::Relation(THROUGH), ui, q, ns); part.rels[THROUGH.slot as usize].push(r); }
     }
     part
 }
 
 /// Two graphs equal in every field: nodes, links, units, every relation list, who stands where.
 fn same(a: &PositionPart, b: &PositionPart) -> bool {
-    a.mover == b.mover && a.nodes == b.nodes && a.links == b.links && a.units == b.units && a.bears == b.bears && a.moves == b.moves && a.shuts == b.shuts && a.throughs == b.throughs && a.occupant == b.occupant
+    a.mover == b.mover && a.nodes == b.nodes && a.links == b.links && a.units == b.units && a.bears() == b.bears() && a.moves() == b.moves() && a.shuts() == b.shuts() && a.throughs() == b.throughs() && a.occupant == b.occupant
 }
 
 #[test]
@@ -150,7 +151,7 @@ fn layer2_the_graph_made_the_new_way_equals_the_graph_made_the_old_way_on_every_
                 n += 1;
                 nodes += new.nodes.len();
                 links += new.links.len();
-                through_seen += new.throughs.len();
+                through_seen += new.throughs().len();
             }
         }
         println!("OBS 79.21 B-6 layer 2 {}: {n} positions, the graph made the new way equals the old way node by node and edge by edge in every field ({nodes} position nodes, {links} position links, {through_seen} lines through; profile learned: {learned}); through the facts the rules give: equal in {via_facts}", fx.name);

@@ -4,6 +4,7 @@
 //!   (B) the tags the memory holds equal the facts the rules give (the facts that are neither a unit nor the tempo) at every decision, one statement for each; the history holds the keys given with the change known for the tempos it saw; a repeat is read off the history's keys; and a game
 //!       STARTED IN THE MIDDLE states its tags as plain facts and decides the same as a game that was kept from its start.
 mod rep_common;
+use cs_game::relations::{PartRelations};
 use cs_decision::keep::{advance, bring, root_of, Brought};
 use cs_decision::memory::{Parts, WakeMemory};
 use cs_decision::threat_verdict::Record;
@@ -18,7 +19,7 @@ use rep_common::{fixtures, replay, text_of};
 use std::collections::{BTreeSet, HashMap};
 
 fn same(a: &PositionPart, b: &PositionPart) -> bool {
-    a.mover == b.mover && a.nodes == b.nodes && a.links == b.links && a.units == b.units && a.bears == b.bears && a.moves == b.moves && a.shuts == b.shuts && a.throughs == b.throughs && a.occupant == b.occupant
+    a.mover == b.mover && a.nodes == b.nodes && a.links == b.links && a.units == b.units && a.bears() == b.bears() && a.moves() == b.moves() && a.shuts() == b.shuts() && a.throughs() == b.throughs() && a.occupant == b.occupant
 }
 
 type S = <KernelGame as Game>::State;

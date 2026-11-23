@@ -21,6 +21,7 @@
 //! COUNTING. Embeddings are the connected sets of relation nodes (ESU enumeration over the nodes' sharing of an object). `freq` counts the support of each key over rows, growing a size from the
 //! kept patterns of the size below (a pattern is a candidate only when one of its connected parts of one relation node less is kept: growth by size); `count` gives, per row, the counts of chosen keys
 //! for each side.
+use cs_game::relations::{PartRelations};
 use super::base_graph::{PositionPart, Static};
 use super::Side;
 pub use rustc_hash::{FxHashMap, FxHashSet};
@@ -55,13 +56,13 @@ impl Board {
         let np = st.names.places.len();
         let mut items = vec![];
         let target_of = |pl: u16| -> Obj { match p.occupant[pl as usize] { 0 => Obj::Place(pl), i => Obj::Unit(i - 1) } };
-        for r in &p.bears { items.push(Item { ty: 0, actor: r.unit as u16, target: target_of(r.place), line: r.along.first().map_or(-1, |l| *l as i32), between: -1 }); }
-        for r in &p.moves { items.push(Item { ty: 1, actor: r.unit as u16, target: target_of(r.place), line: r.along.first().map_or(-1, |l| *l as i32), between: -1 }); }
-        for r in &p.shuts {
+        for r in p.bears() { items.push(Item { ty: 0, actor: r.unit as u16, target: target_of(r.place), line: r.along.first().map_or(-1, |l| *l as i32), between: -1 }); }
+        for r in p.moves() { items.push(Item { ty: 1, actor: r.unit as u16, target: target_of(r.place), line: r.along.first().map_or(-1, |l| *l as i32), between: -1 }); }
+        for r in p.shuts() {
             if r.between.len() != 1 || r.along.is_empty() { continue; }
             items.push(Item { ty: 2, actor: r.unit as u16, target: target_of(r.place), line: r.along[0] as i32, between: r.between[0] as i32 });
         }
-        for r in &p.throughs {
+        for r in p.throughs() {
             if r.between.len() != 1 || r.along.is_empty() { continue; }
             items.push(Item { ty: 3, actor: r.unit as u16, target: target_of(r.place), line: r.along[0] as i32, between: r.between[0] as i32 });
         }

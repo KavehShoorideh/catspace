@@ -5,6 +5,7 @@
 //!
 //! WHAT IT ANSWERS IS AN ESTIMATE: the order of capture is the least kind first for each side, each side may stop, and the worth is the estimator's term. A pin, a threat elsewhere, an in-between move
 //! are not in it. Whoever uses the answer marks the claim that rests on it (questions.rs: F_ESTIMATE) and never calls it forced.
+use cs_game::relations::{PartRelations};
 use super::base_graph::PositionPart;
 use super::Place;
 
@@ -103,7 +104,7 @@ fn ray_of(part: &PositionPart, taker_owner: usize, kv: &[Val], head: usize, fron
     let (mut h, mut f) = (head, front_place);
     for _ in 0..8 {
         // the unit that bears on the place of the unit in front of `h`, through `h` and no other unit
-        let Some(r) = part.throughs.iter().find(|r| r.place == f && r.between.len() == 1 && r.between[0] == h) else { break };
+        let Some(r) = part.throughs().iter().find(|r| r.place == f && r.between.len() == 1 && r.between[0] == h) else { break };
         let w = &part.units[r.unit];
         behind.push((w.owner == taker_owner, kv[w.kind as usize], r.unit as u16));
         f = part.units[h].at;
@@ -120,10 +121,10 @@ pub fn estimate_taking(part: &PositionPart, to: Place, taker: usize, kv: &[Val])
     let victim = victim as usize - 1;
     let owner = part.units[taker].owner;
     if part.units[victim].owner == owner { return None; }
-    if !part.bears.iter().any(|r| r.unit == taker && r.place == to) { return None; }
+    if !part.bears().iter().any(|r| r.unit == taker && r.place == to) { return None; }
     let mut mine: Vec<Ray> = vec![];
     let mut theirs: Vec<Ray> = vec![];
-    for r in part.bears.iter().filter(|r| r.place == to && r.unit != taker) {
+    for r in part.bears().iter().filter(|r| r.place == to && r.unit != taker) {
         let ray = ray_of(part, owner, kv, r.unit, to);
         if part.units[r.unit].owner == owner { mine.push(ray) } else { theirs.push(ray) }
     }

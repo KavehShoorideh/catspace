@@ -13,6 +13,7 @@
 //! Called by: the tests, and the layers that walk a sequence of positions (a game being played, a line being read) instead of building the graph of each from nothing.
 use crate::graph::Static;
 use crate::placed::Placed;
+use crate::relations::{UnitRelations, BEAR, MAY_MOVE, SHUT};
 use crate::Game;
 use cs_rep::live::{Edit, LiveGraph, LiveUnit};
 use cs_rep::graph::PositionPart;
@@ -25,9 +26,9 @@ impl GraphKeeper {
     pub fn new<G: Game + Placed>(st: &Static, g: &G, s: &G::State) -> GraphKeeper {
         if crate::graph::builds::on() { crate::graph::builds::note(std::panic::Location::caller(), g.key(s)); }          // a graph asked of the rules from nothing counts as a build
         let mover = g.mover(s);
-        let mut units: Vec<LiveUnit> = g.cells(s).into_iter().map(|(owner, kind, at)| LiveUnit { owner, kind, at, bears: g.bearing_from(s, owner, kind, at), reach: g.reach_from(s, owner, kind, at), shuts: vec![] }).collect();
+        let mut units: Vec<LiveUnit> = g.cells(s).into_iter().map(|(owner, kind, at)| { let mut u = LiveUnit::new(owner, kind, at); u.slots[BEAR.slot as usize] = g.bearing_from(s, owner, kind, at); u.slots[MAY_MOVE.slot as usize] = g.reach_from(s, owner, kind, at); u }).collect();
         units.sort_by_key(|u| u.key());
-        if let Some(m) = mover { for u in units.iter_mut().filter(|u| u.owner == m) { u.shuts = st.shut_places(g, s, u.at, &u.bears); } }
+        if let Some(m) = mover { for u in units.iter_mut().filter(|u| u.owner == m) { let shut = st.shut_places(g, s, u.at, u.bears()); u.slots[SHUT.slot as usize] = shut; } }
         let n = units.len();
         GraphKeeper { live: LiveGraph::new(mover, units), asked: (n, n) }
     }
@@ -54,21 +55,21 @@ impl GraphKeeper {
             let old = self.live.units().binary_search_by_key(&key, |u| u.key()).ok().map(|i| &self.live.units()[i]);
             let again = match old {
                 None => true,
-                Some(u) => changed.iter().any(|&c| !st.common_lines(at, c).is_empty() || u.bears.contains(&c) || u.reach.contains(&c)),
+                Some(u) => changed.iter().any(|&c| !st.common_lines(at, c).is_empty() || u.bears().contains(&c) || u.reach().contains(&c)),
             };
             if again {
                 asked += 1;
                 let (bears, moves) = (g.bearing_from(after, owner, kind, at), g.reach_from(after, owner, kind, at));
                 bears_of.push((key, bears.clone()));
-                rewrite.push((key, bears, moves));
-            } else { bears_of.push((key, old.unwrap().bears.clone())); }
+                rewrite.push((key, [bears, moves]));
+            } else { bears_of.push((key, old.unwrap().bears().clone())); }
         }
         let mut shuts = vec![];
         if let Some(m) = mover {
             for (key, bears) in &bears_of { if key.0 == m { shuts.push((*key, st.shut_places(g, after, key.2, bears))); } }
         }
         self.asked = (asked, cells.len());
-        self.live.make(Edit { tempo: mover, removed, added, rewrite, clear_shuts: true, shuts });
+        self.live.make(Edit { tempo: mover, removed, added, rewrite, clear_last: true, last: shuts });
     }
 
     pub fn undo(&mut self) -> bool { self.live.undo() }
@@ -78,5 +79,5 @@ impl GraphKeeper {
     pub fn live(&self) -> &LiveGraph { &self.live }
 
     /// The graph as it now is. The lines through are derived from the bears written and the profile of the kinds (geometry, no rule).
-    pub fn part(&self, st: &Static) -> PositionPart { self.live.part(st.board()) }
+    pub fn part(&self, st: &Static) -> PositionPart { st.part_of(&self.live) }
 }

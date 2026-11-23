@@ -80,12 +80,12 @@ fn edit_of(b: &Board, ch: &Change, after: &[Fact]) -> Edit {
     let (_, removed) = b.read_facts(&ch.removed).unwrap();
     let (_, added) = b.read_facts(&ch.added).unwrap();
     let (tempo, _) = b.read_facts(after).unwrap();
-    Edit { tempo, removed, added, rewrite: vec![], clear_shuts: true, shuts: vec![] }
+    Edit { tempo, removed, added, rewrite: vec![], clear_last: true, last: vec![] }
 }
 
 fn live_of(b: &Board, fx_pos: &Pos) -> LiveGraph {
     let (tempo, cells) = b.read_facts(&fx_pos.facts).unwrap();
-    LiveGraph::new(tempo, cells.into_iter().map(|(owner, kind, at)| LiveUnit { owner, kind, at, bears: vec![], reach: vec![], shuts: vec![] }).collect())
+    LiveGraph::new(tempo, cells.into_iter().map(|(owner, kind, at)| LiveUnit::new(owner, kind, at)).collect())
 }
 
 #[test]
@@ -95,16 +95,16 @@ fn the_graph_kept_step_by_step_equals_the_graph_built_from_each_positions_facts_
         let (mut made, mut undone) = (0usize, 0usize);
         for game in &fx.games {
             let mut live = live_of(b, &game[0]);
-            assert_eq!(live.part(b).definitions(b), b.position_from_facts(&game[0].facts).unwrap().definitions(b));
+            assert_eq!(live.bare_part(b).definitions(b), b.position_from_facts(&game[0].facts).unwrap().definitions(b));
             for (i, p) in game.iter().enumerate().skip(1) {
                 let (added, removed) = p.since.clone().unwrap();
                 live.make(edit_of(b, &Change { added, removed, keys: vec![] }, &p.facts));
-                assert_eq!(live.part(b).definitions(b), b.position_from_facts(&p.facts).unwrap().definitions(b), "{}: position {i}: kept step by step", fx.file);
+                assert_eq!(live.bare_part(b).definitions(b), b.position_from_facts(&p.facts).unwrap().definitions(b), "{}: position {i}: kept step by step", fx.file);
                 made += 1;
             }
             for i in (1..game.len()).rev() {
                 assert!(live.undo());
-                assert_eq!(live.part(b).definitions(b), b.position_from_facts(&game[i - 1].facts).unwrap().definitions(b), "{}: undo to position {}", fx.file, i - 1);
+                assert_eq!(live.bare_part(b).definitions(b), b.position_from_facts(&game[i - 1].facts).unwrap().definitions(b), "{}: undo to position {}", fx.file, i - 1);
                 undone += 1;
             }
             assert!(!live.undo());
@@ -153,8 +153,8 @@ fn the_position_at_hand_is_kept_in_the_games_memory_with_its_graph_and_let_go_at
     use cs_rep::store::{AtHand, GameKey, GameMemory};
     let mut m = GameMemory::new(GameKey::of("g", "rules"));
     assert!(m.at_hand().is_none() && m.take_at_hand().is_none());
-    let mut graph = LiveGraph::new(Some(0), vec![LiveUnit { owner: 0, kind: 1, at: 2, bears: vec![3], reach: vec![3], shuts: vec![] }]);
-    graph.make(Edit { tempo: Some(1), removed: vec![], added: vec![], rewrite: vec![], clear_shuts: true, shuts: vec![] });
+    let mut graph = LiveGraph::new(Some(0), vec![{ let mut u = LiveUnit::new(0, 1, 2); u.slots[0] = vec![3]; u.slots[1] = vec![3]; u }]);
+    graph.make(Edit { tempo: Some(1), removed: vec![], added: vec![], rewrite: vec![], clear_last: true, last: vec![] });
     assert_eq!(graph.depth(), 1);
     m.put_at_hand(AtHand { key: 9, facts: [Fact::new("t", &["x"])].into_iter().collect(), graph });
     assert_eq!((m.at_hand().unwrap().key, m.at_hand().unwrap().graph.depth()), (9, 0), "a graph kept between decisions carries no log of the game");

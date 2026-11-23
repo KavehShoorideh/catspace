@@ -1,29 +1,27 @@
-//! PLAN 79.27 PART B (SYSTEM_SPEC 11 "the layers", "Layer 4 takes a goal as an input"; ledger rows 36, 14; piece: representation). THE FACTS OF THE GRAPH AS A PATTERN READS THEM, taken from the live graph as it stands (no graph is made anew): the rows a statement's
-//! pattern (layer 1's `Statement`, bound by `matcher`) is matched over when the position is the graph that `LiveGraph` keeps step by step.
+//! PLAN 79.27 PART B (SYSTEM_SPEC 11 "the layers", "Layer 4 takes a goal as an input"; ledger rows 36, 14; piece: rules; plan 79.34: moved up from layer 1, since the fact form of the relations that follow from how things move is layer 2's). THE FACTS OF THE GRAPH AS A PATTERN READS THEM, taken from the live graph as it stands (no graph is made anew): the rows a statement's
+//! pattern (layer 1's `Statement`, bound by layer 0's matcher) is matched over when the position is the graph that `LiveGraph` keeps step by step.
 //!
 //! INTERFACE.
 //!   `FactReader::new(board, Some(pattern))`   a reader that makes only the rows some literal of the pattern unifies with (the others cannot take part in any join, so the bindings are the same as over every row); `None`: every row.
 //!   `FactReader::facts(&self, &LiveGraph)`    the rows of the graph as it now is, sorted and distinct.
 //!   Called by: layer 4's search to a statement (cs_tactics::reach) and this file's test.
-//! THE RELATIONS (the words are those of the graph's own nodes, graph.rs `NodeType::word`; nothing names a game):
+//! THE RELATIONS (the words of the relations the rules make are `relations.rs`'s; those of what is seen are layer 1's `cs_rep::fact`; nothing names a game):
 //!   `unit(owner kind place)`            a unit stands there
 //!   `bear(owner kind place target)`     the unit bears on the target place (a place held by its own side counts: it guards it)
 //!   `may_move(owner kind place to)`     the unit may move to the place in one move
 //!   `tempo(owner)`                      the side to move
 //!   `on_line(place line)`               the place lies on the line (the line's text is its graph node's id); static
 //!   `on_edge(place direction)`          the place is on the edge under the direction; static
-use crate::fact::Fact;
-use crate::graph::Board;
-use crate::lemma::{Arg, Lit};
-use crate::live::LiveGraph;
+use crate::relations::{UnitRelations, BEAR as BEAR_REL, MAY_MOVE as MAY_MOVE_REL};
+use cs_rep::fact::{Fact, ON_EDGE, ON_LINE, UNIT};
+use cs_rep::graph::Board;
+use cs_rep::lemma::{Arg, Lit};
+use cs_rep::live::LiveGraph;
 use std::collections::BTreeSet;
 
-pub const UNIT: &str = "unit";
-pub const BEAR: &str = "bear";
-pub const MAY_MOVE: &str = "may_move";
+pub const BEAR: &str = BEAR_REL.word;
+pub const MAY_MOVE: &str = MAY_MOVE_REL.word;
 pub const TEMPO: &str = "tempo";
-pub const ON_LINE: &str = "on_line";
-pub const ON_EDGE: &str = "on_edge";
 
 /// Whether a row (relation, args) unifies with some literal as the pattern's rows are chosen: the same relation and arity and equal constants (a variable used twice is left to the join).
 fn fits(lits: &[Lit], relation: &str, args: &[&str]) -> bool {
@@ -56,7 +54,7 @@ impl FactReader {
         for u in live.units() {
             let (o, k, p) = (self.roles[u.owner].as_str(), self.kinds[u.kind as usize].as_str(), self.places[u.at as usize].as_str());
             if self.wants(UNIT, &[o, k, p]) { out.push(Fact { relation: UNIT.into(), args: vec![o.into(), k.into(), p.into()] }); }
-            for (rel, list) in [(BEAR, &u.bears), (MAY_MOVE, &u.reach)] {
+            for (rel, list) in [(BEAR, u.bears()), (MAY_MOVE, u.reach())] {
                 for &q in list {
                     let qn = self.places[q as usize].as_str();
                     if self.wants(rel, &[o, k, p, qn]) { out.push(Fact { relation: rel.into(), args: vec![o.into(), k.into(), p.into(), qn.into()] }); }

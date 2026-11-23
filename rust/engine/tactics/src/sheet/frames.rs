@@ -36,6 +36,7 @@
 //! F. TWO FRAMES. `compose` computes the forceable set of two frames not in contact from the two frames' sets (each side's moves in the other frame are the other side's passes there: the sound form of E
 //! for each frame, the guarantees unioned) and `compose_check` compares it with the joint read of the union frame. NO LEAN THEOREM COVERS THIS COMPOSITION (SYSTEM_SPEC 12.1): it is CHECKED per
 //! position, not proved, and nothing may treat it as proved.
+use cs_game::relations::{PartRelations};
 use super::base_graph::{PositionPart, Static};
 use super::fates::{step_between, Cell, Step};
 use super::patterns::{Board, FxHashMap, FxHashSet, Obj};
@@ -114,10 +115,10 @@ fn closure(part: &PositionPart, pset: &PlaceSet, init: &[usize]) -> Vec<usize> {
     let mut inm = vec![false; part.units.len()];
     for &u in init { inm[u] = true; }
     for p in pset.iter() { let o = part.occupant[p as usize]; if o != 0 { inm[o as usize - 1] = true; } }
-    for r in &part.bears { if pset.contains(r.place) { inm[r.unit] = true; } }
+    for r in part.bears() { if pset.contains(r.place) { inm[r.unit] = true; } }
     loop {
         let mut changed = false;
-        for r in &part.throughs {
+        for r in part.throughs() {
             if !inm[r.unit] && pset.contains(r.place) && r.between.iter().any(|&b| inm[b]) { inm[r.unit] = true; changed = true; }
         }
         if !changed { break; }
@@ -175,7 +176,7 @@ impl Frame {
 pub fn in_contact(a: &Frame, b: &Frame, part: &PositionPart) -> bool {
     if a.members.iter().any(|c| b.members.contains(c)) || a.places.iter().any(|p| b.places.contains(p)) { return true; }
     let bears_on = |x: &Frame, y: &Frame| x.members.iter().any(|c| {
-        part.units.iter().position(|u| (u.owner, u.kind, u.at) == *c).is_some_and(|i| part.bears.iter().any(|r| r.unit == i && y.places.contains(&r.place)))
+        part.units.iter().position(|u| (u.owner, u.kind, u.at) == *c).is_some_and(|i| part.bears().iter().any(|r| r.unit == i && y.places.contains(&r.place)))
     });
     bears_on(a, b) || bears_on(b, a)
 }
