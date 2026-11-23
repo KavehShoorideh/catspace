@@ -995,6 +995,17 @@ explain like a master) was not tested by them. Decided:
    each time, also when the plan is a refactor; where the machine was not quiet the READ says the measure is owed and it is made
    before the next plan starts. The measure is a measure only; nothing is tuned on it and no verdict is written from one run.
 
+**The cut of layers 1 and 2 is carried into the code** (Kaveh 2026-11-22: "make the code follow this and have unit tests for layer 1
+and layer 2. So layer 2's got to be the rules that references the pieces ... Layer 2 says how the bishop moves. Layer 1 says this is
+a piece, we call it a bishop. These are pawns. There's 8 of them."). Layer 1 says what is there and can be seen with no knowledge of
+play: the things, their kinds and names, how many, the board with its places and their two alternating classes, where each thing
+stands, and the history as a sequence of such states. Layer 2 says the rules and refers to the things by layer 1's names: how each
+kind moves, what a move changes, whose turn it is, what ends the game. READING, mine: a relation between places seen in one state
+(next to, on one line, between) is layer 1's; a relation that follows from how things move (bears on, may move to, a line shut, the
+line through a unit, the turn) is layer 2's; facts derived from those (an open line, a unit tied to a guard) are layer 3's, and it
+is layer 3's vocabulary, not layer 1's, that bounds what goals can be mined. This plan (79.34) changes no decision and is a named
+exception to the rule that no plan is made for tidiness alone.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1409,4 +1420,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The pure search (the reading of a tree of choices) is layer 0's; options, goal, order and budget are not | 2026-11-22 | 11 (last block), 13 item 50 |
 | Plan 79.32 left two recursions in layer 0 (steps, and values); one general answer is proposed | 2026-11-22 | 11 (last block), 13 item 51 |
 | The base is frozen after 79.33; the loop is the work; one measure of the whole in every READ | 2026-11-22 | 11 (last block) |
+| The cut of layers 1 and 2 (what is there; what the rules say of it) is carried into the crates, with unit tests | 2026-11-22 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
