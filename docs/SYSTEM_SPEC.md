@@ -1005,6 +1005,11 @@ kind moves, what a move changes, whose turn it is, what ends the game. READING, 
 line through a unit, the turn) is layer 2's; facts derived from those (an open line, a unit tied to a guard) are layer 3's, and it
 is layer 3's vocabulary, not layer 1's, that bounds what goals can be mined. This plan (79.34) changes no decision and is a named
 exception to the rule that no plan is made for tidiness alone.
+AMENDED the same day (Kaveh: "the arrangement on the pieces on the board is a layer 2 thing, because we want to be able to handle
+different variants of chess"): layer 1 does not say which state the game starts from. It says the kinds and the board, and can hold
+and describe any state it is shown. The starting arrangement is a rule and is layer 2's. READING, mine: the counts at the start
+(eight of one kind, and so on) follow from the starting arrangement and so are layer 2's too; layer 1 can count what stands in any
+state shown to it. The builder of 79.34 was told by message; the plan block is not rewritten.
 
 ## 12. What exists
 
