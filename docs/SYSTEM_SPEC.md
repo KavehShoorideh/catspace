@@ -1038,6 +1038,22 @@ senses, every public item of a layer's code and every kind of unit of every game
 layers 0, 1 or 2 is called by no test; a fault a new test finds is mended in its layer unless the file is protected, and then it is
 named. The same rule is applied to layer 3 when it is taken up. Plan 79.36.
 
+**The description is the source of the rules; fast code is only a certified copy** (Kaveh 2026-11-23: "Layer 2 should only talk to
+the GDL. We do not want to hard code game rules in layer 2. We want to use game rules provided by other people", then, of three
+ways offered, "let's go with option number 2, where GDL is the source, and then we have certified verified copies, and then the unit
+test should make sure that all certifications are in place before passing"). Every answer layer 2 gives about a game is defined by
+the game's description (rules/chess.gdl and the deltas under rules/variants). Code that answers faster (the kernel over an outside
+library, the placed questions bears on, may move to, strikes a place, the state as facts, the names of moves) may stand in for the
+description only where a certificate shows the two agree; a fast answer with no fresh certificate fails the tests. No rule of a
+game is written by hand in Rust as its own authority: a branch on a game's name is allowed only inside a certified copy.
+STATE WHEN DECIDED: the certificates cover the game questions (the side to move, the allowed moves, the next state, the end, the
+outcome, the facts) for seven games. NOT covered: the placed questions, which are hand-written over the outside library's tables
+(game/src/outside.rs, with branches for atomic and antichess from plan 79.35) and have no definition in the description and no
+certificate; the state as facts and the move names added by 79.35. READING, mine: the descriptions in the repo were written in
+this project, not by other people (rules/chess.gdl says so); reading descriptions others wrote (Ludii, the Stanford set) is a
+separate piece, not decided here. PROPOSED, mine: the plan after 79.36 defines the placed questions in the description, certifies
+the fast copies against it for every game, and adds the gate that lists every fast answer of layer 2 with its certificate.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1455,4 +1471,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The cut of layers 1 and 2 (what is there; what the rules say of it) is carried into the crates, with unit tests | 2026-11-22 | 11 (last block) |
 | Layer 2 says variants (another start: Chess960, horde; other rules: atomic, antichess) on an unchanged layer 1 | 2026-11-23 | 11 (last block) |
 | Every unit of a layer is tested before the layer above is taken up; what was checked by hand becomes a test | 2026-11-23 | 11 (last block) |
+| The description is the source of the rules; fast code is only a certified copy, and the tests fail without the certificate | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
