@@ -476,7 +476,7 @@ def sources_of(crate: str, root: Path) -> list[Source]:
     return out
 
 
-CALL_RE = re.compile(r"((?:[A-Za-z_]\w*\s*::\s*)*)([A-Za-z_]\w*)\s*(?:::\s*<[^>(){};]*>\s*)?\(")
+CALL_RE = re.compile(r"((?:[A-Za-z_]\w*\s*(?:::\s*<[^<>(){};]*>\s*)?::\s*)*)([A-Za-z_]\w*)\s*(?:::\s*<[^>(){};]*>\s*)?\(")
 METHOD_RE = re.compile(r"\.\s*([A-Za-z_]\w*)\s*(?:::\s*<[^>(){};]*>\s*)?\(")
 ASSERT_RE = re.compile(r"\bassert\w*\s*!|\bpanic\s*!|unwrap_err|should_panic|debug_assert\w*\s*!")
 
@@ -544,7 +544,7 @@ def analyse(crate: str, root: Path):
     asserting_tests = 0
     for ts in tests:
         text = closure_text(ts, helpers)
-        if not ASSERT_RE.search(text):
+        if not ASSERT_RE.search(text) and not any("should_panic" in a for a in ts.attrs):
             continue
         asserting_tests += 1
         label = f"{ts.file}::{ts.name}"
@@ -555,7 +555,7 @@ def analyse(crate: str, root: Path):
                 words.update(it.ret)
         # path and bare calls
         for m in CALL_RE.finditer(text):
-            quals = [q for q in re.split(r"\s*::\s*", m.group(1).strip()) if q]
+            quals = [q for q in re.split(r"\s*::\s*", re.sub(r"::\s*<[^<>]*>", "", m.group(1)).strip()) if q]
             name = m.group(2)
             if name in KEYWORDS:
                 continue
