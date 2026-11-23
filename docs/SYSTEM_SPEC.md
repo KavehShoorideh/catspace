@@ -1080,6 +1080,14 @@ has a small fixed domain and is tested on ALL of it, which is a proof by exhaust
 state is tested on made states and sampled ones; tests of whole positions (the fixtures, co-play) stay as the check that the
 pieces compose.
 
+**Layers 0 to 3 may be mended; layer 0 takes no significant new function** (Kaveh 2026-11-23: "Yes, you can mend anything in layers
+0 through 3. We don't want to build significant functionality in layer 0 anymore, but we want to build things that fix bugs or
+allow us to support the work that we're doing."). This amends the freeze of 2026-11-22: a fault in layer 0 is mended when found,
+with its test, and a small addition is allowed when a named piece of work above needs it; no new large part is built there. The
+same holds for layers 1, 2 and 3. The three protected files of the rules (the description reader, the evaluator, the kernel) and
+the old player's solver stay protected until Kaveh says otherwise: READING, mine, since their certificates and the yardstick rest
+on them.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1499,4 +1507,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Every unit of a layer is tested before the layer above is taken up; what was checked by hand becomes a test | 2026-11-23 | 11 (last block) |
 | The description is the source of the rules; fast code is only a certified copy, and the tests fail without the certificate | 2026-11-23 | 11 (last block) |
 | The crux of layer 2: one translator from the description to Rust, each piece pinned by tests, then made faster piece by piece against an outside mark | 2026-11-23 | 11 (last block) |
+| Layers 0 to 3 may be mended; layer 0 takes fixes and small support, no significant new function | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
