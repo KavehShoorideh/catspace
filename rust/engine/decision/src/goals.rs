@@ -14,6 +14,7 @@
 //! A FIX is built from LEGAL MOVES and the graph, never from an edited position: `Fix.moves` are the names of legal moves of the side that wants the goal (after the game's pass, for the side not to move).
 //! THE BUDGET (SYSTEM_SPEC 4, 7): a question is one unit asked. Units are asked in the order of their stake (the goal unit has no row to read: its goal is built from the graph and the forcing read first); within `budget` questions every unit is asked; past it a unit is asked only while the last
 //! question changed a fact (a line was read for the unit before it). A unit not asked is listed in `Proposal::unasked` and has no goal: a gap, never a refutation. One pass over the quiet moves serves every unit (`threats::every_unit_ask`): a line is read once however many units it serves.
+use cs_game::relations::{PartRelations, UnitRelations};
 use crate::threat_verdict::{Record, VerdictKind};
 use crate::threats::{concrete_threats, every_unit_ask, kind_worths, Ask, ConcreteList, ThreatParams, ThreatRow};
 use crate::wake::{new_bearer_moves, UnitRef};
@@ -90,10 +91,10 @@ struct View { part: std::rc::Rc<PositionPart>, bear: HashSet<(usize, Place)>, ma
 
 fn view<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, s: &G::State, w: &Words) -> View {
     let part = match root { Some(r) => st.position_in(r, g, s), None => std::rc::Rc::new(st.position(g, s)) };      // PLAN 79.22 PART A: the decision's root graph when the position is the root
-    let bear = part.bears.iter().map(|r| (r.unit, r.place)).collect();
-    let may = part.moves.iter().map(|r| (r.unit, r.place)).collect();
+    let bear = part.bears().iter().map(|r| (r.unit, r.place)).collect();
+    let may = part.moves().iter().map(|r| (r.unit, r.place)).collect();
     let mut shut = HashMap::new();
-    for r in &part.shuts { shut.insert((r.unit, r.place), r.between.clone()); }
+    for r in part.shuts() { shut.insert((r.unit, r.place), r.between.clone()); }
     let ids = part.units.iter().map(|u| format!("unit:{}:{}:{}", w.roles[u.owner], w.kinds[u.kind as usize], w.places[u.at as usize])).collect();
     View { mover: part.mover, part, bear, may, shut, ids }
 }
@@ -651,16 +652,16 @@ fn goal_unit_borne_on<G: Game + Placed>(g: &G, s: &G::State, attacker: Role, def
 }
 fn bearer_counts_of<G: Game + Placed>(g: &G, s: &G::State, owner: Role, place: Place) -> usize { g.cells(s).into_iter().filter(|c| c.0 == owner && g.bearing_from(s, c.0, c.1, c.2).contains(&place)).count() }
 pub fn tied_bearer(part: &PositionPart, attacker: Role, defender: Role, t: Place) -> bool {
-    let bearers: Vec<usize> = part.bears.iter().filter(|r| r.place == t && part.units[r.unit].owner == attacker).map(|r| r.unit).collect();
-    part.shuts.iter().any(|r| part.units[r.unit].owner == defender && r.between.len() == 1 && bearers.contains(&r.between[0]) && part.occupant[r.place as usize] != 0 && part.units[part.occupant[r.place as usize] as usize - 1].owner == attacker)
+    let bearers: Vec<usize> = part.bears().iter().filter(|r| r.place == t && part.units[r.unit].owner == attacker).map(|r| r.unit).collect();
+    part.shuts().iter().any(|r| part.units[r.unit].owner == defender && r.between.len() == 1 && bearers.contains(&r.between[0]) && part.occupant[r.place as usize] != 0 && part.units[part.occupant[r.place as usize] as usize - 1].owner == attacker)
 }
 
 /// `tied_bearer` asked of the graph as the keeper holds it (plan 79.21: no node, id or link is made for a question that reads only who bears on a place, which lines are shut and who stands between): the same answer as on the part made from the same position.
 pub fn tied_bearer_live(st: &Static, live: &LiveGraph, attacker: Role, defender: Role, t: Place) -> bool {
     let b = st.board();
     let (units, occ) = (live.units(), live.occupant(b));
-    let bearers: Vec<usize> = units.iter().enumerate().filter(|(_, u)| u.owner == attacker && u.bears.contains(&t)).map(|(i, _)| i).collect();
-    units.iter().filter(|u| u.owner == defender).any(|u| u.shuts.iter().any(|&q| {
+    let bearers: Vec<usize> = units.iter().enumerate().filter(|(_, u)| u.owner == attacker && u.bears().contains(&t)).map(|(i, _)| i).collect();
+    units.iter().filter(|u| u.owner == defender).any(|u| u.shuts().iter().any(|&q| {
         let between = live.between(b, &occ, u.at, q);
         between.len() == 1 && bearers.contains(&between[0]) && occ[q as usize] != 0 && units[occ[q as usize] as usize - 1].owner == attacker
     }))

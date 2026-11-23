@@ -3,7 +3,7 @@
 //! that nothing of one game is written in the layer. tests/test_plan79_20.py scans this file for the names that would say otherwise.
 mod common;
 use common::{fixtures, Rng};
-use cs_rep::graph::{Board, FactDecl, NodeType};
+use cs_rep::graph::{Board, FactDecl, Rel};
 use cs_rep::names::{Names, Side};
 use cs_rep::steps::read_steps;
 use cs_rep::{Fact, UnitDecl};
@@ -90,6 +90,7 @@ fn the_door_writes_a_relation_with_its_links_and_the_units_between() {
     let b = &fx.board;
     let ns = b.nodes.len() as u32;
     let (mut written, mut with_between) = (0, 0);
+    let rel = Rel::new(1, "linked_to");                                          // a relation of a layer above: layer 1 knows only its slot and the word its ids begin with
     for pos in fx.games[0].iter().step_by(9) {
         let mut part = b.position_from_facts(&pos.facts).unwrap();
         for ui in 0..part.units.len() {
@@ -97,12 +98,12 @@ fn the_door_writes_a_relation_with_its_links_and_the_units_between() {
             for &(l, _) in &b.place_lines[at as usize] {
                 for &q in &b.lines[l as usize].places {
                     if q == at { continue; }
-                    b.write(&mut part, NodeType::Bear, ui, q);
-                    let r = part.bears.last().unwrap();
+                    b.write(&mut part, rel, ui, q);
+                    let r = part.written(rel).last().unwrap();
                     let expect: Vec<usize> = b.strictly_between(l, at, q).iter().filter(|x| part.occupant[**x as usize] != 0).map(|x| part.occupant[*x as usize] as usize - 1).collect();
                     assert!(expect.iter().all(|e| r.between.contains(e)), "every unit strictly between is linked");
                     let node = &part.nodes[(r.node - ns) as usize];
-                    assert_eq!(node.id, format!("bear({},place:{})", part.nodes[(part.units[ui].node - ns) as usize].id, b.names.places[q as usize]));
+                    assert_eq!(node.id, format!("linked_to({},place:{})", part.nodes[(part.units[ui].node - ns) as usize].id, b.names.places[q as usize]));
                     let links: Vec<_> = part.links.iter().filter(|k| k.a == r.node).collect();
                     assert!(links.iter().any(|k| k.kind.word() == "by" && k.b == part.units[ui].node) && links.iter().any(|k| k.kind.word() == "at_place" && k.b == b.place_node[q as usize]));
                     assert_eq!(links.iter().any(|k| k.kind.word() == "at_unit"), part.occupant[q as usize] != 0);

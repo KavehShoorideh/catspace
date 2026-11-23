@@ -3,6 +3,7 @@
 //! INTERFACE. `threat_frames(st, g, s, goal, want, p) -> ThreatFrames`: takes the static graph (with its learned profile), the game and position, the goal kind, the learned seeds' keys (`want`: key to its number) and `FrameReadParams` (fuses, the kind values and bands the read uses, the rules of a
 //! line's end); returns, per frame read, its members as (the mover's own, kind, place), its places (the READ SET of its claims) and, per member the other side bears on (or the read holds lost, both, a threat or conditional), the class and basis of its claim, the units that bear on it and the answers of its
 //! owner. `unit_class` is the class and basis of one member (shared with the binding's `questions_state`). Called by the wake (cs_decision::frame_rows) and by the binding.
+use cs_game::relations::{PartRelations};
 use super::base_graph::{Root, Static};
 use super::frames::{ClaimKind, Seed, Status};
 use super::patterns::{self, Board, FxHashMap};
@@ -145,7 +146,7 @@ pub fn threat_frames_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &
                 let (class, basis) = unit_class(&rep, i, owner);
                 // what the taking of this unit by the other side rests on, whatever the class (255: no such claim holds)
                 let take_basis = rep.claims.iter().filter(|x| x.reading == 1 - owner && x.unit as usize == i && x.kind == ClaimKind::TakeFree && x.status != Status::Not).map(|x| q::basis_rank(x.flags)).max().unwrap_or(255);
-                let mut bearers: Vec<(Kind, Place)> = part.bears.iter().filter(|r| r.place == c.2).filter(|r| part.units[r.unit].owner.min(1) != owner).map(|r| (part.units[r.unit].kind, part.units[r.unit].at)).collect();
+                let mut bearers: Vec<(Kind, Place)> = part.bears().iter().filter(|r| r.place == c.2).filter(|r| part.units[r.unit].owner.min(1) != owner).map(|r| (part.units[r.unit].kind, part.units[r.unit].at)).collect();
                 bearers.sort();
                 if bearers.is_empty() && !matches!(class, 0 | 2 | 4 | 5) { continue; }
                 let mut ans = (vec![], 0u32, 0u32);

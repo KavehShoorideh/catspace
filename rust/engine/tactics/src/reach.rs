@@ -27,7 +27,7 @@ use cs_game::keeper::GraphKeeper;
 use cs_game::placed::Placed;
 use cs_base::choice::walk::{Ask as Open, Cut, Look, Node, Out, Space, Steer, Walk};
 use cs_game::{Game, Role};
-use cs_rep::graph_facts::FactReader;
+use cs_game::graph_facts::FactReader;
 use cs_rep::history::Seen;
 use cs_rep::lemma::{Arg, Lit};
 use cs_rep::matcher::{Binding, FactIndex};

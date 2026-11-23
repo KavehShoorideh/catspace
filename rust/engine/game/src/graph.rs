@@ -35,8 +35,10 @@
 use crate::placed::{NoStep, Placed, Steps};
 use crate::{Game, Role};
 use cs_rep::graph::Board;
-use cs_rep::names::{Names, Place};
-pub use cs_rep::graph::{FactDecl, Line, LinkRec, LinkType, NodeRec, NodeType, PositionPart, RelRec, UnitRec};
+use cs_rep::live::LiveGraph;
+use cs_rep::names::{Kind, Names, Place};
+pub use cs_rep::graph::{Classes, FactDecl, Line, LinkRec, LinkType, NodeRec, NodeType, PositionPart, Rel, RelRec, UnitRec};
+pub use crate::relations::{node_words, PartRelations, UnitRelations, BEAR, MAY_MOVE, SHUT, THROUGH};
 
 /// PLAN 79.22 PART A, THE COUNT OF GRAPH BUILDS (a measure, never read by a decision): while a counter is on (`builds::start(root key)`) every graph the rules' reading builds is noted with the place that asked and whether it is the graph of the root position (the key given) or another's (a position after a move read), so that a test or a measure can say how many times a decision built the root's graph and where. Off, a call costs one relaxed load.
 pub mod builds {
@@ -69,18 +71,23 @@ impl Root {
     pub fn part(&self) -> &std::rc::Rc<PositionPart> { &self.part }
 }
 
-/// THE STATIC PART plus the rules' reading of it: the board of layer 1 (every field of it is reached through `Deref`) and the functions that ask a game how its units step. Built once per game.
+/// THE STATIC PART plus the rules' reading of it: the board of layer 1 (every field of it is reached through `Deref`), the functions that ask a game how its units step, and (plan 79.34, moved up from layer 1's board) the PROFILE of the kinds learned from the bearing relations.
+/// Built once per game.
 #[derive(Debug, Clone)]
-pub struct Static { board: Board }
+pub struct Static {
+    board: Board,
+    /// [kind][direction][heading]: the kind has been seen bearing two or more steps along a line named in that direction, heading 1 forward and 0 backward; empty until `learn`
+    pub cont: Vec<bool>,
+}
 
 impl std::ops::Deref for Static { type Target = Board; fn deref(&self) -> &Board { &self.board } }
 impl std::ops::DerefMut for Static { fn deref_mut(&mut self) -> &mut Board { &mut self.board } }
 
 impl Static {
     /// Build the static part from the rules' steps and the game's names (layer 1's `Board::new`).
-    pub fn new(steps: &Steps, names: &Names) -> Result<Static, String> { Ok(Static { board: Board::new(steps, names)? }) }
+    pub fn new(steps: &Steps, names: &Names) -> Result<Static, String> { Ok(Static { board: Board::new(steps, names)?, cont: vec![] }) }
     /// The same from a board that layer 1 holds already (read from a file or made elsewhere).
-    pub fn from_board(board: Board) -> Static { Static { board } }
+    pub fn from_board(board: Board) -> Static { Static { board, cont: vec![] } }
     pub fn board(&self) -> &Board { &self.board }
 
     /// Build the part of one position: the units and the tempo from the game's state as numbers (layer 1 makes the unit nodes), then the relations the rules give, written onto the graph through the door of change.
@@ -102,11 +109,71 @@ impl Static {
     pub fn write_rules<G: Game + Placed>(&self, g: &G, s: &G::State, part: &mut PositionPart) {
         for ui in 0..part.units.len() {
             let u = part.units[ui];
-            for p in g.bearing_from(s, u.owner, u.kind, u.at) { self.board.write(part, NodeType::Bear, ui, p); }
-            for p in g.reach_from(s, u.owner, u.kind, u.at) { self.board.write(part, NodeType::MayMove, ui, p); }
+            for p in g.bearing_from(s, u.owner, u.kind, u.at) { self.board.write(part, BEAR, ui, p); }
+            for p in g.reach_from(s, u.owner, u.kind, u.at) { self.board.write(part, MAY_MOVE, ui, p); }
         }
         if let Some(m) = part.mover { self.shut_lines(g, s, m, part); }
-        self.board.derive_throughs(part);
+        self.derive_throughs(part);
+    }
+
+    /// THE GRAPH OF THE POSITION A `LiveGraph` KEEPS (plan 79.34; this replaces layer 1's `LiveGraph::part`): layer 1's bare graph, then every relation written through the door in the order a fresh build writes them (per unit its bears then its moves; then the shut lists; then the lines through).
+    pub fn part_of(&self, live: &LiveGraph) -> PositionPart {
+        let mut p = live.bare_part(&self.board);
+        for (ui, u) in live.units().iter().enumerate() {
+            for &q in u.bears() { self.board.write(&mut p, BEAR, ui, q); }
+            for &q in u.reach() { self.board.write(&mut p, MAY_MOVE, ui, q); }
+        }
+        for (ui, u) in live.units().iter().enumerate() { for &q in u.shuts() { self.board.write(&mut p, SHUT, ui, q); } }
+        self.derive_throughs(&mut p);
+        p
+    }
+
+    fn cont_ix(&self, kind: Kind, line: u32, forward: bool) -> usize { (kind as usize * self.board.directions.len() + self.board.lines[line as usize].direction) * 2 + forward as usize }
+
+    /// Whether the kind continues along the line in the heading (false until a profile is learned).
+    pub fn continues(&self, kind: Kind, line: u32, forward: bool) -> bool { self.cont.get(self.cont_ix(kind, line, forward)).copied().unwrap_or(false) }
+
+    /// LEARN THE PROFILE of the kinds from the bear nodes of a position (78.54 A): a unit bearing on a place two or more steps away along a line marks its kind as continuing along that line family
+    /// in that heading. Call it on the parts of a sample of positions.
+    pub fn learn(&mut self, p: &PositionPart) {
+        if self.cont.is_empty() { self.cont = vec![false; self.board.names.kinds.len() * self.board.directions.len() * 2]; }
+        for r in p.bears() {
+            let u = p.units[r.unit];
+            for &l in &r.along {
+                let (i, j) = (self.board.index_on(l, u.at), self.board.index_on(l, r.place));
+                if i >= 0 && j >= 0 && (j - i).abs() >= 2 { let ix = self.cont_ix(u.kind, l, j > i); self.cont[ix] = true; }
+            }
+        }
+    }
+
+    /// THE LINE THROUGH ONE UNIT, FOR BOTH SIDES (78.54 A), written onto the graph from the bear relations already there: for each bearing of a unit on a unit b along a line, where the unit's kind continues along that line in that heading, the next
+    /// place beyond b that holds a unit; one relation node per (unit, that place). Only where b is the one unit between (a unit that jumps others is left out: a limit). Geometry only: nothing of how a unit steps is asked.
+    pub fn derive_throughs(&self, part: &mut PositionPart) {
+        if self.cont.is_empty() { return; }
+        let mut found: Vec<(usize, Place)> = vec![];
+        for r in part.bears() {
+            let u = part.units[r.unit];
+            let b = part.occupant[r.place as usize];
+            if b == 0 { continue; }
+            for &l in &r.along {
+                let (i, j) = (self.board.index_on(l, u.at), self.board.index_on(l, r.place));
+                if i < 0 || j < 0 || j == i || !self.continues(u.kind, l, j > i) { continue; }
+                let sign = if j > i { 1 } else { -1 };
+                let line = &self.board.lines[l as usize];
+                let mut k = j + sign;
+                while k >= 0 && (k as usize) < line.places.len() {
+                    let q = line.places[k as usize];
+                    if part.occupant[q as usize] != 0 {
+                        if self.board.strictly_between(l, u.at, q).iter().filter(|x| part.occupant[**x as usize] != 0).count() == 1 { found.push((r.unit, q)); }
+                        break;
+                    }
+                    k += sign;
+                }
+            }
+        }
+        found.sort_unstable();
+        found.dedup();
+        for (ui, q) in found { self.board.write(part, THROUGH, ui, q); }
     }
 
     /// The places of a unit's shut lines, as the rules say (the places beyond the farthest bearing on either side, where the game says the line is shut): in the order `write_rules` writes them. `bears` are the places the unit bears on.
@@ -135,14 +202,14 @@ impl Static {
             let u = part.units[ui];
             if u.owner != mover { continue; }
             for &(l, i) in &self.board.place_lines[u.at as usize] {
-                let ends: Vec<i32> = part.bears.iter().filter(|r| r.unit == ui && r.along.contains(&l)).map(|r| self.board.index_on(l, r.place) - i as i32).collect();
+                let ends: Vec<i32> = part.bears().iter().filter(|r| r.unit == ui && r.along.contains(&l)).map(|r| self.board.index_on(l, r.place) - i as i32).collect();
                 for sign in [1i32, -1] {
                     let Some(far) = ends.iter().filter(|d| d.signum() == sign).map(|d| d.abs()).max() else { continue };
                     let line = &self.board.lines[l as usize];
                     let mut k = i as i32 + sign * (far + 1);
                     while k >= 0 && (k as usize) < line.places.len() {
                         let q = line.places[k as usize];
-                        if let (NoStep::LineShut, _) = g.why_not(s, u.at, q) { self.board.write(part, NodeType::Shut, ui, q); }
+                        if let (NoStep::LineShut, _) = g.why_not(s, u.at, q) { self.board.write(part, SHUT, ui, q); }
                         k += sign;
                     }
                 }
@@ -170,7 +237,7 @@ impl Static {
     pub fn first_blocker_shuts<G: Game + Placed>(&self, g: &G, s: &G::State, ui: usize, part: &mut PositionPart, _ns: u32) {
         let u = part.units[ui];
         for &(l, i) in &self.place_lines[u.at as usize] {
-            let ends: Vec<i32> = part.bears.iter().filter(|r| r.unit == ui && r.along.contains(&l)).map(|r| self.index_on(l, r.place) - i as i32).collect();
+            let ends: Vec<i32> = part.bears().iter().filter(|r| r.unit == ui && r.along.contains(&l)).map(|r| self.index_on(l, r.place) - i as i32).collect();
             for sign in [1i32, -1] {
                 let Some(far) = ends.iter().filter(|d| d.signum() == sign).map(|d| d.abs()).max() else { continue };
                 let line = &self.lines[l as usize];
@@ -184,7 +251,7 @@ impl Static {
                     if j < 0 || (j - k) * sign <= 0 { continue; }
                     let held = part.occupant[q as usize];
                     if held != 0 && part.units[held as usize - 1].owner == u.owner { continue; }
-                    self.board.write(part, NodeType::Shut, ui, q);
+                    self.board.write(part, SHUT, ui, q);
                 }
             }
         }

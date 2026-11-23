@@ -34,7 +34,6 @@
 pub mod claim;
 pub mod fact;
 pub mod graph;
-pub mod graph_facts;
 pub mod history;
 pub mod lemma;
 pub mod live;

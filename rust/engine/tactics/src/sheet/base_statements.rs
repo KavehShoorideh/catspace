@@ -3,6 +3,7 @@
 //! `subgoal::statements` on any position (tested on random positions of two variants). Then the statements the graph can state that the trait alone could not: units by edge distance,
 //! pairs of own units bearing on each other along one open line, the open length of a line. Each statement is one line of plain text and one number per side (the side to move, `Us`, and
 //! the other, `Them`); the open-length statements are about the board and are one number. Nothing is fitted here; no game is named.
+use cs_game::relations::{PartRelations};
 use super::base_graph::{PositionPart, Static};
 use super::{Kind, Place, Side};
 
@@ -36,9 +37,9 @@ pub fn statements(st: &Static, p: &PositionPart, worth: &[f64], goal_kind: Optio
     // tables over the graph's relation nodes
     let mut bears_of: Vec<Vec<usize>> = vec![vec![]; nu];       // per unit: the relation records it bears by
     let mut bearers_of: Vec<Vec<usize>> = vec![vec![]; np];     // per place: the units that bear on it, ascending
-    for (ri, r) in p.bears.iter().enumerate() { bears_of[r.unit].push(ri); bearers_of[r.place as usize].push(r.unit); }
+    for (ri, r) in p.bears().iter().enumerate() { bears_of[r.unit].push(ri); bearers_of[r.place as usize].push(r.unit); }
     let mut reach_of: Vec<Vec<Place>> = vec![vec![]; nu];
-    for r in &p.moves { reach_of[r.unit].push(r.place); }
+    for r in p.moves() { reach_of[r.unit].push(r.place); }
     let unit_at = |pl: Place| -> Option<usize> { match p.occupant[pl as usize] { 0 => None, i => Some(i as usize - 1) } };
     let goal_of = |side: Side| -> Option<usize> {
         let k = goal_kind?;
@@ -70,14 +71,14 @@ pub fn statements(st: &Static, p: &PositionPart, worth: &[f64], goal_kind: Optio
             widest = widest.max(bears_of[i].len() as f64);
             let mut hits = false;
             for &ri in &bears_of[i] {
-                let r = &p.bears[ri];
+                let r = &p.bears()[ri];
                 if let Some(j) = unit_at(r.place) {
                     let v = p.units[j];
                     if v.side == o { hits = true; attacks += 1.0; if w(u.kind) < w(v.kind) { cheap_attacks += 1.0; } }
                     else if j > i && bears_on(j, u.at) {
                         mutual += 1.0;
                         // along one line with nothing between, from both sides
-                        let back = bears_of[j].iter().map(|&x| &p.bears[x]).find(|x| x.place == u.at);
+                        let back = bears_of[j].iter().map(|&x| &p.bears()[x]).find(|x| x.place == u.at);
                         if !r.along.is_empty() && r.between.is_empty() && back.is_some_and(|x| !x.along.is_empty() && x.between.is_empty()) { open_pairs += 1.0; }
                     }
                 }

@@ -37,6 +37,7 @@
 //!
 //! TRAP (`trap`): one question for any unit, on quiet routes only: has it a place to go that is not a pure loss. Read with the owner to move and no forcing threat on it (the game refuses a pass otherwise:
 //! then the answer is NOT QUIET, never "trapped").
+use cs_game::relations::{PartRelations};
 use super::base_graph::{PositionPart, Root, Static};
 use super::exchange::{estimate_taking, Val};
 use super::fates::{step_between, Cell, Step};
@@ -202,13 +203,13 @@ type Ident = Rc<Vec<(Cell, u8)>>;
 /// How many units of each owner bear on a place.
 fn bearer_counts(part: &PositionPart, place: Place) -> [u32; 2] {
     let mut c = [0u32; 2];
-    for r in part.bears.iter().filter(|r| r.place == place) { c[part.units[r.unit].owner.min(1)] += 1; }
+    for r in part.bears().iter().filter(|r| r.place == place) { c[part.units[r.unit].owner.min(1)] += 1; }
     c
 }
 
 /// The units that bear on a place and took no part in the exchange (their cell is not one of the line's, and none stands on the exchange's place).
 fn outside_bearers(part: &PositionPart, place: Place, to: Place, line: &[Cell]) -> Vec<Cell> {
-    let mut v: Vec<Cell> = part.bears.iter().filter(|r| r.place == place).map(|r| cell_of(part, r.unit)).filter(|c| c.2 != to && !line.contains(c)).collect();
+    let mut v: Vec<Cell> = part.bears().iter().filter(|r| r.place == place).map(|r| cell_of(part, r.unit)).filter(|c| c.2 != to && !line.contains(c)).collect();
     v.sort();
     v
 }
@@ -253,20 +254,20 @@ fn named_cause(before: &PositionPart, after: &PositionPart, places: &[Place], to
         let cb = cell_of(before, ob as usize - 1);
         if cb != cell_of(after, oa as usize - 1) || line.contains(&cb) { continue; }
         let own = cb.0.min(1);
-        let guards: Vec<Cell> = before.bears.iter().filter(|r| r.place == q && before.units[r.unit].owner.min(1) == own).map(|r| cell_of(before, r.unit)).collect();
-        let kept = after.bears.iter().filter(|r| r.place == q && after.units[r.unit].owner.min(1) == own).count();
-        let attacked = after.bears.iter().any(|r| r.place == q && after.units[r.unit].owner.min(1) != own);
+        let guards: Vec<Cell> = before.bears().iter().filter(|r| r.place == q && before.units[r.unit].owner.min(1) == own).map(|r| cell_of(before, r.unit)).collect();
+        let kept = after.bears().iter().filter(|r| r.place == q && after.units[r.unit].owner.min(1) == own).count();
+        let attacked = after.bears().iter().any(|r| r.place == q && after.units[r.unit].owner.min(1) != own);
         if !guards.is_empty() && kept == 0 && attacked && guards.iter().all(|c| line.contains(c)) { return Some((0, cb, guards[0])); }
     }
-    for r in &after.bears {
+    for r in after.bears() {
         let q = r.place;
         if q == to || !places.contains(&q) { continue; }
         let o = after.occupant[q as usize];
         if o == 0 { continue; }
         let w = cell_of(after, r.unit);
         if line.contains(&w) { continue; }
-        if before.bears.iter().any(|b| b.place == q && cell_of(before, b.unit) == w) { continue; }
-        let via = before.throughs.iter().any(|t| t.place == q && cell_of(before, t.unit) == w && !t.between.is_empty() && t.between.iter().all(|&i| line.contains(&cell_of(before, i))));
+        if before.bears().iter().any(|b| b.place == q && cell_of(before, b.unit) == w) { continue; }
+        let via = before.throughs().iter().any(|t| t.place == q && cell_of(before, t.unit) == w && !t.between.is_empty() && t.between.iter().all(|&i| line.contains(&cell_of(before, i))));
         if via { return Some((1, w, cell_of(after, o as usize - 1))); }
     }
     None
@@ -303,17 +304,17 @@ fn view(part: &PositionPart, np: usize, ident: &[(Cell, u8)], seed_ids: &[u8], s
     for &i in &alive { pset.insert(part.units[i].at); }
     if mode != 2 {
         for &q in seed_places {
-            if part.bears.iter().any(|r| r.place == q && alive.contains(&r.unit)) { pset.insert(q); }
+            if part.bears().iter().any(|r| r.place == q && alive.contains(&r.unit)) { pset.insert(q); }
         }
     }
     let mut inm = vec![false; part.units.len()];
     for &i in &alive { inm[i] = true; }
     for p in pset.iter() { let o = part.occupant[p as usize]; if o != 0 { inm[o as usize - 1] = true; } }
-    for r in &part.bears { if pset.contains(r.place) { inm[r.unit] = true; } }
+    for r in part.bears() { if pset.contains(r.place) { inm[r.unit] = true; } }
     if through {
         loop {
             let mut changed = false;
-            for r in &part.throughs {
+            for r in part.throughs() {
                 if !inm[r.unit] && pset.contains(r.place) && r.between.iter().any(|&b| inm[b]) { inm[r.unit] = true; changed = true; }
             }
             if !changed { break; }
@@ -371,7 +372,7 @@ impl QFrame {
 /// Two frames are in contact when they share a member or a place, or a member of one bears on a place of the other.
 pub fn q_in_contact(a: &QFrame, b: &QFrame, part: &PositionPart) -> bool {
     if a.members.iter().any(|c| b.members.contains(c)) || a.places.iter().any(|p| b.places.contains(p)) { return true; }
-    let bears_on = |x: &QFrame, y: &QFrame| x.members.iter().any(|c| part.units.iter().position(|u| (u.owner, u.kind, u.at) == *c).is_some_and(|i| part.bears.iter().any(|r| r.unit == i && y.places.contains(&r.place))));
+    let bears_on = |x: &QFrame, y: &QFrame| x.members.iter().any(|c| part.units.iter().position(|u| (u.owner, u.kind, u.at) == *c).is_some_and(|i| part.bears().iter().any(|r| r.unit == i && y.places.contains(&r.place))));
     bears_on(a, b) || bears_on(b, a)
 }
 
@@ -660,7 +661,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
                     match &self.kv {
                         None => contact_pos = true,
                         Some(kv) => {
-                            for r in part.bears.iter().filter(|r| r.place == u.at && part.units[r.unit].owner.min(1) != o) {
+                            for r in part.bears().iter().filter(|r| r.place == u.at && part.units[r.unit].owner.min(1) != o) {
                                 match estimate_taking(&part, u.at, r.unit, kv) { Some(e) if e.value > 0 => contact_pos = true, Some(e) if e.value == 0 => level = true, _ => {} }
                             }
                         }
@@ -692,7 +693,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
                 let threatens = opp_member_places.iter().any(|&q| bear.contains(&q) && !g.strikes_place(s, mover, q));
                 // a unit that stands between one of ours and a unit of theirs that nothing guards: moving it uncovers that bearing
                 let me_ix = part.occupant[from as usize];
-                let uncovers = me_ix != 0 && part.throughs.iter().any(|r| r.between.contains(&(me_ix as usize - 1)) && part.units[r.unit].owner == mover && opp_member_places.contains(&r.place));
+                let uncovers = me_ix != 0 && part.throughs().iter().any(|r| r.between.contains(&(me_ix as usize - 1)) && part.units[r.unit].owner == mover && opp_member_places.contains(&r.place));
                 if defends { class = Some(Class::Defend) } else if threatens || uncovers { class = Some(Class::Threat) }
             }
             let child: Option<(G::State, Vec<Cell>)> = if class.is_some() {
@@ -757,7 +758,7 @@ impl<'a, G: Game + Placed> QReader<'a, G> {
         if self.rules.progress {
             let mut cs: Vec<Cell> = members.iter().map(|&i| cell_of(&part, i)).collect();
             cs.sort();
-            let mut bs: Vec<(Cell, Place)> = part.bears.iter().filter(|r| frame_places.binary_search(&r.place).is_ok()).map(|r| (cell_of(&part, r.unit), r.place)).collect();
+            let mut bs: Vec<(Cell, Place)> = part.bears().iter().filter(|r| frame_places.binary_search(&r.place).is_ok()).map(|r| (cell_of(&part, r.unit), r.place)).collect();
             bs.sort();
             let mut h = rustc_hash::FxHasher::default();
             h.write_u8(mover as u8);

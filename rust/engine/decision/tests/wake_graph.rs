@@ -1,5 +1,6 @@
 //! Plan 79.05 (SYSTEM_SPEC 8 step 3, the proposer's graph reads), UNIT TESTS of the ported pieces `lines_onto`, `goal_unit_lines` and `new_bearer_moves` (cs_decision::wake): small constructed positions built through the engine's own game interface,
 //! asserting each piece's own contract. No puzzle, no stored game, no match.
+use cs_game::relations::{PartRelations};
 use cs_decision::wake::{goal_unit_lines, lines_onto, new_bearer_moves};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
@@ -87,7 +88,7 @@ fn a_bearer_that_a_discovered_line_brings_counts_too() {
     let s = KernelGame::from_fen("chess", "1k6/2p5/8/8/2B5/8/8/K1R5 w - - 0 1").unwrap().initial();
     let before = st.position(&g, &s);
     let white = g.roles().iter().position(|r| r == "white").unwrap();
-    let on_c7 = |p: &cs_tactics::sheet::base_graph::PositionPart| p.bears.iter().filter(|r| r.place == at(&g, "c7") && p.units[r.unit].owner == white).count();
+    let on_c7 = |p: &cs_tactics::sheet::base_graph::PositionPart| p.bears().iter().filter(|r| r.place == at(&g, "c7") && p.units[r.unit].owner == white).count();
     assert_eq!(on_c7(&before), 0);
     let names: Vec<String> = new_bearer_moves(&st, &g, &s, &[at(&g, "c7")]).into_iter().map(|(m, _)| m).collect();
     assert!(names.iter().any(|m| m.starts_with("c4") && m != "c4c5" && m != "c4c3" && m != "c4c2"), "a bishop move off the file opens the rook's line onto c7: {names:?}");

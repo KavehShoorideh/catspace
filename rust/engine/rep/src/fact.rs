@@ -13,3 +13,8 @@ pub struct UnitDecl { pub relation: String, pub owner: usize, pub kind: Option<u
 /// which relations a move's effect is read in (`delta`), and how a state holds its units. The learned lemmas are written in this language.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Vocabulary { pub derived: Vec<String>, pub delta: Vec<String>, pub units: Option<UnitDecl> }
+
+/// PLAN 79.34: THE WORDS OF THE FACTS OF WHAT IS SEEN IN ONE STATE (the rows a pattern reads over a graph, layer 2's reader makes them with its own beside): a unit stands on a place, a place lies on a line, a place is on the edge under a direction.
+pub const UNIT: &str = "unit";
+pub const ON_LINE: &str = "on_line";
+pub const ON_EDGE: &str = "on_edge";

@@ -1,6 +1,6 @@
 //! PLAN 79.21 STAGE B, THE GRAPH IN LAYER 1 (SYSTEM_SPEC 11 "one graph is the representation; the rules are the next layer", "the layers", 13 item 41; ledger row 36; piece: representation). One graph holds the BOARD (its places, its lines, which place is next to which,
-//! how far each place is from an edge), the UNITS standing on it and the TEMPO (whose turn it is). It is built from a board read once and a set of facts (or the same units as numbers), and from nothing else: no rule of play is called. HOW A UNIT STEPS is a rule, so the
-//! relations that follow from it (bear: the unit bears on a place; may_move: it may move there; shut: a line is shut before a place) are WRITTEN ONTO THE GRAPH by layer 2 through `Board::write` (the door of change), and are not part of the bare graph.
+//! how far each place is from an edge, the two classes of places), the UNITS standing on it and the side the state marks as to act. It is built from a board read once and a set of facts (or the same units as numbers), and from nothing else: no rule of play is called. HOW A UNIT STEPS is a rule, so the
+//! relations that follow from it are made, named and owned by layer 2 (cs_game::relations) and WRITTEN ONTO THE GRAPH through `Board::write` (the door of change), which takes the relation as a value (`Rel`); layer 1 knows neither their names nor their meaning (plan 79.34).
 //!
 //! INTERFACES (written before the bodies; who calls them is said at each).
 //!   `Board::new(&Steps, &Names) -> Result<Board, String>`                     the static part, once per game: the places, the directions, the lines (a maximal chain of two places or more under a direction and its reverse), the edges. Called by the layer that reads the description (layer 2 hands the steps over) and by `Board::from_json`.
@@ -8,30 +8,44 @@
 //!   `Board::to_json / from_json`                                               the board written and read back identical (the fixtures hold boards in this form).
 //!   `Board::position_from_units(&self, mover, cells) -> PositionPart`          the graph of a position from the units as numbers (owner, kind, place) and the tempo: the entry the engine uses.
 //!   `Board::position_from_facts(&self, &[Fact]) -> Result<PositionPart, String>`  the same from a set of facts (needs the `FactDecl`): units and tempo are read off the facts by the declaration; every other fact is not the graph's (layer 2 tags it).
-//!   `Board::write(&self, &mut PositionPart, NodeType, unit, place)`           the door of change: layer 2 writes one relation (bear, may_move, shut) of a unit onto the graph; the node, its id and its links are made here.
-//!   `Board::derive_throughs(&self, &mut PositionPart)`                         the line through one unit, from the bear relations written and the learned profile of the kinds (geometry only).
+//!   `Board::write(&self, &mut PositionPart, Rel, unit, place)`                 the door of change: layer 2 writes one relation of a unit onto the graph; the node, its id and its links are made here.
+//!   `Board::classes(&self) -> Option<Classes>`                                 the two alternating classes of places, from the links alone (plan 79.34).
 //!   `PositionPart`                                                             the per-position part: units, relation nodes, links, who stands where.
 //! Node ids are DEFINITIONS (the kind of node and the ids it is defined from), never a counter, so they are the same in every position and every run.
 //!   place `place:<text>`; direction `direction:<word>`; line `line:<direction word>@<id of its first place>`; edge `edge:<direction word>`; kind `kind:<word>`, side `side:<role word>`;
-//!   unit `unit:<side>:<kind>:<place text>`; relation nodes `bear(<unit id>,<place id>)`, `may_move(..)`, `shut(..)` (for the side to move), `through(..)` (for both sides, from the profile of the kinds).
-//! PLAIN LINKS: on_line, next, on_edge, edge_distance, line_along, reverse, edge_of, unit_on, unit_kind, unit_side. RELATION LINKS (the same for bear, may_move, shut, through): by, at_place, at_unit, along, between.
+//!   unit `unit:<side>:<kind>:<place text>`; relation nodes `<word of the relation>(<unit id>,<place id>)`, the word being the layer above's.
+//! PLAIN LINKS: on_line, next, on_edge, edge_distance, line_along, reverse, edge_of, unit_on, unit_kind, unit_side. RELATION LINKS (the same for every relation): by, at_place, at_unit, along, between.
 use crate::fact::{Fact, UnitDecl};
 use cs_base::structure::ChainError;
-use crate::names::{Kind, Names, Place, PlaceSet, Role, Side};
+use crate::names::{Kind, Names, Place, Role, Side};
 use crate::steps::Steps;
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum NodeType { Place, Direction, Line, Edge, Kind, Side, Unit, Bear, MayMove, Shut, Through }
+pub enum NodeType { Place, Direction, Line, Edge, Kind, Side, Unit, Relation(Rel) }
+
+/// How many kinds of relation a layer above may write onto one position's graph.
+pub const REL_SLOTS: usize = 4;
+
+/// A RELATION AS THE LAYER ABOVE NAMES IT (plan 79.34): the slot it is kept in and the word the ids of its nodes begin with. A value, made as a constant by the layer above: layer 1 never compares its text and never looks it up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Rel { pub slot: u8, pub word: &'static str }
+
+impl Rel {
+    pub const fn new(slot: u8, word: &'static str) -> Rel { Rel { slot, word } }
+}
 
 impl NodeType {
-    pub const ALL: [NodeType; 11] = [NodeType::Place, NodeType::Direction, NodeType::Line, NodeType::Edge, NodeType::Kind, NodeType::Side, NodeType::Unit, NodeType::Bear, NodeType::MayMove, NodeType::Shut, NodeType::Through];
     pub fn word(self) -> &'static str {
         match self { NodeType::Place => "place", NodeType::Direction => "direction", NodeType::Line => "line", NodeType::Edge => "edge", NodeType::Kind => "kind", NodeType::Side => "side",
-                     NodeType::Unit => "unit", NodeType::Bear => "bear", NodeType::MayMove => "may_move", NodeType::Shut => "shut", NodeType::Through => "through" }
+                     NodeType::Unit => "unit", NodeType::Relation(r) => r.word }
     }
-    pub fn is_relation(self) -> bool { matches!(self, NodeType::Bear | NodeType::MayMove | NodeType::Shut | NodeType::Through) }
+    pub fn is_relation(self) -> bool { matches!(self, NodeType::Relation(_)) }
 }
+
+/// THE TWO CLASSES OF PLACES (plan 79.34), from the board's links alone: the class (0 or 1) of each place and, for each direction, whether a step along it changes the class.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Classes { pub class: Vec<u8>, pub flips: Vec<bool> }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LinkType { OnLine, Next, OnEdge, EdgeDistance, LineAlong, Reverse, EdgeOf, UnitOn, UnitKind, UnitSide, By, AtPlace, AtUnit, Along, Between }
@@ -83,8 +97,6 @@ pub struct Board {
     pub edge_node: Vec<u32>,
     pub kind_node: Vec<u32>,
     pub side_node: Vec<u32>,
-    /// [kind][direction][heading]: the kind has been seen bearing two or more steps along a line named in that direction, heading 1 forward and 0 backward; empty until `learn`
-    pub cont: Vec<bool>,
 }
 
 /// One unit of a position: the owner as the game names it, the side as the reading names it (the side to move is `Us`), the kind, the place and its node.
@@ -102,10 +114,8 @@ pub struct PositionPart {
     pub nodes: Vec<NodeRec>,
     pub links: Vec<LinkRec>,
     pub units: Vec<UnitRec>,
-    pub bears: Vec<RelRec>,
-    pub moves: Vec<RelRec>,
-    pub shuts: Vec<RelRec>,
-    pub throughs: Vec<RelRec>,
+    /// the relations a layer above wrote, one list a slot (`Rel::slot`), each in the order they were written
+    pub rels: [Vec<RelRec>; REL_SLOTS],
     /// place -> index in `units` + 1 (0: nothing stands there)
     pub occupant: Vec<u16>,
 }
@@ -158,7 +168,7 @@ impl Board {
                 link(LinkType::EdgeDistance, place_node[p], edge_node[d], -1, edge_distance[d][p] as i32);
             }
         }
-        Ok(Board { nodes, links, names: names.clone(), steps: steps.clone(), decl: None, directions: steps.directions.clone(), lines, place_lines, edge_distance, next, reverse, place_node, direction_node, line_node, edge_node, kind_node, side_node, cont: vec![] })
+        Ok(Board { nodes, links, names: names.clone(), steps: steps.clone(), decl: None, directions: steps.directions.clone(), lines, place_lines, edge_distance, next, reverse, place_node, direction_node, line_node, edge_node, kind_node, side_node })
     }
 
     /// Say where the game's facts hold its units and its tempo.
@@ -188,6 +198,61 @@ impl Board {
         Ok(b)
     }
 
+    /// THE TWO ALTERNATING CLASSES OF PLACES (plan 79.34), derived from the board's own links and no game: a step along a direction that is not made of two other steps (a direction whose every step is exactly the one step of another direction followed by one of a third) CHANGES the class
+    /// (the classes alternate along every line of such steps); a direction that is made of two others changes the class as the two together do (two changes are none: along it the class is kept). Where the places can then be coloured so that every step does what its direction says, the classes
+    /// are those colours (a place's class is 0 where the colouring of its connected part starts); where they cannot, or a direction is made in a circle, the board does not say and the answer is None.
+    pub fn classes(&self) -> Option<Classes> {
+        let (nd, np) = (self.directions.len(), self.names.places.len());
+        let linked: Vec<bool> = (0..nd).map(|d| self.next[d].iter().any(|x| x.is_some())).collect();
+        if np == 0 || !linked.iter().any(|l| *l) { return None; }
+        // d is made of a then b when, at every place, the step of d is the step of a followed by the step of b, and exists exactly where that does
+        let made_of = |d: usize| -> Option<(usize, usize)> {
+            for a in (0..nd).filter(|a| *a != d && linked[*a]) {
+                for b in (0..nd).filter(|b| *b != d && linked[*b]) {
+                    if (0..np).all(|p| self.next[d][p] == self.next[a][p].and_then(|q| self.next[b][q as usize])) { return Some((a, b)); }
+                }
+            }
+            None
+        };
+        let parts: Vec<Option<(usize, usize)>> = (0..nd).map(|d| if linked[d] { made_of(d) } else { None }).collect();
+        let mut flips: Vec<Option<bool>> = (0..nd).map(|d| if !linked[d] { Some(false) } else if parts[d].is_none() { Some(true) } else { None }).collect();
+        for _ in 0..nd {
+            for d in 0..nd {
+                if let (None, Some((a, b))) = (flips[d], parts[d]) { if let (Some(x), Some(y)) = (flips[a], flips[b]) { flips[d] = Some(x ^ y); } }
+            }
+        }
+        let flips: Vec<bool> = flips.into_iter().collect::<Option<Vec<bool>>>()?;
+        let mut class = vec![2u8; np];
+        for start in 0..np {
+            if class[start] != 2 { continue; }
+            class[start] = 0;
+            let mut stack = vec![start];
+            while let Some(p) = stack.pop() {
+                for d in 0..nd {
+                    let ends = self.next[d][p].into_iter().map(|q| q as usize).chain((0..np).filter(|q| self.next[d][*q] == Some(p as Place)));
+                    for q in ends {
+                        let want = class[p] ^ flips[d] as u8;
+                        if class[q] == 2 { class[q] = want; stack.push(q); } else if class[q] != want { return None; }
+                    }
+                }
+            }
+        }
+        Some(Classes { class, flips })
+    }
+
+    /// A STATE AS NAMES (plan 79.34): the side marked to act, if any, and each unit as (side, kind, place) names, in the order the graph holds them.
+    pub fn state_text(&self, part: &PositionPart) -> (Option<String>, Vec<(String, String, String)>) {
+        (part.mover.map(|m| self.names.roles[m].clone()), part.units.iter().map(|u| (self.names.roles[u.owner].clone(), self.names.kinds[u.kind as usize].clone(), self.names.places[u.at as usize].clone())).collect())
+    }
+
+    /// A STATE READ BACK FROM ITS NAMES: the graph of the units, with no relation written. A name the game does not give is an error.
+    pub fn part_from_text(&self, marked: Option<&str>, units: &[(String, String, String)]) -> Result<PositionPart, String> {
+        let mover = match marked { Some(m) => Some(self.names.role(m)?), None => None };
+        let mut cells = vec![];
+        for (o, k, p) in units { cells.push((self.names.role(o)?, self.names.kind(k)?, self.names.place(p)?)); }
+        Ok(self.position_from_units(mover, cells))
+    }
+
     /// The lines on which both places lie.
     pub fn common_lines(&self, a: Place, b: Place) -> Vec<u32> {
         self.place_lines[a as usize].iter().filter(|(l, _)| self.place_lines[b as usize].iter().any(|(m, _)| m == l)).map(|(l, _)| *l).collect()
@@ -204,6 +269,7 @@ impl Board {
         let (i, j) = (self.index_on(line, a), self.index_on(line, b));
         if i < 0 || j < 0 { return vec![]; }
         let (lo, hi) = (i.min(j) as usize, i.max(j) as usize);
+        if hi <= lo + 1 { return vec![]; }                                     // the same place, or two neighbours: nothing lies between
         self.lines[line as usize].places[lo + 1..hi].to_vec()
     }
 
@@ -227,7 +293,7 @@ impl Board {
             occupant[at as usize] = units.len() as u16 + 1;
             units.push(UnitRec { owner, side, kind, at, node });
         }
-        PositionPart { mover, nodes, links, units, bears: vec![], moves: vec![], shuts: vec![], throughs: vec![], occupant }
+        PositionPart { mover, nodes, links, units, rels: Default::default(), occupant }
     }
 
     /// THE UNITS AND THE TEMPO OF A SET OF FACTS, by the board's declaration: (the tempo, the units as numbers). A fact of the unit relation must name a known owner, kind and place, else an error; facts of other relations are not the graph's.
@@ -256,19 +322,19 @@ impl Board {
         Ok(self.position_from_units(mover, cells))
     }
 
-    /// THE DOOR OF CHANGE: write one relation of a unit (`Bear`, `MayMove` or `Shut`) onto the position's graph: the node, its id and its links (by, at_place, at_unit, along, between). Layer 2 calls it with what its rules say.
-    pub fn write(&self, part: &mut PositionPart, kind: NodeType, ui: usize, to: Place) {
-        let r = self.relation(part, kind, ui, to);
-        match kind { NodeType::Bear => part.bears.push(r), NodeType::MayMove => part.moves.push(r), NodeType::Shut => part.shuts.push(r), NodeType::Through => part.throughs.push(r), _ => panic!("not a relation node") }
+    /// THE DOOR OF CHANGE: write one relation of a unit onto the position's graph: the node, its id and its links (by, at_place, at_unit, along, between). The layer above calls it with what its rules say and names the relation by a value (`Rel`).
+    pub fn write(&self, part: &mut PositionPart, rel: Rel, ui: usize, to: Place) {
+        let r = self.relation(part, rel, ui, to);
+        part.rels[rel.slot as usize].push(r);
     }
 
     /// One relation node with its links.
-    fn relation(&self, part: &mut PositionPart, kind: NodeType, ui: usize, to: Place) -> RelRec {
+    fn relation(&self, part: &mut PositionPart, rel: Rel, ui: usize, to: Place) -> RelRec {
         let ns = self.nodes.len() as u32;
         let u = part.units[ui];
-        let id = format!("{}({},place:{})", kind.word(), part.nodes[(u.node - ns) as usize].id, self.names.places[to as usize]);
+        let id = format!("{}({},place:{})", rel.word, part.nodes[(u.node - ns) as usize].id, self.names.places[to as usize]);
         let node = ns + part.nodes.len() as u32;
-        part.nodes.push(NodeRec { kind, id });
+        part.nodes.push(NodeRec { kind: NodeType::Relation(rel), id });
         let mut push = |kind: LinkType, b: u32| part.links.push(LinkRec { kind, a: node, b, via: -1, value: -1 });
         push(LinkType::By, u.node);
         push(LinkType::AtPlace, self.place_node[to as usize]);
@@ -285,59 +351,18 @@ impl Board {
         }
         RelRec { unit: ui, place: to, along, between, node }
     }
-
-    fn cont_ix(&self, kind: Kind, line: u32, forward: bool) -> usize { (kind as usize * self.directions.len() + self.lines[line as usize].direction) * 2 + forward as usize }
-
-    /// Whether the kind continues along the line in the heading (false until a profile is learned).
-    pub fn continues(&self, kind: Kind, line: u32, forward: bool) -> bool { self.cont.get(self.cont_ix(kind, line, forward)).copied().unwrap_or(false) }
-
-    /// LEARN THE PROFILE of the kinds from the bear nodes of a position (78.54 A): a unit bearing on a place two or more steps away along a line marks its kind as continuing along that line family
-    /// in that heading. Call it on the parts of a sample of positions.
-    pub fn learn(&mut self, p: &PositionPart) {
-        if self.cont.is_empty() { self.cont = vec![false; self.names.kinds.len() * self.directions.len() * 2]; }
-        for r in &p.bears {
-            let u = p.units[r.unit];
-            for &l in &r.along {
-                let (i, j) = (self.index_on(l, u.at), self.index_on(l, r.place));
-                if i >= 0 && j >= 0 && (j - i).abs() >= 2 { let ix = self.cont_ix(u.kind, l, j > i); self.cont[ix] = true; }
-            }
-        }
-    }
-
-    /// THE LINE THROUGH ONE UNIT, FOR BOTH SIDES (78.54 A), written onto the graph from the bear relations already there: for each bearing of a unit on a unit b along a line, where the unit's kind continues along that line in that heading, the next
-    /// place beyond b that holds a unit; one relation node per (unit, that place). Only where b is the one unit between (a unit that jumps others is left out: a limit). Geometry only: nothing of how a unit steps is asked.
-    pub fn derive_throughs(&self, part: &mut PositionPart) {
-        if self.cont.is_empty() { return; }
-        let mut found: Vec<(usize, Place)> = vec![];
-        for r in &part.bears {
-            let u = part.units[r.unit];
-            let b = part.occupant[r.place as usize];
-            if b == 0 { continue; }
-            for &l in &r.along {
-                let (i, j) = (self.index_on(l, u.at), self.index_on(l, r.place));
-                if i < 0 || j < 0 || j == i || !self.continues(u.kind, l, j > i) { continue; }
-                let sign = if j > i { 1 } else { -1 };
-                let line = &self.lines[l as usize];
-                let mut k = j + sign;
-                while k >= 0 && (k as usize) < line.places.len() {
-                    let q = line.places[k as usize];
-                    if part.occupant[q as usize] != 0 {
-                        if self.strictly_between(l, u.at, q).iter().filter(|x| part.occupant[**x as usize] != 0).count() == 1 { found.push((r.unit, q)); }
-                        break;
-                    }
-                    k += sign;
-                }
-            }
-        }
-        found.sort_unstable();
-        found.dedup();
-        for (ui, q) in found { self.write(part, NodeType::Through, ui, q); }
-    }
 }
 
 impl PositionPart {
-    /// How many relations the rules have written onto the graph (bear, may_move, shut, through).
-    pub fn relation_count(&self) -> usize { self.bears.len() + self.moves.len() + self.shuts.len() + self.throughs.len() }
+    /// The relations written in a slot, in the order they were written.
+    #[inline(always)]
+    pub fn written(&self, rel: Rel) -> &Vec<RelRec> { &self.rels[rel.slot as usize] }
+
+    /// How many relations a layer above has written onto the graph.
+    pub fn relation_count(&self) -> usize { self.rels.iter().map(|v| v.len()).sum() }
+
+    /// How many units of a kind a side has in the state.
+    pub fn count(&self, owner: Role, kind: Kind) -> usize { self.units.iter().filter(|u| u.owner == owner && u.kind == kind).count() }
 
     /// The tempo: whose turn it is (None: nobody's, or not said).
     pub fn tempo(&self) -> Option<Role> { self.mover }
@@ -347,13 +372,6 @@ impl PositionPart {
         let (mut best, mut run) = (0, 0);
         for p in &st.lines[line].places { if self.occupant[*p as usize] == 0 { run += 1; best = best.max(run); } else { run = 0; } }
         best
-    }
-
-    /// Places borne on by some unit of `side`.
-    pub fn struck_by(&self, np: usize, side: Side) -> PlaceSet {
-        let mut out = PlaceSet::new(np);
-        for r in &self.bears { if self.units[r.unit].side == side { out.insert(r.place); } }
-        out
     }
 
     /// A text dump of the position part, one node per line with its links (the ids are the definitions).

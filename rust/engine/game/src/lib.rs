@@ -24,9 +24,11 @@ pub mod certify;
 pub mod fact_audit;   // plan 78.19: the demand fact view against the full one, over seeded random play
 pub mod gdl_game;
 pub mod goal_target;   // plan 78.39: the goal's target unit, read from the description
+pub mod graph_facts;   // plan 79.34: the facts of a graph as a pattern reads them, moved up from layer 1 (the relations the rules make are named here)
 pub mod graph;         // plan 79.23: the rules' writing onto layer 1's graph (how a unit steps), moved down from cs_tactics
 pub mod keeper;        // plan 79.23: what a tempo changes in layer 1's graph, asked of the rules, moved down from cs_tactics
 pub mod kernel;
+pub mod relations;     // plan 79.34: layer 2 names and reads the relations that follow from how things move (bear, may_move, shut, through), written through layer 1's door
 pub mod rng;
 pub mod rules;         // plan 79.23: layer 2's interface: the game's rules' key, declaration, repeat limit and text door, `Ruled`
 pub mod tags;         // plan 79.21: layer 2 writes what the rules read off the history as tags (rights, counters, repeats), kept step by step in make and undo

@@ -14,6 +14,7 @@
 //! the best line of the taker once a side, the responses the frame read named, the answers to a forced end; round 3 the sweep of every legal move of the owner once for every place; round 4 the sweep's cut moves again with the fuse of a line. The reads run in one process; no thread is spawned here (the caller's `batch` spreads positions over threads).
 //! DIFFERENCES FROM THE PYTHON (listed in the 79.06 BUILT block): the candidate rows come from the frame read when the caller supplies them (`rows`) and otherwise from the graph (every unit an opposing unit bears on, no frame class, no named answers: the sweep reads every
 //! legal move anyway); the read of the game's pass is `Game::pass`; the kind-change event is always in the judge (the Python's `kind_change=False` ablation is not ported).
+use cs_game::relations::{PartRelations};
 use crate::threat_verdict::{best_taking, verdict_of, Record, Verdict, VerdictKind};
 use crate::wake::UnitRef;
 use cs_game::placed::{Kind, Place, Placed};
@@ -226,7 +227,7 @@ pub fn graph_rows_in<G: Game + Placed>(st: &Static, root: Option<&Root>, g: &G, 
     let mut out = vec![];
     for (i, u) in part.units.iter().enumerate() {
         if Some(u.kind) == goal { continue; }
-        let mut by: Vec<UnitRef> = part.bears.iter().filter(|r| r.place == u.at && part.units[r.unit].owner != u.owner).map(|r| { let b = &part.units[r.unit]; UnitRef { owner: b.owner, kind: b.kind, at: b.at } }).collect();
+        let mut by: Vec<UnitRef> = part.bears().iter().filter(|r| r.place == u.at && part.units[r.unit].owner != u.owner).map(|r| { let b = &part.units[r.unit]; UnitRef { owner: b.owner, kind: b.kind, at: b.at } }).collect();
         by.sort(); by.dedup();
         if by.is_empty() { continue; }
         let _ = i;
@@ -534,7 +535,7 @@ pub fn every_unit_ask_with<G: Game + Placed>(st: &Static, g: &G, s: &G::State, l
         units.sort_by_key(|u| u.at);
         for u in units {
             let stake = params.stake.and_then(|f| f(&kinds[u.kind as usize], owner == mover));
-            let mut by: Vec<UnitRef> = part.bears.iter().filter(|r| r.place == u.at && part.units[r.unit].owner == side).map(|r| { let b = &part.units[r.unit]; UnitRef { owner: b.owner, kind: b.kind, at: b.at } }).collect();
+            let mut by: Vec<UnitRef> = part.bears().iter().filter(|r| r.place == u.at && part.units[r.unit].owner == side).map(|r| { let b = &part.units[r.unit]; UnitRef { owner: b.owner, kind: b.kind, at: b.at } }).collect();
             by.sort(); by.dedup();
             let mut row = ThreatRow::new(owner, Some(UnitRef { owner, kind: u.kind, at: u.at }), "unit", by, stake);
             row.every = true;
