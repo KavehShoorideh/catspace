@@ -46,6 +46,8 @@ fn fixtures() -> Vec<Fx> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures");
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).filter(|p| p.extension().is_some_and(|x| x == "fixture")).collect();
     paths.sort();
+    // plan 79.35: a file that says `differs` is of a game with another start or other rules; layer2_variants.rs reads those, this file reads the three games of plan 79.23
+    let paths: Vec<PathBuf> = paths.into_iter().filter(|p| !std::fs::read_to_string(p).unwrap().lines().any(|l| l.starts_with("differs\t"))).collect();
     assert_eq!(paths.len(), 3, "the standard game and both variants of the repo are expected in {}", dir.display());
     paths.iter().map(|path| {
         let text = std::fs::read_to_string(path).unwrap();

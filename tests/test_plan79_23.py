@@ -68,16 +68,16 @@ def test_the_scan_sees_what_it_is_for():
 
 def test_the_fixtures_are_the_three_games_small_and_the_files_the_maker_makes_now(tmp_path):
     files = sorted(FIXTURES.glob("*.fixture"))
-    assert len(files) == 3
+    assert len(files) == 7, "the three games of plan 79.23 and the four of plan 79.35"
     total = sum(p.stat().st_size for p in files)
-    assert total < 1_000_000
+    assert total < 2_000_000
     tags = set()
     for p in files:
         lines = p.read_text().splitlines()
         assert lines[0].startswith("game\t") and lines[1].startswith("ends\t")
         tags |= {l.split("\t")[0] for l in lines}
         print(f"OBS 79.23 fixture {p.name}: {p.stat().st_size} bytes, {len(lines)} lines")
-    assert tags == {"game", "ends", "perft", "pos", "step", "line", "record"}, tags
+    assert tags == {"game", "ends", "perft", "pos", "step", "line", "record", "differs", "start", "scharnagl"}, tags
     # the maker, run again, writes the same bytes: a fixture is never edited by hand
     r = subprocess.run([sys.executable, "-m", "catspace.incubator.analyst.discovery.layer2_fixtures_print", str(tmp_path)], cwd=ROOT, capture_output=True, text=True, env={"PYTHONHASHSEED": "0", "PYTHONPATH": str(ROOT), "PATH": "/usr/bin:/bin"})
     assert r.returncode == 0, r.stderr
