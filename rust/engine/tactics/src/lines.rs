@@ -14,6 +14,8 @@
 //!       moves; with the line (the replies chosen to last longest). `end_answers(...)` the moves of the side to move at `s` after which the other side no longer forces it.
 //!   Called by: the Python binding `read_lines` (py/src/lines_py.rs), for the threat list (catspace/incubator/analyst/discovery/threat_list.py). No player calls it.
 use crate::ledger::{Judge, Search, WIN};
+use crate::stepping::Stepped;
+use cs_base::choice::fold::{Bounds, Fold, Kind, Pre};
 use crate::{won, wins_in, Budget};
 use cs_game::placed::{Place, Placed};
 use cs_game::{Game, Role};
@@ -77,31 +79,70 @@ fn lost_kind(text: &str) -> Option<&str> { text.strip_prefix("lose ") }
 /// middle of an exchange when a fuse stops it). PLAN 78.87: it is a READING by the judge, not a run of takings: the end of the game is counted (`WIN` less the plies), so a taking after which the other side ends the game is
 /// worse than standing and is not played, and the side to move stands whenever every taking leaves it worse by the judge's own count (a move that takes nothing and changes no kind is not read, as in the search's own horizon).
 pub fn settle_tail<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State) -> (Vec<G::Move>, bool) {
-    fn go<G: Game, J: Judge>(g: &G, probe: &Search<G, J>, me: Role, s: &G::State, depth: u32, mut alpha: i64, mut beta: i64, hit: &mut bool, nodes: &mut u32) -> (i64, Vec<G::Move>) {
-        if let Some(v) = g.outcome(s) {                                  // (PLAN 78.87: the end of the game is counted as the search counts it: above or below every ledger, the sooner the larger)
-            return (if won(&v, me) { WIN - depth as i64 } else if (0..v.len()).any(|i| i != me && won(&v, i)) { -WIN + depth as i64 } else { 0 }, vec![]);
-        }
-        *nodes += 1;
-        if depth >= crate::ledger::QUIET_FUSE || *nodes > TAIL_NODES { *hit = true; return (0, vec![]); }
-        let maxing = g.mover(s) == Some(me);
-        let mut best: (i64, Vec<G::Move>) = (0, vec![]);                 // standing: nothing more is taken
-        if maxing { if best.0 >= beta { return best; } alpha = alpha.max(best.0); } else { if best.0 <= alpha { return best; } beta = beta.min(best.0); }
-        for m in g.moves(s) {
-            let d = probe.gain(s, &m);
-            if d == 0 { continue; }                                      // (captures and kind changes that add to the ledger only)
-            let (v, mut rest) = go(g, probe, me, &g.apply(s, &m), depth + 1, alpha - d, beta - d, hit, nodes);
-            let v = d + v;
-            if (maxing && v > best.0) || (!maxing && v < best.0) { rest.insert(0, m); best = (v, rest); }
-            if maxing { alpha = alpha.max(v); } else { beta = beta.min(v); }
-            if alpha >= beta { break; }
-        }
-        best
-    }
-    let mut hit = false;
-    let mut nodes = 0u32;
     let probe = Search::with_fuse(g, judge, me, 1);
-    let (_, tail) = go(g, &probe, me, s, 0, i64::MIN / 2, i64::MAX / 2, &mut hit, &mut nodes);
-    (tail, hit)
+    let mut w = Fold::new(Stepped::new(g, me, s), Tail { g, probe: &probe, me, hit: false, nodes: 0, pv: Vec::new() });
+    let _ = w.go(u32::MAX, 0, Bounds { lo: i64::MIN / 2, hi: i64::MAX / 2 });
+    (std::mem::take(&mut w.kind.pv.first_mut().map(std::mem::take).unwrap_or_default()), w.kind.hit)
+}
+
+/// PLAN 79.33 (SYSTEM_SPEC 11, 13 item 51; piece: the tactical reasoner as a case of the base): the kind of answer of the tail. THE WALK IS NOT HERE: the recursion with its window is layer 0's (`cs_base::choice::fold`). What this hands it: the end of the game counted as the search counts it (above or below every ledger, the sooner the larger), the node fuse and the
+/// depth fuse (a cut is a leaf worth nought, and says so), standing (nothing more is taken) as the value an option must beat, the gain of an option (a move that adds nothing to the ledger is left out), and the best line kept as the options improve.
+struct Tail<'a, G: Game, J: Judge> {
+    g: &'a G,
+    probe: &'a Search<'a, G, J>,
+    me: Role,
+    hit: bool,
+    nodes: u32,
+    /// the best line from the node at each ply, as the walk finds it
+    pv: Vec<Vec<G::Move>>,
+}
+
+impl<'a, G: Game, J: Judge> Kind<Stepped<'a, G>> for Tail<'a, G, J> {
+    type Val = i64;
+    type Err = ();
+    type Edge = i64;
+    type Token = ();
+    const WINDOWED: bool = true;
+    const CHANCE: bool = false;
+
+    fn before(&mut self, space: &Stepped<'a, G>, _left: u32, ply: u32, _win: &mut Bounds<i64>) -> Result<Pre<i64, ()>, ()> {
+        let p = ply as usize;
+        if self.pv.len() <= p { self.pv.resize_with(p + 1, Vec::new); }
+        self.pv[p].clear();
+        let s = space.top();
+        if let Some(v) = self.g.outcome(s) {          // (PLAN 78.87: the end of the game is counted as the search counts it: above or below every ledger, the sooner the larger)
+            return Ok(Pre::Done(if won(&v, self.me) { WIN - ply as i64 } else if (0..v.len()).any(|i| i != self.me && won(&v, i)) { -WIN + ply as i64 } else { 0 }));
+        }
+        self.nodes += 1;
+        if ply >= crate::ledger::QUIET_FUSE || self.nodes > TAIL_NODES { self.hit = true; return Ok(Pre::Done(0)); }
+        Ok(Pre::Go(()))
+    }
+
+    fn horizon(&mut self, _space: &Stepped<'a, G>, _token: (), _ply: u32) -> Result<i64, ()> { unreachable!("the tail has no depth of its own") }
+
+    /// standing: nothing more is taken
+    #[inline(always)]
+    fn base(&mut self, _space: &Stepped<'a, G>, _token: &()) -> Option<i64> { Some(0) }
+
+    #[inline(always)]
+    fn edge(&mut self, space: &Stepped<'a, G>, o: &G::Move) -> Option<i64> {
+        let d = self.probe.gain(space.top(), o);
+        if d == 0 { None } else { Some(d) }          // (captures and kind changes that add to the ledger only)
+    }
+    #[inline(always)]
+    fn child(&self, d: i64, win: &Bounds<i64>) -> Bounds<i64> { Bounds { lo: win.lo - d, hi: win.hi - d } }
+    #[inline(always)]
+    fn lift(&self, d: i64, v: i64) -> Result<i64, ()> { Ok(d + v) }
+
+    fn improved(&mut self, _space: &Stepped<'a, G>, ply: u32, o: &G::Move) {
+        let p = ply as usize;
+        let mut rest = if self.pv.len() > p + 1 { std::mem::take(&mut self.pv[p + 1]) } else { Vec::new() };
+        rest.insert(0, o.clone());
+        self.pv[p] = rest;
+    }
+
+    #[inline(always)]
+    fn finish(&mut self, _space: &Stepped<'a, G>, _token: (), got: Option<i64>, _entry: &Bounds<i64>) -> Result<i64, ()> { Ok(got.expect("standing is a value")) }
 }
 
 /// The line `names` (played from `s`) read on through the tail: the names of the tail moves, its captures and kind changes, and whether it is unsettled. The events of the line then agree with the

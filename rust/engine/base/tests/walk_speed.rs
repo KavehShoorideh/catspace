@@ -1,6 +1,6 @@
 //! PLAN 79.32 PART F (LAYER 0'S TEST OF SPEED; SYSTEM_SPEC 11 "The pure search is mathematics and lives in layer 0", 13 item 50). A made implicit tree of a fixed size is walked by `choice::walk::Walk`: no tree is built, a node is a number and its options are computed when asked, stepped into and back out of on the spot.
 //! It prints OBS lines (nodes read, seconds, nodes a second, whole numbers of two sizes as the depth and the steps) and asserts the answer against a plain recursion written apart in this test over the same implicit tree. The speed is printed, never asserted: a number of nodes a second is a measure, not a law.
-use cs_base::choice::walk::{Ask, Cut, Look, Out, Space, Steer, Walk, Whole};
+use cs_base::choice::walk::{Ask, Cut, Look, Node, Out, Space, Steer, Walk, Whole};
 use std::time::Instant;
 
 const BRANCH: u64 = 4;
@@ -12,17 +12,20 @@ struct Implicit { stack: Vec<(u64, u32)>, sparse: bool }
 fn child(n: u64, i: u64) -> u64 { (n ^ (i + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15)).wrapping_mul(0xBF58_476D_1CE4_E5B9).rotate_left(23) ^ n }
 fn props(n: u64, sparse: bool) -> u64 { if sparse { (n & 0xFFFFF == 0) as u64 | (((n % 1_000_003 == 0) as u64) << 1) } else { (n & 31 == 0) as u64 | (((n % 7 == 0) as u64) << 1) } }
 
-impl Space for Implicit {
+impl Node for Implicit {
     type Opt = u64;
+    fn own_turn(&self) -> bool { self.stack.last().unwrap().1 % 2 == 0 }
+    fn options(&mut self, out: &mut Vec<u64>) { let n = self.stack.last().unwrap().0; out.extend((0..BRANCH).map(|i| child(n, i))); }
+    fn enter(&mut self, o: &u64) { let d = self.stack.last().unwrap().1; self.stack.push((*o, d + 1)); }
+    fn leave(&mut self) { self.stack.pop(); }
+}
+
+impl Space for Implicit {
     const CYCLES: bool = false;
     fn key(&self) -> u64 { self.stack.last().unwrap().0 }
     fn look(&mut self) -> Look { let (n, d) = *self.stack.last().unwrap(); let p = props(n, self.sparse); Look { bound: p, held: p, ended: d == DEPTH } }
-    fn own_turn(&self) -> bool { self.stack.last().unwrap().1 % 2 == 0 }
     fn met_before(&self, _key: u64) -> bool { false }
-    fn options(&mut self, out: &mut Vec<u64>) { let n = self.stack.last().unwrap().0; out.extend((0..BRANCH).map(|i| child(n, i))); }
     fn breaks(&mut self, _cand: u64, _opts: &[u64]) -> u64 { 0 }
-    fn enter(&mut self, o: &u64) { let d = self.stack.last().unwrap().1; self.stack.push((*o, d + 1)); }
-    fn leave(&mut self) { self.stack.pop(); }
 }
 
 struct Count { nodes: u64 }

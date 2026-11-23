@@ -4,7 +4,7 @@
 //!   both parties the set's own: some cell; neither: every cell; the row party only: some row, then every column; the column party only: some column, then every row (pure choices; a party counts as the set's own only when all its members are in the set).
 //!   `TreeSpace::valuing(tree, set)` the same stepping with a choice by chance kept in full (every outcome with its chance), for `value`. Options are numbered in the tree's own order; a node is its tree node and, inside a choice at once, the stage (the whole choice, a row picked, a column picked).
 //!   Called by: `choice::can_force_set`, `choice::secure` (and so `guarantee`, `value`, `value_between`, `force_chance_set`).
-use super::walk::{Cut, Look, Space, Steer};
+use super::walk::{Cut, Look, Node, Space, Steer};
 use super::{Party, Tree};
 use crate::number::{Num, NumError};
 
@@ -80,18 +80,8 @@ impl<'t, R> TreeSpace<'t, R, fn(&R) -> bool> {
     pub fn valuing(tree: &'t Tree<R>, set: &'t Party) -> Self { TreeSpace { stack: vec![Frame { tree, stage: Stage::Whole }], set, holds: |_| false, forcing: false } }
 }
 
-impl<'t, R, F: Fn(&R) -> bool> Space for TreeSpace<'t, R, F> {
+impl<'t, R, F: Fn(&R) -> bool> Node for TreeSpace<'t, R, F> {
     type Opt = usize;
-    const CYCLES: bool = false;
-
-    fn key(&self) -> u64 { self.top().tree as *const Tree<R> as u64 }
-
-    fn look(&mut self) -> Look {
-        match self.top().tree {
-            Tree::Result(r) => { let m = (self.holds)(r) as u64; Look { bound: m, held: m, ended: true } }
-            _ => Look { bound: 0, held: 0, ended: false },
-        }
-    }
 
     fn own_turn(&self) -> bool {
         let f = self.top();
@@ -102,8 +92,6 @@ impl<'t, R, F: Fn(&R) -> bool> Space for TreeSpace<'t, R, F> {
         }
     }
 
-    fn met_before(&self, _key: u64) -> bool { false }
-
     fn options(&mut self, out: &mut Vec<usize>) {
         let n = self.count();
         let skip_null = self.forcing && matches!(self.top().tree, Tree::Chance(_));
@@ -112,8 +100,6 @@ impl<'t, R, F: Fn(&R) -> bool> Space for TreeSpace<'t, R, F> {
             out.push(ix);
         }
     }
-
-    fn breaks(&mut self, _cand: u64, _opts: &[usize]) -> u64 { 0 }
 
     fn enter(&mut self, ix: &usize) {
         let ix = *ix;
@@ -134,6 +120,23 @@ impl<'t, R, F: Fn(&R) -> bool> Space for TreeSpace<'t, R, F> {
     }
 
     fn leave(&mut self) { self.stack.pop(); }
+}
+
+impl<'t, R, F: Fn(&R) -> bool> Space for TreeSpace<'t, R, F> {
+    const CYCLES: bool = false;
+
+    fn key(&self) -> u64 { self.top().tree as *const Tree<R> as u64 }
+
+    fn look(&mut self) -> Look {
+        match self.top().tree {
+            Tree::Result(r) => { let m = (self.holds)(r) as u64; Look { bound: m, held: m, ended: true } }
+            _ => Look { bound: 0, held: 0, ended: false },
+        }
+    }
+
+    fn met_before(&self, _key: u64) -> bool { false }
+
+    fn breaks(&mut self, _cand: u64, _opts: &[usize]) -> u64 { 0 }
 }
 
 /// What steers a walk of an explicit tree: nothing. No budget, no order, no kept answers.

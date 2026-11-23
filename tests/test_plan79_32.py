@@ -70,9 +70,10 @@ def test_the_interface_is_static_and_the_numbers_of_the_hot_path_are_bare_whole_
         c = code(BASE / "src" / "choice" / f)
         assert not re.search(r"Box\s*<\s*dyn|&\s*(mut\s+)?dyn\b|\bdyn\s+Fn", c), f
     w = (BASE / "src" / "choice" / "walk.rs").read_text()
-    for sig in ("pub trait Space", "pub trait Steer<S: Space>", "pub trait Whole", "pub struct Walk<S: Space, T: Steer<S>, N: Whole>", "fn enter(&mut self, o: &Self::Opt)", "fn leave(&mut self)", "fn options(&mut self, out: &mut Vec<Self::Opt>)",
-                "fn key(&self) -> u64", "pub fn go(&mut self, depth: N, ask: Ask, later: bool, by_own: bool, out: &mut Out<N>)"):
+    for sig in ("pub trait Space", "pub trait Steer<S: Space>", "pub trait Whole", "pub struct Walk<S: Space, T: Steer<S>, N: Whole>", "fn key(&self) -> u64", "pub fn go(&mut self, depth: N, ask: Ask, later: bool, by_own: bool, out: &mut Out<N>)"):
         assert sig in w, sig
+    for sig in ("fn enter(&mut self, o: &Self::Opt)", "fn leave(&mut self)", "fn options(&mut self, out: &mut Vec<Self::Opt>)"):          # plan 79.33: the stepping moved to `fold::Node`, which `Space` extends
+        assert sig in (BASE / "src" / "choice" / "fold.rs").read_text(), sig
     assert "whole!(u8, u16, u32, u64, usize);" in w
     # layer 4's walk runs on machine numbers (u8), not on the exact number type
     assert "Walk<Position<'a, G>, Policy<'a, G>, u8>" in (TACTICS / "src" / "reach.rs").read_text()

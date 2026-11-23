@@ -25,7 +25,7 @@ use crate::ledger::Judge;
 use cs_game::graph::Static;
 use cs_game::keeper::GraphKeeper;
 use cs_game::placed::Placed;
-use cs_base::choice::walk::{Ask as Open, Cut, Look, Out, Space, Steer, Walk};
+use cs_base::choice::walk::{Ask as Open, Cut, Look, Node, Out, Space, Steer, Walk};
 use cs_game::{Game, Role};
 use cs_rep::graph_facts::FactReader;
 use cs_rep::history::Seen;
@@ -195,8 +195,26 @@ impl<'a, G: Game + Placed> Position<'a, G> {
     }
 }
 
-impl<'a, G: Game + Placed> Space for Position<'a, G> {
+impl<'a, G: Game + Placed> Node for Position<'a, G> {
     type Opt = G::Move;
+
+    fn own_turn(&self) -> bool { self.g.mover(&self.top().state) == Some(self.me) }
+
+    fn options(&mut self, out: &mut Vec<G::Move>) { self.make_top(); *out = self.g.moves(&self.top().state); }
+
+    fn enter(&mut self, m: &G::Move) {
+        let q = self.g.apply(&self.top().state, m);
+        let key = self.g.key(&q);
+        self.stack.push(Frame { state: q, key, made: false });
+    }
+
+    fn leave(&mut self) {
+        let f = self.stack.pop().expect("a position is current");
+        if f.made { self.keeper.undo(); }
+    }
+}
+
+impl<'a, G: Game + Placed> Space for Position<'a, G> {
     const CYCLES: bool = true;
 
     fn key(&self) -> u64 { self.top().key }
@@ -209,27 +227,12 @@ impl<'a, G: Game + Placed> Space for Position<'a, G> {
         Look { bound, held, ended }
     }
 
-    fn own_turn(&self) -> bool { self.g.mover(&self.top().state) == Some(self.me) }
-
     fn met_before(&self, key: u64) -> bool { self.history.contains(&key) }
-
-    fn options(&mut self, out: &mut Vec<G::Move>) { self.make_top(); *out = self.g.moves(&self.top().state); }
 
     fn breaks(&mut self, cand: u64, opts: &[G::Move]) -> u64 {
         let mut unbound = 0u64;
         for m in opts { unbound |= cand & !self.bound_after(m); if unbound == cand { break; } }
         unbound
-    }
-
-    fn enter(&mut self, m: &G::Move) {
-        let q = self.g.apply(&self.top().state, m);
-        let key = self.g.key(&q);
-        self.stack.push(Frame { state: q, key, made: false });
-    }
-
-    fn leave(&mut self) {
-        let f = self.stack.pop().expect("a position is current");
-        if f.made { self.keeper.undo(); }
     }
 }
 
