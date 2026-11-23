@@ -105,7 +105,7 @@ def test_a_wrong_description_disagrees_with_each_kernel_the_negative_controls():
 def test_the_files_that_must_not_move_do_not_move_and_no_dependency_changes():
     if not have_before():
         pytest.skip(f"the commit {BEFORE} is not in this clone")
-    frozen = ["rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs", "rust/engine/base",
+    frozen = ["rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs", "rust/engine/base/src",   # plan 79.36: the sources of layer 0 stay frozen; tests are added under base/tests (the plan allows it)
               "rust/engine/Cargo.lock", "rust/engine/Cargo.toml"] + [f"rust/engine/{c}/Cargo.toml" for c in ("base", "rep", "memory", "game", "gdl", "value", "tactics", "decision", "planning", "learn", "py", "operator")]
     d = git("diff", "--stat", BEFORE, "--", *frozen)
     assert d.returncode == 0 and d.stdout.strip() == "", d.stdout
