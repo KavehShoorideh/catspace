@@ -1054,6 +1054,26 @@ this project, not by other people (rules/chess.gdl says so); reading description
 separate piece, not decided here. PROPOSED, mine: the plan after 79.36 defines the placed questions in the description, certifies
 the fast copies against it for every game, and adds the gate that lists every fast answer of layer 2 with its certificate.
 
+**The crux of layer 2 is a translator from the description to Rust, made fast piece by piece under tests** (Kaveh 2026-11-23: "this
+is the crux of layer 2, is basically this GDL to Rust translation ... as part of the ingestion of new game rules, where if the
+GDL to Rust translator ends up translating into very slow Rust, then we will feed it some fast, like let's say Shakmati kind of
+comparison, and basically say this is possible ... profile the code and get the speed to here, or to 90% of here ... build unit
+tests around every little piece and making sure the pieces each provide the same answer, but at a better speed"). Ingesting a game
+is: read its description, translate it to Rust by one translator that knows no game, pin every piece of the translated code with
+unit tests of its answers, then profile and make the hot pieces faster one at a time, each change passing the same tests. A fast
+outside implementation, where one exists (shakmaty for chess), is the mark of what speed is possible and a second check of the
+answers; it is not the source. Kaveh's expectation: this method can end faster than the hand-written library.
+READING, mine. (i) Two kinds of speed work must be kept apart. A pass of the translator (a relation over a small fixed set of
+places kept as a set of bits, a pure function of a small input kept as a table) is general, serves every game, and keeps the
+claim that no rule is written by hand. A piece rewritten by hand for one game is a certified copy in the sense of the block
+above: allowed, tested against the translated piece, but it is hand-written rules again and each new game pays for it again. The
+first kind is preferred and the second is counted and reported. (ii) The target should be set by a measurement of what share of
+a decision's time the rules take, not only by the outside library's speed. (iii) NOT MEASURED: how slow the translated code
+is, and whether a general pass can reach the library; my expectation is a large gap at first and that beating the library is
+unlikely without passes that rediscover its tables. (iv) This is foundation work and changes no decision at chess; it is taken up
+at Kaveh's word, as layer 2's own work, before layer 3. PROPOSED, mine: the first step is a measurement (translate the chess
+description once, time it against the evaluator and the library), and the plan is written from that number.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1472,4 +1492,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 2 says variants (another start: Chess960, horde; other rules: atomic, antichess) on an unchanged layer 1 | 2026-11-23 | 11 (last block) |
 | Every unit of a layer is tested before the layer above is taken up; what was checked by hand becomes a test | 2026-11-23 | 11 (last block) |
 | The description is the source of the rules; fast code is only a certified copy, and the tests fail without the certificate | 2026-11-23 | 11 (last block) |
+| The crux of layer 2: one translator from the description to Rust, each piece pinned by tests, then made faster piece by piece against an outside mark | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
