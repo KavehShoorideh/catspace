@@ -1,0 +1,3 @@
+# PLAN 79.36: the public items of layers 0, 1 and 2 that no test calls, each with its cause. One per line: `<crate> <item name as scripts/layer_units_print.py prints it> | <cause>`.
+# An item is listed only when it cannot be tested without changing a protected file or a source of layer 0, or when a test of it is committed and marked to be skipped (the test is then not counted).
+# tests/test_plan79_36.py fails when a public item has no test and is not listed here, and when a line here names an item that is tested or does not exist.
