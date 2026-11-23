@@ -1,0 +1,22 @@
+# PLAN 79.34 PART D: what layer 1 is expected to say of the board of chess and of a made state, written by hand (the game of chess is named here on purpose; the test code names none).
+# The kinds, sorted by text, as the game gives them; the two sides.
+kinds	bishop king knight pawn queen rook
+roles	white black
+# the board: 64 places named file then rank, the first and the last by the game's own order
+places	64	a1	h8
+# the lines of steps: eight ranks, eight files, and the diagonals of two or more places (13 in each of two families, each read in both directions as one line)
+lines	42
+# places that have a next place under each direction, sorted: four diagonal directions of 49, four of the ranks and files of 56
+links	49 49 49 49 56 56 56 56
+# places on the edge under each direction, sorted: a rank or a file edge holds 8 places, a diagonal direction's edge holds 15
+edges	8 8 8 8 15 15 15 15
+# the two classes (the light and the dark places): 32 each
+classes	32	32
+# a made state, not a start: a white rook on a1, a black king on h8, two white pawns on e4 and e5, a black knight on c3; white to move
+state	cell,a,1,white,rook cell,h,8,black,king cell,e,4,white,pawn cell,e,5,white,pawn cell,c,3,black,knight control,white	white
+count	white	pawn	2
+count	white	rook	1
+count	white	king	0
+count	black	knight	1
+count	black	king	1
+count	black	rook	0
