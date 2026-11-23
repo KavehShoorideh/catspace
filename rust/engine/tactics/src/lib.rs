@@ -16,6 +16,7 @@ pub mod reach;
 pub mod reason;
 pub mod scenario;
 pub mod sheet;
+pub mod stepping;
 pub mod toward;
 
 use cs_game::{Game, Role};

@@ -13,6 +13,7 @@
 //!
 //! The oracle is a trait so that this crate needs to know nothing of rules or stores: the claim-backed oracle is built where both are visible (cs_decision). Game-free.
 use crate::{won, Budget, Cut};
+use crate::stepping::Stepped;
 use cs_base::choice::fold::{Bounds, Fold, Kind, Node, Pre};
 use cs_game::{Game, Role};
 use std::collections::HashMap;
@@ -99,27 +100,9 @@ impl Toward {
     pub fn count(&self, class: Class) -> usize { self.root.iter().filter(|r| r.1 == class).count() }
 }
 
-/// PLAN 79.33 (SYSTEM_SPEC 11 "What plan 79.32 left of one algorithm", 13 item 51; piece: the tactical reasoner as a case of the base). THE WALK IS NOT HERE: the and-or recursion with its window is layer 0's (`cs_base::choice::fold::Fold`). What this file hands it: `Line`, the node (the positions of the line being walked, the
+/// PLAN 79.33 (SYSTEM_SPEC 11 "What plan 79.32 left of one algorithm", 13 item 51; piece: the tactical reasoner as a case of the base). THE WALK IS NOT HERE: the and-or recursion with its window is layer 0's (`cs_base::choice::fold::Fold`). What this file hands it: `stepping::Stepped`, the node (the positions of the line being walked, the
 /// game's moves as its options), and `Run`, the kind of answer (the class-and-ply whole number, best at the side's turn and worst at any other, in a window): the leaf (the game's own outcome, the record's draw, the line's draw, the oracle's claim, the depth limit), the budget and the clock, the answers kept by position and plies
 /// left (the memo) with the bound a cut makes of them, and the marks of the iteration (`horizon`, `spoke`, `outcome`, the taint of a value that rests on the line).
-struct Line<'a, G: Game> {
-    g: &'a G,
-    role: Role,
-    stack: Vec<G::State>,
-}
-
-impl<G: Game> Node for Line<'_, G> {
-    type Opt = G::Move;
-    #[inline(always)]
-    fn own_turn(&self) -> bool { self.g.mover(self.stack.last().expect("a position is current")) == Some(self.role) }
-    #[inline(always)]
-    fn options(&mut self, out: &mut Vec<G::Move>) { *out = self.g.moves(self.stack.last().expect("a position is current")); }
-    #[inline(always)]
-    fn enter(&mut self, m: &G::Move) { let q = self.g.apply(self.stack.last().expect("a position is current"), m); self.stack.push(q); }
-    #[inline(always)]
-    fn leave(&mut self) { self.stack.pop(); }
-}
-
 struct Run<'a, G: Game, O: LeafOracle<G>> {
     g: &'a G,
     role: Role,
@@ -150,7 +133,7 @@ impl<'a, G: Game, O: LeafOracle<G>> Run<'a, G, O> {
     }
 }
 
-impl<'a, G: Game, O: LeafOracle<G>> Kind<Line<'a, G>> for Run<'a, G, O> {
+impl<'a, G: Game, O: LeafOracle<G>> Kind<Stepped<'a, G>> for Run<'a, G, O> {
     type Val = i32;
     type Err = Cut;
     type Edge = ();
@@ -159,8 +142,8 @@ impl<'a, G: Game, O: LeafOracle<G>> Kind<Line<'a, G>> for Run<'a, G, O> {
     const WINDOWED: bool = true;
     const CHANCE: bool = false;
 
-    fn before(&mut self, space: &Line<'a, G>, left: u32, ply: u32, win: &mut Bounds<i32>) -> Result<Pre<i32, (u64, bool, u32)>, Cut> {
-        let s = space.stack.last().expect("a position is current");
+    fn before(&mut self, space: &Stepped<'a, G>, left: u32, ply: u32, win: &mut Bounds<i32>) -> Result<Pre<i32, (u64, bool, u32)>, Cut> {
+        let s = space.top();
         let ply = ply as i32;
         if let Some(v) = self.g.outcome(s) { self.outcome = true; return Ok(Pre::Done(self.terminal(&v, ply))); }
         let key = self.g.key(s);
@@ -190,17 +173,17 @@ impl<'a, G: Game, O: LeafOracle<G>> Kind<Line<'a, G>> for Run<'a, G, O> {
         Ok(Pre::Go((key, taint_before, left)))
     }
 
-    fn horizon(&mut self, _space: &Line<'a, G>, token: (u64, bool, u32), _ply: u32) -> Result<i32, Cut> { self.horizon = true; self.path_taint |= token.1; Ok(UNKNOWN) }
+    fn horizon(&mut self, _space: &Stepped<'a, G>, token: (u64, bool, u32), _ply: u32) -> Result<i32, Cut> { self.horizon = true; self.path_taint |= token.1; Ok(UNKNOWN) }
 
     #[inline(always)]
-    fn edge(&mut self, _space: &Line<'a, G>, _o: &G::Move) -> Option<()> { Some(()) }
+    fn edge(&mut self, _space: &Stepped<'a, G>, _o: &G::Move) -> Option<()> { Some(()) }
 
     #[inline(always)]
     fn open(&mut self, token: &(u64, bool, u32)) { self.path.push(token.0); }
     #[inline(always)]
     fn close(&mut self) { self.path.pop(); }
 
-    fn finish(&mut self, _space: &Line<'a, G>, token: (u64, bool, u32), got: Option<i32>, entry: &Bounds<i32>) -> Result<i32, Cut> {
+    fn finish(&mut self, _space: &Stepped<'a, G>, token: (u64, bool, u32), got: Option<i32>, entry: &Bounds<i32>) -> Result<i32, Cut> {
         let out = match got { Some(v) => v, None => UNKNOWN };
         if !self.path_taint {
             if let Some(m) = self.memo.as_mut() {
@@ -241,7 +224,7 @@ fn toward_run<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle
     if moves.is_empty() { out.exact = true; return out; }
     let root_key = g.key(s);
     let run = Run { g, role, oracle, history, path: vec![root_key], evals: 0, horizon: false, spoke: false, outcome: false, memo: if memo { Some(HashMap::new()) } else { None }, path_taint: false, b };
-    let mut w = Fold::new(Line { g, role, stack: vec![s.clone()] }, run);
+    let mut w = Fold::new(Stepped::new(g, role, s), run);
     for d in 1..=max_depth {
         let (n0, e0, t0) = (w.kind.b.nodes, w.kind.evals, Instant::now());
         w.kind.horizon = false;
