@@ -3,30 +3,30 @@ layer 2 is a translator ..."; piece: rules; ledger rows 45, 44). This text was w
 
 WHAT IT TAKES. A composed description (the base text and a delta, as `cs_gdl::compose` makes it: one text), read by the reader that exists, discovery/gdl.py (the reader of
 the Python mirror of the evaluator: `parse`, `clauses`, `Program` with its strata and each rule's join order; a second reader is not written). The translator holds no game: its
-source holds only the fixed words of the description language (role, init, true, does, legal, next, terminal, goal, distinct, not, and the input `record`, and the move that
+source holds only the fixed words of the description language (role, init, true, does, legal, next, terminal, goal, distinct, not, and the input `record`, and the turn that
 passes, `noop`, which the evaluator's `GdlGame` also reads by that name). tests/test_plan79_37.py scans the source against every relation name the descriptions under rules/ define.
 
-WHAT IT RETURNS. One Rust source file, as text: `translate(text, module) -> str`. It is a module `pub mod <module> { ... }` with the same public items for every game, so a test
-can be written once for all of them. The file begins with a head that names the hash of the description and the hash of the translator; a test fails when either differs.
-The file is compiled into tests and the timing programs of cs_game from rust/engine/game/tests/generated/; nothing under rust/engine/*/src names it.
+WHAT IT RETURNS. One Rust source document, as text: `translate(text, module) -> str`. It is a module `pub mod <module> { ... }` with the same public items for every game, so a test
+can be written once for all of them. The document begins with a head that names the hash of the description and the hash of the translator; a test fails when either differs.
+The document is compiled into tests and the timing programs of cs_game from rust/engine/game/tests/generated/; nothing under rust/engine/*/src names it.
 
 WHO CALLS IT. `python -m catspace.incubator.analyst.discovery.gdl_to_rust <description path> [<delta path>] --module <name> --out <path>` (the command line composes with
-`cs_engine.compose`, read only), and tests/test_plan79_37.py. The Rust side calls the generated module only from tests under rust/engine/game/tests.
+`cs_engine.compose`, read only), and tests/test_plan79_37.py. The Rust party calls the generated module only from tests under rust/engine/game/tests.
 
-HOW THE THREE THINGS ARE HELD.
+HOW SYMBOLS, FACTS AND THE STATE ARE HELD.
   SYMBOLS. Every constant of the description (every symbol of a clause, of a sort, and `noop`) is a number, a `u32`, numbered in the order of the names; the table of names is a
-  constant of the file. A COMPOUND TERM (the moves: `(f t ...)`) is a number too, made at run time by one table (`Terms`) that gives the same number to the same compound; its
+  constant of the document. A COMPOUND TERM (the moves: `(f t ...)`) is a number too, made at run time by one table (`Terms`) that gives the same number to the same compound; its
   numbers begin where the constants end. So a row of any relation is an array of numbers, and two terms are equal when their numbers are.
   FACTS. A relation of n arguments is a `Rel<n>`: its rows (arrays of n numbers) in the order made, a hash set of them (is this fact true), and for each set of argument places
-  the joins ask by, an index from the numbers at those places to the rows. The places an index is built on are read from the join orders by the translator and fixed in the file.
+  the joins ask by, an index from the numbers at those places to the rows. The places an index is built on are read from the join orders by the translator and fixed in the document.
   THE STATE. The set of true facts, one sorted list of rows for each fluent (a relation named by `(true (f ...))`): `State { f_<fluent>: Vec<[u32; n]> ... }`; equality and hash of
-  states are those of the lists. The state of a turn is loaded into a `Dy` (the relations of one evaluation: the state, the move, the relations the state decides); the relations
+  states are those of the lists. The state of a turn is loaded into a `Dy` (the relations of one evaluation: the state, the turn, the relations the state decides); the relations
   that do not read the state live in `St` (made once).
 HOW A RELATION THAT DOES NOT READ THE STATE IS TOLD FROM ONE THAT DOES. By the dependency graph of the description, as the evaluator does it: a relation reads the state when it is a
 `true` fluent, `does` or `record`, or depends on one that is (through any positive or negated literal). The others are STATIC: their strata are evaluated once, in `Game::new`, into
 `St`, and never again; the others are evaluated at each question that needs them, into `Dy`.
-HOW A RELATION IS MADE A PIECE. The relations are cut into strongly connected sets, each after every set it depends on (the evaluator's strata). Each set is ONE FUNCTION of the
-file (a piece): a nonrecursive relation is one function over the rows of the relations below it; a recursive set is evaluated by the semi-naive rule (each round joins one literal
+HOW A RELATION IS MADE A PIECE. The relations are cut into strongly connected sets, each behind every set it depends on (the evaluator's strata). Each set is ONE FUNCTION of the
+document (a piece): a nonrecursive relation is one function over the rows of the relations below it; a recursive set is evaluated by the semi-naive rule (each round joins one literal
 against the rows new in the last round). Each clause of a set is one function written as nested loops over its literals in the join order the reader chose; a literal with places
 bound by the loops above it is read through the index on those places; `(not ...)` is a lookup of the whole row in the set; `(distinct ...)` is a comparison. No clause and no
 relation is named by the translator: every name comes from the text.
@@ -35,9 +35,9 @@ THE QUESTIONS (the public items of the module; every method of `Game` is below; 
   Game::new() -> Game                              symbols, the static pieces computed once
   roles() -> &[u32]                                the numbers of the roles, in the order the description lists them
   initial() -> State                               the rows of the `init` facts
-  mover(&mut self, &State) -> Option<usize>        the first role with a legal move that is not `noop`; None at an end
+  mover(&mut self, &State) -> Option<usize>        the first role with a legal turn that is not `noop`; None at an end
   moves(&mut self, &State) -> Vec<u32>             the legal moves of the mover (terms)
-  next(&mut self, &State, u32) -> State            the `next` facts under the joint move (the mover's move, `noop` for the rest)
+  next(&mut self, &State, u32) -> State            the `next` facts under the joint turn (the mover's turn, `noop` for the rest)
   terminal(&mut self, &State) -> bool              whether `terminal` has a row
   outcome(&mut self, &State) -> Option<Vec<i64>>   the `goal` of each role at an end
   and the readings the tests need: sym, term, render, state_of_facts, facts_of, static_relations, all_relations, and the profile of the pieces (calls, time, rows, joins).
@@ -173,11 +173,11 @@ impl Terms {
 #[derive(Clone, Default, Debug)]
 pub struct Stat { pub calls: u64, pub nanos: u64, pub rows: u64, pub visits: u64, pub probes: u64 }
 
-/// What one evaluation of the state gave: the legal rows (role, move), whether the end holds, the goal rows (role, value).
+/// What one evaluation of the state gave: the legal rows (role, turn), whether the end holds, the goal rows (role, value).
 #[derive(Clone)]
 pub struct Reading { pub legal: Vec<(u32, u32)>, pub terminal: bool, pub goals: Vec<(u32, u32)> }
 '''
-# The text of the pieces of a term: a symbol of a term, kept apart so the names scan sees the language's words only.
+# The text of the pieces of a term: a symbol of a term, kept separate so the names scan sees the language's words only.
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ reading the description
@@ -186,8 +186,7 @@ class Description:
     """The description read: strata, arities, symbols, which relations read the state."""
 
     def __init__(self, text: str):
-        self.prog = GDL.Program(text)
-        p = self.prog
+        raw = GDL.clauses(GDL.parse(text))                      # (read first: a relation used with two numbers of arguments is named here, not by the reader's own error)
         self.arity: dict = {}
         syms: set = {NOOP}
 
@@ -203,7 +202,7 @@ class Description:
             if self.arity.setdefault(rel, n) != n:
                 raise Untranslatable(f"{rel} is used with {self.arity[rel]} and with {n} arguments: {where}")
 
-        for c in p.clauses:
+        for c in raw:
             note_arity(c.head[0], len(c.head[1]), c.text)
             for t in c.head[1]:
                 note_term(t)
@@ -215,6 +214,8 @@ class Description:
                     note_arity(lit[1], len(lit[2]), c.text)
                     for t in lit[2]:
                         note_term(t)
+        self.prog = GDL.Program(text)
+        p = self.prog
         for members in p.sorts.values():
             for m in members:
                 if isinstance(m, tuple):
@@ -245,15 +246,15 @@ class Description:
                         raise Untranslatable(f"too many arguments: {r.clause.text}")
 
     def cone(self, wanted) -> set:
-        seen: set = set()
+        visited: set = set()
         todo = [w for w in wanted if w in self.prog.nodes]
         while todo:
             r = todo.pop()
-            if r in seen:
+            if r in visited:
                 continue
-            seen.add(r)
+            visited.add(r)
             todo.extend(self.prog.deps.get(r, ()))
-        return seen
+        return visited
 
     def dynamic_meeting(self, cone: set) -> list:
         return [k for k, (comp, _) in enumerate(self.strata) if not self.static[sorted(comp)[0]] and comp & cone]
@@ -385,7 +386,7 @@ class ClauseWriter:
         return "\n".join(self.lines)
 
 
-# ------------------------------------------------------------------------------------------------------------------------------------------ the file
+# ------------------------------------------------------------------------------------------------------------------------------------------ the document
 
 def translate(text: str, module: str) -> str:
     """The Rust source of the description `text` (composed) as `pub mod <module>`. See the module text for the interface."""
@@ -521,7 +522,7 @@ def translate(text: str, module: str) -> str:
     w("        s.sort();")
     w("        s")
     w("    }")
-    w("    /// The state's rows and the move's into a fresh evaluation.")
+    w("    /// The state's rows and the turn's into a fresh evaluation.")
     w("    fn load(&self, s: &State, does: &[(u32, u32)]) -> Dy {")
     w("        let mut d = Dy::new();")
     for f in d.fluents:
@@ -635,7 +636,7 @@ def translate(text: str, module: str) -> str:
             w(f"            (\"{r}\", self.st.{d.rid[r]}.order.iter().map(|x| x.to_vec()).collect()),")
     w("        ]")
     w("    }")
-    w("    /// Every relation that reads the state, evaluated in full on a state and a joint move (the move's rows empty when `does` is empty).")
+    w("    /// Every relation that reads the state, evaluated in full on a state and a joint turn (the turn's rows void when `does` is void).")
     w("    pub fn all_relations(&mut self, s: &State, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)> {")
     w("        let mut d = self.load(s, does);")
     w("        self.run(&mut d, ALL_DYNAMIC);")
