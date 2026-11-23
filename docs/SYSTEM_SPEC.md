@@ -1016,6 +1016,16 @@ value layer 1 holds, layer 2 names it and makes it; the door has four slots on a
 places are derived from the links (a step not made of two other steps changes the class). No variant with another start has a fixture
 yet, so that reason for the cut is not tested.
 
+**Layer 2 says variants, with another start and with other rules, on the same layer 1** (Kaveh 2026-11-23: "so variants must be able
+to have different starts and it should be in this layer, right?" and "sure lets do these variants. also atomic chess and antichess").
+A variant may differ from chess in its starting arrangement, in the counts of its units, in how a move changes the state and in what
+ends the game; all of that is layer 2's, and layer 1 (kinds, board, any state shown) does not change for it. The games named:
+Chess960 and horde for the start, atomic and antichess for the rules. READING, mine: a game counts as said by layer 2 when it has
+its description, the kernel's mode, a certificate that the two agree, and a fixture from an outside library; where the description
+language cannot say a rule as it stands, the game is tested against the kernel and the fixture only, and the gap is named, not
+hidden. What the layers above layer 2 assume that these games break (one leader a side, for one) is listed by plan 79.35 and is not
+mended there; the engine is not asked to play them yet.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1431,4 +1441,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Plan 79.32 left two recursions in layer 0 (steps, and values); one general answer is proposed | 2026-11-22 | 11 (last block), 13 item 51 |
 | The base is frozen after 79.33; the loop is the work; one measure of the whole in every READ | 2026-11-22 | 11 (last block) |
 | The cut of layers 1 and 2 (what is there; what the rules say of it) is carried into the crates, with unit tests | 2026-11-22 | 11 (last block) |
+| Layer 2 says variants (another start: Chess960, horde; other rules: atomic, antichess) on an unchanged layer 1 | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
