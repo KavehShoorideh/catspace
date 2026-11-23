@@ -58,7 +58,8 @@ def test_layer_1_sources_name_none_of_the_rules_relations_and_the_crate_does_not
             bad[p.relative_to(ROOT).as_posix()] = sorted(set(found))
     assert not bad, bad
     toml = (REP / "Cargo.toml").read_text()
-    assert "cs_game" not in toml and "cs_tactics" not in toml and "shakmaty" not in toml, "no rules crate, not even as a dev-dependency"
+    deps = "".join(part.split("\n[")[0] for part in toml.split("[dependencies]")[1:] + toml.split("[dev-dependencies]")[1:])
+    assert "cs_game" not in deps and "cs_tactics" not in deps and "cs_decision" not in deps and "shakmaty" not in deps, "no rules crate, not even as a dev-dependency"
     print(f"OBS 79.34 scan: {len(sources)} sources of layer 1 (code and strings) hold none of the rules' relations; Cargo.toml names no crate of the rules")
 
 

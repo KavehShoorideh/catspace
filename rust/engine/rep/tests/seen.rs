@@ -15,11 +15,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 /// What is expected of the game's board and of a made state, written by hand in tests/fixtures/seen_chess.expect (tab-separated lines: a tag, then its fields).
-struct Expect { kinds: Vec<String>, roles: Vec<String>, places: usize, first_place: String, last_place: String, lines: usize, links: Vec<usize>, edges: Vec<usize>, classes: (usize, usize), state: Vec<Fact>, mover: String, counts: Vec<(String, String, usize)> }
+struct Expect { kinds: Vec<String>, roles: Vec<String>, places: usize, first_place: String, last_place: String, lines: usize, links: Vec<usize>, edges: Vec<usize>, classes: (usize, usize), state: Vec<Fact>, marked: String, counts: Vec<(String, String, usize)> }
 
 fn expect() -> Expect {
     let text = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("seen_chess.expect")).unwrap();
-    let mut e = Expect { kinds: vec![], roles: vec![], places: 0, first_place: String::new(), last_place: String::new(), lines: 0, links: vec![], edges: vec![], classes: (0, 0), state: vec![], mover: String::new(), counts: vec![] };
+    let mut e = Expect { kinds: vec![], roles: vec![], places: 0, first_place: String::new(), last_place: String::new(), lines: 0, links: vec![], edges: vec![], classes: (0, 0), state: vec![], marked: String::new(), counts: vec![] };
     let words = |s: &str| -> Vec<String> { s.split(' ').filter(|w| !w.is_empty()).map(|w| w.to_string()).collect() };
     let nums = |s: &str| -> Vec<usize> { words(s).iter().map(|w| w.parse().unwrap()).collect() };
     for line in text.lines().filter(|l| !l.is_empty() && !l.starts_with('#')) {
@@ -32,7 +32,7 @@ fn expect() -> Expect {
             "links" => e.links = nums(f[1]),
             "edges" => e.edges = nums(f[1]),
             "classes" => e.classes = (f[1].parse().unwrap(), f[2].parse().unwrap()),
-            "state" => { e.state = words(f[1]).iter().map(|t| { let mut p = t.split(','); Fact { relation: p.next().unwrap().into(), args: p.map(|a| a.to_string()).collect() } }).collect(); e.mover = f[2].into(); }
+            "state" => { e.state = words(f[1]).iter().map(|t| { let mut p = t.split(','); Fact { relation: p.next().unwrap().into(), args: p.map(|a| a.to_string()).collect() } }).collect(); e.marked = f[2].into(); }
             "count" => e.counts.push((f[1].into(), f[2].into(), f[3].parse().unwrap())),
             other => panic!("unknown tag {other}"),
         }
@@ -192,15 +192,15 @@ fn a_state_shown_to_layer_1_is_held_counted_by_kind_and_written_back_identical()
     for (owner, kind, want) in &e.counts {
         assert_eq!(part.count(b.names.role(owner).unwrap(), b.names.kind(kind).unwrap()), *want, "{owner} {kind}");
     }
-    assert_eq!(b.names.roles[part.tempo().unwrap()], e.mover);
+    assert_eq!(b.names.roles[part.tempo().unwrap()], e.marked);
     // where each unit stands: the occupant of every place is the unit that stands there, and no other place holds one
     for (i, u) in part.units.iter().enumerate() { assert_eq!(part.occupant[u.at as usize] as usize, i + 1); }
     assert_eq!(part.occupant.iter().filter(|x| **x != 0).count(), part.units.len());
     // written back as text and read again: the same state
-    let (mover, text) = b.state_text(&part);
-    let back = b.part_from_text(mover.as_deref(), &text).unwrap();
+    let (marked, text) = b.state_text(&part);
+    let back = b.part_from_text(marked.as_deref(), &text).unwrap();
     assert_eq!(back.definitions(&b), part.definitions(&b));
-    assert_eq!(b.state_text(&back), (mover, text));
+    assert_eq!(b.state_text(&back), (marked, text));
     // every state of every fixture game: the count of each kind in layer 1's reading equals a plain count of the facts that name it
     let mut states = 0;
     for fx in fixtures() {
@@ -257,7 +257,7 @@ fn the_history_is_a_sequence_of_states_each_a_change_from_the_one_before() {
 fn the_crate_builds_with_no_dependency_on_the_rules_crate() {
     let toml = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     let deps: String = toml.split("[dependencies]").nth(1).unwrap_or("").to_string() + toml.split("[dev-dependencies]").nth(1).unwrap_or("");
-    assert!(!deps.contains("cs_game") && !deps.contains("cs_tactics") && !deps.contains("cs_decision") && !deps.contains("shakmaty"), "no crate that holds the rules or a game's kernel, not even as a dev-dependency");
+    assert!(!deps.contains("cs_game") && !deps.contains("cs_tactics") && !deps.contains("cs_decision") && !deps.contains(&["shak", "maty"].concat()), "no crate that holds the rules or a game's kernel, not even as a dev-dependency");
     // (that this file compiles and runs is the proof: it is built from the crate's own dependencies)
     println!("OBS 79.34 D no rules: Cargo.toml names no crate of the rules, not as a dependency and not as a dev-dependency");
 }

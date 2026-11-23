@@ -13,7 +13,7 @@ ENGINE = ROOT / "rust" / "engine"
 TACTICS = ENGINE / "tactics"
 FIXTURES = TACTICS / "tests" / "fixtures"
 DISCOVERY = ROOT / "catspace" / "incubator" / "analyst" / "discovery"
-LAYER_FILES = [TACTICS / "src" / "meansends.rs", TACTICS / "src" / "reach.rs", ENGINE / "rep" / "src" / "graph_facts.rs", TACTICS / "tests" / "layer4_goals.rs"]
+LAYER_FILES = [TACTICS / "src" / "meansends.rs", TACTICS / "src" / "reach.rs", ENGINE / "game" / "src" / "graph_facts.rs", TACTICS / "tests" / "layer4_goals.rs"]
 GAME_WORDS = r"\b(king\w*|queen\w*|rook\w*|bishop\w*|knight\w*|pawn\w*|castl\w*|promot\w*|en passant|check\w*|mate|stalemate|uci|fen|san|chess\w*|shakmaty)\b"
 SQUARE = r"\b[a-h][1-8]\b"
 
