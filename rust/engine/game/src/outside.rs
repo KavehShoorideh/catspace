@@ -3,7 +3,8 @@ use crate::kernel::KernelGame;
 use crate::placed::{Kind, NoStep, Place, Placed};
 use crate::rules::{DescriptionNames, StateText};
 use crate::{Game, Role};
-use shakmaty::variant::VariantPosition;
+use crate::starts::Starts;
+use shakmaty::variant::{Variant, VariantPosition};
 use shakmaty::{Color, EnPassantMode, Move, Position};
 
 // ------------------------------------------------------------------------------------------------------------------------------ the placed reading (plan 78.43)
@@ -63,7 +64,10 @@ impl Placed for KernelGame {
         let (role, sq) = (role_of(kind), square_of(at));
         let colour = colour_of(owner);
         let board = s.board();
-        let foes = board.by_color(!colour) & !board.kings();
+        // PLAN 79.35 (what `may_move` means): a leader of the other side may be taken only in a game where a leader is an ordinary unit or is taken by a removal (antichess, atomic); and in atomic a leader takes nothing
+        let leader_takable = matches!(self.variant, Variant::Antichess | Variant::Atomic);
+        let foes = if leader_takable { board.by_color(!colour) } else { board.by_color(!colour) & !board.kings() };
+        let foes = if self.variant == Variant::Atomic && role == shakmaty::Role::King { shakmaty::Bitboard::EMPTY } else { foes };
         let empty = !board.occupied();
         let occ = board.occupied();
         let bits = match role {
@@ -122,9 +126,24 @@ impl Placed for KernelGame {
     }
 }
 
+/// PLAN 79.35 PART B: the game with a start by number is the one named "chess960" (960 starts, Scharnagl's numbering, kernel.rs); every other game has one start.
+impl Starts for KernelGame {
+    fn start_count(&self) -> usize { if self.label == "chess960" { 960 } else { 1 } }
+    fn with_start(&self, n: usize) -> Result<KernelGame, String> {
+        if n >= self.start_count() { return Err(format!("{} has {} start(s), none numbered {n}", self.label, self.start_count())); }
+        if self.start_count() == 1 { Ok(self.clone()) } else { KernelGame::new(&self.label, n as u32) }
+    }
+}
+
 /// PLAN 79.23: the kernel's move name in the notation of the description (the binding kernel.rs keeps for the co-play).
 impl DescriptionNames for KernelGame {
-    fn description_name(&self, name: &str) -> String { crate::kernel::uci_to_spec_term(name) }
+    fn description_name(&self, name: &str) -> String { spec_term(name) }
+}
+
+/// PLAN 79.35: the kernel's move name as the description's term, for every game the kernel plays: kernel.rs maps the four kinds a smallest unit may become; the kind it may become in antichess (the leader, written `k`) is added here (kernel.rs is not touched).
+pub fn spec_term(uci: &str) -> String {
+    let t = crate::kernel::uci_to_spec_term(uci);
+    if uci.len() == 5 && uci.ends_with('k') { t.replace(" ?)", " king)") } else { t }
 }
 
 /// PLAN 79.23 THE TEXT DOOR OF THE KERNEL (rules ingestion): the state as the game's text form, keeping the square a unit passed over on a two-step advance after every such advance (the description's state holds it; the kernel's own writer drops it where no taking is legal), and read back.
@@ -137,6 +156,29 @@ impl StateText for KernelGame {
 }
 
 impl KernelGame {
+    /// PLAN 79.35: THE STATE AS THE DESCRIPTION'S FLUENTS FOR ANY GAME THE KERNEL PLAYS (rules ingestion beside the kernel; `Game::base_facts` of kernel.rs gives them for three games only and is not touched): the units, the side to move, the rights to the two-unit move
+    /// of the leader, the passing square, the clock saturating at the limit. What a description of the game with another start needs to begin from a state shown (`rules::restart_delta`); the co-play compares the kernel's states with the description's by their moves and ends.
+    pub fn state_facts(&self, s: &VariantPosition) -> Vec<crate::Fact> {
+        use crate::Fact;
+        use shakmaty::CastlingSide;
+        let side = |c: Color| if c == Color::White { "white" } else { "black" };
+        let mut out = vec![];
+        for (sq, p) in s.board().iter() {
+            let kind = KIND_NAMES[kind_of(p.role) as usize];
+            out.push(Fact { relation: "cell".into(), args: vec![sq.file().char().to_string(), sq.rank().char().to_string(), side(p.color).into(), kind.into()] });
+        }
+        out.push(Fact { relation: "control".into(), args: vec![side(s.turn()).into()] });
+        for c in [Color::White, Color::Black] {
+            for (cs, wing) in [(CastlingSide::KingSide, "kingside"), (CastlingSide::QueenSide, "queenside")] {
+                if s.castles().has(c, cs) { out.push(Fact { relation: "castling_right".into(), args: vec![side(c).into(), wing.into()] }); }
+            }
+        }
+        if let Some(sq) = s.ep_square(EnPassantMode::Always) { out.push(Fact { relation: "ep_square".into(), args: vec![sq.file().char().to_string(), sq.rank().char().to_string()] }); }
+        out.push(Fact { relation: "halfmove".into(), args: vec![s.halfmoves().min(crate::kernel::CLOCK_LIMIT).to_string()] });
+        out.sort();
+        out
+    }
+
     /// A hypothetical board: `s` with its pieces edited, the en passant right gone, the castling rights kept only where the king and the rook still stand, and the result
     /// accepted only if the kernel takes it as a position.
     fn edited(&self, s: &VariantPosition, f: impl FnOnce(&mut shakmaty::Board) -> Option<()>) -> Option<VariantPosition> {

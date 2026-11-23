@@ -22,8 +22,10 @@
 //! Who calls what is above: nothing above layer 2 may reach past this interface (callers that still do are listed in docs/ANALYST_PLAN.md, "79.23 BUILT").
 //!
 //! THE TEXT DOOR AND THE DROPPED FACT (decided here, plan 79.23). The description's state keeps the square a unit passed over on a two-step advance after EVERY such advance (the description says so in its own words: the taking there is legal only where a unit can take). The text form as the game's kernel writes it keeps that square only where a taking is legal, so it drops a fact of the description's state in the positions where no taking is legal (79.19 READ). By the rules both are right for what they are for: the KEY must not tell apart two positions that no rule can tell apart (a repeat counts positions with the same board, side, rights and a passing-square at which a taking is LEGAL: the game's key reads the legal one), and the TEXT must keep the state whole, because a state written and read back must have the facts and the moves it had. So the key reads the legal square and the text door writes the passed-over square always; both are tested against a reference that shares no code with the engine.
+use crate::gdl_game::GdlGame;
 use crate::graph::Static;
 use crate::placed::{NoStep, Placed};
+use crate::starts::Starts;
 use crate::{Fact, Game, Role};
 use cs_gdl::Program;
 use cs_rep::graph::FactDecl;
@@ -102,10 +104,26 @@ impl<G: Game> Ruled<G> {
     }
 
     /// The same from a description text and a declaration already in hand.
-    pub fn new(game: G, name: &str, text: &str, decl: Declaration) -> Result<Ruled<G>, String> {
+    pub fn new(game: G, name: &str, text: &str, decl: Declaration) -> Result<Ruled<G>, String> { Ruled::with_key(game, GameKey::of(name, text), text, decl) }
+
+    fn with_key(game: G, key: GameKey, text: &str, decl: Declaration) -> Result<Ruled<G>, String> {
         let p = Program::load(text).map_err(|e| e.0)?;
         let limit = p.rel_id("repetition_limit").and_then(|r| p.statics.get(&r).and_then(|rel| rel.order.first().map(|row| p.terms.name(row[0]).to_string()))).and_then(|n| n.parse().ok());
-        Ok(Ruled { game, text: text.to_string(), key: GameKey::of(name, text), decl, limit })
+        Ok(Ruled { game, text: text.to_string(), key, decl, limit })
+    }
+
+    /// PLAN 79.35 PART B. A game by its name, the delta file of its rules (a path under `rules_root`; None for the base alone) and, when its start is not the description's, the facts of the start. The declaration file is read for its
+    /// base, its units, its tempo and its board only (its `variants` list is not read, and no file of the rules' folder is written). The rules' address is the address of the base with the delta composed, WITHOUT the start: two starts of one game are one game.
+    pub fn open_variant(game: G, name: &str, rules_root: &Path, declaration_path: &str, delta: Option<&str>, start: Option<&[Fact]>) -> Result<Ruled<G>, String> {
+        let read = |rel: &str| std::fs::read_to_string(rules_root.join(rel)).map_err(|e| format!("{rel}: {e}"));
+        let decl_text = read(declaration_path)?;
+        let v: Value = cs_rep::serde_json::from_str(&decl_text).map_err(|e| e.to_string())?;
+        let spec = v.get("spec").and_then(|x| x.as_str()).ok_or("the declaration names no spec")?;
+        let base = read(spec)?;
+        let rules = match delta { Some(d) => cs_gdl::compose(&base, &read(d)?).map_err(|e| e.0)?, None => base };
+        let key = GameKey::of(name, &rules);
+        let text = match start { Some(f) => cs_gdl::compose(&rules, &restart_delta(&rules, f)?).map_err(|e| e.0)?, None => rules };
+        Ruled::with_key(game, key, &text, Declaration::from_json(&decl_text)?)
     }
 
     pub fn game(&self) -> &G { &self.game }
@@ -158,6 +176,28 @@ impl<G: Game> Game for Ruled<G> {
     fn changed(&self, s: &G::State, m: &G::Move) -> Vec<(String, String)> { self.game.changed(s, m) }
     fn base_facts(&self, s: &G::State) -> Vec<Fact> { self.game.base_facts(s) }
     fn find_move(&self, s: &G::State, name: &str) -> Option<G::Move> { self.game.find_move(s, name) }
+}
+
+/// PLAN 79.35 PART B. THE DELTA THAT GIVES A DESCRIPTION ANOTHER START: the initial facts of the description `text` taken away (`(retract (init <fact>))`, one each, as the description's own forms read) and `start` given instead
+/// (`(init <fact>)`, one each). Composed by `cs_gdl::compose` on `text`. The facts of a start are whatever the caller holds: the facts of a kernel's start, or of any state shown.
+pub fn restart_delta(text: &str, start: &[Fact]) -> Result<String, String> {
+    let term = |f: &Fact| if f.args.is_empty() { f.relation.clone() } else { format!("({} {})", f.relation, f.args.join(" ")) };
+    let g = GdlGame::load("restart", text)?;
+    let mut out = String::new();
+    for f in g.base_facts(&g.initial()) { out.push_str(&format!("(retract (init {}))\n", term(&f))); }
+    for f in start { out.push_str(&format!("(init {})\n", term(f))); }
+    Ok(out)
+}
+
+/// A game with a start by number, kept with its rules: the same game from start `n`, its description given the start's facts as the kernel gives them (a game whose kernel gives no facts keeps its description).
+impl<G: Starts> Starts for Ruled<G> {
+    fn start_count(&self) -> usize { self.game.start_count() }
+    fn with_start(&self, n: usize) -> Result<Ruled<G>, String> {
+        let game = self.game.with_start(n)?;
+        let facts = game.base_facts(&game.initial());
+        let text = if facts.is_empty() { self.text.clone() } else { cs_gdl::compose(&self.text, &restart_delta(&self.text, &facts)?).map_err(|e| e.0)? };
+        Ruled::with_key(game, self.key.clone(), &text, self.decl.clone())
+    }
 }
 
 impl<G: Placed> Placed for Ruled<G> {

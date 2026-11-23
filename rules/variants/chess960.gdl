@@ -1,0 +1,79 @@
+;;; rules/variants/chess960.gdl -- CHESS960 (plan 79.35): chess (rules/chess.gdl) with ANOTHER START, one of 960 arrangements of the first rank (the two rooks stand on either side of the king, the bishops on squares of both colours), the same on both
+;;; sides. WHAT THE START CHANGES IN THE RULES is the king's two-unit move (castling): the king and the rook it castles with stand on the files the start gave them, wherever those are; whatever the files, the king ends on the c or the g file and
+;;; the rook on the d or the f file; every square the king and the rook cross or land on, except the squares they stand on, must be empty; the squares the king stands on, crosses and lands on must not be attacked; it is played as the KING ONTO ITS
+;;; OWN ROOK's square (the library's notation of it: e1h1, not e1g1). The files are read from the INITIAL facts of the description, side by side: a side's king file is the file of its first-rank king, and the rook of a wing is the OUTERMOST
+;;; first-rank rook of that side on that side of the king (so a description with another start needs no other change than its initial facts: `rules::restart_delta`). The rights are the base's fluents (a right per side and wing).
+;;; A DELTA on the base (cs_gdl::compose): (retract <clause>) removes a clause of the base, every other form is added. Certified against the kernel by co-play from several starts (discovery/certify.py).
+;;; the files that the start gives, per side
+(signature king_home side file) (signature home_rook side file) (signature rook_inner side wing file) (signature rook_home side wing file) (signature castling_target wing file file)
+(signature file_before file file) (signature span file file file) (signature castle_need side wing file) (signature castling_term file rank file rank) (signature castling_now)
+(<= (file_before ?a ?b) (file_succ ?a ?b))
+(<= (file_before ?a ?c) (file_succ ?a ?b) (file_before ?b ?c))
+;;; the squares from one file to another, both included, whichever is first
+(<= (span ?a ?b ?a) (file ?a) (file ?b))
+(<= (span ?a ?b ?b) (file ?a) (file ?b))
+(<= (span ?a ?b ?f) (file_before ?a ?f) (file_before ?f ?b))
+(<= (span ?a ?b ?f) (file_before ?b ?f) (file_before ?f ?a))
+(<= (king_home ?c ?f) (home_rank ?c ?r) (init (cell ?f ?r ?c king)))
+(<= (home_rook ?c ?f) (home_rank ?c ?r) (init (cell ?f ?r ?c rook)))
+(<= (rook_inner ?c kingside ?f) (home_rook ?c ?f) (home_rook ?c ?g) (file_before ?f ?g) (king_home ?c ?k) (file_before ?k ?f))
+(<= (rook_inner ?c queenside ?f) (home_rook ?c ?f) (home_rook ?c ?g) (file_before ?g ?f) (king_home ?c ?k) (file_before ?f ?k))
+(<= (rook_home ?c kingside ?f) (home_rook ?c ?f) (king_home ?c ?k) (file_before ?k ?f) (not (rook_inner ?c kingside ?f)))
+(<= (rook_home ?c queenside ?f) (home_rook ?c ?f) (king_home ?c ?k) (file_before ?f ?k) (not (rook_inner ?c queenside ?f)))
+;;; where the king and the rook end, by wing: the king on g and the rook on f (short side); the king on c and the rook on d (long side)
+(castling_target kingside g f)
+(castling_target queenside c d)
+(retract (castling_path kingside g f h))
+(retract (castling_path queenside c d a))
+;;; the squares whose unit's move or taking ends a right: the king's home and that wing's rook home
+(retract (right_square white kingside e 1))
+(retract (right_square white kingside h 1))
+(retract (right_square white queenside e 1))
+(retract (right_square white queenside a 1))
+(retract (right_square black kingside e 8))
+(retract (right_square black kingside h 8))
+(retract (right_square black queenside e 8))
+(retract (right_square black queenside a 8))
+(<= (right_square ?c ?side ?f ?r) (home_rank ?c ?r) (king_home ?c ?f) (rook_home ?c ?side ?rf))
+(<= (right_square ?c ?side ?f ?r) (home_rank ?c ?r) (rook_home ?c ?side ?f))
+;;; the squares that must be empty: those the king crosses or lands on and those the rook crosses or lands on, but for the two units themselves
+(<= (castle_need ?c ?side ?f) (king_home ?c ?k) (castling_target ?side ?kt ?rt) (span ?k ?kt ?f))
+(<= (castle_need ?c ?side ?f) (rook_home ?c ?side ?rf) (castling_target ?side ?kt ?rt) (span ?rf ?rt ?f))
+(retract (<= (castle_blocked ?c ?side) (home_rank ?c ?r) (castling_empty ?side ?f) (occupied ?f ?r)))
+(<= (castle_blocked ?c ?side) (home_rank ?c ?r) (castle_need ?c ?side ?f) (occupied ?f ?r) (not (king_home ?c ?f)) (not (rook_home ?c ?side ?f)))
+;;; the squares the king stands on or crosses or lands on must not be attacked
+(retract (<= (castle_unsafe ?c ?side) (home_rank ?c ?r) (castling_safe ?side ?f) (opponent ?c ?o) (attacked ?o ?f ?r)))
+(<= (castle_unsafe ?c ?side) (home_rank ?c ?r) (king_home ?c ?k) (castling_target ?side ?kt ?rt) (span ?k ?kt ?f) (opponent ?c ?o) (attacked ?o ?f ?r))
+;;; the right kept, the king and the rook on their home squares, nothing in the way and nothing attacked; the move is the king onto its own rook's square
+(retract (<= (castle ?c ?side) (true (control ?c)) (true (castling_right ?c ?side)) (home_rank ?c ?r) (true (cell e ?r ?c king))
+    (castling_path ?side ?kt ?rt ?rf) (true (cell ?rf ?r ?c rook)) (not (castle_blocked ?c ?side)) (not (castle_unsafe ?c ?side))))
+(<= (castle ?c ?side) (true (control ?c)) (true (castling_right ?c ?side)) (home_rank ?c ?r) (king_home ?c ?kf) (true (cell ?kf ?r ?c king))
+    (rook_home ?c ?side ?rf) (true (cell ?rf ?r ?c rook)) (not (castle_blocked ?c ?side)) (not (castle_unsafe ?c ?side)))
+(retract (<= (castling_move ?c ?side e ?r ?kt ?r) (castle ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf)))
+(<= (castling_move ?c ?side ?kf ?r ?rf ?r) (castle ?c ?side) (home_rank ?c ?r) (king_home ?c ?kf) (rook_home ?c ?side ?rf))
+(<= (castling_term ?f1 ?r1 ?f2 ?r2) (castling_move ?c ?side ?f1 ?r1 ?f2 ?r2))
+;;; the board after a castling, for the legality of the move: the rook's home is emptied (the king's is by the general rule); the king and the rook stand on their ends. The general placing of the moved unit on the move's end is not for a castling.
+(retract (<= (vacates e ?r ?kt ?r ?rf ?r) (castling_move ?c ?side e ?r ?kt ?r) (castling_path ?side ?kt ?rt ?rf)))
+(retract (<= (fills ?f1 ?r1 ?f2 ?r2 ?f2 ?r2 ?c ?k) (candidate ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c ?k))))
+(retract (<= (fills e ?r ?kt ?r ?rt ?r ?c rook) (castling_move ?c ?side e ?r ?kt ?r) (castling_path ?side ?kt ?rt ?rf)))
+(<= (vacates ?kf ?r ?rf ?r ?rf ?r) (castling_move ?c ?side ?kf ?r ?rf ?r))
+(<= (fills ?f1 ?r1 ?f2 ?r2 ?f2 ?r2 ?c ?k) (candidate ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c ?k)) (not (castling_term ?f1 ?r1 ?f2 ?r2)))
+(<= (fills ?kf ?r ?rf ?r ?kt ?r ?c king) (castling_move ?c ?side ?kf ?r ?rf ?r) (castling_target ?side ?kt ?rt))
+(<= (fills ?kf ?r ?rf ?r ?rt ?r ?c rook) (castling_move ?c ?side ?kf ?r ?rf ?r) (castling_target ?side ?kt ?rt))
+;;; the next state of a castling: read off the king's move onto its own rook's square
+(retract (<= (castled ?c ?side) (does ?c (move e ?r ?kt ?r)) (home_rank ?c ?r) (true (cell e ?r ?c king)) (castling_path ?side ?kt ?rt ?rf)))
+(<= (castled ?c ?side) (does ?c (move ?kf ?r ?rf ?r)) (home_rank ?c ?r) (true (cell ?kf ?r ?c king)) (rook_home ?c ?side ?rf) (true (cell ?rf ?r ?c rook)))
+(<= castling_now (castled ?c ?side))
+(retract (<= (lifted ?rf ?r) (castled ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf)))
+(retract (<= (landed ?rt ?r) (castled ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf)))
+(retract (<= (next (cell ?rt ?r ?c rook)) (castled ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf)))
+(<= (lifted ?rf ?r) (castled ?c ?side) (home_rank ?c ?r) (rook_home ?c ?side ?rf))
+(<= (landed ?rt ?r) (castled ?c ?side) (home_rank ?c ?r) (castling_target ?side ?kt ?rt))
+(<= (landed ?kt ?r) (castled ?c ?side) (home_rank ?c ?r) (castling_target ?side ?kt ?rt))
+(<= (next (cell ?rt ?r ?c rook)) (castled ?c ?side) (home_rank ?c ?r) (castling_target ?side ?kt ?rt))
+(<= (next (cell ?kt ?r ?c king)) (castled ?c ?side) (home_rank ?c ?r) (castling_target ?side ?kt ?rt))
+(retract (<= (next (cell ?f2 ?r2 ?c ?k)) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c ?k))))
+(<= (next (cell ?f2 ?r2 ?c ?k)) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c ?k)) (not castling_now))
+;;; a castling is no taking: the square it lands on holds the king's own rook
+(retract (<= (clock_event capture) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (occupied ?f2 ?r2)))
+(<= (clock_event capture) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (occupied ?f2 ?r2) (not castling_now))
