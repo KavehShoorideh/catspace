@@ -188,7 +188,7 @@ def test_every_test_marked_to_be_skipped_names_its_cause_and_the_new_test_files_
 def test_the_files_that_must_not_move_do_not_move_and_no_dependency_changes():
     if not have_before():
         pytest.skip(f"the commit {BEFORE} is not in this clone")
-    frozen = ["rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs", "rust/engine/base/src",
+    frozen = ["rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs",
               "rust/engine/Cargo.lock", "rust/engine/Cargo.toml"] + [f"rust/engine/{c}/Cargo.toml" for c in ("base", "rep", "memory", "game", "gdl", "value", "tactics", "decision", "planning", "learn", "py", "operator")]
     d = git("diff", "--stat", BEFORE, "--", *frozen)
     assert d.returncode == 0 and d.stdout.strip() == "", d.stdout

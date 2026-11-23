@@ -30,10 +30,14 @@ fn a_whole_number_of_the_hot_path_has_its_largest_as_none_nought_as_zero_and_goe
 }
 
 #[test]
-#[should_panic]
-#[ignore = "fault in a frozen source (base/src/choice/walk.rs, Whole::down): going down from nought panics in a debug build and wraps to the largest number, which means 'no answer', in a release build; layer 0's sources are not changed"]
-fn going_down_from_nought_is_not_defined_and_stops_the_program() {
-    let _ = Whole::down(0u8);
+fn going_down_from_nought_stays_at_nought_and_never_becomes_the_mark_of_no_answer() {
+    // mended 2026-11-23 (found by plan 79.36): before, this wrapped to the largest number, which is the mark of no answer
+    assert_eq!(Whole::down(0u8), 0);
+    assert_eq!(Whole::down(0u16), 0);
+    assert_eq!(Whole::down(0u32), 0);
+    assert_eq!(Whole::down(0u64), 0);
+    assert_eq!(Whole::down(0usize), 0);
+    assert_ne!(Whole::down(0u8), <u8 as Whole>::NONE);
 }
 
 #[test]

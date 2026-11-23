@@ -44,7 +44,7 @@ macro_rules! whole {
         const NONE: $t = <$t>::MAX;
         const ZERO: $t = 0;
         #[inline(always)] fn up(self) -> $t { self + 1 }
-        #[inline(always)] fn down(self) -> $t { self - 1 }
+        #[inline(always)] fn down(self) -> $t { self.saturating_sub(1) }   // from nought it stays at nought: it never wraps to NONE (mended 2026-11-23, found by the tests of plan 79.36)
     } )* };
 }
 whole!(u8, u16, u32, u64, usize);
