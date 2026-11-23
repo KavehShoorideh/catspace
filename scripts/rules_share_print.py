@@ -125,7 +125,7 @@ def is_rules(sym: str) -> bool:
 
 def shares(roots: list) -> dict:
     """From the tree: the samples under `wake_decide`, the samples under a rules frame (any), the inclusive samples of each rules call (its outermost frames only), and the self samples of the rules' leaves."""
-    out = {"decide": 0, "rules": 0, "calls": Counter(), "leaf": Counter(), "parent": Counter()}
+    out = {"decide": 0, "rules": 0, "calls": Counter(), "leaf": Counter(), "parent": Counter(), "legal": Counter()}
 
     def walk(node: Node, under_decide: bool, rules_above: bool, seen: set, parent: str = ""):
         if "wake_decide" in node.sym and "pymethod" not in node.sym and not under_decide:
@@ -139,6 +139,9 @@ def shares(roots: list) -> dict:
                 out["rules"] += node.n
             if mine and node.sym not in seen:
                 out["calls"][node.sym] += node.n
+                if readable(node.sym).endswith("::legal_moves"):                      # who asked for the library's moves: a kernel call that shows as a frame, or a caller that has inlined it
+                    asked = [readable(x) for x in seen if readable(x).startswith("KernelGame::")]
+                    out["legal"]["under " + "+".join(sorted(asked)) if asked else "no kernel frame above it (the kernel's call inlined into its caller)"] += node.n
             if (mine or rules_above) and self_n > 0:
                 out["leaf"][node.sym] += self_n
                 out["parent"][(node.sym, parent)] += self_n
@@ -243,6 +246,8 @@ def report(a, run: dict, sample_path: Path, say) -> int:
         leaf[readable(sym)] += n
     for nm, n in leaf.most_common(8):
         say(f"OBS 79.37 A {a.name} leaf {nm}: {n} samples = {100 * n / d:.1f} per cent of the decision (the function's own time)")
+    for k, n in s["legal"].most_common():
+        say(f"OBS 79.37 A {a.name} library legal_moves asked {k}: {n} samples = {100 * n / d:.1f} per cent of the decision")
     top = leaf.most_common(1)
     if top:
         for (sym, par), n in sorted(s["parent"].items(), key=lambda x: -x[1]):
