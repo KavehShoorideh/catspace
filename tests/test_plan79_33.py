@@ -72,7 +72,7 @@ def test_cs_base_still_depends_on_nothing_and_names_no_game_with_the_new_file_an
 def test_the_interface_of_the_general_walk_is_the_one_written_first():
     f = (BASE / "src" / "choice" / "fold.rs").read_text()
     for sig in ("pub trait Node", "pub trait Kind<S: Node>", "pub struct Bounds<V>", "pub enum Pre<V, T>", "pub struct Fold<S: Node, K: Kind<S>>",
-                "pub fn go(&mut self, left: u32, ply: u32, win: Bounds<K::Val>) -> Result<K::Val, K::Err>",
+                "pub fn go(&mut self, left: u32, ply: u32, mut win: Bounds<K::Val>) -> Result<K::Val, K::Err>",
                 "fn before(&mut self, space: &S, left: u32, ply: u32, win: &mut Bounds<Self::Val>)", "fn finish(&mut self, space: &S, token: Self::Token, got: Option<Self::Val>, entry: &Bounds<Self::Val>)",
                 "const WINDOWED: bool;", "const CHANCE: bool;"):
         assert sig in f, sig

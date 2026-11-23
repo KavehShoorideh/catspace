@@ -1,4 +1,4 @@
-//! PLAN 79.33 PART B (LAYER 0'S OWN FOLD; SYSTEM_SPEC 11 "What plan 79.32 left of one algorithm", 13 item 51): the answers of the readings that weigh numbers (`guarantee`, `value`, `force_chance`) on made trees, written to a file behind an env variable so that the answers before and after the fold became a case of the general walk can be
+//! PLAN 79.33 PART B (LAYER 0'S OWN FOLD; SYSTEM_SPEC 11 "What plan 79.32 left of one algorithm", 13 item 51): the answers of the readings that weigh numbers (`guarantee`, `value`, `force_chance`) on made trees, written out behind an env variable so that the answers before and after the fold became a case of the general walk can be
 //! compared to the last number (scripts/whole_79_33_compare.py). The speed of the same readings on a fixed set of trees is printed as an OBS line, never asserted.
 use cs_base::choice::{force_chance, guarantee, party, value, Chooser, Order, Tree};
 use cs_base::maker::{random_tree, Maker, Shape};
@@ -56,5 +56,5 @@ fn the_values_of_made_trees_are_written_for_the_comparison_and_their_speed_is_pr
     for _ in 0..300 { for (_, t) in &set { if let Ok(v) = guarantee(t, &pa, &order) { sum = sum.wrapping_add(v.as_f64() as i64); } } }
     let secs = t0.elapsed().as_secs_f64();
     let nodes: usize = set.iter().map(|(_, t)| t.size()).sum::<usize>() * 300;
-    println!("OBS 79.33 cs_base value, {} trees, 300 rounds of `guarantee`: {nodes} nodes in {secs:.3} s, {:.0} nodes a second (check {sum})", set.len(), nodes as f64 / secs.max(1e-9));
+    println!("OBS 79.33 cs_base value, {} trees, 300 rounds of `guarantee`: {nodes} nodes in {secs:.3} s, {:.0} nodes a second (sum {sum})", set.len(), nodes as f64 / secs.max(1e-9));
 }
