@@ -9,6 +9,17 @@
 //!   `kernel::KernelGame`  shakmaty's positions for the perfect-information chess variants (chess, Chess960, crazyhouse, atomic, antichess, king of the hill,
 //!                         three-check, racing kings, horde): fast, and the ONLY chess module of the layer stack -- rules ingestion, certified against its GDL
 //!                         text where one is written (`certify`).
+//!
+//! PLAN 79.34 PART B, WHAT LAYER 2 OWNS AFTER THE CUT (SYSTEM_SPEC 11 "The cut of layers 1 and 2 is carried into the code"; ledger rows 37, 36; piece: rules). WRITTEN BEFORE ANY BODY. Layer 2 says the rules and refers to the kinds and places by layer 1's names: how each kind moves, what a move changes, whose turn it is, where the
+//! game starts, what ends it. The relations that FOLLOW FROM HOW THINGS MOVE (bear, may_move, shut, through, the turn), their making and their fact form are named, made and owned here, and are written onto layer 1's graph through its door (`cs_rep::graph::Board::write` with a `Rel`).
+//!   `relations::{BEAR, MAY_MOVE, SHUT, THROUGH}: Rel`      slots 0 to 3 and the words bear, may_move, shut, through (layer 1 sees a slot and a word, never the meaning).
+//!   `relations::PartRelations` (for `PositionPart`)        `bears() / moves() / shuts() / throughs() -> &Vec<RelRec>`, `struck_by(np, side) -> PlaceSet`; inline, one array index.
+//!   `relations::UnitRelations` (for `LiveUnit`)            `bears() / reach() / shuts() -> &Vec<Place>`.
+//!   `relations::node_words() -> Vec<&'static str>`          the words of the node types of a graph, layer 1's and the rules'.
+//!   `graph::Static`                                        the board plus the rules' reading; it owns `cont` (the profile of the kinds learned from the bearing relations) with `learn(&mut self, &PositionPart)`, `continues(&self, Kind, line, forward) -> bool`, `derive_throughs(&self, &mut PositionPart)` (the line through a unit), and
+//!                                                          `part_of(&self, &LiveGraph) -> PositionPart` (layer 1's bare graph with the relations written in the order a fresh build writes them).
+//!   `graph_facts::FactReader`                              the rows of a graph as facts, as a pattern reads them (unit, bear, may_move, tempo, on_line, on_edge); layer 1 keeps only the words of what is seen (unit, on_line, on_edge).
+//!   `Game::initial`                                        the state the game starts from (unchanged): layer 1 reads and holds no starting arrangement.
 pub mod certify;
 pub mod fact_audit;   // plan 78.19: the demand fact view against the full one, over seeded random play
 pub mod gdl_game;
