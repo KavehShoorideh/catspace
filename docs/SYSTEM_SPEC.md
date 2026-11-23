@@ -981,6 +981,20 @@ own node, by worst at any other, by expectation at a choice by chance, under a w
 remaining walks of the tactical layer would need to become cases. This was proposed in section 13 item 51; Kaveh gave the go on 2026-11-22 ("Do it"), plan 79.33. Also ruled
 here: a layer may depend on layer 0 directly; that is the meaning of a base, and it adds no outside crate.
 
+**The direction after the layers: the base is frozen, the loop is the work, and the whole is measured at every read** (Kaveh
+2026-11-22: asked "is this project on the right direction", then of the main agent's four steps, "great. do that"). The main agent's
+view, which he accepted: plans 79.25 to 79.33 made the layers sound and were each judged a success when no answer changed; none was
+meant to change a decision; the bet of the project (what sleep mines, entering through the prior, makes a small search play and
+explain like a master) was not tested by them. Decided:
+1. Plan 79.33 is capped: one attempt for each walk; what matches is kept, the rest is put back, with no second attempt.
+2. Layer 0 is frozen after plan 79.33. It changes again only when a caller above it needs something, and the plan names the caller.
+   The same holds for the cut of the layers: no plan is made for tidiness alone.
+3. The next plans are chosen from the rows of the loop: sleep mines (rows 25, 31, 32), the prior and the goals use what was mined
+   (rows 3, 6, 14, 17, 23, 24), and the wake is measured.
+4. Every READ from here on carries one measure of the whole engine on a fixed ladder and a fixed puzzle set, by the same program
+   each time, also when the plan is a refactor; where the machine was not quiet the READ says the measure is owed and it is made
+   before the next plan starts. The measure is a measure only; nothing is tuned on it and no verdict is written from one run.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1394,4 +1408,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 0 made right and applied to the game at hand; nothing of a second game built; open to extension | 2026-11-22 | 11 (last block) |
 | The pure search (the reading of a tree of choices) is layer 0's; options, goal, order and budget are not | 2026-11-22 | 11 (last block), 13 item 50 |
 | Plan 79.32 left two recursions in layer 0 (steps, and values); one general answer is proposed | 2026-11-22 | 11 (last block), 13 item 51 |
+| The base is frozen after 79.33; the loop is the work; one measure of the whole in every READ | 2026-11-22 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
