@@ -243,7 +243,10 @@ class Ctx:
 class Source:
     def __init__(self, crate: str, path: Path, mod: str, is_test_file: bool):
         self.crate, self.path, self.mod, self.is_test_file = crate, path, mod, is_test_file
-        self.rel = path.relative_to(ROOT).as_posix()
+        try:
+            self.rel = path.relative_to(ROOT).as_posix()
+        except ValueError:                     # a crate outside the repository (the negative controls of the gate test)
+            self.rel = path.as_posix()
         self.text = blank(path.read_text())
         self.items: list[Item] = []
         self.fns: list[FnRec] = []

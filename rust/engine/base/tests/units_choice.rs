@@ -117,6 +117,19 @@ fn a_guarantee_by_chance_is_the_expectation_and_the_first_overflow_is_said() {
 }
 
 #[test]
+fn a_real_number_in_a_chance_may_sum_to_one_within_the_tolerance_and_not_beyond_it_and_a_whole_met_with_a_real_is_no_longer_exact() {
+    use cs_base::chance::{ChanceError, Spread};
+    let within = Spread::from_reals(vec![("a", 0.5), ("b", 0.5 + SUM_TOLERANCE / 10.0)]);
+    assert!(within.is_ok(), "a rounding of a real number is allowed");
+    let beyond = Spread::from_reals(vec![("a", 0.5), ("b", 0.5 + SUM_TOLERANCE * 10.0)]);
+    assert_eq!(beyond.err(), Some(ChanceError::DoNotSumToOne));
+    let mixed = Num::whole(1).add(&Num::real(0.5).unwrap()).unwrap();
+    assert!(!mixed.is_exact() && mixed.as_ratio().is_none(), "a whole number met with a real goes through a floating number: exactness is not promised");
+    assert_eq!(mixed.as_f64(), 1.5);
+    assert!(Num::frac(1, 3).unwrap().is_exact(), "fractions stay exact");
+}
+
+#[test]
 fn the_items_of_a_sequence_are_the_ones_it_was_made_of_in_order() {
     let s = Sequence::new(vec![3, 1, 2]);
     assert_eq!(Sequence::items(&s), &[3, 1, 2]);

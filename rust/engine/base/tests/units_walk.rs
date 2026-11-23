@@ -185,6 +185,32 @@ fn a_node_met_again_on_the_line_walked_by_hand_ends_the_line_and_taints_the_answ
     assert_eq!(w.taint, 0);
 }
 
+/// 0 (own) -> 1;  1 (own) -> 0, 2;  2 holds property 0 and ends.   The line 0, 1, 0 meets node 0 again.
+fn cycle() -> Graph {
+    Graph::new(vec![vec![1], vec![0, 2], vec![]], vec![true, true, false], vec![0, 0, 0b01])
+}
+
+#[test]
+fn an_answer_that_rests_on_the_line_is_not_kept_so_a_later_question_at_another_line_is_not_poisoned_by_it() {
+    // from 0 the asker goes to 1 and from 1 to 2 (two steps); the option back to 0 meets the line again and is no answer. With answers kept, the same question asked again, and one asked from node 1, give the true steps.
+    let mut s = Steering::new();
+    s.keeps = true;
+    let mut w = Walk::<_, _, u8>::new(cycle(), s);
+    let mut first = Out::<u8>::none();
+    w.go(6, ask(0b01), false, false, &mut first).unwrap();
+    assert_eq!(first.strict[0], 2);
+    assert_eq!(w.taint & 0b01, 0b01, "the walk met a node of its own line, so some answer rested on the line");
+    w.taint = 0;
+    let mut again = Out::<u8>::none();
+    w.go(6, ask(0b01), false, false, &mut again).unwrap();
+    assert_eq!(again.strict[0], 2, "the same again from what was kept");
+    // asked from node 1 (the line is now empty): one step, not what the first walk found for 1 under the line
+    w.space.at = vec![1];
+    let mut from_one = Out::<u8>::none();
+    w.go(6, ask(0b01), false, false, &mut from_one).unwrap();
+    assert_eq!(from_one.strict[0], 1);
+}
+
 #[test]
 fn a_node_in_the_record_kept_before_the_walk_began_ends_a_line_with_no_taint() {
     let mut g = graph();

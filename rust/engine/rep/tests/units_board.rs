@@ -334,6 +334,25 @@ fn a_relation_written_to_an_empty_place_has_no_unit_there_and_none_between_and_t
     assert!(!p.links.iter().any(|l| l.a == first.node && l.kind == LinkType::AtUnit), "nothing stands on n8");
 }
 
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn a_fifth_kind_of_relation_has_no_slot_and_the_door_refuses_it_by_a_panic_and_does_not_drop_it() {
+    // the door has a fixed number of slots (four on a graph): a layer that needs more must raise it; a fifth is never written quietly
+    let b = board();
+    let mut p = Board::position_from_units(&b, Some(0), vec![(0, 0, 0)]);
+    Board::write(&b, &mut p, Rel::new(REL_SLOTS as u8, "fifth"), 0, 1);
+}
+
+#[test]
+fn the_four_slots_of_the_door_each_hold_their_own_relations_and_a_unit_kept_has_three_slots_of_places() {
+    let b = board();
+    let mut p = Board::position_from_units(&b, Some(0), vec![(0, 0, 0)]);
+    for slot in 0..REL_SLOTS as u8 { Board::write(&b, &mut p, Rel::new(slot, "s"), 0, 1); }
+    assert_eq!(PositionPart::relation_count(&p), 4);
+    for slot in 0..REL_SLOTS as u8 { assert_eq!(PositionPart::written(&p, Rel::new(slot, "s")).len(), 1, "slot {slot}"); }
+    assert_eq!(LIVE_SLOTS, 3, "a unit as the graph keeps it has three slots, one fewer than the graph has");
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------ the kept graph
 
 fn lu(o: usize, k: u8, at: u16) -> LiveUnit { LiveUnit::new(o, k, at) }
