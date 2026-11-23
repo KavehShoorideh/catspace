@@ -12,7 +12,6 @@ use cs_game::rules::{Ruled, StateText};
 use cs_game::starts::Starts;
 use cs_game::{Fact, Game};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 mod variants_common;
 use variants_common::{fixture, kernel, rules_root, GAMES};
 
@@ -420,5 +419,33 @@ fn bear_and_may_move_written_onto_layer_1s_graph_equal_a_hand_walk_of_the_board_
             }
         }
         println!("OBS 79.35 E relations {game}: {units_read} units of {} positions: {bears} bear and {moves} may_move relations on layer 1's graph equal the hand walk; {allowed} allowed moves, {exceptions} of them outside may_move (the two-row step, the taking in passing, the two-unit move)", fx.pos.len());
+    }
+}
+
+/// A SMOKE TEST, NOT A DEMAND OF MEANING: the other questions the layers above ask of a placed game (the hypothetical boards `without` and `relocate`, the reason a step is refused `why_not`, whether a side strikes a place `strikes_place`, the line a move takes
+/// `find_step`) are asked at every position of every fixture, for every unit and place they take, and answer without a fault; the counts of the answers a game refuses (None) are printed for the report. Their meaning in these games is listed in the plan's report, not tested here.
+#[test]
+fn the_other_questions_of_a_placed_game_are_answered_at_every_fixture_position_without_a_fault() {
+    for game in GAMES {
+        let fx = fixture(game);
+        let g = kernel(game);
+        let (mut asked, mut without_none, mut relocate_none, mut steps_found, mut steps_refused) = (0usize, 0usize, 0usize, 0usize, 0usize);
+        for p in &fx.pos {
+            let s = at(&g, &p.text);
+            if p.end.is_some() { continue; }
+            let cells = g.cells(&s);
+            for &(owner, _kind, place) in &cells {
+                asked += 1;
+                if g.without(&s, place).is_none() { without_none += 1; }
+                let _ = g.strikes_place(&s, owner, place);
+            }
+            if let Some(&(_, _, from)) = cells.iter().find(|c| Some(c.0) == g.mover(&s)) {
+                for to in 0..64u16 {
+                    if g.relocate(&s, from, to).is_none() { relocate_none += 1; }
+                    match g.find_step(&s, from, to) { Some(_) => steps_found += 1, None => { steps_refused += 1; let _ = g.why_not(&s, from, to); } }
+                }
+            }
+        }
+        println!("OBS 79.35 E placed {game}: {asked} units asked for the board without them ({without_none} refused as no position of the game), {relocate_none} relocations refused, {steps_found} steps found and {steps_refused} refused (each refusal asked its reason)");
     }
 }
