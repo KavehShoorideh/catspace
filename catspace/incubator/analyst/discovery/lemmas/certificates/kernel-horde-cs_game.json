@@ -1,0 +1,23 @@
+{
+ "binding": "kernel horde (cs_game)",
+ "ingests": "the rules of horde: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome, the state's facts (the fact layer's base, plan 78.13)",
+ "oracle": "the GDL text rules/chess.gdl with the delta rules/variants/horde.gdl, read by cs_gdl",
+ "corpus": "20 seeded co-play games (seed 77) and 4 from each of 23 listed positions",
+ "positions": 13900,
+ "invalid_left_out": 0,
+ "disagreements": 0,
+ "examples": [],
+ "key": "20cc6a831425857c",
+ "sources": [
+  "rules/chess.gdl",
+  "rules/variants/horde.gdl",
+  "rules/variants/horde.starts",
+  "rust/engine/gdl/src/lib.rs",
+  "rust/engine/game/src/kernel.rs",
+  "rust/engine/game/src/gdl_game.rs",
+  "rust/engine/game/src/certify.rs",
+  "rust/engine/Cargo.lock"
+ ],
+ "date": "2026-11-23",
+ "seconds": 29.3
+}

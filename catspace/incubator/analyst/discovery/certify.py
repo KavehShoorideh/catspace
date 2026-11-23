@@ -345,22 +345,40 @@ BINDINGS = {
 # rules/chess.gdl itself, or a DELTA on it in rules/variants/ (cs_gdl::compose). A variant with no text yet plays on its kernel UNCERTIFIED (`uncertified()`).
 ENGINE = ROOT / "rust" / "engine"
 COPLAY_GAMES = 20         # the co-play's seeded games per variant (each to the kernel's terminal)
-VARIANT_TEXTS = {"chess": None, "kingofthehill": ROOT / "rules" / "variants" / "kingofthehill.gdl", "3check": ROOT / "rules" / "variants" / "3check.gdl"}
+VARIANT_TEXTS = {"chess": None, "kingofthehill": ROOT / "rules" / "variants" / "kingofthehill.gdl", "3check": ROOT / "rules" / "variants" / "3check.gdl",
+                 # plan 79.35: two games with another start (chess960, horde) and two with other rules (atomic, antichess)
+                 "chess960": ROOT / "rules" / "variants" / "chess960.gdl", "horde": ROOT / "rules" / "variants" / "horde.gdl",
+                 "atomic": ROOT / "rules" / "variants" / "atomic.gdl", "antichess": ROOT / "rules" / "variants" / "antichess.gdl"}
+# plan 79.35: besides its own start, a game may be played from a list of positions (a data file under rules/variants, a position text a line): chess960 from several of its 960 starts and from corner positions of the
+# two-unit move of the leader; the others from the corner positions of their rules. The description is given the same start as the kernel (rules::restart_delta).
+VARIANT_STARTS = {v: ROOT / "rules" / "variants" / f"{v}.starts" for v in ("chess960", "horde", "atomic", "antichess")}
+COPLAY_START_GAMES = 4    # the co-play's seeded games from each position of a game's list
+
+
+def start_positions(variant: str) -> list:
+    p = VARIANT_STARTS.get(variant)
+    return [] if p is None else [ln.strip() for ln in p.read_text().splitlines() if ln.strip() and not ln.startswith("#")]
 
 
 def coplay_check(variant: str) -> tuple:
-    """The variant's kernel against its GDL text by co-play -> (states read, [disagreements])."""
+    """The variant's kernel against its GDL text by co-play, from its own start and from each position of its list -> (states read, [disagreements])."""
     import cs_engine as CE
     base = GC.SPEC.read_text()
     p = VARIANT_TEXTS[variant]
-    g, plies, states, bad = CE.certify_coplay(variant, base if p is None else p.read_text(), COPLAY_GAMES, SEED, None if p is None else base)
-    return states, [("coplay", variant, d[:300]) for d in bad]
+    text = base if p is None else p.read_text()
+    g, plies, states, bad = CE.certify_coplay(variant, text, COPLAY_GAMES, SEED, None if p is None else base)
+    out = [("coplay", variant, d[:300]) for d in bad]
+    for fen in start_positions(variant):
+        g, plies, n, bad = CE.certify_coplay_from(variant, text, COPLAY_START_GAMES, SEED, None if p is None else base, fen)
+        states += n
+        out += [("coplay", f"{variant} from {fen}", d[:300]) for d in bad]
+    return states, out
 
 
 for _v, _p in VARIANT_TEXTS.items():
     BINDINGS[f"kernel {_v} (cs_game)"] = (f"the rules of {_v}: the mover, the legal moves, the next state (by its consequences), the terminal verdict, the outcome, the state's facts (the fact layer's base, plan 78.13)",
                                          "the GDL text " + ("rules/chess.gdl" if _p is None else f"rules/chess.gdl with the delta {_p.relative_to(ROOT)}") + ", read by cs_gdl",
-                                         _src(GC.SPEC, *([] if _p is None else [_p]), ENGINE / "gdl" / "src" / "lib.rs", ENGINE / "game" / "src" / "kernel.rs",
+                                         _src(GC.SPEC, *([] if _p is None else [_p]), *([VARIANT_STARTS[_v]] if _v in VARIANT_STARTS else []), ENGINE / "gdl" / "src" / "lib.rs", ENGINE / "game" / "src" / "kernel.rs",
                                               ENGINE / "game" / "src" / "gdl_game.rs", ENGINE / "game" / "src" / "certify.rs", ENGINE / "Cargo.lock"),
                                          f"coplay:{_v}", None)
 
@@ -414,8 +432,11 @@ def certify(name: str, jobs: int = 1) -> dict:
     what, oracle, _srcs, corp, _check = BINDINGS[name]
     if corp.startswith("coplay:"):
         t = time.time()
-        states, bad = coplay_check(corp.split(":", 1)[1])
-        return {"binding": name, "ingests": what, "oracle": oracle, "corpus": f"{COPLAY_GAMES} seeded co-play games (seed {SEED})", "positions": states,
+        variant = corp.split(":", 1)[1]
+        states, bad = coplay_check(variant)
+        listed = len(start_positions(variant))
+        what_played = f"{COPLAY_GAMES} seeded co-play games (seed {SEED})" + (f" and {COPLAY_START_GAMES} from each of {listed} listed positions" if listed else "")
+        return {"binding": name, "ingests": what, "oracle": oracle, "corpus": what_played, "positions": states,
                 "invalid_left_out": 0, "disagreements": len(bad), "examples": [list(map(str, x)) for x in bad[:EXAMPLES]], "key": key_of(name),
                 "sources": BINDINGS[name][2], "date": datetime.date.today().isoformat(), "seconds": round(time.time() - t, 1)}
     fens, invalid = corpus(corp)

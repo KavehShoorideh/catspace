@@ -217,7 +217,22 @@ fn certify_coplay(variant: &str, gdl_text: &str, games: usize, seed: u64, base: 
     let k = kernel::KernelGame::new(variant, 518).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let text = match base { Some(b) => cs_gdl::compose(b, gdl_text).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.0))?, None => gdl_text.to_string() };
     let g = GdlGame::load(variant, &text).map_err(pyo3::exceptions::PyValueError::new_err)?;
-    let r = certify::coplay(&k, &g, &|n| kernel::uci_to_spec_term(n), games, seed);
+    let r = certify::coplay(&k, &g, &|n| cs_game::outside::spec_term(n), games, seed);
+    Ok((r.games, r.plies, r.states, r.disagreements))
+}
+
+/// certify_coplay_from(variant, gdl_text, games, seed, base, start) -> (games, plies, states, [disagreements]): plan 79.35 -- as `certify_coplay`, the kernel begun at the
+/// position text `start` (of a game with another start, or any position shown) and the description given the same start (`rules::restart_delta` of the kernel's state facts).
+#[pyfunction]
+#[pyo3(signature = (variant, gdl_text, games, seed, base, start))]
+fn certify_coplay_from(variant: &str, gdl_text: &str, games: usize, seed: u64, base: Option<&str>, start: &str) -> PyResult<(usize, usize, usize, Vec<String>)> {
+    let bad = |e: String| pyo3::exceptions::PyValueError::new_err(e);
+    let k = kernel::KernelGame::from_fen(variant, start).map_err(bad)?;
+    let text = match base { Some(b) => cs_gdl::compose(b, gdl_text).map_err(|e| bad(e.0))?, None => gdl_text.to_string() };
+    let delta = cs_game::rules::restart_delta(&text, &k.state_facts(&cs_game::Game::initial(&k))).map_err(bad)?;
+    let text = cs_gdl::compose(&text, &delta).map_err(|e| bad(e.0))?;
+    let g = GdlGame::load(variant, &text).map_err(bad)?;
+    let r = certify::coplay(&k, &g, &|n| cs_game::outside::spec_term(n), games, seed);
     Ok((r.games, r.plies, r.states, r.disagreements))
 }
 
@@ -1330,6 +1345,7 @@ impl GraphModel {
 fn cs_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(variants, m)?)?;
     m.add_function(wrap_pyfunction!(certify_coplay, m)?)?;
+    m.add_function(wrap_pyfunction!(certify_coplay_from, m)?)?;
     m.add_function(wrap_pyfunction!(best_move, m)?)?;
     m.add_function(wrap_pyfunction!(playout_game, m)?)?;
     m.add_function(wrap_pyfunction!(solve_batch, m)?)?;
