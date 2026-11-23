@@ -27,9 +27,9 @@ step	start	g2g3	-	cell,g,3,white,pawn control,black	cell,g,2,white,pawn control,
 step	start	g2g4	-	cell,g,4,white,pawn control,black ep_square,g,3	cell,g,2,white,pawn control,white	3bbf0c23643d	black
 step	start	h2h3	-	cell,h,3,white,pawn control,black	cell,h,2,white,pawn control,white	5f794c261773	black
 step	start	h2h4	-	cell,h,4,white,pawn control,black ep_square,h,3	cell,h,2,white,pawn control,white	b044be45e5b4	black
-pos	corner:a_taking_is_compulsory	rnbqkbnr/pppppppp/8/8/8/3p4/PPPPPPPP/RNBQKBNR w - - 0 1	rnbqkbnr/pppppppp/8/8/8/3p4/PPPPPPPP/RNBQKBNR w - - 0 1	-	c2d3 e2d3	cell,a,1,white,rook cell,a,2,white,pawn cell,a,7,black,pawn cell,a,8,black,rook cell,b,1,white,knight cell,b,2,white,pawn cell,b,7,black,pawn cell,b,8,black,knight cell,c,1,white,bishop cell,c,2,white,pawn cell,c,7,black,pawn cell,c,8,black,bishop cell,d,1,white,queen cell,d,2,white,pawn cell,d,3,black,pawn cell,d,7,black,pawn cell,d,8,black,queen cell,e,1,white,king cell,e,2,white,pawn cell,e,7,black,pawn cell,e,8,black,king cell,f,1,white,bishop cell,f,2,white,pawn cell,f,7,black,pawn cell,f,8,black,bishop cell,g,1,white,knight cell,g,2,white,pawn cell,g,7,black,pawn cell,g,8,black,knight cell,h,1,white,rook cell,h,2,white,pawn cell,h,7,black,pawn cell,h,8,black,rook control,white halfmove,0	da832eff7d60	white
-step	corner:a_taking_is_compulsory	c2d3	-	cell,d,3,white,pawn control,black	cell,c,2,white,pawn cell,d,3,black,pawn control,white	fc31fe3c2932	black
-step	corner:a_taking_is_compulsory	e2d3	-	cell,d,3,white,pawn control,black	cell,d,3,black,pawn cell,e,2,white,pawn control,white	da81637ff017	black
+pos	corner:a_taking_is_compulsory	rnbqkbnr/ppp1pppp/8/8/8/3p4/PPPPPPPP/RNBQKBNR w - - 0 1	rnbqkbnr/ppp1pppp/8/8/8/3p4/PPPPPPPP/RNBQKBNR w - - 0 1	-	c2d3 e2d3	cell,a,1,white,rook cell,a,2,white,pawn cell,a,7,black,pawn cell,a,8,black,rook cell,b,1,white,knight cell,b,2,white,pawn cell,b,7,black,pawn cell,b,8,black,knight cell,c,1,white,bishop cell,c,2,white,pawn cell,c,7,black,pawn cell,c,8,black,bishop cell,d,1,white,queen cell,d,2,white,pawn cell,d,3,black,pawn cell,d,8,black,queen cell,e,1,white,king cell,e,2,white,pawn cell,e,7,black,pawn cell,e,8,black,king cell,f,1,white,bishop cell,f,2,white,pawn cell,f,7,black,pawn cell,f,8,black,bishop cell,g,1,white,knight cell,g,2,white,pawn cell,g,7,black,pawn cell,g,8,black,knight cell,h,1,white,rook cell,h,2,white,pawn cell,h,7,black,pawn cell,h,8,black,rook control,white halfmove,0	4fe9405936c6	white
+step	corner:a_taking_is_compulsory	c2d3	-	cell,d,3,white,pawn control,black	cell,c,2,white,pawn cell,d,3,black,pawn control,white	55badd7122b0	black
+step	corner:a_taking_is_compulsory	e2d3	-	cell,d,3,white,pawn control,black	cell,d,3,black,pawn cell,e,2,white,pawn control,white	cc78162173c8	black
 pos	corner:two_takings_choice	4k3/8/8/2p1p3/3P4/8/8/4K3 w - - 0 1	4k3/8/8/2p1p3/3P4/8/8/4K3 w - - 0 1	-	d4c5 d4e5	cell,c,5,black,pawn cell,d,4,white,pawn cell,e,1,white,king cell,e,5,black,pawn cell,e,8,black,king control,white halfmove,0	d22dd9fad599	white
 step	corner:two_takings_choice	d4c5	-	cell,c,5,white,pawn control,black	cell,c,5,black,pawn cell,d,4,white,pawn control,white	10dc75dffc5d	black
 step	corner:two_takings_choice	d4e5	-	cell,e,5,white,pawn control,black	cell,d,4,white,pawn cell,e,5,black,pawn control,white	4db654af54bc	black
@@ -57,31 +57,29 @@ step	corner:two_leaders_of_a_side	c1d2	-	cell,d,2,white,king control,black halfm
 pos	corner:no_two_unit_move	r3k2r/8/8/8/8/8/8/R3K2R w - - 0 1	r3k2r/8/8/8/8/8/8/R3K2R w - - 0 1	-	a1a8 h1h8	cell,a,1,white,rook cell,a,8,black,rook cell,e,1,white,king cell,e,8,black,king cell,h,1,white,rook cell,h,8,black,rook control,white halfmove,0	2cbf247f3d23	white
 step	corner:no_two_unit_move	a1a8	-	cell,a,8,white,rook control,black	cell,a,1,white,rook cell,a,8,black,rook control,white	e5f35666d176	black
 step	corner:no_two_unit_move	h1h8	-	cell,h,8,white,rook control,black	cell,h,1,white,rook cell,h,8,black,rook control,white	2f6da1ce8960	black
-pos	corner:smallest_to_leader_and_others	8/P7/8/8/8/8/8/7p w - - 0 1	8/P7/8/8/8/8/8/7p w - - 0 1	-	a7a8b a7a8k a7a8n a7a8q a7a8r	cell,a,7,white,pawn cell,h,1,black,pawn control,white halfmove,0	aa1c4e941281	white
-step	corner:smallest_to_leader_and_others	a7a8b	no_move_won/0,100	cell,a,8,white,bishop control,black	cell,a,7,white,pawn control,white	831eab5fdc3f	black
-step	corner:smallest_to_leader_and_others	a7a8k	no_move_won/0,100	cell,a,8,white,king control,black	cell,a,7,white,pawn control,white	2478051d92ac	black
-step	corner:smallest_to_leader_and_others	a7a8n	no_move_won/0,100	cell,a,8,white,knight control,black	cell,a,7,white,pawn control,white	21ee8dd621fe	black
-step	corner:smallest_to_leader_and_others	a7a8q	no_move_won/0,100	cell,a,8,white,queen control,black	cell,a,7,white,pawn control,white	c37591782489	black
-step	corner:smallest_to_leader_and_others	a7a8r	no_move_won/0,100	cell,a,8,white,rook control,black	cell,a,7,white,pawn control,white	8a2246f8f39d	black
-pos	corner:smallest_takes_into_the_last_row	1n6/P7/8/8/8/8/8/7p w - - 0 1	1n6/P7/8/8/8/8/8/7p w - - 0 1	-	a7b8b a7b8k a7b8n a7b8q a7b8r	cell,a,7,white,pawn cell,b,8,black,knight cell,h,1,black,pawn control,white halfmove,0	bbd8c02560af	white
-step	corner:smallest_takes_into_the_last_row	a7b8b	no_move_won/0,100	cell,b,8,white,bishop control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	c34e39ab2fca	black
-step	corner:smallest_takes_into_the_last_row	a7b8k	no_move_won/0,100	cell,b,8,white,king control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	fa7dcaf75af5	black
-step	corner:smallest_takes_into_the_last_row	a7b8n	no_move_won/0,100	cell,b,8,white,knight control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	89304312c8bc	black
-step	corner:smallest_takes_into_the_last_row	a7b8q	no_move_won/0,100	cell,b,8,white,queen control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	119c39ea4c3d	black
-step	corner:smallest_takes_into_the_last_row	a7b8r	no_move_won/0,100	cell,b,8,white,rook control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	9724d26ae53f	black
+pos	corner:smallest_to_leader_and_others	8/P7/8/8/8/8/7p/8 w - - 0 1	8/P7/8/8/8/8/7p/8 w - - 0 1	-	a7a8b a7a8k a7a8n a7a8q a7a8r	cell,a,7,white,pawn cell,h,2,black,pawn control,white halfmove,0	7561b960e81c	white
+step	corner:smallest_to_leader_and_others	a7a8b	-	cell,a,8,white,bishop control,black	cell,a,7,white,pawn control,white	d1df89002a63	black
+step	corner:smallest_to_leader_and_others	a7a8k	-	cell,a,8,white,king control,black	cell,a,7,white,pawn control,white	b9542344314d	black
+step	corner:smallest_to_leader_and_others	a7a8n	-	cell,a,8,white,knight control,black	cell,a,7,white,pawn control,white	917e6593e9ef	black
+step	corner:smallest_to_leader_and_others	a7a8q	-	cell,a,8,white,queen control,black	cell,a,7,white,pawn control,white	2b39d348efaf	black
+step	corner:smallest_to_leader_and_others	a7a8r	-	cell,a,8,white,rook control,black	cell,a,7,white,pawn control,white	d88134b4fbe7	black
+pos	corner:smallest_takes_into_the_last_row	1n6/P7/8/8/8/8/7p/8 w - - 0 1	1n6/P7/8/8/8/8/7p/8 w - - 0 1	-	a7b8b a7b8k a7b8n a7b8q a7b8r	cell,a,7,white,pawn cell,b,8,black,knight cell,h,2,black,pawn control,white halfmove,0	ed07ed1685a7	white
+step	corner:smallest_takes_into_the_last_row	a7b8b	-	cell,b,8,white,bishop control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	cc7263e34f60	black
+step	corner:smallest_takes_into_the_last_row	a7b8k	-	cell,b,8,white,king control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	e8f4b644f381	black
+step	corner:smallest_takes_into_the_last_row	a7b8n	-	cell,b,8,white,knight control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	53fff52ab8b8	black
+step	corner:smallest_takes_into_the_last_row	a7b8q	-	cell,b,8,white,queen control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	32f756f9b88d	black
+step	corner:smallest_takes_into_the_last_row	a7b8r	-	cell,b,8,white,rook control,black	cell,a,7,white,pawn cell,b,8,black,knight control,white	972256f7b65b	black
 pos	corner:taking_in_passing_compulsory	8/8/8/3pP3/8/8/8/8 w - d6 0 1	8/8/8/3pP3/8/8/8/8 w - d6 0 1	-	e5d6	cell,d,5,black,pawn cell,e,5,white,pawn control,white ep_square,d,6 halfmove,0	c60d97864ad1	white
 step	corner:taking_in_passing_compulsory	e5d6	no_unit_left/0,100	cell,d,6,white,pawn control,black	cell,d,5,black,pawn cell,e,5,white,pawn control,white ep_square,d,6	140c33e3fc78	black
-pos	corner:black_smallest_promotes	8/8/8/8/8/8/p7/7P b - - 0 1	8/8/8/8/8/8/p7/7P b - - 0 1	-	a2a1b a2a1k a2a1n a2a1q a2a1r	cell,a,2,black,pawn cell,h,1,white,pawn control,black halfmove,0	feebe466fe0e	black
-step	corner:black_smallest_promotes	a2a1b	-	cell,a,1,black,bishop control,white	cell,a,2,black,pawn control,black	21d4e21a34d2	white
-step	corner:black_smallest_promotes	a2a1k	-	cell,a,1,black,king control,white	cell,a,2,black,pawn control,black	8c07dff0d794	white
-step	corner:black_smallest_promotes	a2a1n	-	cell,a,1,black,knight control,white	cell,a,2,black,pawn control,black	5ed155845ec7	white
-step	corner:black_smallest_promotes	a2a1q	-	cell,a,1,black,queen control,white	cell,a,2,black,pawn control,black	a00918e22a68	white
-step	corner:black_smallest_promotes	a2a1r	-	cell,a,1,black,rook control,white	cell,a,2,black,pawn control,black	cd9a6fec253c	white
+pos	corner:black_smallest_promotes	8/8/8/8/8/8/p6P/8 b - - 0 1	8/8/8/8/8/8/p6P/8 b - - 0 1	-	a2a1b a2a1k a2a1n a2a1q a2a1r	cell,a,2,black,pawn cell,h,2,white,pawn control,black halfmove,0	0e184d089bd2	black
+step	corner:black_smallest_promotes	a2a1b	-	cell,a,1,black,bishop control,white	cell,a,2,black,pawn control,black	1f2f202eb318	white
+step	corner:black_smallest_promotes	a2a1k	-	cell,a,1,black,king control,white	cell,a,2,black,pawn control,black	e73a040856ae	white
+step	corner:black_smallest_promotes	a2a1n	-	cell,a,1,black,knight control,white	cell,a,2,black,pawn control,black	ed62880f4012	white
+step	corner:black_smallest_promotes	a2a1q	-	cell,a,1,black,queen control,white	cell,a,2,black,pawn control,black	851c3eb4a3e4	white
+step	corner:black_smallest_promotes	a2a1r	-	cell,a,1,black,rook control,white	cell,a,2,black,pawn control,black	bfe013c0b645	white
 pos	corner:no_unit_left_mover	8/8/8/8/8/8/8/4K3 b - - 0 1	8/8/8/8/8/8/8/4K3 b - - 0 1	no_unit_left/0,100	-	cell,e,1,white,king control,black halfmove,0	d34e1d743cda	black
-pos	corner:no_unit_left_other	8/8/8/8/8/8/8/4k3 b - - 0 1	8/8/8/8/8/8/8/4k3 b - - 0 1	-	-	cell,e,1,black,king control,black halfmove,0	c6a326b97c6b	black
 pos	corner:no_move_left_wins	8/8/8/8/8/p7/P7/8 w - - 0 1	8/8/8/8/8/p7/P7/8 w - - 0 1	no_move_won/100,0	-	cell,a,2,white,pawn cell,a,3,black,pawn control,white halfmove,0	ce3853d20a04	white
 pos	corner:no_move_left_black_wins	8/8/8/8/8/p7/P7/8 b - - 0 1	8/8/8/8/8/p7/P7/8 b - - 0 1	no_move_won/0,100	-	cell,a,2,white,pawn cell,a,3,black,pawn control,black halfmove,0	2b280e11e5ce	black
-pos	corner:one_unit_blocked	8/8/8/8/8/8/p7/P7 b - - 0 1	8/8/8/8/8/8/p7/P7 b - - 0 1	no_move_won/0,100	-	cell,a,1,white,pawn cell,a,2,black,pawn control,black halfmove,0	1e6e402cd544	black
 pos	corner:dead_two_bishops	8/8/8/8/8/8/8/Bb6 w - - 0 1	8/8/8/8/8/8/8/Bb6 w - - 0 1	dead_material/50,50	-	cell,a,1,white,bishop cell,b,1,black,bishop control,white halfmove,0	695d3bf78467	white
 pos	corner:dead_bishops_same_colour	8/8/8/8/8/8/1b6/B7 w - - 0 1	8/8/8/8/8/8/1b6/B7 w - - 0 1	-	a1b2	cell,a,1,white,bishop cell,b,2,black,bishop control,white halfmove,0	9e4a70a616b1	white
 step	corner:dead_bishops_same_colour	a1b2	no_unit_left/0,100	cell,b,2,white,bishop control,black	cell,a,1,white,bishop cell,b,2,black,bishop control,white	0664e4d4165f	black

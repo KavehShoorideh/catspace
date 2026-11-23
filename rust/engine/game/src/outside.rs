@@ -3,7 +3,8 @@ use crate::kernel::KernelGame;
 use crate::placed::{Kind, NoStep, Place, Placed};
 use crate::rules::{DescriptionNames, StateText};
 use crate::{Game, Role};
-use shakmaty::variant::VariantPosition;
+use crate::starts::Starts;
+use shakmaty::variant::{Variant, VariantPosition};
 use shakmaty::{Color, EnPassantMode, Move, Position};
 
 // ------------------------------------------------------------------------------------------------------------------------------ the placed reading (plan 78.43)
@@ -63,7 +64,10 @@ impl Placed for KernelGame {
         let (role, sq) = (role_of(kind), square_of(at));
         let colour = colour_of(owner);
         let board = s.board();
-        let foes = board.by_color(!colour) & !board.kings();
+        // PLAN 79.35 (what `may_move` means): a leader of the other side may be taken only in a game where a leader is an ordinary unit or is taken by a removal (antichess, atomic); and in atomic a leader takes nothing
+        let leader_takable = matches!(self.variant, Variant::Antichess | Variant::Atomic);
+        let foes = if leader_takable { board.by_color(!colour) } else { board.by_color(!colour) & !board.kings() };
+        let foes = if self.variant == Variant::Atomic && role == shakmaty::Role::King { shakmaty::Bitboard::EMPTY } else { foes };
         let empty = !board.occupied();
         let occ = board.occupied();
         let bits = match role {
@@ -119,6 +123,15 @@ impl Placed for KernelGame {
     }
     fn relocate(&self, s: &VariantPosition, from: Place, to: Place) -> Option<VariantPosition> {
         self.edited(s, |b| { let p = b.remove_piece_at(square_of(from))?; b.set_piece_at(square_of(to), p); Some(()) })
+    }
+}
+
+/// PLAN 79.35 PART B: the game with a start by number is the one named "chess960" (960 starts, Scharnagl's numbering, kernel.rs); every other game has one start.
+impl Starts for KernelGame {
+    fn start_count(&self) -> usize { if self.label == "chess960" { 960 } else { 1 } }
+    fn with_start(&self, n: usize) -> Result<KernelGame, String> {
+        if n >= self.start_count() { return Err(format!("{} has {} start(s), none numbered {n}", self.label, self.start_count())); }
+        if self.start_count() == 1 { Ok(self.clone()) } else { KernelGame::new(&self.label, n as u32) }
     }
 }
 
