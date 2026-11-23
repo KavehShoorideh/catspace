@@ -203,7 +203,7 @@ mod tests {
         for st in &standings { for h in [Holder::Ours, Holder::OursAboutOther] { for sa in &sayings {
             let s = sample(st.clone(), h, sa.clone());
             assert_eq!(Statement::from_json(&s.to_json()).unwrap(), s);
-            assert_eq!(Statement::from_json(&serde_json::from_str::<Value>(&s.to_json().to_string()).unwrap()).unwrap(), s, "through the text too");
+            assert_eq!(Statement::from_json(&serde_json::from_str::<Value>(&s.to_json().to_string()).unwrap()).unwrap(), s, "by way of the text too");
             n += 1;
         } } }
         assert_eq!(n, 32);

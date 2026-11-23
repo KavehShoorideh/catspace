@@ -277,7 +277,7 @@ fn a_pattern_with_a_differ_literal_binds_exactly_where_the_plain_reference_says_
     assert!(statement_of("loose".into(), vec![Lit::pos("unit", &["?s", "?k1", "?p1"]), Lit::differ("?p1", "?q")]).validate().is_err(), "a placeholder only a differ literal names is refused");
     assert!(statement_of("alone".into(), vec![Lit::differ("a", "b")]).validate().is_err(), "a differ literal is no row: a body of it alone is refused");
     // a statement stored before the literal existed, as the text it was stored in, reads back the same and writes the same text
-    let old = r#"{"id":"old","pattern":[{"relation":"unit","args":["?s","?k","?p"],"neg":false},{"relation":"bear","args":["?s","?k","?p","?t"],"neg":false},{"relation":"unit","args":["?s","kind_z","?t"],"neg":true}],"says":{"kind":"holds"},"standing":{"kind":"fact"},"holder":"ours","also":[]}"#;
+    let old = r#"{"id":"old","pattern":[{"relation":"unit","args":["?s","?k","?p"],"neg":false},{"relation":"guards","args":["?s","?k","?p","?t"],"neg":false},{"relation":"unit","args":["?s","kind_z","?t"],"neg":true}],"says":{"kind":"holds"},"standing":{"kind":"fact"},"holder":"ours","also":[]}"#;
     let v: serde_json::Value = serde_json::from_str(old).unwrap();
     let read = Statement::from_json(&v).unwrap();
     assert_eq!(read.pattern.len(), 3);
