@@ -12,20 +12,20 @@ mode=$1
 kind=$2
 label=$3
 case "$kind" in
-  values) PKG=cs_base; TESTS="--test value_dump"; ENVV=LAYER0_VALUES ;;
-  toward) PKG=cs_tactics; TESTS="--test walk_values"; ENVV=WALK_TOWARD ;;
-  tail) PKG=cs_tactics; TESTS="--test walk_values"; ENVV=WALK_TAIL ;;
-  frame) PKG=cs_tactics; TESTS="--test walk_values"; ENVV=WALK_FRAME ;;
+  values) PKG=cs_base; TESTS="--test value_dump"; ENVV=LAYER0_VALUES; FILT="" ;;
+  toward) PKG=cs_tactics; TESTS="--test walk_values"; ENVV=WALK_TOWARD; FILT="search_toward" ;;
+  tail) PKG=cs_tactics; TESTS="--test walk_values"; ENVV=WALK_TAIL; FILT="tail_of_a_line" ;;
+  frame) PKG=cs_tactics; TESTS="--test walk_values"; ENVV=WALK_FRAME; FILT="inside_a_frame" ;;
   *) echo "unknown kind $kind"; exit 2 ;;
 esac
 cargo test --release --offline -p $PKG $TESTS --no-run > "$OUT/$label.$kind.build.txt" 2>&1
 if [ "$mode" = dump ]; then
-  env $ENVV="$OUT/$label.$kind.dump" cargo test --release --offline -p $PKG $TESTS -- --test-threads 1 --nocapture > "$OUT/$label.$kind.dump.out" 2>&1
+  env $ENVV="$OUT/$label.$kind.dump" cargo test --release --offline -p $PKG $TESTS -- --test-threads 1 --nocapture $FILT > "$OUT/$label.$kind.dump.out" 2>&1
 else
   n=$4
   uptime > "$OUT/$label.$kind.time$n.txt"
   start=$(date +%s)
-  cargo test --release --offline -p $PKG $TESTS -- --test-threads 1 --nocapture >> "$OUT/$label.$kind.time$n.txt" 2>&1
+  cargo test --release --offline -p $PKG $TESTS -- --test-threads 1 --nocapture $FILT >> "$OUT/$label.$kind.time$n.txt" 2>&1
   end=$(date +%s)
   echo "WALL $((end-start)) s" >> "$OUT/$label.$kind.time$n.txt"
 fi

@@ -72,24 +72,28 @@ pub trait Kind<S: Node> {
 pub struct Fold<S: Node, K: Kind<S>> {
     pub space: S,
     pub kind: K,
+    /// the vectors of options of nodes already left, kept for their room: no node allocates once the walk is as deep as it will be
+    spare: Vec<Vec<S::Opt>>,
 }
 
 impl<S: Node, K: Kind<S>> Fold<S, K> {
-    pub fn new(space: S, kind: K) -> Self { Fold { space, kind } }
+    pub fn new(space: S, kind: K) -> Self { Fold { space, kind, spare: Vec::new() } }
 
     /// The value at the node the space is at: `left` steps may still be taken, `ply` steps have been taken since the caller asked, `win` is the window. Best at an own node, worst at any other, the expectation at a chance node.
-    pub fn go(&mut self, left: u32, ply: u32, mut win: Bounds<K::Val>) -> Result<K::Val, K::Err> {
-        let token = match self.kind.before(&self.space, left, ply, &mut win)? { Pre::Done(v) => return Ok(v), Pre::Go(t) => t };
+    pub fn go(&mut self, left: u32, ply: u32, mut win: Bounds<K::Val>) -> Result<K::Val, K::Err> { self.walk(left, ply, &mut win) }
+
+    fn walk(&mut self, left: u32, ply: u32, win: &mut Bounds<K::Val>) -> Result<K::Val, K::Err> {
+        let token = match self.kind.before(&self.space, left, ply, win)? { Pre::Done(v) => return Ok(v), Pre::Go(t) => t };
         if left == 0 { return self.kind.horizon(&self.space, token, ply); }
-        let entry = win;
+        let entry: Option<Bounds<K::Val>> = if K::WINDOWED { Some(*win) } else { None };
         let own = self.space.own_turn();
         let chance = K::CHANCE && self.space.chance();
         let mut got: Option<K::Val> = if chance { None } else { self.kind.base(&self.space, &token) };
         let mut skip = false;
         if K::WINDOWED {
-            if let Some(b) = got { Self::improve(&mut win, own, b); skip = win.lo >= win.hi; }
+            if let Some(b) = got { Self::improve(win, own, b); skip = win.lo >= win.hi; }
         }
-        let mut opts: Vec<S::Opt> = Vec::new();
+        let mut opts: Vec<S::Opt> = if skip { Vec::new() } else { self.spare.pop().unwrap_or_default() };
         if !skip {
             self.space.options(&mut opts);
             self.kind.order(&self.space, &mut opts);
@@ -99,7 +103,7 @@ impl<S: Node, K: Kind<S>> Fold<S, K> {
                 for o in &opts {
                     let Some(e) = self.kind.edge(&self.space, o) else { continue };
                     self.space.enter(o);
-                    let r = self.go(left - 1, ply + 1, win);
+                    let r = self.walk(left - 1, ply + 1, win);
                     self.space.leave();
                     let v = match r { Ok(v) => v, Err(c) => { self.kind.close(); return Err(c); } };
                     acc = match self.kind.mix(acc, e, v) { Ok(a) => Some(a), Err(c) => { self.kind.close(); return Err(c); } };
@@ -108,23 +112,24 @@ impl<S: Node, K: Kind<S>> Fold<S, K> {
             } else {
                 for o in &opts {
                     let Some(e) = self.kind.edge(&self.space, o) else { continue };
-                    let cw = if K::WINDOWED { self.kind.child(e, &win) } else { win };
                     self.space.enter(o);
-                    let r = self.go(left - 1, ply + 1, cw);
+                    let r = if K::WINDOWED { let mut cw = self.kind.child(e, win); self.walk(left - 1, ply + 1, &mut cw) } else { self.walk(left - 1, ply + 1, win) };
                     self.space.leave();
                     let v = match r { Ok(v) => v, Err(c) => { self.kind.close(); return Err(c); } };
                     let v = match self.kind.lift(e, v) { Ok(v) => v, Err(c) => { self.kind.close(); return Err(c); } };
                     let better = match got { None => true, Some(b) => if own { v > b } else { v < b } };
                     if better { got = Some(v); self.kind.improved(&self.space, ply, o); }
                     if K::WINDOWED {
-                        Self::improve(&mut win, own, v);
+                        Self::improve(win, own, v);
                         if win.lo >= win.hi { break; }
                     }
                 }
             }
             self.kind.close();
+            opts.clear();
+            self.spare.push(opts);
         }
-        self.kind.finish(&self.space, token, got, &entry)
+        match &entry { Some(e) => self.kind.finish(&self.space, token, got, e), None => self.kind.finish(&self.space, token, got, win) }
     }
 
     /// The window after a value is found: what the asker has can only rise at an own node, what the rest hold it to can only fall at any other.
