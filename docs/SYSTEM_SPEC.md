@@ -1031,6 +1031,13 @@ OF THE BUILDER, standing until Kaveh says otherwise: across games, bears on is t
 may move to is where the kind's step reaches under the game's rule of what may be taken; neither reads compulsion, what else a
 taking removes, or the leader left struck. What the layers above assume that these games break is ledger row 42.
 
+**Every unit of a layer is tested before the layer above is taken up** (Kaveh 2026-11-23: "everything that you checked by hand
+should become a unit test. All the units need to be tested. And before we move on to layer 3, this is what we need to do."). What
+the main agent or a builder checked by reading or by hand is not done until a test holds it. READING, mine: "unit" is taken in both
+senses, every public item of a layer's code and every kind of unit of every game the rules say; a gate fails when a public item of
+layers 0, 1 or 2 is called by no test; a fault a new test finds is mended in its layer unless the file is protected, and then it is
+named. The same rule is applied to layer 3 when it is taken up. Plan 79.36.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1447,4 +1454,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The base is frozen after 79.33; the loop is the work; one measure of the whole in every READ | 2026-11-22 | 11 (last block) |
 | The cut of layers 1 and 2 (what is there; what the rules say of it) is carried into the crates, with unit tests | 2026-11-22 | 11 (last block) |
 | Layer 2 says variants (another start: Chess960, horde; other rules: atomic, antichess) on an unchanged layer 1 | 2026-11-23 | 11 (last block) |
+| Every unit of a layer is tested before the layer above is taken up; what was checked by hand becomes a test | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
