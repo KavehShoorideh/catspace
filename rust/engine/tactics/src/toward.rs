@@ -13,6 +13,7 @@
 //!
 //! The oracle is a trait so that this crate needs to know nothing of rules or stores: the claim-backed oracle is built where both are visible (cs_decision). Game-free.
 use crate::{won, Budget, Cut};
+use cs_base::choice::fold::{Bounds, Fold, Kind, Node, Pre};
 use cs_game::{Game, Role};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -98,6 +99,27 @@ impl Toward {
     pub fn count(&self, class: Class) -> usize { self.root.iter().filter(|r| r.1 == class).count() }
 }
 
+/// PLAN 79.33 (SYSTEM_SPEC 11 "What plan 79.32 left of one algorithm", 13 item 51; piece: the tactical reasoner as a case of the base). THE WALK IS NOT HERE: the and-or recursion with its window is layer 0's (`cs_base::choice::fold::Fold`). What this file hands it: `Line`, the node (the positions of the line being walked, the
+/// game's moves as its options), and `Run`, the kind of answer (the class-and-ply whole number, best at the side's turn and worst at any other, in a window): the leaf (the game's own outcome, the record's draw, the line's draw, the oracle's claim, the depth limit), the budget and the clock, the answers kept by position and plies
+/// left (the memo) with the bound a cut makes of them, and the marks of the iteration (`horizon`, `spoke`, `outcome`, the taint of a value that rests on the line).
+struct Line<'a, G: Game> {
+    g: &'a G,
+    role: Role,
+    stack: Vec<G::State>,
+}
+
+impl<G: Game> Node for Line<'_, G> {
+    type Opt = G::Move;
+    #[inline(always)]
+    fn own_turn(&self) -> bool { self.g.mover(self.stack.last().expect("a position is current")) == Some(self.role) }
+    #[inline(always)]
+    fn options(&mut self, out: &mut Vec<G::Move>) { *out = self.g.moves(self.stack.last().expect("a position is current")); }
+    #[inline(always)]
+    fn enter(&mut self, m: &G::Move) { let q = self.g.apply(self.stack.last().expect("a position is current"), m); self.stack.push(q); }
+    #[inline(always)]
+    fn leave(&mut self) { self.stack.pop(); }
+}
+
 struct Run<'a, G: Game, O: LeafOracle<G>> {
     g: &'a G,
     role: Role,
@@ -113,6 +135,7 @@ struct Run<'a, G: Game, O: LeafOracle<G>> {
     memo: Option<HashMap<(u64, u32), (i32, Bound)>>,
     /// a value read in this subtree rests on the path (a position met again on the line is a draw): such a value is never stored
     path_taint: bool,
+    b: &'a mut Budget,
 }
 
 /// PLAN 79.18: what a stored value is of the position's true value inside its iteration: the value itself, or a bound from a cut (the window's edge).
@@ -125,53 +148,67 @@ impl<'a, G: Game, O: LeafOracle<G>> Run<'a, G, O> {
         else if v.iter().enumerate().any(|(i, x)| i != self.role && *x > v[self.role]) { LOSS_BASE + ply }
         else { DRAW }
     }
+}
 
-    fn value(&mut self, s: &G::State, depth: u32, ply: i32, mut alpha: i32, mut beta: i32, b: &mut Budget) -> Result<i32, Cut> {
-        if let Some(v) = self.g.outcome(s) { self.outcome = true; return Ok(self.terminal(&v, ply)); }
+impl<'a, G: Game, O: LeafOracle<G>> Kind<Line<'a, G>> for Run<'a, G, O> {
+    type Val = i32;
+    type Err = Cut;
+    type Edge = ();
+    /// the position's key, the taint of the node that opened this one, and the plies left (the memo's key)
+    type Token = (u64, bool, u32);
+    const WINDOWED: bool = true;
+    const CHANCE: bool = false;
+
+    fn before(&mut self, space: &Line<'a, G>, left: u32, ply: u32, win: &mut Bounds<i32>) -> Result<Pre<i32, (u64, bool, u32)>, Cut> {
+        let s = space.stack.last().expect("a position is current");
+        let ply = ply as i32;
+        if let Some(v) = self.g.outcome(s) { self.outcome = true; return Ok(Pre::Done(self.terminal(&v, ply))); }
         let key = self.g.key(s);
-        if self.history.contains(&key) { return Ok(DRAW); }          // a position met again in the game's record: the rules' draw
-        if self.path.contains(&key) { self.path_taint = true; return Ok(DRAW); }          // met again on the line
+        if self.history.contains(&key) { return Ok(Pre::Done(DRAW)); }          // a position met again in the game's record: the rules' draw
+        if self.path.contains(&key) { self.path_taint = true; return Ok(Pre::Done(DRAW)); }          // met again on the line
         // PLAN 79.18: within one iteration a position and the plies left fix the ply, so an answer read once stands for every way of reaching it (the memo is emptied at each iteration)
         if let Some(m) = &self.memo {
-            if let Some(&(v, bound)) = m.get(&(key, depth)) {
+            if let Some(&(v, bound)) = m.get(&(key, left)) {
                 match bound {
-                    Bound::Exact => return Ok(v),
-                    Bound::Lower => { if v >= beta { return Ok(v); } alpha = alpha.max(v); }
-                    Bound::Upper => { if v <= alpha { return Ok(v); } beta = beta.min(v); }
+                    Bound::Exact => return Ok(Pre::Done(v)),
+                    Bound::Lower => { if v >= win.hi { return Ok(Pre::Done(v)); } win.lo = win.lo.max(v); }
+                    Bound::Upper => { if v <= win.lo { return Ok(Pre::Done(v)); } win.hi = win.hi.min(v); }
                 }
             }
         }
-        let (alpha0, beta0) = (alpha, beta);
         let taint_before = self.path_taint;
         self.path_taint = false;
-        b.spend()?;
-        if b.nodes & 15 == 0 && Instant::now() >= b.deadline { return Err(Cut); }
+        self.b.spend()?;
+        if self.b.nodes & 15 == 0 && Instant::now() >= self.b.deadline { return Err(Cut); }
         let mover = self.g.mover(s);
         if let Some(v) = { self.evals += 1; self.oracle.verdict(self.g, s) } {
             self.spoke = true;
             let v = if mover == Some(self.role) { v } else { match v { Verdict::Win => Verdict::Loss, Verdict::Loss => Verdict::Win, Verdict::Draw => Verdict::Draw } };
             self.path_taint |= taint_before;
-            return Ok(scored(v, ply));
+            return Ok(Pre::Done(scored(v, ply)));
         }
-        if depth == 0 { self.horizon = true; self.path_taint |= taint_before; return Ok(UNKNOWN); }
-        let maxing = mover == Some(self.role);
-        let mut best = if maxing { -INF } else { INF };
-        self.path.push(key);
-        for m in self.g.moves(s) {
-            let q = self.g.apply(s, &m);
-            let v = match self.value(&q, depth - 1, ply + 1, alpha, beta, b) { Ok(v) => v, Err(c) => { self.path.pop(); return Err(c); } };
-            if maxing { best = best.max(v); alpha = alpha.max(v); } else { best = best.min(v); beta = beta.min(v); }
-            if alpha >= beta { break; }
-        }
-        self.path.pop();
-        let out = if best.abs() == INF { UNKNOWN } else { best };
+        Ok(Pre::Go((key, taint_before, left)))
+    }
+
+    fn horizon(&mut self, _space: &Line<'a, G>, token: (u64, bool, u32), _ply: u32) -> Result<i32, Cut> { self.horizon = true; self.path_taint |= token.1; Ok(UNKNOWN) }
+
+    #[inline(always)]
+    fn edge(&mut self, _space: &Line<'a, G>, _o: &G::Move) -> Option<()> { Some(()) }
+
+    #[inline(always)]
+    fn open(&mut self, token: &(u64, bool, u32)) { self.path.push(token.0); }
+    #[inline(always)]
+    fn close(&mut self) { self.path.pop(); }
+
+    fn finish(&mut self, _space: &Line<'a, G>, token: (u64, bool, u32), got: Option<i32>, entry: &Bounds<i32>) -> Result<i32, Cut> {
+        let out = match got { Some(v) => v, None => UNKNOWN };
         if !self.path_taint {
             if let Some(m) = self.memo.as_mut() {
-                let bound = if out <= alpha0 { Bound::Upper } else if out >= beta0 { Bound::Lower } else { Bound::Exact };
-                m.insert((key, depth), (out, bound));
+                let bound = if out <= entry.lo { Bound::Upper } else if out >= entry.hi { Bound::Lower } else { Bound::Exact };
+                m.insert((token.0, token.2), (out, bound));
             }
         }
-        self.path_taint |= taint_before;
+        self.path_taint |= token.1;
         Ok(out)
     }
 }
@@ -203,30 +240,33 @@ fn toward_run<G: Game, O: LeafOracle<G>>(g: &G, s: &G::State, role: Role, oracle
     out.root = (0..moves.len()).map(|i| (i, Class::Unknown, UNKNOWN)).collect();
     if moves.is_empty() { out.exact = true; return out; }
     let root_key = g.key(s);
-    let mut r = Run { g, role, oracle, history, path: vec![root_key], evals: 0, horizon: false, spoke: false, outcome: false, memo: if memo { Some(HashMap::new()) } else { None }, path_taint: false };
+    let run = Run { g, role, oracle, history, path: vec![root_key], evals: 0, horizon: false, spoke: false, outcome: false, memo: if memo { Some(HashMap::new()) } else { None }, path_taint: false, b };
+    let mut w = Fold::new(Line { g, role, stack: vec![s.clone()] }, run);
     for d in 1..=max_depth {
-        let (n0, e0, t0) = (b.nodes, r.evals, Instant::now());
-        r.horizon = false;
-        if let Some(m) = r.memo.as_mut() { m.clear(); }
+        let (n0, e0, t0) = (w.kind.b.nodes, w.kind.evals, Instant::now());
+        w.kind.horizon = false;
+        if let Some(m) = w.kind.memo.as_mut() { m.clear(); }
         let mut now = Vec::with_capacity(moves.len());
         let mut cut = false;
         for (i, m) in moves.iter().enumerate() {
-            let q = g.apply(s, m);
-            match r.value(&q, d - 1, 1, -INF, INF, b) {
+            w.space.enter(m);
+            let r = w.go(d - 1, 1, Bounds { lo: -INF, hi: INF });
+            w.space.leave();
+            match r {
                 Ok(v) => now.push((i, class_of(v), v)),
                 Err(Cut) => { cut = true; break; }
             }
         }
-        out.reads.push(TowardRead { depth: d, nodes: b.nodes - n0, evals: r.evals - e0, seconds: t0.elapsed().as_secs_f64(), complete: !cut });
+        out.reads.push(TowardRead { depth: d, nodes: w.kind.b.nodes - n0, evals: w.kind.evals - e0, seconds: t0.elapsed().as_secs_f64(), complete: !cut });
         if cut { out.cut = true; break; }
         out.depth = d;
         out.root = now;
-        out.exact = !r.horizon;
+        out.exact = !w.kind.horizon;
         if out.exact || out.root.iter().any(|x| x.1 == Class::Win) { break; }
-        if silent_at == Some(d) && !r.spoke && !r.outcome { out.silent = true; break; }          // every line read to a result, or a win is found (the earlier iteration was the shorter)
-        if !b.left() { out.cut = true; break; }
+        if silent_at == Some(d) && !w.kind.spoke && !w.kind.outcome { out.silent = true; break; }          // every line read to a result, or a win is found (the earlier iteration was the shorter)
+        if !w.kind.b.left() { out.cut = true; break; }
     }
-    out.nodes = b.nodes;
-    out.evals = r.evals;
+    out.nodes = w.kind.b.nodes;
+    out.evals = w.kind.evals;
     out
 }
