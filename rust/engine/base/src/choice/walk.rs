@@ -24,6 +24,7 @@
 //!     reset by the caller between deepenings), and the space and the steer as public fields (the caller keeps what it counts in them).
 //!   THE CASES: layer 4's position and steering (the module `reach` of the tactical layer); the explicit tree (`TreeSpace`, for the forcing reading of `choice::can_force_set`, and `TreeSpace::value` for the readings that weigh numbers: `guarantee`, `value`, `force_chance`).
 //! LAWS: lean/ideas/Ideas/Layer0/Choice.lean (what the forcing reading is: coalition_exactly_one; what the kept answers rely on: stated there).
+pub use super::fold::Node;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -77,28 +78,18 @@ pub struct Look {
     pub ended: bool,
 }
 
-/// A node that gives its options when asked.
-pub trait Space {
-    /// An option: what is needed to step into it.
-    type Opt;
+/// A node that gives its options when asked (the stepping is `Node`'s, which the walk of values shares).
+pub trait Space: Node {
     /// Whether a node can be met again on its own line (then the line's keys are kept and a repeat ends a line).
     const CYCLES: bool;
     /// The node's key: two nodes with one key are the same node for the answers kept.
     fn key(&self) -> u64;
     /// What the node says of itself (it may make the node live on first need).
     fn look(&mut self) -> Look;
-    /// Whether the asker picks at this node (some option) or the rest do (every option).
-    fn own_turn(&self) -> bool;
     /// Whether the node was met before the walk began (in a record the node keeps), which ends a line.
     fn met_before(&self, key: u64) -> bool;
-    /// Fill `out` (empty) with the node's options in the node's own order (it makes the node live if it is not).
-    fn options(&mut self, out: &mut Vec<Self::Opt>);
     /// Of the properties in `cand` (all bound here), those that some option of the node leaves unbound.
     fn breaks(&mut self, cand: u64, opts: &[Self::Opt]) -> u64;
-    /// Step into an option: the node it leads to becomes the current one.
-    fn enter(&mut self, o: &Self::Opt);
-    /// Step back out: the node entered last is left and the one before is current again.
-    fn leave(&mut self);
 }
 
 /// What steers a walk. The node's own order is never a verdict: a walk answers the same under any order wherever it is not cut.
