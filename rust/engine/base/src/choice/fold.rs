@@ -78,9 +78,58 @@ impl<S: Node, K: Kind<S>> Fold<S, K> {
     pub fn new(space: S, kind: K) -> Self { Fold { space, kind } }
 
     /// The value at the node the space is at: `left` steps may still be taken, `ply` steps have been taken since the caller asked, `win` is the window. Best at an own node, worst at any other, the expectation at a chance node.
-    pub fn go(&mut self, left: u32, ply: u32, win: Bounds<K::Val>) -> Result<K::Val, K::Err> {
-        let _ = (left, ply, win, &mut self.space, &mut self.kind);
-        unimplemented!("plan 79.33 part A: the interface only")
+    pub fn go(&mut self, left: u32, ply: u32, mut win: Bounds<K::Val>) -> Result<K::Val, K::Err> {
+        let token = match self.kind.before(&self.space, left, ply, &mut win)? { Pre::Done(v) => return Ok(v), Pre::Go(t) => t };
+        if left == 0 { return self.kind.horizon(&self.space, token, ply); }
+        let entry = win;
+        let own = self.space.own_turn();
+        let chance = K::CHANCE && self.space.chance();
+        let mut got: Option<K::Val> = if chance { None } else { self.kind.base(&self.space, &token) };
+        let mut skip = false;
+        if K::WINDOWED {
+            if let Some(b) = got { Self::improve(&mut win, own, b); skip = win.lo >= win.hi; }
+        }
+        let mut opts: Vec<S::Opt> = Vec::new();
+        if !skip {
+            self.space.options(&mut opts);
+            self.kind.order(&self.space, &mut opts);
+            self.kind.open(&token);
+            if chance {
+                let mut acc: Option<K::Val> = None;
+                for o in &opts {
+                    let Some(e) = self.kind.edge(&self.space, o) else { continue };
+                    self.space.enter(o);
+                    let r = self.go(left - 1, ply + 1, win);
+                    self.space.leave();
+                    let v = match r { Ok(v) => v, Err(c) => { self.kind.close(); return Err(c); } };
+                    acc = match self.kind.mix(acc, e, v) { Ok(a) => Some(a), Err(c) => { self.kind.close(); return Err(c); } };
+                }
+                got = acc;
+            } else {
+                for o in &opts {
+                    let Some(e) = self.kind.edge(&self.space, o) else { continue };
+                    let cw = if K::WINDOWED { self.kind.child(e, &win) } else { win };
+                    self.space.enter(o);
+                    let r = self.go(left - 1, ply + 1, cw);
+                    self.space.leave();
+                    let v = match r { Ok(v) => v, Err(c) => { self.kind.close(); return Err(c); } };
+                    let v = match self.kind.lift(e, v) { Ok(v) => v, Err(c) => { self.kind.close(); return Err(c); } };
+                    let better = match got { None => true, Some(b) => if own { v > b } else { v < b } };
+                    if better { got = Some(v); self.kind.improved(&self.space, ply, o); }
+                    if K::WINDOWED {
+                        Self::improve(&mut win, own, v);
+                        if win.lo >= win.hi { break; }
+                    }
+                }
+            }
+            self.kind.close();
+        }
+        self.kind.finish(&self.space, token, got, &entry)
+    }
+
+    /// The window after a value is found: what the asker has can only rise at an own node, what the rest hold it to can only fall at any other.
+    #[inline(always)]
+    fn improve(win: &mut Bounds<K::Val>, own: bool, v: K::Val) {
+        if own { if v > win.lo { win.lo = v; } } else if v < win.hi { win.hi = v; }
     }
 }
-
