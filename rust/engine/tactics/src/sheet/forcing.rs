@@ -25,6 +25,8 @@
 //!
 //! No object of any game is named here: the game gives units, moves, takings, the pass and its outcome through `Game` and `Placed`, the worth by the sheet's table.
 use super::frame::solve_real;
+use crate::stepping::Stepped;
+use cs_base::choice::fold::{Bounds, Fold, Kind as ReadKind, Pre};
 use super::reading::Reading;
 use super::walk::BIG;
 use super::{Kind, Place, Side, Unit};
@@ -150,6 +152,46 @@ struct Stand {
     goal: Option<String>,
 }
 
+/// PLAN 79.33: the kind of answer of `their_gain`: a position's number for the other side, the least over our own moves where the game gives no pass. A position the walk need not open is answered here (kept answers, the end of the game, the read at the position itself).
+struct Gains<'x, 'a, 'g, G: Game + Placed> { f: &'x mut Forcing<'a, 'g, G> }
+
+impl<'x, 'a, 'g, G: Game + Placed> ReadKind<Stepped<'g, G>> for Gains<'x, 'a, 'g, G> {
+    type Val = f64;
+    type Err = Cut;
+    type Edge = ();
+    type Token = u64;
+    const WINDOWED: bool = false;
+    const CHANCE: bool = false;
+
+    fn before(&mut self, space: &Stepped<'g, G>, _left: u32, _ply: u32, _win: &mut Bounds<f64>) -> R<Pre<f64, u64>> {
+        let e = space.top();
+        let f = &mut *self.f;
+        let key = f.g.key(e);
+        if let Some(v) = f.gains.get(&key) { f.cost.memory[6 + f.deeper] += 1; return Ok(Pre::Done(*v)); }
+        if let Some(v) = f.g.outcome(e) {
+            let r = if won(&v, f.them) { BIG } else { 0.0 };
+            f.gains.insert(key, r);
+            return Ok(Pre::Done(r));
+        }
+        let at = if f.g.mover(e) == Some(f.them) { Some(e.clone()) } else { f.g.pass(e) };
+        match at {
+            Some(x) => { let r = f.their_gain_here(&x)?; f.gains.insert(key, r); Ok(Pre::Done(r)) }
+            None => Ok(Pre::Go(key)),
+        }
+    }
+
+    fn horizon(&mut self, _space: &Stepped<'g, G>, _token: u64, _ply: u32) -> R<f64> { unreachable!("the read has no depth of its own") }
+
+    #[inline(always)]
+    fn edge(&mut self, _space: &Stepped<'g, G>, _o: &G::Move) -> Option<()> { Some(()) }
+
+    fn finish(&mut self, _space: &Stepped<'g, G>, key: u64, got: Option<f64>, _entry: &Bounds<f64>) -> R<f64> {
+        let r = match got { Some(least) if least.is_finite() => least, _ => BIG };
+        self.f.gains.insert(key, r);
+        Ok(r)
+    }
+}
+
 struct Threat<M> { mv: M, claims: Vec<ClaimOut>, priority: f64, wins: bool }
 
 #[derive(Clone)]
@@ -251,36 +293,21 @@ impl<'a, 'g, G: Game + Placed> Forcing<'a, 'g, G> {
     /// WHAT THE OTHER SIDE GAINS BY ITS NEXT MOVE at `e`, as the read can see it (never below zero; the goal above every worth): with the other side to move, its best exchange or its goal
     /// forced in one; with us to move, the same on the position after OUR PASS (the other side's threats as they stand if we did nothing); where the game gives no pass (we are under the goal's
     /// sign) the least over our own moves of the same on the child. A line's end is only worth what is left after this: a claim carried out leaves the other side its move.
+    /// PLAN 79.33 (SYSTEM_SPEC 11, 13 item 51; piece: the tactical reasoner as a case of the base): the recursion of this read (the least over our own moves of the same read on the child, where the game gives no pass) is layer 0's general walk (`cs_base::choice::fold`); what stays here is what a position is
+    /// worth where the walk does not go on (`their_gain_here`) and the answers kept by position (`gains`), which the kind `Gains` reads before and writes after each node.
     fn their_gain(&mut self, e: &G::State) -> R<f64> {
-        let key = self.g.key(e);
-        if let Some(v) = self.gains.get(&key) { self.cost.memory[6 + self.deeper] += 1; return Ok(*v); }
-        let v = self.their_gain_read(e)?;
-        self.gains.insert(key, v);
-        Ok(v)
+        let (g, them) = (self.g, self.them);
+        let mut w = Fold::new(Stepped::new(g, them, e), Gains { f: self });
+        w.go(u32::MAX, 0, Bounds { lo: 0.0, hi: 0.0 })
     }
 
-    fn their_gain_read(&mut self, e: &G::State) -> R<f64> {
-        let g = self.g;
-        if let Some(v) = g.outcome(e) { return Ok(if won(&v, self.them) { BIG } else { 0.0 }); }
-        let mover = g.mover(e);
-        let at = if mover == Some(self.them) { Some(e.clone()) } else { g.pass(e) };
-        match at {
-            Some(x) => {
-                if g.outcome(&x).is_some() { return Ok(0.0); }
-                let sd = self.stand_as(&x, 3)?;
-                if sd.goal.is_some() { return Ok(BIG); }
-                let direct = sd.claims.iter().map(|c| c.1).fold(0.0, f64::max);
-                Ok(self.their_sign_gain(&x, direct)?)
-            }
-            None => {
-                let mut least = f64::INFINITY;
-                for m in g.moves(e) {
-                    let c = g.apply(e, &m);
-                    least = least.min(self.their_gain(&c)?);
-                }
-                Ok(if least.is_finite() { least } else { BIG })
-            }
-        }
+    /// What the other side keeps at `x`, a position where it has its move (or ours after our pass): its best exchange or its goal forced in one, and the moves that put our goal under the sign.
+    fn their_gain_here(&mut self, x: &G::State) -> R<f64> {
+        if self.g.outcome(x).is_some() { return Ok(0.0); }
+        let sd = self.stand_as(x, 3)?;
+        if sd.goal.is_some() { return Ok(BIG); }
+        let direct = sd.claims.iter().map(|c| c.1).fold(0.0, f64::max);
+        self.their_sign_gain(x, direct)
     }
 
     /// THE OTHER SIDE'S MOVES THAT PUT OUR GOAL UNDER THE SIGN (we must answer them: few replies), each with every reply of ours and what the other side then takes by one exchange or by the goal forced
