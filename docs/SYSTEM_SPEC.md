@@ -1073,6 +1073,12 @@ is, and whether a general pass can reach the library; my expectation is a large 
 unlikely without passes that rediscover its tables. (iv) This is foundation work and changes no decision at chess; it is taken up
 at Kaveh's word, as layer 2's own work, before layer 3. PROPOSED, mine: the first step is a measurement (translate the chess
 description once, time it against the evaluator and the library), and the plan is written from that number.
+THE UNIT OF TEST IS A PIECE OF THE GAME'S LOGIC, NOT A POSITION (Kaveh 2026-11-23: "the test cases are no longer chess positions,
+but they're little bits of the chess logic. And so that is much easier to test"). Each relation of the description is a piece:
+given these facts, exactly these answers. READING, mine: a relation that does not read the state (a step, two places on one line)
+has a small fixed domain and is tested on ALL of it, which is a proof by exhaustion and not a sample; a relation that reads the
+state is tested on made states and sampled ones; tests of whole positions (the fixtures, co-play) stay as the check that the
+pieces compose.
 
 ## 12. What exists
 
