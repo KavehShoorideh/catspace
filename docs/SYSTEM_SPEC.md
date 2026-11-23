@@ -978,7 +978,7 @@ of the build, mine; to be overturned by Kaveh if wrong). Layer 0's walk answers,
 The readings that weigh numbers (the guarantee, the value, the forcing by chance) are a second recursion over the same node
 interface. They are not one algorithm yet. Making them one needs the answer of a walk to be general: a number taken by best at an
 own node, by worst at any other, by expectation at a choice by chance, under a window that cuts. The same general answer is what the
-remaining walks of the tactical layer would need to become cases. This is PROPOSED in section 13 item 51 and not built. Also ruled
+remaining walks of the tactical layer would need to become cases. This was proposed in section 13 item 51; Kaveh gave the go on 2026-11-22 ("Do it"), plan 79.33. Also ruled
 here: a layer may depend on layer 0 directly; that is the meaning of a base, and it adds no outside crate.
 
 ## 12. What exists
@@ -1222,7 +1222,7 @@ State on 2026-11-16, in words only (plans 78.52 to 78.75 in docs/ANALYST_PLAN.md
     is rebuilt as a case of layer 0's algorithm over a node that gives its options on demand, with layer 4 keeping the order of
     options, the narrowing and the budget; nodes and answers must not change and the time must not rise (measured, mended if it
     does). It touches the most speed-sensitive code we have.
-51. From plan 79.32 (2026-11-22). PROPOSED, mine, no go: give layer 0's walk a general answer (a number by best, worst and
+51. From plan 79.32 (2026-11-22). GO given by Kaveh 2026-11-22 ("Do it"); plan 79.33. Was proposed as: give layer 0's walk a general answer (a number by best, worst and
     expectation, with a window), so that the value readings of layer 0 and the other walks of the tactical layer (toward.rs,
     lines.rs, sheet/frame.rs, sheet/forcing.rs) become cases of the one walk, each moved only with identical answers and no rise of
     time. The old player's solver is never changed and stays a copy. Choices the builder made where the spec is silent, kept until
