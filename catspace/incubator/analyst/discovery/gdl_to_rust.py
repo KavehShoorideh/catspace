@@ -256,6 +256,23 @@ pub struct Stat { pub calls: u64, pub nanos: u64, pub rows: u64, pub visits: u64
 #[derive(Clone)]
 pub struct Reading { pub legal: Vec<(u32, u32)>, pub terminal: bool, pub goals: Vec<(u32, u32)> }
 '''
+# PASS (7), the one change of the runtime text: a compound that is there is found by a key made on the stack, not in a vector made for each question.
+RUNTIME_KEEP = RUNTIME.replace("""        let mut k = Vec::with_capacity(args.len() + 1);
+        k.push(f);
+        k.extend_from_slice(args);
+        if let Some(&i) = self.ids.get(&k) { return i; }
+""", """        if args.len() < 15 {
+            let mut buf = [0u32; 16];
+            buf[0] = f;
+            buf[1..=args.len()].copy_from_slice(args);
+            if let Some(&i) = self.ids.get(&buf[..=args.len()]) { return i; }
+        }
+        let mut k = Vec::with_capacity(args.len() + 1);
+        k.push(f);
+        k.extend_from_slice(args);
+        if let Some(&i) = self.ids.get(&k) { return i; }
+""")
+assert RUNTIME_KEEP != RUNTIME
 # The text of the pieces of a term: a symbol of a term, kept separate so the names scan sees the language's words only.
 
 
@@ -557,6 +574,9 @@ class Plan:
         self.sids: dict = {}
         self.tids: dict = {}
         self.bit_rec: list = []
+        self.keep: bool = "keep" in self.passes                  # pass (7)
+        self.keep_out: set = set()                               # the arities of the rows a clause that is not held as words gives (their buffers are kept)
+        self.keep_rec: list = []                                 # the relations of a recursive set that is not held as words (the rows new in a round are kept)
         self.units: dict = {}                                   # the products of two sorts found (pass bits), with their weights
         self.refused: dict = {}                                # relation -> why pass (2) keeps it in full: the (relation, places) chain and the clause that defeats it
         self.est = Sizes(d) if "order" in self.passes else None                              # pass (6): what is known of the size of a relation, for the order of joining
@@ -1805,6 +1825,9 @@ def emit_strata(w, d, plan, places, refusals=None) -> list:
     """Every clause and the piece of every stratum, to `w`; -> [(stratum number, whether it reads no state, its relations)]."""
     demanded = plan.demanded if plan else set()
     bits = plan.bits if plan else {}
+    keep = bool(plan and plan.keep)
+    if keep:
+        plan.keep_out, plan.keep_rec = set(), []
     cid = 0
     stratum_fns = []
     for k, (comp, rules) in enumerate(d.strata):
@@ -1834,7 +1857,7 @@ def emit_strata(w, d, plan, places, refusals=None) -> list:
         heads = sorted({r.head_rel for r in rules})
         recursive = any(r.rec_steps for r in rules)
         X = "s" if static else "d"
-        dwp = ", dw: &mut Dw" if bits else ""
+        dwp = ", dw: &mut Dw" if (bits or keep) else ""
         if static:
             w(f"fn st{k}(s: &mut St, tm: &mut Terms, dy: &Dy{dwp}) -> (u64, u64, u64) {{")
             call = lambda c, di: f"c{c}(&*s, dy, tm, {di}, &dl, &mut o);"
@@ -1843,22 +1866,32 @@ def emit_strata(w, d, plan, places, refusals=None) -> list:
             w(f"fn st{k}(s: &St, d: &mut Dy, tm: &mut Terms{dwp}) -> (u64, u64, u64) {{")
             call = lambda c, di: f"c{c}(s, &*d, tm, {di}, &dl, &mut o);"
             calld = lambda name: f"{name}(s, &*d, tm, &dl, &mut o);"
+        new_out = (lambda n: f"let mut o = Out::<{n}> {{ rows: std::mem::take(&mut dw.o{n}), visits: 0, probes: 0 }};") if keep else (lambda n: f"let mut o = Out::<{n}>::new();")
+        rows_of = "o.rows.drain(..)" if keep else "o.rows"
+        end_out = (lambda n: f" dw.o{n} = o.rows;") if keep else (lambda n: "")
         w("    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);")
-        w("    let mut dl = Dl::default();")
+        w("    let mut dl = std::mem::take(&mut dw.dl);" if keep else "    let mut dl = Dl::default();")
         for c, rule in cids:
             h = rule.head_rel
             n = len(rule.head)
-            w(f"    {{ let mut o = Out::<{n}>::new(); {call(c, 'usize::MAX')} visits += o.visits; probes += o.probes;")
+            if keep:
+                plan.keep_out.add(n)
+            w(f"    {{ {new_out(n)} {call(c, 'usize::MAX')} visits += o.visits; probes += o.probes;")
             if recursive:
-                w(f"      for row in o.rows {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; dl.{d.rid[h]}.push(row); }} }} }}")
+                w(f"      for row in {rows_of} {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; dl.{d.rid[h]}.push(row); }} }}{end_out(n)} }}")
             else:
-                w(f"      for row in o.rows {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; }} }} }}")
+                w(f"      for row in {rows_of} {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; }} }}{end_out(n)} }}")
         if recursive:
             w("    loop {")
             w("        if " + " && ".join(f"dl.{d.rid[h]}.is_empty()" for h in sorted(comp)) + " { break; }")
             for h in sorted(comp):
                 n = d.arity.get(h, 0)
-                w(f"        let mut nw{d.rid[h]}: Vec<[u32; {n}]> = vec![]; let mut sn{d.rid[h]}: HashSet<[u32; {n}], B> = HashSet::default();")
+                if keep:
+                    if h not in plan.keep_rec:
+                        plan.keep_rec.append(h)
+                    w(f"        let mut nw{d.rid[h]}: Vec<[u32; {n}]> = std::mem::take(&mut dw.nw{d.rid[h]}); nw{d.rid[h]}.clear(); let mut sn{d.rid[h]}: HashSet<[u32; {n}], B> = std::mem::take(&mut dw.sn{d.rid[h]}); sn{d.rid[h]}.clear();")
+                else:
+                    w(f"        let mut nw{d.rid[h]}: Vec<[u32; {n}]> = vec![]; let mut sn{d.rid[h]}: HashSet<[u32; {n}], B> = HashSet::default();")
             for c, rule in cids:
                 h = rule.head_rel
                 n = len(rule.head)
@@ -1867,12 +1900,17 @@ def emit_strata(w, d, plan, places, refusals=None) -> list:
                 else:
                     todo = [(d.rid[rule.steps[i][1]], call(c, str(i))) for i in rule.rec_steps]
                 for rr, text_call in todo:
-                    w(f"        if !dl.{rr}.is_empty() {{ let mut o = Out::<{n}>::new(); {text_call} visits += o.visits; probes += o.probes;")
-                    w(f"            for row in o.rows {{ if !{X}.{d.rid[h]}.has(&row) && sn{d.rid[h]}.insert(row) {{ nw{d.rid[h]}.push(row); }} }} }}")
+                    w(f"        if !dl.{rr}.is_empty() {{ {new_out(n)} {text_call} visits += o.visits; probes += o.probes;")
+                    w(f"            for row in {rows_of} {{ if !{X}.{d.rid[h]}.has(&row) && sn{d.rid[h]}.insert(row) {{ nw{d.rid[h]}.push(row); }} }}{end_out(n)} }}")
             for h in sorted(comp):
                 w(f"        for row in &nw{d.rid[h]} {{ {X}.{d.rid[h]}.add(*row); made += 1; }}")
-                w(f"        dl.{d.rid[h]} = nw{d.rid[h]};")
+                if keep:
+                    w(f"        std::mem::swap(&mut dl.{d.rid[h]}, &mut nw{d.rid[h]}); dw.nw{d.rid[h]} = nw{d.rid[h]}; dw.sn{d.rid[h]} = sn{d.rid[h]};")
+                else:
+                    w(f"        dl.{d.rid[h]} = nw{d.rid[h]};")
             w("    }")
+        if keep:
+            w("    dw.dl = dl;")
         w("    (made, visits, probes)")
         w("}")
         stratum_fns.append((k, static, comp))
@@ -1994,10 +2032,25 @@ class IndexExpr:
 
 
 def w_dw(w, d, plan):
-    """The words new in the last round and in this one, for each relation of a recursive set held as bits (the last tile's orientation)."""
-    rels = plan.bit_rec
-    w("pub struct Dw { " + ", ".join(f"pub dl_{d.rid[r]}: Bw, pub nw_{d.rid[r]}: Bw" for r in rels) + (" " if rels else "") + "}")
-    w("impl Dw { pub fn new() -> Dw { Dw { " + ", ".join(f"dl_{d.rid[r]}: Bw::new({plan.bits[r].key_size(plan.bits[r].canon)}), nw_{d.rid[r]}: Bw::new({plan.bits[r].key_size(plan.bits[r].canon)})" for r in rels) + " } } }")
+    """The working memory the questions share (pass bits: the words new in the last round and in this one, for each relation of a recursive set held as bits, the last tile's orientation; pass keep: the buffers of the rows a clause that is not held as words gives,
+    and for a recursive set that is not held as words the rows new in a round and the set that dedupes them), kept between questions."""
+    fields, inits = [], []
+    for r in plan.bit_rec:
+        n = plan.bits[r].key_size(plan.bits[r].canon)
+        fields += [f"pub dl_{d.rid[r]}: Bw", f"pub nw_{d.rid[r]}: Bw"]
+        inits += [f"dl_{d.rid[r]}: Bw::new({n})", f"nw_{d.rid[r]}: Bw::new({n})"]
+    if plan.keep:
+        fields.append("pub dl: Dl")
+        inits.append("dl: Dl::default()")
+        for n in sorted(plan.keep_out):
+            fields.append(f"pub o{n}: Vec<[u32; {n}]>")
+            inits.append(f"o{n}: Vec::new()")
+        for h in plan.keep_rec:
+            n = d.arity.get(h, 0)
+            fields += [f"pub nw{d.rid[h]}: Vec<[u32; {n}]>", f"pub sn{d.rid[h]}: HashSet<[u32; {n}], B>"]
+            inits += [f"nw{d.rid[h]}: Vec::new()", f"sn{d.rid[h]}: HashSet::default()"]
+    w("pub struct Dw { " + ", ".join(fields) + (" " if fields else "") + "}")
+    w("impl Dw { pub fn new() -> Dw { Dw { " + ", ".join(inits) + " } } }")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ the document
@@ -2013,7 +2066,9 @@ def translate(text: str, module: str, passes=()) -> str:
     demanded = plan.demanded if plan else set()
     dense = plan.dense if plan else {}
     bits = plan.bits if plan else {}
-    pooled = bool(dense) or bool(bits)
+    keep = bool(plan and plan.keep)
+    has_dw = bool(bits) or keep
+    pooled = bool(dense) or bool(bits) or keep
     out: list = []
     w = out.append
     w(f"// GENERATED by catspace/incubator/analyst/discovery/gdl_to_rust.py (plan 79.37). Do not edit: make it again.")
@@ -2023,7 +2078,7 @@ def translate(text: str, module: str, passes=()) -> str:
         w(f"// passes: {','.join(plan.passes)}")
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
     w(f"pub mod {module} {{")
-    w(RUNTIME)
+    w(RUNTIME_KEEP if keep else RUNTIME)
     if dense:
         w(RUNTIME_DENSE)
     if pooled:
@@ -2081,15 +2136,16 @@ def translate(text: str, module: str, passes=()) -> str:
     if bits:
         for r in sorted(bits):
             w_bit_relation(w, d, plan, bits[r])
-        w_dw(w, d, plan)
     # the clauses and the pieces
     stratum_fns = emit_strata(w, d, plan, places)
+    if has_dw:
+        w_dw(w, d, plan)
     if plan:
         w_asks(w, d, plan)
     nst = len(d.strata)
     ro = lambda holder, rel: f"{holder}.{d.rid[rel]}.rows_all()" if rel in bits else f"{holder}.{d.rid[rel]}.order"
-    dwp = ", dw: &mut Dw" if bits else ""
-    dwa = ", dw" if bits else ""
+    dwp = ", dw: &mut Dw" if has_dw else ""
+    dwa = ", dw" if has_dw else ""
     w(f"pub const PIECES: [(&str, bool); {nst}] = [" + ", ".join('("%s", %s)' % ("+".join(sorted(c)), "true" if s else "false") for _, s, c in stratum_fns) + "];")
     if plan:
         w(f"pub const PASSES: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.passes)}];")
@@ -2110,19 +2166,19 @@ def translate(text: str, module: str, passes=()) -> str:
     w(f"const READ_CONE: &[usize] = {lst(legal_cone)};")
     w(f"const NEXT_CONE: &[usize] = {lst(next_cone)};")
     # the game
-    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if bits else "") + " }")
+    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + " }")
     w("impl Game {")
     w(f"    pub fn new() -> Game {{")
     w("        let mut st = St::new();")
     w("        let mut tm = Terms::new();")
     w("        let dy = Dy::new();")
-    if bits:
+    if has_dw:
         w("        let mut dw = Dw::new();")
     for k, s, _ in stratum_fns:
         if s:
-            w(f"        st{k}(&mut st, &mut tm, &dy{', &mut dw' if bits else ''});")
+            w(f"        st{k}(&mut st, &mut tm, &dy{', &mut dw' if has_dw else ''});")
     w(f"        let roles: Vec<u32> = {ro('st', 'role')}.iter().map(|r| r[0]).collect();")
-    w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if bits else "") + " }")
+    w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + " }")
     w("    }")
     w("    pub fn roles(&self) -> &[u32] { &self.roles }")
     w("    pub fn initial(&self) -> State {")
@@ -2150,47 +2206,87 @@ def translate(text: str, module: str, passes=()) -> str:
     w("        for &k in which {")
     w("            if self.profiling {")
     w("                let t = std::time::Instant::now();")
-    w(f"                let (a, b, c) = run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if bits else ''}, k);")
+    w(f"                let (a, b, c) = run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k);")
     w("                let p = &mut self.prof[k];")
     w("                p.calls += 1; p.nanos += t.elapsed().as_nanos() as u64; p.rows += a; p.visits += b; p.probes += c;")
     w("            } else {")
-    w(f"                run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if bits else ''}, k);")
+    w(f"                run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k);")
     w("            }")
     w("        }")
     w("    }")
-    w("    fn read(&mut self, s: &State) -> Reading {")
-    w("        if let Some((k, r)) = &self.last { if k == s { return r.clone(); } }")
-    w("        let mut d = self.load(s, &[]);")
-    w("        self.run(&mut d, READ_CONE);")
-    lg = f"{ro('d', 'legal')}.iter().map(|x| (x[0], x[1])).collect()" if "legal" in d.prog.nodes else "vec![]"
-    tm_ = f"!{ro('d', 'terminal')}.is_empty()" if "terminal" in d.prog.nodes else "false"
-    gl = f"{ro('d', 'goal')}.iter().map(|x| (x[0], x[1])).collect()" if "goal" in d.prog.nodes else "vec![]"
-    w(f"        let rd = Reading {{ legal: {lg}, terminal: {tm_}, goals: {gl} }};")
-    w("        self.last = Some((s.clone(), rd.clone()));")
-    if pooled:
+    if keep:
+        w("    fn ensure(&mut self, s: &State) {")
+        w("        if let Some((k, _)) = &self.last { if k == s { return; } }")
+        w("        let mut d = self.load(s, &[]);")
+        w("        self.run(&mut d, READ_CONE);")
+        w("        let (mut ls, mut lr) = match self.last.take() { Some(x) => x, None => (State::default(), Reading { legal: vec![], terminal: false, goals: vec![] }) };")
+        w("        ls.assign(s);")
+        lg = f"lr.legal.extend({ro('d', 'legal')}.iter().map(|x| (x[0], x[1])));" if "legal" in d.prog.nodes else ""
+        tm_ = f"lr.terminal = !{ro('d', 'terminal')}.is_empty();" if "terminal" in d.prog.nodes else "lr.terminal = false;"
+        gl = f"lr.goals.extend({ro('d', 'goal')}.iter().map(|x| (x[0], x[1])));" if "goal" in d.prog.nodes else ""
+        w("        lr.legal.clear(); lr.goals.clear();")
+        w(f"        {lg} {tm_} {gl}")
+        w("        self.last = Some((ls, lr));")
         w("        d.clear();")
         w("        self.pool = Some(d);")
-    w("        rd")
-    w("    }")
-    w("    pub fn mover(&mut self, s: &State) -> Option<usize> {")
-    w("        let rd = self.read(s);")
-    w("        if rd.terminal { return None; }")
-    w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
-    w("    }")
-    w("    pub fn moves(&mut self, s: &State) -> Vec<u32> {")
-    w("        let Some(r) = self.mover(s) else { return vec![] };")
-    w("        let rd = self.read(s);")
-    w("        rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m).collect()")
-    w("    }")
-    w("    pub fn terminal(&mut self, s: &State) -> bool { self.read(s).terminal }")
-    w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
-    w("        let rd = self.read(s);")
-    w("        if !rd.terminal { return None; }")
-    w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
-    w("    }")
+        w("    }")
+        w("    pub fn mover(&mut self, s: &State) -> Option<usize> {")
+        w("        self.ensure(s);")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        if rd.terminal { return None; }")
+        w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
+        w("    }")
+        w("    pub fn moves(&mut self, s: &State) -> Vec<u32> {")
+        w("        let Some(r) = self.mover(s) else { return vec![] };")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m).collect()")
+        w("    }")
+        w("    pub fn terminal(&mut self, s: &State) -> bool { self.ensure(s); self.last.as_ref().unwrap().1.terminal }")
+        w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
+        w("        self.ensure(s);")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        if !rd.terminal { return None; }")
+        w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
+        w("    }")
+    else:
+        w("    fn read(&mut self, s: &State) -> Reading {")
+        w("        if let Some((k, r)) = &self.last { if k == s { return r.clone(); } }")
+        w("        let mut d = self.load(s, &[]);")
+        w("        self.run(&mut d, READ_CONE);")
+        lg = f"{ro('d', 'legal')}.iter().map(|x| (x[0], x[1])).collect()" if "legal" in d.prog.nodes else "vec![]"
+        tm_ = f"!{ro('d', 'terminal')}.is_empty()" if "terminal" in d.prog.nodes else "false"
+        gl = f"{ro('d', 'goal')}.iter().map(|x| (x[0], x[1])).collect()" if "goal" in d.prog.nodes else "vec![]"
+        w(f"        let rd = Reading {{ legal: {lg}, terminal: {tm_}, goals: {gl} }};")
+        w("        self.last = Some((s.clone(), rd.clone()));")
+        if pooled:
+            w("        d.clear();")
+            w("        self.pool = Some(d);")
+        w("        rd")
+        w("    }")
+        w("    pub fn mover(&mut self, s: &State) -> Option<usize> {")
+        w("        let rd = self.read(s);")
+        w("        if rd.terminal { return None; }")
+        w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
+        w("    }")
+        w("    pub fn moves(&mut self, s: &State) -> Vec<u32> {")
+        w("        let Some(r) = self.mover(s) else { return vec![] };")
+        w("        let rd = self.read(s);")
+        w("        rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m).collect()")
+        w("    }")
+        w("    pub fn terminal(&mut self, s: &State) -> bool { self.read(s).terminal }")
+        w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
+        w("        let rd = self.read(s);")
+        w("        if !rd.terminal { return None; }")
+        w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
+        w("    }")
     w("    pub fn next(&mut self, s: &State, mv: u32) -> State {")
     w("        let me = self.mover(s);")
-    w("        let does: Vec<(u32, u32)> = self.roles.iter().enumerate().map(|(i, r)| (*r, if Some(i) == me { mv } else { self.noop })).collect();")
+    if keep:
+        w("        let mut does = std::mem::take(&mut self.does_buf);")
+        w("        does.clear();")
+        w("        does.extend(self.roles.iter().enumerate().map(|(i, r)| (*r, if Some(i) == me { mv } else { self.noop })));")
+    else:
+        w("        let does: Vec<(u32, u32)> = self.roles.iter().enumerate().map(|(i, r)| (*r, if Some(i) == me { mv } else { self.noop })).collect();")
     w("        let mut d = self.load(s, &does);")
     w("        self.run(&mut d, NEXT_CONE);")
     w("        let mut n = State::default();")
@@ -2203,6 +2299,8 @@ def translate(text: str, module: str, passes=()) -> str:
     if pooled:
         w("        d.clear();")
         w("        self.pool = Some(d);")
+    if keep:
+        w("        self.does_buf = does;")
     w("        n")
     w("    }")
     w("    pub fn sym(&self, name: &str) -> Option<u32> { SYMS.binary_search(&name).ok().map(|i| i as u32) }")
@@ -2291,6 +2389,14 @@ def translate(text: str, module: str, passes=()) -> str:
     w("    pub fn noop(&self) -> u32 { self.noop }")
     w("    pub fn reset_profile(&mut self) { for p in self.prof.iter_mut() { *p = Stat::default(); } }")
     w("}")
+    if keep:
+        w("impl State {")
+        w("    /// Copy `o` into this state, keeping the memory of the lists it holds.")
+        w("    pub fn assign(&mut self, o: &State) {")
+        for f in d.fluents:
+            w(f"        self.f_{ident(f)}.clear(); self.f_{ident(f)}.extend_from_slice(&o.f_{ident(f)});")
+        w("    }")
+        w("}")
     w("impl State {")
     w("    pub fn sort(&mut self) {")
     for f in d.fluents:

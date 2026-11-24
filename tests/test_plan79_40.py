@@ -329,6 +329,15 @@ def test_the_pass_order_joins_the_same_clauses_in_another_order_only_where_liter
     print(f"OBS 79.40 J order {game}: {total} clauses, {changed} joined in another order (the same literals, the same variables)")
 
 
+def test_the_pass_keep_makes_the_lookup_of_a_compound_without_a_vector_and_keeps_the_buffers_of_the_questions():
+    T = translator()
+    keep = T.translate(WALK, "walk", ["keep"])
+    plain = T.translate(WALK, "walk")
+    assert "let mut buf = [0u32; 16]" in keep and "let mut buf = [0u32; 16]" not in plain
+    assert "fn ensure" in keep and "does_buf" in keep and "fn ensure" not in plain
+    assert "pub struct Dw" in keep and "pub struct Dw" not in plain
+
+
 # ------------------------------------------------------------------------------------------------------------------------------------------ (5)
 
 DRIVER = r"""
