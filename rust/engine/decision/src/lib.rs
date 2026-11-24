@@ -13,6 +13,7 @@ pub mod carry;
 pub mod claim_op;
 pub mod estimate;
 pub mod frame_rows;
+pub mod future;
 pub mod gain;
 pub mod goal_table;
 pub mod goals;

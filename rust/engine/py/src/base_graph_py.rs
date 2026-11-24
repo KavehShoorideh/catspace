@@ -333,7 +333,7 @@ impl BaseGraph {
         }
         let seen = memory.game.history().map(|h| h.seen().clone()).unwrap_or_default();
         let keep = self.fact_decl.clone().filter(|_| carry_slot.is_some());
-        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { memory, goal, budget, named_budget, frame, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, carry_graph, chance_order, gain_mend, diag_first, read_on, keep } };
+        let params = WakeParams { seconds, depth, pieces: pc, places: vec![], inputs: WakeInputs { memory, goal, budget, named_budget, frame, share_table: true, ledger_share, pre_share: pre_share_scale.map(|k| cs_decision::wake::pre_share_of(ledger_share.unwrap_or(cs_decision::LEDGER_SHARE), None) * k), chooser, carry_graph, chance_order, gain_mend, diag_first, read_on, keep, future: None } };
         let st = &self.st;
         let d = py.allow_threads(|| cs_decision::wake::decide_seen(st, &g, &s, &seen, &judge, &params));
         if let Some(k) = &carry_slot { self.games.borrow_mut().insert(k.clone(), d.game.clone()); }

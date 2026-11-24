@@ -69,6 +69,8 @@ pub struct DecisionLog {
     pub failed_first: Option<FailedFirstLog>,
     /// PLAN 79.17 D: the held goal of the measure of progress in this decision (None: no goal given)
     pub measure: Option<MeasureLog>,
+    /// PLAN 79.51 (SYSTEM_SPEC 7, future prediction; ledger row 50): the statements of the future channel read beside this decision (None: not asked). Read by nobody in the decision.
+    pub future: Option<crate::future::FutureRead>,
 }
 
 /// PLAN 79.17 D (SYSTEM_SPEC 7; ledger rows 13, 24): what the held goal did in one decision. `value_now` the term's value in the position, `held_before` the lowest value held before it, `reached` the event of ledger row 24 (the value is lower than held: a subgoal reached, logged with the position's key), `first` the first move of a line
@@ -109,7 +111,7 @@ fn measure_json(m: &MeasureLog) -> Value {
 impl DecisionLog {
     /// The record as JSON (words only): the caller writes it where it wants.
     pub fn to_json(&self) -> Value {
-        json!({
+        let mut v = json!({
             "chosen": self.chosen, "why": self.why, "chosen_goal": self.chosen_goal.as_ref().map(goal_json), "far_goal": self.far_goal, "their_threat": self.their_threat,
             "moves": self.moves.iter().map(|m| json!({"move": m.mv, "value": m.value, "equal": m.equal, "line": m.line, "ended": m.ended, "named": m.named,
                 "own_read": m.own_read.as_ref().map(|r| json!({"verdict": r.0, "net": r.1, "ended": r.2})), "serves": m.serves, "answers": m.answers, "chance": m.chance, "reasons_score": m.reasons_score, "reasons_carried": m.reasons_carried,
@@ -130,6 +132,8 @@ impl DecisionLog {
             "step_seconds": self.step_seconds.iter().map(|x| json!({"step": x.0, "piece": x.1, "seconds": x.2})).collect::<Vec<_>>(),
             "chooser": self.chooser.as_ref().map(|c| json!({"mode": c.mode, "seed": c.seed, "inputs": c.inputs, "candidates": c.candidates.iter().map(|x| json!({"move": x.0, "row": x.1, "sum": x.2})).collect::<Vec<_>>(),
                 "fixed_pick": c.fixed_pick, "played": c.played, "propensity": c.propensity, "applied": c.applied})),
-        })
+        });
+        if let Some(f) = &self.future { v["future"] = f.to_json(); }
+        v
     }
 }
