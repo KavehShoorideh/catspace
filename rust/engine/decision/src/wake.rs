@@ -78,13 +78,15 @@ pub struct WakeInputs {
     pub read_on: bool,
     /// PLAN 79.22 PARTS A AND B: where the game's facts hold its units and its tempo (data the game gives). With it the memory of the game at hand keeps its position between decisions: the root graph is the kept one, changed by the moves played, and the decision's own move is played in the memory at its end (`keep::advance`). None: nothing is kept, the root graph is built once a decision.
     pub keep: Option<cs_tactics::sheet::base_graph::FactDecl>,
+    /// PLAN 79.51 (SYSTEM_SPEC 7, future prediction; ledger row 50): with it, after the decision is complete the future channel is read from the position (its own clock) and written into `DecisionLog::future`; nothing the decision chose reads it. A measure, like `diag_first`: None in play.
+    pub future: Option<crate::future::FutureParams>,
 }
 
 /// PLAN 79.17 D: the term of the measure (cs_tactics::measure) the wake is asked to hold and the depth `d`, in our moves, within which a line that lowers it against every reply is asked for.
 #[derive(Debug, Clone)]
 pub struct MeasureGoal { pub term: cs_tactics::measure::Term, pub d: u32 }
 
-impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { memory: crate::memory::WakeMemory::default(), goal: None, budget: 0, named_budget: 0, frame: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, carry_graph: false, chance_order: false, gain_mend: false, diag_first: false, read_on: false, keep: None } } }
+impl Default for WakeInputs { fn default() -> WakeInputs { WakeInputs { memory: crate::memory::WakeMemory::default(), goal: None, budget: 0, named_budget: 0, frame: None, share_table: true, ledger_share: None, pre_share: None, chooser: None, carry_graph: false, chance_order: false, gain_mend: false, diag_first: false, read_on: false, keep: None, future: None } } }
 
 /// The parameters of one wake decision.
 #[derive(Debug, Clone)]
@@ -758,6 +760,8 @@ pub fn decide_seen<G: Game + Placed, J: Judge>(st: &Static, g: &G, s: &G::State,
     // PLAN 79.17 D: the held goal is carried to the next decision with the open tactics (a carry is made for it where the frames made none)
     if let Some(h) = held_next { carried_next.get_or_insert_with(Carried::default).held = Some(h); }
     log.measure = measure_log;
+    // PLAN 79.51: the future channel, read beside the decision with its own clock and written to the log; the choice above is made and nothing of it is read by what was chosen (SYSTEM_SPEC 7, AGENTS rule 7)
+    if let Some(fp) = &inp.future { let mut fp = *fp; if fp.goal.is_none() { fp.goal = inp.goal; } log.future = Some(crate::future::read(st, g, s, rec, &fp)); }
     log.step_seconds = contributions.iter().map(|c| (c.step, c.piece.to_string(), c.seconds)).collect();
     WakeDecision { mv: mv.clone(), value: ln.value, depth: ln.depth, nodes: ln.nodes, chain, contributions, unported: params.pieces.unported(), log, proposal: Some(prop), game: { let mut game = kept_after(st, g, s, inp, mv.as_ref(), inp.memory.game.clone()); game.put_slot(crate::memory::CARRIED, carried_next.map(|c| std::sync::Arc::new(c) as std::sync::Arc<dyn cs_memory::store::Kept>), "the open tactics and the goal held after this decision"); game }, named_mine, named_theirs, equal, first: ln.first.clone() }
 }
