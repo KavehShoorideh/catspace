@@ -1124,6 +1124,21 @@ nine crates, every plan gate, the certificates, the Lean library, the comparison
 39), on a quiet machine. The day translated code is put on the engine's path is such a plan. The main agent decides which check from the
 list of changed files and says which it ran in the READ.
 
+**One lemma machinery, used twice: by the rules and by the layers above** (Kaveh 2026-11-23, on why the kernel stays faster than any
+general pass of the translator: "I like the third also, especially since we'll be using lemmas in the context of chess more broadly. So in
+the context of rules it makes sense to have them, and in the context of strategy in upper layers. So maybe we need to make it generic so
+we can use the lemma machinery twice."). DECIDED, direction: the translator may take proved lemmas as input, and the machinery that holds,
+proves and serves a lemma is ONE, the same for a lemma about the rules (layer 2: a cheaper condition that gives the same rows as a relation
+of the description, such as the fact about a unit held on a line that lets the kernel skip trying each candidate) and for a lemma about
+play (the layers above: frames, pruning, goals). A lemma belongs to a game and lives with its description; the translator and the layers
+stay free of any game. Lean stays the source of truth (AGENTS.md rule 11); the description stays the source of the rules and fast code is a
+certified copy (row 44). NOT A GO TO BUILD: plan 79.42 first shows how much general passes leave. PROPOSED by the main agent, not decided:
+(a) one form for both uses, "under condition C, relation R is the same as R'", stated over the relations of the description, with its proof
+in Lean or, until proved, a certificate by co-play that marks it as not proved; (b) the translator uses such a lemma as a rewrite of R and
+the harness holds the rewritten piece to the plain one as it does a pass; (c) the layers above read the same store; (d) the store that
+exists for learned lemmas (rules/learned/<game>/lemmas, the certificates under discovery/lemmas) is the starting point, to be searched
+before anything is added.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1547,4 +1562,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 2 answers the side to move without reading the end; every asker above uses it, the shared search included | 2026-11-23 | 11 (last block) |
 | Several boards and several players are owed later; nothing new assumes two players | 2026-11-23 | 11 (last block) |
 | Two checks at a merge: lean off the engine's path, full on it; the measure of the whole only when a source on the path changed | 2026-11-23 | 11 (last block) |
+| One lemma machinery used twice: lemmas about the rules feed the translator, lemmas about play feed the layers above | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
