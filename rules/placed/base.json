@@ -1,0 +1,32 @@
+{
+ "name": "placed",
+ "applies_to": "every game of rules/chess.gdl and its variants",
+ "says": "The placed questions of layer 2 (rust/engine/game/src/placed.rs) said over the description's own relations. A question about a unit that stands where the question puts it is asked of the board with that unit given: the state of the question holds the unit as a `cell` fluent on the place (what was there is replaced), the side that owns it to move, and no passed-over place; the definitions below then read the description's own relations of the unit's movement and of what a move takes, and add no rule of the game. A relation is only an alias where the description already has the relation.",
+ "questions": [
+  {"relation": "placed_cell", "places": 4, "asks": "cells, kind_at", "says": "what stands where: the unit of a side and a kind on a place"},
+  {"relation": "placed_bears", "places": 6, "asks": "bearing_from", "says": "the places a unit of a kind and a side standing on a place bears on, the board as it stands (its own side's units guarded, what lies behind a unit hidden)"},
+  {"relation": "placed_reaches", "places": 6, "asks": "reach_from", "says": "the places a unit of a kind and a side standing on a place may move to in one move, the board as it stands (the safety of its side's goal unit not read)"},
+  {"relation": "placed_strikes", "places": 3, "asks": "strikes_place", "says": "the places a side's units bear on, the board as it stands"},
+  {"relation": "placed_ends", "places": 5, "asks": "move_ends, find_step", "says": "the places an allowed move of a side starts from and ends on (a move onto the last row names the unit it becomes in its term; its ends are the same)"},
+  {"relation": "placed_mover", "places": 6, "asks": "move_info", "says": "the kind of the unit that plays an allowed move"},
+  {"relation": "placed_takes", "places": 6, "asks": "move_info", "says": "the kind of the unit an allowed move takes, where it takes one (a taking in passing included)"}
+ ],
+ "delta": [
+  "(signature placed_cell file rank side kind)",
+  "(signature placed_bears kind side file rank file rank)",
+  "(signature placed_reaches kind side file rank file rank)",
+  "(signature placed_strikes side file rank)",
+  "(signature placed_ends side file rank file rank)",
+  "(signature placed_mover side file rank file rank kind)",
+  "(signature placed_takes side file rank file rank kind)",
+  "(<= (placed_cell ?f ?r ?c ?k) (true (cell ?f ?r ?c ?k)))",
+  "(<= (placed_bears ?k ?c ?f1 ?r1 ?f2 ?r2) (attack_by ?k ?c ?f1 ?r1 ?f2 ?r2))",
+  "(<= (placed_reaches ?k ?c ?f1 ?r1 ?f2 ?r2) (move_by ?k ?c ?f1 ?r1 ?f2 ?r2))",
+  "(<= (placed_strikes ?o ?f ?r) (attacked ?o ?f ?r))",
+  "(<= (placed_ends ?c ?f1 ?r1 ?f2 ?r2) (legal ?c (move ?f1 ?r1 ?f2 ?r2)))",
+  "(<= (placed_ends ?c ?f1 ?r1 ?f2 ?r2) (legal ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)))",
+  "(<= (placed_mover ?c ?f1 ?r1 ?f2 ?r2 ?k) (placed_ends ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c ?k)))",
+  "(<= (placed_takes ?c ?f1 ?r1 ?f2 ?r2 ?j) (placed_ends ?c ?f1 ?r1 ?f2 ?r2) (capture ?k ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f2 ?r2 ?o ?j)))",
+  "(<= (placed_takes ?c ?f1 ?r1 ?f2 ?r2 ?j) (placed_ends ?c ?f1 ?r1 ?f2 ?r2) (en_passant ?c ?f1 ?r1 ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?vf ?vr) (true (cell ?vf ?vr ?o ?j)))"
+ ]
+}

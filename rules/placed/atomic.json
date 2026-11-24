@@ -1,0 +1,12 @@
+{
+ "name": "placed",
+ "applies_to": "atomic",
+ "says": "ADDENDUM (plan 79.48): what a side strikes is the base document's `attacked` in every game, atomic included (the trait says: whether some unit of the owner bears on the place). This document only ADDS a second, separately named relation for the other meaning atomic has: a place is struck for the purpose of check when the description's `struck` says so (it leaves out a place beside the striker's own leader). It is not the definition of strikes_place; the difference between the two is a known difference of meanings, held as a state in translated_placed_known.rs.",
+ "questions": [
+  {"relation": "placed_strikes_end", "places": 3, "asks": "", "says": "the places a side strikes in the sense of the description's `struck` (the check notion); answers no method of the trait"}
+ ],
+ "delta": [
+  "(signature placed_strikes_end side file rank)",
+  "(<= (placed_strikes_end ?o ?f ?r) (struck ?o ?f ?r))"
+ ]
+}

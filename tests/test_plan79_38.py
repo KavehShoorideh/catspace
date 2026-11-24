@@ -290,7 +290,8 @@ def test_no_source_of_the_engine_and_no_manifest_differs_from_the_commit_before_
     for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs"):          # kernel.rs and ledger.rs left this list at plan 79.39 (the side to move, held by tests/test_plan79_39.py)
         assert git("diff", "--quiet", BEFORE, "--", protected).returncode == 0, protected
     # 2026-11-23 (plan 79.44): rules/lemmas/ holds the lemma documents of plan 79.44, beside the descriptions and not descriptions; this test checks only what plan 79.38 owned (a description and the reader)
-    assert git("diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", "catspace/incubator/analyst/discovery/gdl.py").returncode == 0, "a description or the reader changed"
+    # 2026-11-24 (plan 79.48): rules/placed/ holds the additive texts of the placed questions and their lists (documents, no description): excluded as rules/lemmas is.
+    assert git("diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", ":(exclude)rules/placed", "catspace/incubator/analyst/discovery/gdl.py").returncode == 0, "a description or the reader changed"
     print(f"OBS 79.38 E: files under rust/ changed since {BEFORE}: {len(changed)}, none a source of a crate, a manifest or a protected file; no description under rules/ and not the reader changed")
 
 

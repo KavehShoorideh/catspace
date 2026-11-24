@@ -472,7 +472,8 @@ def test_nothing_on_the_engine_s_path_no_manifest_no_description_no_reader_no_ce
         pytest.skip("the commit before the plan is not on this machine")
     changed = git("diff", "--name-only", BEFORE, "--", ".").stdout.split()
     # 2026-11-24 (plan 79.47 part E): the one source of an engine crate that plan 79.47 changed is the bridge `state_facts` of rust/engine/game/src/outside.rs (tests/test_plan79_47.py holds that it is one place and nothing else under a src)
-    bad = [c for c in changed if (re.match(r"rust/engine/[^/]+/src/", c) and c != "rust/engine/game/src/outside.rs") or c.endswith(("Cargo.toml", "Cargo.lock")) or (c.startswith("rules/") and not c.startswith("rules/lemmas/"))
+    # 2026-11-24 (plan 79.48): rules/placed/ holds the additive texts of the placed questions and their lists (documents, no description): excluded as rules/lemmas is.
+    bad = [c for c in changed if (re.match(r"rust/engine/[^/]+/src/", c) and c != "rust/engine/game/src/outside.rs") or c.endswith(("Cargo.toml", "Cargo.lock")) or (c.startswith("rules/") and not c.startswith(("rules/lemmas/", "rules/placed/")))
            or c in ("catspace/incubator/analyst/discovery/gdl.py", "catspace/incubator/analyst/discovery/certify.py", "catspace/incubator/analyst/discovery/rule_lemma.py", "catspace/incubator/analyst/discovery/rule_lemma_certify.py")]
     assert not bad, bad
     assert f"rules/lemmas/{GAME}/{LEMMA}.translated.certificate.json" in changed

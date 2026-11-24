@@ -502,7 +502,8 @@ def test_part_e_changed_one_function_of_the_bridge_and_nothing_else_under_a_src(
         assert "ThreeCheck" in diff and "checks" in diff
     for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs"):
         assert sp.run(["git", "diff", "--quiet", BEFORE, "--", protected], cwd=ROOT).returncode == 0, protected
-    assert sp.run(["git", "diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", "catspace/incubator/analyst/discovery/gdl.py", "catspace/incubator/analyst/discovery/certify.py"], cwd=ROOT).returncode == 0
+    # 2026-11-24 (plan 79.48): rules/placed/ holds the additive texts of the placed questions and their lists (documents, no description): excluded as rules/lemmas is.
+    assert sp.run(["git", "diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", ":(exclude)rules/placed", "catspace/incubator/analyst/discovery/gdl.py", "catspace/incubator/analyst/discovery/certify.py"], cwd=ROOT).returncode == 0
     print(f"OBS 79.47 E: files under a crate's src that differ from {BEFORE}: {srcs}")
 # ------------------------------------------------------------------------------------------------------------------------------------------ (6)
 
