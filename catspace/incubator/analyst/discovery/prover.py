@@ -267,15 +267,35 @@ def first_error(chk: Check) -> str:
 
 # ---------------------------------------------------------------------------------------------------------------- (a), (b): tactics
 
-def try_tactics(goal: Goal, tool: str, log: Log, deadline: float, lemmas: str = "", last: "list | None" = None) -> "dict | None":
+def tools_ready() -> bool:
+    """The scratch tool project (`setup`) exists: Duper and LeanCopilot can be asked. Where it does not, those two are reported as not installed and skipped (never
+    installed here by a run: `setup` is its own command); Lean's own automation and the model do not need it."""
+    return (TOOLS_DIR / "lakefile.toml").is_file() and (TOOLS_DIR / "ProverTools").is_dir()
+
+
+def hint_tactics(hints: tuple) -> tuple:
+    """The tactics that take the NAMES of hinted theorems (the index's own theorems, found by `lean_index search`): Lean's automation is handed the names; nothing is
+    written by hand."""
+    if not hints:
+        return ()
+    names = ", ".join(hints)
+    return (f"simp_all [{names}]", f"grind [{names}]", f"aesop (add unsafe apply [{names}])")
+
+
+def try_tactics(goal: Goal, tool: str, log: Log, deadline: float, lemmas: str = "", last: "list | None" = None, hints: tuple = ()) -> "dict | None":
     """(a) / (b): each tactic of the tool on the goal, as it is and after `intros` -> the first accepted {tool, proof, check}, else None (every try logged)."""
     if tool == "automation":
-        tacs = [(t, "ideas") for t in AUTO_TACTICS] + [(t, "tools") for t in TOOL_TACTICS["automation"]]
+        tacs = [(t, "ideas") for t in AUTO_TACTICS + hint_tactics(hints)] + [(t, "tools") for t in TOOL_TACTICS["automation"]]
     else:
         tacs = [(t, "tools") for t in TOOL_TACTICS[tool]]
     names = (goal.full,) + goal.extra_axioms
     last = last if last is not None else [None]
     for t, proj in tacs:
+        if proj == "tools" and not tools_ready():
+            log.write(tool=tool, tactic=t, goal=goal.name, depth=goal.depth, accepted=False, why=["not installed: the scratch tool project (`prover setup`) does not exist"],
+                      secs=0, project=proj)
+            last[0] = last[0] or f"{tool} {t!r}: not installed"
+            continue
         for proof in (t, f"intros\n{t}"):
             if time.monotonic() > deadline:
                 return None
@@ -402,9 +422,70 @@ def hint_text() -> str:
     return text.rstrip()
 
 
-def _hint_block(mode: str) -> str:
+SPEC_BUDGET = 20000     # characters of a spec module's definitions shown to the model (about a third of its prompt window)
+NAME = re.compile(r"[A-Za-z_][\w']*")
+
+
+def spec_context(path: Path) -> str:
+    """The DEFINITIONS a file's statement rests on, from the library modules it imports (`import Ideas.<m>` other than a mined one): the declarations (inductive, def,
+    structure, abbrev) whose names the theorem's statement uses, then those THEIR text uses, breadth first, until SPEC_BUDGET characters -- shown to the model as context
+    (a rule lemma's obligation names the description's relations and holds none of them). Game-free: it reads names, not a game."""
+    text = path.read_text()
+    mods = [m for m in re.findall(r"^import (Ideas\.(?!Mined\.)\S+)", text, re.M)]
+    decls: dict = {}
+    for m in mods:
+        f = LEAN_DIR / (m.replace(".", "/") + ".lean")
+        if not f.is_file():
+            continue
+        src = f.read_text()
+        chunks = split_decls(src)
+        for i, (k, n, c) in enumerate(chunks):
+            if k in ("inductive", "def", "abbrev", "structure") and n and n.split(".")[-1] not in decls:
+                doc = chunks[i - 1][2] if i > 0 and chunks[i - 1][2].lstrip().startswith("/--") else ""
+                decls[n.split(".")[-1]] = (m, doc + c)
+    goals = [g for g in goals_of(path)]
+    seed = " ".join(g.stmt for g in goals) or text
+    out, seen, queue, used = [], set(), [w for w in NAME.findall(seed) if w in decls], 0
+    queue = list(dict.fromkeys(queue))
+    while queue:
+        n = queue.pop(0)
+        if n in seen:
+            continue
+        seen.add(n)
+        mod, body = decls[n]
+        if used + len(body) > SPEC_BUDGET:
+            continue
+        used += len(body)
+        out.append(body.rstrip())
+        queue += [w for w in NAME.findall(body) if w in decls and w not in seen]
+    if not out:
+        return ""
+    return "The definitions its statement rests on, from the imported library modules (in the order they are reached):\n\n```lean4\n" + "\n\n".join(out) + "\n```\n\n"
+
+
+def theorem_statement(full: str) -> str:
+    """The statement (docstring and signature, to `:=`) of the library theorem `full`, read from the file the index names (docs/LEAN_INDEX.md's derived json)."""
+    from catspace.incubator.analyst import lean_index as LI
+    p = Path(paths.derived("lean_index.json"))
+    decls = json.load(open(p)) if p.exists() else LI.build()
+    d = next((x for x in decls if x["full"] == full and x["kind"] in ("theorem", "lemma")), None)
+    if d is None:
+        raise SystemExit(f"hint {full}: not a theorem of the index (python -m catspace.incubator.analyst.lean_index search <words>)")
+    lines = (Path(paths.REPO_ROOT) / d["file"]).read_text().splitlines()
+    i = d["line"] - 1
+    j = i
+    while j < len(lines) and ":=" not in lines[j]:
+        j += 1
+    sig = "\n".join(lines[i:j + 1]).split(":=")[0].strip()
+    return f"-- {full}\n" + (f"/-- {d['doc'][:600]} -/\n" if d["doc"] else "") + sig
+
+
+def _hint_block(mode: str, hints: tuple = ()) -> str:
     if mode != "hinted":
         return ""
+    if hints:                     # the hinted run of a rule lemma: names of theorems the index holds, with their statements; nothing else
+        return ("These theorems of the library are proved and may be used by name (their full names and statements):\n```lean4\n"
+                + "\n\n".join(theorem_statement(h) for h in hints) + "\n```\n\n")
     return ("A natural-language proof by a human (a proof sketch to follow; the formal statement above is what must be proved):\n\"\"\"\n" + hint_text()
             + "\n\"\"\"\n\n")
 
@@ -419,8 +500,8 @@ def _known_block(proved: dict) -> str:
 class Prover:
     """The agentic loop of (c) with (a), (b) inside it, over one top goal, under the fuse."""
 
-    def __init__(self, path: Path, mode: str, tools: tuple, log: Log, fuse: float, think: bool = False):
-        self.path, self.mode, self.tools, self.log, self.think = path, mode, tools, log, think
+    def __init__(self, path: Path, mode: str, tools: tuple, log: Log, fuse: float, think: bool = False, hints: tuple = ()):
+        self.path, self.mode, self.tools, self.log, self.think, self.hints = path, mode, tools, log, think, tuple(hints)
         self.t0 = time.monotonic()
         self.deadline = self.t0 + fuse
         self.proved: dict = {}           # sub-lemma name -> {text, statement, proof, tool, parent}
@@ -433,6 +514,7 @@ class Prover:
         self.checked = 0                 # the model's candidates and sketches Lean has checked (a round adding none ends the goal's loop)
         self.capped = 0                  # the samples cut by the token cap (unfinished answers: they do not end the loop)
         self.context, imported = context_of(path)
+        self.context += spec_context(path)
         self.known = {n for _k, n, _c in split_decls(path.read_text()) if n} | imported
         self.results: dict = {}          # goal name -> {closed_by, last}
         self.share: list = []            # the deadlines of the sub-goals being attacked (each its share of what was left)
@@ -449,7 +531,7 @@ class Prover:
         last = [None]
         for tool in ("automation", "copilot"):
             if tool in self.tools and self.left() > 0:
-                res = try_tactics(goal, tool, self.log, time.monotonic() + self.left(), self.lemmas(), last)
+                res = try_tactics(goal, tool, self.log, time.monotonic() + self.left(), self.lemmas(), last, self.hints)
                 if res:
                     break
         if res is None and last[0]:
@@ -479,7 +561,7 @@ class Prover:
     # -- (c) whole-proof chains, then decomposition, until the fuse
     def llm(self, goal: Goal) -> "dict | None":
         code = goal.prefix + self.lemmas() + goal.stmt + "\n  sorry\n" + goal.suffix
-        whole = WHOLE.format(context=self.context, code=code, rules=RULES.format(name=goal.name), hint=_hint_block(self.mode), known=_known_block(self.proved))
+        whole = WHOLE.format(context=self.context, code=code, rules=RULES.format(name=goal.name), hint=_hint_block(self.mode, self.hints), known=_known_block(self.proved))
         while self.left() > 0:
             c0, k0 = self.checked, self.capped
             res = self.chain(goal, whole)
@@ -527,7 +609,7 @@ class Prover:
 
     def decompose(self, goal: Goal, code: str) -> "dict | None":
         """SUBGOAL DECOMPOSITION: a sketch of `have` steps closed by sorry; Lean's extract_goal states each; each attacked recursively; the parent assembled."""
-        base = SKETCH.format(context=self.context, name=goal.name, code=code, hint=_hint_block(self.mode), known=_known_block(self.proved))
+        base = SKETCH.format(context=self.context, name=goal.name, code=code, hint=_hint_block(self.mode, self.hints), known=_known_block(self.proved))
         prompt, last_err = base, None
         while self.left() > 0:
             out = self.sample(prompt)
@@ -689,16 +771,20 @@ def binder_names(stmt: str) -> list:
 # ---------------------------------------------------------------------------------------------------------------- the run
 
 def prove(module: str, mode: str = "blind", tools: tuple = ("automation", "copilot", "llm"), fuse: float = FUSE_SECONDS, log_print=print,
-          think: bool = False, tag: str = "", on_write=None) -> dict:
-    """THE RUN on the emitted file's goals -> the summary (also <run>/summary.json); prints the OBS lines. `on_write`: called after every attempt."""
-    path = MINED_DIR / f"{module}.lean"
+          think: bool = False, tag: str = "", on_write=None, hints: tuple = ()) -> dict:
+    """THE RUN on the emitted file's goals -> the summary (also <run>/summary.json); prints the OBS lines. `on_write`: called after every attempt. `module`: a module of
+    lean/ideas/Ideas/Mined, or the path of a .lean file (a scratch copy of an obligation: the file is read, never written). `hints`: full names of library theorems the
+    index holds (the hinted run of a lemma whose hint is theorems, not Kaveh's text)."""
+    path = Path(module) if module.endswith(".lean") else MINED_DIR / f"{module}.lean"
+    module = path.stem
     run = time.strftime("%Y%m%d_%H%M%S") + f"_{module}_{mode}" + (f"_{tag}" if tag else "")
     log = Log(Path(paths.experiment("prover", run)), on_write)
     goals = goals_of(path)
     summary = dict(module=module, mode=mode, tools=list(tools), fuse=fuse, model=MODEL, think=think, token_cap=TOKEN_CAP, run=run, goals={},
-                   started=time.strftime("%Y-%m-%d %H:%M:%S"), hint=hint_text() if mode == "hinted" else None)
+                   started=time.strftime("%Y-%m-%d %H:%M:%S"), hint=(list(hints) if hints else hint_text()) if mode == "hinted" else None,
+                   hints=list(hints), file=str(path))
     for g in goals:
-        P = Prover(path, mode, tuple(tools), log, fuse, think)
+        P = Prover(path, mode, tuple(tools), log, fuse, think, hints)
         P.top = g.name.removeprefix("conjecture_")
         res = P.attack(g)
         secs = round(time.monotonic() - P.t0, 1)
@@ -1012,11 +1098,12 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("prove", help="run the tools on the emitted file's sorry")
-    p.add_argument("module", help="the module under lean/ideas/Ideas/Mined/, e.g. mined_technique_krvk")
+    p.add_argument("module", help="the module under lean/ideas/Ideas/Mined/, e.g. mined_technique_krvk, or the path of a .lean file (a scratch obligation)")
     p.add_argument("--mode", choices=("blind", "hinted"), default="blind")
     p.add_argument("--fuse", type=float, default=FUSE_SECONDS, help="seconds of wall-clock for the top obligation (default: the named fuse)")
     p.add_argument("--tools", default="automation,copilot,llm")
     p.add_argument("--think", action="store_true", help="the model's reasoning mode on (off by default: see the docstring's fuse)")
+    p.add_argument("--hints", default="", help="hinted mode: comma-separated full names of library theorems of the index (their statements go to the model; the automation is handed the names)")
     p.add_argument("--tag", default="", help="a tag for the run's directory (e.g. probe)")
     c = sub.add_parser("accept", help="the acceptance check of a Lean file as it stands (compiled in lean/ideas)")
     c.add_argument("file")
@@ -1028,7 +1115,7 @@ def main(argv=None) -> None:
     if a.cmd == "setup":
         return setup_tools()
     if a.cmd == "prove":
-        prove(a.module, a.mode, tuple(a.tools.split(",")), a.fuse, think=a.think, tag=a.tag)
+        prove(a.module, a.mode, tuple(a.tools.split(",")), a.fuse, think=a.think, tag=a.tag, hints=tuple(h for h in a.hints.split(",") if h))
     elif a.cmd == "record":
         record(a.summary)
     else:
