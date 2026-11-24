@@ -575,6 +575,54 @@ the search's horizon"); it replaces neither. Written out by the main agent, with
   queen getting there"). The first concrete form is the reach of 2026-11-16 (my moves only, then the other side's veto, row 16). The
   example gives one case; more cases are gathered before a definition is fixed (section 13).
 
+**A way that wins is taken and locked; resources are what is optimised; narrow replies; the game of preparation** (Kaveh 2026-11-24:
+"a normal engine ... will find the best move ... for humans, it's not like that. You follow a logical reasoning, and you find some move
+... oftentimes, you find the move that's winning, and it's not the fastest winning move, but it gets you there. And more importantly,
+it's independent of what your opponent does ... Once you take in your decision, this is the path I'm going to go, it's locked in ...
+you don't spend any more energy calculating anything ... efficiency in terms of amount of power used or amount of time used, both of
+those are resources. That is what we have to optimize for ... If you have a winning strategy, you're winning. Now use the one with less
+energy." The points below were put to him by the main agent and confirmed the same day: "Yep, I agree with all of your aims.").
+DECIDED, as long-term aims; the way to build some of them is not known yet and is said so.
+- THE ORDER OF THE TWO AIMS. First the result: a win over a draw over a loss. Then, among ways that secure the SAME result, the least
+  cost. Cost never buys a worse result. The value stays the global objective (AGENTS.md rule 7); cost decides only among moves the value
+  does not tell apart by result. This binds the rule of 2026-10-20 (search on only while no move keeps our status) and plan 65 (time as a
+  priced choice) into one statement.
+- THE UNIT OF COST. Wall time and nodes now, both printed today. Energy is the real aim and is not measured yet. Every measure of
+  strength is reported with its cost beside it; strength for a given cost is the north star, as it has been since October.
+- A WAY THAT WINS IS TAKEN. The engine does not go on looking for a better move once it holds a way that secures the result. A way that
+  is not the fastest is accepted.
+- THE LOCK. A way taken is LOCKED: it is held from move to move, said, and nothing more is asked of either sub-layer of the future
+  channel about it (a locked way is a near statement that is closed). Fewer decisions are made, so fewer can be wrong.
+- WHAT MAKES A LOCK SAFE. Two things, both required. (1) A MEASURE THAT FALLS against every reply (row 35, the theorem of October):
+  without it a way that is not the fastest can go in circles or run into the draw by the count of moves. (2) A CHEAP CHECK each move
+  that the reply did not touch what the way read (section 4: a claim stands until something it read changes). The lock is released
+  only by that check or by the measure failing to fall, and the release is said with its cause.
+- HOW FAR A WAY DEPENDS ON THE OTHER SIDE is a scale, not a yes or no. Three grades: the same moves whatever they play (rare); ONE
+  METHOD that gives my move from their reply with no search (the falling measure of 79.17 is the first case); a line with few points
+  where their reply changes my answer. Lower is preferred.
+- NARROWNESS. "If my opponent has only one good move, then that kind of makes it easy for me to prepare. And I should basically guide
+  them towards areas where there's fewer outcomes of their choices." The count that matters is their GOOD replies, and of those the ones
+  that change my answer. It is a number of the near sub-layer (a count over read replies; the answers the threat list finds are its
+  cheap first form; the exact count is taken only for a line about to be locked, because counting costs the resource it saves).
+- STEERING. Among moves that keep my result, the opportunity policy prefers the one that leaves them the fewest good replies. It is a
+  reason to order and to choose among equals; it never adds to the value.
+- NARROW FOR ME IS NOT HARD FOR THEM. One good reply that is plain to see is narrow and will be found. Narrowness serves my economy.
+  The chance that they err is another number and belongs to the belief about the opponent (2026-11-22); the two are kept apart.
+- THEIR BAD REPLIES STILL NEED AN ANSWER. A reply is left unprepared in depth only when the near sub-layer has shown it loses.
+- PREPARING. Sleep prepares, the wake recalls, the long-term memory holds what was prepared (section 9). A locked way and a narrow line
+  are what is worth preparing.
+- THE GAME OF PREPARATION, OWED LATER. "It's meta gameplay ... the opponent is trying to predict what you're preparing, you're trying
+  to predict what they're preparing, and so there's this game in preparation going on." The game on the board has perfect information;
+  this one does not. Recorded as an aim, not designed. What can be said now: a predictable preparation can be prepared against, so the
+  choice among equal lines may be mixed (allowed by the decision of 2026-11-22); it needs a model of what a given opponent plays and
+  prepares (row 29).
+- WORK OF OTHERS TO READ BEFORE ANYTHING HERE IS BUILT (listed from memory by the main agent, NOT yet checked; nothing is reinvented
+  that exists): conformant and contingent planning (plans that work without seeing the other side, or with few branch points);
+  satisficing and bounded rationality; rational metareasoning (compute only while the expected gain of computing exceeds its cost);
+  proof-number search (finds a win, not the shortest); options and macro-actions in reinforcement learning (a committed course with a
+  stated end); the metrics of endgame tables (fastest end against safe conversion); opening-book learning; models that predict human
+  moves by rating; the game theory of commitment and mixing. A plan under this block begins with what these say.
+
 ## 8. Wake
 
 1. Bring forward the open tactics carried from the last move, and update only those whose facts changed.
@@ -1501,6 +1549,8 @@ list (8); every build checked against the spec (11); the pointing at a weakness 
 
 - OPEN (2026-11-24, future prediction): what it means that force can arrive at a target, beyond units on a line and the reach of row 16. One example is held (the fixture of 2026-11-24). To be defined from more cases, with Kaveh.
 
+- OPEN (2026-11-24): the game of preparation (each side guessing what the other prepared) is an aim with no design; energy as a cost is named and not measured; the work of others listed in section 7's last block is to be read before a plan is written.
+
 ## 14. What was replaced, so that no earlier statement misleads
 
 | Earlier | Replaced by | When |
@@ -1608,4 +1658,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Two checks at a merge: lean off the engine's path, full on it; the measure of the whole only when a source on the path changed | 2026-11-23 | 11 (last block) |
 | One lemma machinery used twice: lemmas about the rules feed the translator, lemmas about play feed the layers above | 2026-11-23 | 11 (last block) |
 | Future prediction is one channel with a near (concrete) and a far (believed, to be made concrete by evidence) sub-layer; a target is left only when both say nothing; a goal some unmet facts away; frames join through forcing moves | 2026-11-24 | 7 (last block) |
+| Result first, then least cost; a way that wins is taken and locked, safe by a falling measure and a cheap check; narrowness of their good replies and steering toward it; the game of preparation owed later | 2026-11-24 | 7 (last block) |
 | What was replaced | 2026-11-16 | 14 |
