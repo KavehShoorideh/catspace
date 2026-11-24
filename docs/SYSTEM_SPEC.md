@@ -594,7 +594,7 @@ DECIDED, as long-term aims; the way to build some of them is not known yet and i
 - THE LOCK. A way taken is LOCKED: it is held from move to move, said, and nothing more is asked of either sub-layer of the future
   channel about it (a locked way is a near statement that is closed). Fewer decisions are made, so fewer can be wrong.
 - WHAT MAKES A LOCK SAFE. Two things, both required. (1) A MEASURE THAT FALLS against every reply (row 35, the theorem of October):
-  without it a way that is not the fastest can go in circles or run into the draw by the count of moves. (2) A CHEAP CHECK each move
+  without it a way that is not the fastest can go in circles or run into the draw by the count of moves. The measure must therefore reach its end inside what the game's own counting rules allow (the count of quiet moves, repetition): a way whose measure falls but too slowly secures a draw, not a win, and is judged as that (added 2026-11-24 after reading how endgame tables fail here). (2) A CHEAP CHECK each move
   that the reply did not touch what the way read (section 4: a claim stands until something it read changes). The lock is released
   only by that check or by the measure failing to fall, and the release is said with its cause.
 - HOW FAR A WAY DEPENDS ON THE OTHER SIDE is a scale, not a yes or no. Three grades: the same moves whatever they play (rare); ONE
@@ -621,7 +621,7 @@ DECIDED, as long-term aims; the way to build some of them is not known yet and i
   satisficing and bounded rationality; rational metareasoning (compute only while the expected gain of computing exceeds its cost);
   proof-number search (finds a win, not the shortest); options and macro-actions in reinforcement learning (a committed course with a
   stated end); the metrics of endgame tables (fastest end against safe conversion); opening-book learning; models that predict human
-  moves by rating; the game theory of commitment and mixing. A plan under this block begins with what these say.
+  moves by rating; the game theory of commitment and mixing. A plan under this block begins with what these say. FIRST READING DONE 2026-11-24 (abstracts and summaries, not full texts): to take as they are, the check of a plan by the facts each remaining step depends on (Fritz and McIlraith 2007), strong plans with the layer number as the falling measure (Cimatti, Pistore, Roveri, Traverso 2003; endgame tables as the worked case), proof-number search with the size of the proof as the cost of holding a win (survey of Kishimoto, Winands, Mueller, Saito 2012). No earlier work was found for the count of result-keeping replies that change my answer, for choosing among winning ways by least compute, or for preparation as a game. IN OUR OWN HISTORY, parked in the older system and not in rust/engine: status and keeps-status (plans 59, 68; Lean keepsStatus), the priced judge (plan 65), the cheapest move that keeps the status (74.2b), the theorem forced_by_measure, pondering (52.19), the only-move flags and width of analyst/rank.py and cards.py; in rust/engine and not called by the wake: the switch read_on, meansends::ask, belief and mixed choice of layer 0.
 
 ## 8. Wake
 
