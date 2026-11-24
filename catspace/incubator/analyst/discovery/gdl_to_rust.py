@@ -1075,6 +1075,7 @@ class Plan:
                 for info in self.asked.values():                  # the clause of a walk that the pass asked wrote keeps its place among those run when everything is asked for or only what is
                     for which in ("plain", "guarded"):
                         if id(c) in info[which]:
+                            info[which].discard(id(c))                  # (an id of a clause that is no longer written could name another clause)
                             info[which].add(id(nc))
                 out.append(JoinRule(nc, comp, (), None, self.est))
             self.rules[k] = out

@@ -25,7 +25,7 @@ NEW42 = [p for p in T.PASSES if p not in PASSES_7941 and p in ("start", "ends", 
 PASSES_7942 = PASSES_7941 + NEW42
 # plan 79.43: `prev` is every pass of 79.42, the module the new passes are clocked against (for the clocks it is made by the translator of the commit before the plan, since the estimate of the pass start was mended in the plan); `prev_42` is the same passes made by this translator; each new pass alone on top of it is `prev_<pass>`
 NEW43 = [p for p in T.PASSES if p not in PASSES_7942]
-SCRATCH = {"_prev": PASSES_7942, "_prev_42": PASSES_7942, "_prev41": PASSES_7941, "_prev40": PASSES_7940, "_prev38": ["dense", "demand", "copy", "delta"], **{f"_prev41_{p}": PASSES_7941 + [p] for p in NEW42}, **{f"_prev_{p}": PASSES_7942 + [p] for p in NEW43}, **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
+SCRATCH = {"_prev": PASSES_7942, "_prev_42": PASSES_7942, "_prev_noworth": [p for p in T.PASSES if p != "worth"], "_prev41": PASSES_7941, "_prev40": PASSES_7940, "_prev38": ["dense", "demand", "copy", "delta"], **{f"_prev41_{p}": PASSES_7941 + [p] for p in NEW42}, **{f"_prev_{p}": PASSES_7942 + [p] for p in NEW43}, **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
 OUT = ROOT / "rust" / "engine" / "game" / "tests" / "generated"
 OUT_SCRATCH = OUT / "scratch"
 
