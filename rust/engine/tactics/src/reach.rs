@@ -173,7 +173,7 @@ impl<'a, G: Game + Placed> Position<'a, G> {
     }
 
     /// The goals held at `s` given the goals that bind there: all that bind if the side is to move or the game is over, else none.
-    fn held_of(&self, s: &G::State, bound: u64) -> u64 { if self.g.outcome(s).is_some() || self.g.mover(s) == Some(self.me) { bound } else { 0 } }
+    fn held_of(&self, s: &G::State, bound: u64) -> u64 { if self.g.outcome(s).is_some() || self.g.turn(s) == self.me { bound } else { 0 } }
 
     /// The goals that bind at the position after `m` from the current one (made and taken back).
     fn bound_after(&mut self, m: &G::Move) -> u64 { self.enter(m); let b = self.bound(); self.leave(); b }
@@ -223,7 +223,7 @@ impl<'a, G: Game + Placed> Space for Position<'a, G> {
         let bound = self.bound();
         let s = &self.top().state;
         let ended = self.g.outcome(s).is_some();
-        let held = if ended || self.g.mover(s) == Some(self.me) { bound } else { 0 };
+        let held = if ended || self.g.turn(s) == self.me { bound } else { 0 };
         Look { bound, held, ended }
     }
 
@@ -331,7 +331,7 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
             let hit = self.w.space.held_of(&s, mask);
             meets |= hit;
             if left == 0 || hit & one != 0 { break; }
-            let mover = g.mover(&s);
+            let mover = Some(g.turn(&s));
             let kids: Vec<(usize, G::Move)> = g.moves(&s).into_iter().enumerate().collect();
             let mut pick: Option<(usize, G::Move, u8)> = None;
             let key = g.key(&s);
@@ -378,7 +378,7 @@ impl<'a, G: Game + Placed, J: Judge> Tree<'a, G, J> {
         loop {
             let s = self.w.space.top().state.clone();
             let mask = self.w.space.mask_now();
-            let mover = g.mover(&s);
+            let mover = Some(g.turn(&s));
             if ply >= 1 && after_mine && left >= 1 && mover != Some(me) && g.outcome(&s).is_none() && mask & one != 0 {
                 let found = g.moves(&s).into_iter().find(|m| self.w.space.bound_after(m) & one == 0).map(|m| g.move_name(&s, &m));
                 if let Some(n) = found { reply = n; break; }

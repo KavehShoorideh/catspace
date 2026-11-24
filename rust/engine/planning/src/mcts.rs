@@ -81,7 +81,7 @@ pub fn search<G: Game, R: Rollout, L: Leaf>(g: &G, s: &G::State, budget: &mut Bu
     let make = |st: G::State, depth: i64| -> Node<G> {
         let outcome = g.outcome(&st);
         let moves = if outcome.is_some() { vec![] } else { g.moves(&st) };
-        let mover = g.mover(&st).unwrap_or(0);
+        let mover = if outcome.is_some() { 0 } else { g.turn(&st) };
         Node { children: vec![None; moves.len()], state: st, outcome, moves, next: 0, mover, visits: 0, sums: vec![0.0; n_roles], depth }
     };
     let mut tree: Vec<Node<G>> = vec![make(s.clone(), 0)];
