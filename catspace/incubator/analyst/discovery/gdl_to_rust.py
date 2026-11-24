@@ -172,6 +172,55 @@ whose tiles are not all bound was looped over whatever it held), and the board t
     (10) the loop over combinations is kept as the other branch of one body; the number of the word is made from the loop in either case and the tiles are read from it, so a literal with some key tile bound and some not costs the same lines in either case.
     (11) the block is a labeled block of the rest of the clause (a `continue` may not leave one, so a failing test in it is a `break` of its label); a head row is complete when every variable of the head is bound.
     (12) NOT BUILT: the pieces together are most of the wall of a position in the clocks (the profile prints the share), the rest being the load of a state, its clearing and the reading of the answers; the text of (12) let the measurement end it.
+
+PLAN 79.42 PARTS A, B, C, D: THE MACHINERY LEFT IN THE HOT PIECES (SYSTEM_SPEC 11, "The crux of layer 2 is a translator ... made fast piece by piece under tests"; piece: rules; ledger row 45).
+This text is the interface of the passes below, written and committed before any body. PASSES gains "start", "orient", "ends" and (only if its argument below is completed) "lines", each added to PASSES in the commit of its body; `translate(text, module, passes)` is as above; with no pass the document is
+still the plain one byte for byte but for the translator hash; the passes add no public item to a module but `ENDS: &[&str]` (below), so the harness of 79.38 holds each of them to the plain module piece by piece as before.
+WHY (the profile of 79.41, every pass): a few pieces hold two thirds of the time. In the largest the clauses start from the literal with the most places bound and then loop over every word of a relation for each alternative; the walks set each row into every orientation
+bit by bit and make rows that no reader looks at. Each cause is machinery, none is a rule of a game.
+
+  (13) "start"  (part A) TAKES a clause that is made as words (the head held as bits, not static), its written order (the reader's, or the pass order's) and the relations held as bits. THE STARTS of a clause are its positive literals over relations held as bits;
+              for each, the order that the rule of `JoinRule` gives when that literal is taken first (the others as before, the safety rule unchanged). RETURNS: where two or more starts give different orders, one function for each admitted order and a chooser that is called in its place
+              (same name, same arguments): it computes, for each admitted order, an ESTIMATE from the lists of words held now, and runs the order of the least estimate (the first of them when equal). The estimate of an order is the sum, over its literals, of the product of the factors of the literals up to
+              and including it, where the factor of a literal is the number of words its relation holds in the orientation read (its list of words) when the literal is looped over the words held, the number of combinations of the tiles not bound when it is looped over those, the number of words held or of combinations whichever is fewer when
+              the pass scan chooses between them, 2 for a literal read by key that binds a variable (a loop over the bits of a word) and 1 for any other. ADMITTED: an order whose clause, written, asks no orientation that the clause in the reader's order, and the orders admitted before it, did not already ask (an orientation is paid by every row set in the relation, in every question);
+              at most START_MAX orders, those of the fewest literals read by loops over words first. SOUNDNESS: a clause is a conjunction, a conjunction does not depend on the order of its literals, each order is joined with the safety rule of `JoinRule` (a negation or a distinct as soon as its variables are bound), so every order makes the same set of head rows
+              (the rows are a set: a row made twice is one); the estimate only chooses which order runs and can make no row differ; the harness holds it to the plain module. A clause with one order, or whose other orders ask a new orientation, is as before, and `Plan.start_refused` names the clause and the orientation.
+  (14) "orient" (part B) TAKES a relation held as bits that a function sets by whole words (a walk made by the pass shift, or a clause that ors a word into its head) and the orientations the written clauses ask of it. RETURNS: the word is or-ed into the orientation the function itself makes (the last tile's), and each other orientation that a written clause reads
+              is made from the new bits of that word by a function written for that orientation: the part of the word's number that does not change with the bit is computed once for the word, the part that does is a product of the bit and a constant, and the list of words is pushed once for each word first set; an orientation that no written clause reads is not made (as before). SOUNDNESS: the rows set in an
+              orientation are those of the word, bit by bit, in the same places as the generic `set` puts them (the index of a row in an orientation is the mixed radix of its tiles; the function is that index with the constant parts moved out of the loop); it is held to the generic function by the harness on every orientation of every relation it is written for.
+  (15) "ends"  (part C) TAKES a walk made by the pass shift (the relation W, its key tiles, the free tile X, the base clauses, the one recursive clause with its stop literals, one literal that takes a member to the next ones) and every clause of the description that reads W. CONDITION, on each reader clause (all of them, in every stratum, as written
+              once the other passes have run): W is read by a positive literal, once, with a variable at every place and the places of the free tile X variables of the clause; W is not a relation a question reads; and the clause ENTAILS a stop of the walk at the member it reads, by a homomorphism: for one stop literal Z of the recursive clause (the same for every reader), a negated literal `not Z(k, x)` over the key variables k and the free tile's variables x, there is a clause
+              `Z(h) <= B` of Z and a substitution s of its variables with s(h) the arguments the reader gives Z at W's places (key places and free tile) and every literal of s(B) (positive, negated, distinct, by the sign) among the literals of the reader other than W's. WHY THAT HOLDS. (i) A literal of the reader's body holds at every row the reader accepts, so every row it accepts holds s(B), and by the clause of Z, Z(k, x) for W's row (k, x).
+              (ii) The walk reaches a member x of key k only from members of its own key; it goes on from x only if its stop literals pass at x (the recursive clause is `W(k, y) <= W(k, x), not Z(k, x), onward(x, y)`); so the rows of W at which Z(k, x) holds are the first members at which the walk stops, the ENDS; the rest of W's rows are members it passed. (iii) By (i) the rows a reader accepts are rows of the ends; dropping from W's relation the rows that
+              are not ends removes no row any reader accepts, and the walk itself does not read W's relation (it keeps its own words), so no row of any relation changes. RETURNS: a walk made by whole-word fill and only the word of the ends kept (`W & !live`, where live is the and of the stop literals' words): for a table with one displacement and one mask for each key the fill is the doubling (generate and propagate) form, a constant number of rounds (the
+              base two logarithm of the size of the free tile, rounded up) of one shift and one and each; for another table the closure by rounds as the pass shift writes it, the ends kept. `Dw.full` (set by `all_relations` and `ask_many`, clear in every question) makes the function keep the whole word, so that the harness compares W in full; `ENDS: &[&str]` lists the relations made as ends in the questions.
+              WHY THE DOUBLING FORM GIVES THE SAME WORD. Let S be the start word (the rows of the base clauses), P the word of members that pass (live and with a next one), shift(w, n) the bits of w displaced by n displacements. The walk's closure R is the least word with S in R and shift(R and P, 1) in R. Writing Q_0 = shift(P, 1) (the destinations whose predecessor passes), Q_(i+1) = Q_i and shift(Q_i, 2^i), and
+              G_0 = S, G_(i+1) = G_i or (Q_i and shift(G_i, 2^i)): by induction G_i holds exactly the members reached from S by at most 2^i - 1 hops (a member t is reached in n hops when its n predecessors on the chain are in P, and Q_i holds t exactly when the 2^i predecessors on the chain pass), so G_r with 2^r >= the size of the free tile holds every member any chain of the table can attain. A refusal names the
+              reader clause (`Plan.ends_refused`): a negated reader, a reader read by a question, a reader that does not entail a stop, a walk not made by the pass shift.
+  (16) "lines" (part D) TAKES a walk made by the pass ends (or shift) and the relation its stop literal reads. THE ARGUMENT, in the one shape it covers. Let live_K be the word of members at which the stop literals of the walk pass for the key K, and live_0 the same for another key 0 (the base); let C be the word of members where they differ, live_K xor live_0; let S_K and S_0 be the start words of the two keys; and R_0 the closure of S_0 under live_0. If S_K = S_0 and
+              R_0 and C = 0 then the closure of S_K under live_K is R_0. PROOF: by induction on the rounds the two frontiers are equal; they are equal at the first round (S_K = S_0); if the frontiers are equal and inside R_0, the members of the frontier pass the stop literals in one key exactly when they pass in the other (they are not in C), so the next frontiers are equal and inside R_0 (the next members of a member of R_0 are in R_0 by the closure of R_0); so every round is the same and the closures
+              are equal. So a line of a walk that passes through no member of C is the base line, word for word, and a line through a member of C is walked again by the walk as it stands. WHAT IS NOT YET AN ARGUMENT. That the key K's live word and start word are "the base's with a bounded change" is a fact of the clauses of the relations they are made from, and a rule that reads it from the clauses (which literal is the state's relation, which negated literals are the key's removals,
+              which clauses add) with a proof that the words differ only inside C, and the place where the base's closures are kept for the question and the test that the key's start word is the base's, are not written here; they are the pieces of work this plan builds only if the profile once the pass ends has run still shows the walks (the number is printed) and the rule is proved here first; otherwise the pass is not built and the module text of the commit says which piece is missing.
+  A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside. The harness of 79.38 holds each of them to the plain module (the tiles and the displacements are an inside of the module: rows are compared as text).
+  AS BUILT 79.42, where the body differs from the text above (said here because the text was committed first); PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start"):
+    (13) is written as the text says, with these choices: the orders are those of `JoinRule` with each positive literal over a relation held as bits first (`start_orders`), written to the same function text as the reader's order (`emit_full_clause`); the factors of the estimate are noted by the writer
+         as it writes each literal (`BitWriter.prof`), a literal read by a loop over words counting the words its relation holds in the orientation read, 2 times that when it binds a variable; a clause of a static relation is made once and has one order; an order is also not admitted when it reads a relation
+         that is not held as bits by places that no clause asks it by (its indexes are fixed: a ValueError of the writer, named in `Plan.start_refused`); the decision is made in the dry run of the last round of `find_bits` and kept (`Plan.start_choice`) so the final writing is the same text.
+         An order is admitted when it asks no orientation that the clauses in the reader's order ask altogether (`Plan.start_base`, found by a first writing of every clause in the reader's order, `Plan.start_off`), and not only none that the clauses written before it ask:
+         the first writing of this part decided by the clauses written before, which depend on the order the strata are written in, which depends on the names, and the description with every name replaced gave other refusals (found by tests/test_plan79_42.py; mended).
+    (15) is written as the text says, with these choices: the readers are the clauses of every stratum as written (`Plan.rules`, once every other pass has run), and the entailment is a homomorphism of the body of a clause of the stop relation into the literals of the reader found by backtracking
+         (`entail_body`: positive and negated literals by relation and sign, a distinct test only against a distinct test); the stop literal is a negated literal of the recursive clause whose places are key variables, free tile variables or constants (a walk whose stop literals are all positive, as a walk over
+         places that must hold something, is refused: `Plan.ends_refused`); the doubling form is written when every key of the displacement table has at most one displacement, the closure by rounds otherwise (the ends kept in both); and the base clauses of the walk (the start words) are made into words
+         of the working memory (`Dw.sb_<relation>`, the last tile's orientation only) and not into the relation, which is then given the ends by one word for each key (the whole word when `Dw.full`), so that the relation of an ends walk does not hold the rows of the first places that are no end (the first writing kept
+         them, and they were most of the rows the walk made).
+    (14) is written as the text says for the one function it covers, `or_word` of a relation held as bits (the walks and every clause that ors a word into its head): with the pass, the index of each other orientation is made once for the word (`bf`, with the bit at nought, and the tile that is free there, `af`)
+         and each new bit moves it by a constant (`p * stride`); a relation with one orientation, or no new bit, is as before. The rows set one by one by `set_t` (a clause that makes a row, not a word) are not changed: the pass does not cover them.
+    (16) NOT BUILT. The lemma and its proof above are complete for the test (a line of a walk whose closure in the base meets no place that differs between the key and the base is the base closure; tests/test_plan79_42.py runs the lemma on random tables, with each condition left out in turn to show it is needed). What is not complete, and so what is missing, is the
+         piece of work that makes the lemma a rule of the translator: (i) a rule that reads from the clauses that the stop relation and the start relation of a walk are, for a key, the relation of the state with the key's removals taken out and the key's additions put in (so that live_0 and S_0 can be named and C bounded by the words of the key's removals and additions): in the first game the clauses of the stop relation are one
+         clause that adds (a relation of the key) and one that copies the state's relation less two relations of the key, under a guard literal of the key, and to name the base the guard must be shown true for every key the walk is made for (it is the literal the start relation's clause holds too); the pass base unfolds a view into its readers and does not give this form, and no pass finds it; (ii) the closures of the base,
+         kept for the question in the working memory and their invalidation by the next state, and the test of the key's start word against the base's, which need (i) for the start relation. The profile once the pass ends has run shows the piece of the walk with the lines of an alternative as a small share of the pieces' time, and a walk that is keyed by no alternative (it is made for every place) is outside the shape of the
+         lemma; so the piece of work above would buy at most that share, and it is left for a plan that first writes the form (i) as a pass of its own with its proof.
 """
 from __future__ import annotations
 
@@ -185,11 +234,12 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
 SMALL_SCAN = 8                                          # a loop over a whole fluent is cheap when its sorts allow no more rows than this
+START_MAX = 4                                           # pass (13): at most this many orders of one clause are written (the reader's and the best others)
 BOUND = "\0"                                            # the mark of a constant that stands for a variable bound by the key of a demanded relation
 
 
@@ -616,6 +666,8 @@ class Plan:
         self.d = d
         if "base" in passes and "scan" not in passes:
             passes = tuple(passes) + ("scan",)                 # the clauses pass (8) makes ask words with their key tiles unbound, which only pass (10) answers by the words held (on top of bits alone it made the module half as fast: diagnosed, 79.41 part A)
+        if "ends" in passes:
+            passes = tuple(passes) + tuple(p for p in ("bits", "shift") if p not in passes)     # the pass ends is a form of a walk made by the pass shift, over relations held as bits
         self.passes = tuple(p for p in PASSES if p in passes)
         self.copy: dict = {}
         self.demanded: set = set()
@@ -636,6 +688,13 @@ class Plan:
         self.shift_tables: dict = {}                            # (onward relation, tile read at, next tile) -> (number, displacements by key, keys, tiles that are keys)   (pass "shift")
         self.shift_used: set = set()                            # the tables the last writing of the clauses used
         self.shift_refused: dict = {}                           # relation of a recursive set -> why pass (9) does not compile it by shifts
+        self.start_refused: dict = {}                           # (clause text, order) -> why pass (13) does not write that order of the clause
+        self.start_choice: dict = {}                            # clause key -> the orders (indexes) admitted, decided in the dry run of the last round of find_bits and kept for the final writing
+        self.ends: dict = {}                                    # relation of a walk made as its ends -> the stop literal its readers entail   (pass "ends")
+        self.ends_refused: dict = {}                            # relation of a walk -> why pass (15) does not make it as its ends, the reader clause named
+        self.start_off: bool = False                            # pass (13): while the orientations the reader's orders ask are being found, no other order is written
+        self.start_base: dict | None = None                     # relation -> the orientations asked by the clauses in the reader's orders, all of them (an order is admitted when it asks no other: the same whatever the order the clauses are written in)
+        self.start_written: dict = {}                           # clause key -> (the number of orders written, the number of orders found)
         self.units: dict = {}                                   # the products of two sorts found (pass bits), with their weights
         self.refused: dict = {}                                # relation -> why pass (2) keeps it in full: the (relation, places) chain and the clause that defeats it
         self.est = Sizes(d) if "order" in self.passes else None                              # pass (6): what is known of the size of a relation, for the order of joining
@@ -1075,9 +1134,17 @@ class Plan:
                     for h in inside:
                         bad.setdefault(h, "it is in a recursive set with a relation that is not held as bits: " + "; ".join(sorted(comp)))
             if not bad:
+                self.start_choice = {}
+                self.start_refused = {}
+                self.start_base = None
                 for i in self.bits.values():
                     i.orients = {i.canon: "the membership test"}
                 self.bit_rec = self.recursive_bits()
+                if "start" in self.passes:
+                    self.start_off = True
+                    emit_strata(lambda text: None, d, self, self.places, {})
+                    self.start_off = False
+                    self.start_base = {r: set(i.orients) for r, i in self.bits.items()}
                 emit_strata(lambda text: None, d, self, self.places, bad)
                 for i in self.bits.values():
                     for f, text in sorted(i.orients.items()):
@@ -1410,8 +1477,9 @@ class BitWriter(ClauseWriter):
     """One clause as nested loops over what is not yet bound, over relations held as bits (pass bits; see the module text). Modes: "full" and "delta" (the functions of ClauseWriter: the rows of a head that is not held as bits into `o`), and
     "bfull" and "bdelta" (a head held as bits: its bits are set in the head's relation; "bdelta" reads the first literal from the words new in the last round of the recursive set). A literal of a relation not held as bits is written as ClauseWriter does."""
 
-    def __init__(self, d, places, cid, rule, scc, plan, mode="full", clause=None, key_places=(), record=False):
+    def __init__(self, d, places, cid, rule, scc, plan, mode="full", clause=None, key_places=(), record=False, alias=None):
         super().__init__(d, places, cid, rule, scc, plan, mode, clause, key_places)
+        self.alias = alias                                             # pass (15): the Rust place of a set of words that stands for the head's relation (the start words of a walk made as its ends); only the last tile's orientation
         self.bi = plan.bits
         self.done: set = set()
         self.record = record
@@ -1420,6 +1488,7 @@ class BitWriter(ClauseWriter):
         self.cut = "cut" in plan.passes and self.head_bit            # pass (11): a block left at the first row once the head is complete
         self.cut_label = None
         self.cut_loops = 0
+        self.prof: list = []                                           # pass (13): for each literal read by a loop, the Rust text of how many iterations the loop is estimated to make (the number of words held, the combinations, or 1)
         self.head_vars: set = set()
         for h in rule.head:
             self.head_vars |= comp_vars(h)
@@ -1619,6 +1688,12 @@ class BitWriter(ClauseWriter):
         u = self.fresh()
         self.out(f"let tt{u}: [usize; {info.m}] = [{', '.join(tiles)}];")
         rec = ""
+        if self.alias:
+            ix = self.index_of(info, info.canon, {i: f"tt{u}[{i}]" for i in range(info.m)})
+            self.out(f"if {self.alias}.set({ix}, tt{u}[{info.canon}]) {{ made += 1; }}")
+            if self.cut_label is not None:
+                self.out(f"break {self.cut_label};")
+            return
         if self.record and r.head_rel in self.scc:
             ix = self.index_of(info, info.canon, {i: f"tt{u}[{i}]" for i in range(info.m)})
             rec = f" dw.nw_{rid}.set({ix}, tt{u}[{info.canon}]);"
@@ -1727,8 +1802,10 @@ class BitWriter(ClauseWriter):
         all_unbound = bool(kt) and all(unb(args[p]) for i in kt for p in info.tiles[i].places)
         slots = [(i, c, p) for i in kt for c, p in enumerate(info.tiles[i].places) if unb(args[p])]
         scan_ok = "scan" in self.plan.passes and bool(kt) and not delta and not all_unbound and bool(slots) and len({args[p][1] for _i, _c, p in slots}) == len(slots)
+        factor = "1"
         if delta or all_unbound:
             src = f"dw.dl_{rid}" if delta else f"{h}.{rid}.o{f}"
+            factor = f"{src}.nz.len()"
             self.open(f"for ti{u} in 0..{src}.nz.len() {{")
             opened += 1
             self.out(f"let ix{u} = {src}.nz[ti{u}] as usize;")
@@ -1750,6 +1827,7 @@ class BitWriter(ClauseWriter):
                         row.append(None)
                 vals[i] = row
             nc = " * ".join(str(info.tiles[i].sizes[c]) for i, c, _p in slots)
+            factor = f"({h}.{rid}.o{f}.nz.len()).min({nc})"
             self.out(f"let nc{u}: usize = {nc};")
             self.out(f"let sc{u} = {h}.{rid}.o{f}.nz.len() < nc{u};")
             self.open(f"for ti{u} in 0..(if sc{u} {{ {h}.{rid}.o{f}.nz.len() }} else {{ nc{u} }}) {{")
@@ -1788,6 +1866,7 @@ class BitWriter(ClauseWriter):
                         comps.append(self.var_ord(a[1], t.sorts[c]))
                     else:
                         n = a[1]
+                        factor = f"{t.sizes[c]}" if factor == "1" else f"{factor} * {t.sizes[c]}"
                         if self.is_ord(n, t.sorts[c]):
                             self.open(f"for v{n} in 0..{t.sizes[c]}usize {{")
                             comps.append(f"v{n}")
@@ -1817,6 +1896,7 @@ class BitWriter(ClauseWriter):
                     raise BitRefuse(rel, f"one variable at two places of one tile: {self.text}")
                 vlist.append((c, a[1]))
         vvars = {n for _, n in vlist}
+        self.prof.append(f"({factor}) * 2" if vlist else f"({factor})")
         folded = self.fold(k, ft, args, vvars, w) if vlist else False
         if masked or folded or delta or opened:
             self.out(f"if {w} == 0 {{ {self.fail()} }}")
@@ -1826,7 +1906,7 @@ class BitWriter(ClauseWriter):
             hh = self.holder(r.head_rel)
             tiles = {i: self.tile_expr(r.head_rel, t, r.head) for i, t in enumerate(hi.tiles) if i != hi.canon}
             self.out(f"let hk{u} = {self.index_of(hi, hi.canon, tiles)};")
-            self.out(f"let nb{u} = {hh}.{hrid}.or_word(hk{u}, {w});")
+            self.out(f"let nb{u} = {self.alias}.or(hk{u}, {w});" if self.alias else f"let nb{u} = {hh}.{hrid}.or_word(hk{u}, {w});")
             rec = f" dw.nw_{hrid}.or(hk{u}, nb{u});" if (self.record and r.head_rel in self.scc) else ""
             self.out(f"if nb{u} != 0 {{ made += nb{u}.count_ones() as u64;{rec} }}")
         else:
@@ -2008,7 +2088,115 @@ def shift_shape(d: "Description", plan: "Plan", comp: set, rule, places) -> dict
     return {"h": h, "info": info, "kv": kv, "keyp": keyp, "largs": largs, "stops": stops, "onward": onward, "text": text}
 
 
-def write_shift(w, d, plan, places, name: str, comp, rule, shape: dict):
+class EndsRefuse(Exception):
+    """A walk that the pass ends cannot make as its ends, with the reason (the reader clause is named in it)."""
+
+
+def unify_term(a, b, sig: dict) -> bool:
+    """`a`, a term of a clause of the relation read for its stop (its variables are its own), made equal to `b`, a term of the reader (taken as it stands); extends `sig`."""
+    if GDL.is_var(a):
+        if a in sig:
+            return sig[a] == b
+        sig[a] = b
+        return True
+    if isinstance(a, tuple):
+        return isinstance(b, tuple) and a[0] == b[0] and len(a) == len(b) and all(unify_term(x, y, sig) for x, y in zip(a[1:], b[1:]))
+    return a == b
+
+
+def entail_body(body: list, i: int, sig: dict, lits: list) -> bool:
+    """Whether every literal of `body` from the i-th on, under `sig` (extended as needed), is a literal of `lits` of the same sign (a homomorphism of the body into the literals)."""
+    if i == len(body):
+        return True
+    lit = body[i]
+    if lit[0] == "distinct":
+        for x in lits:
+            if x[0] != "distinct":
+                continue
+            for p, q in ((x[1], x[2]), (x[2], x[1])):
+                s2 = dict(sig)
+                if unify_term(lit[1], p, s2) and unify_term(lit[2], q, s2) and entail_body(body, i + 1, s2, lits):
+                    return True
+        return False
+    for x in lits:
+        if x[0] != lit[0] or x[1] != lit[1] or len(x[2]) != len(lit[2]):
+            continue
+        s2 = dict(sig)
+        if all(unify_term(a, b, s2) for a, b in zip(lit[2], x[2])) and entail_body(body, i + 1, s2, lits):
+            return True
+    return False
+
+
+def entails_stop(plan: "Plan", zrel: str, target: list, reader, wlit) -> bool:
+    """Whether the literals of the reader clause other than `wlit` entail `zrel(target)`: a clause of `zrel` (as written) whose head unifies with the target and whose body maps into those literals (module text, (15))."""
+    kz = next(k for k, (c, _r) in enumerate(plan.d.strata) if zrel in c)
+    lits = [x for x in reader.body if x is not wlit]
+    for zr in plan.rules[kz]:
+        zc = zr.clause
+        if zc.head[0] != zrel or len(zc.head[1]) != len(target):
+            continue
+        sig: dict = {}
+        if all(unify_term(a, b, sig) for a, b in zip(zc.head[1], target)) and entail_body(list(zc.body), 0, sig, lits):
+            return True
+    return False
+
+
+def find_ends(d: "Description", plan: "Plan", comp: set, rec_rule, shape: dict):
+    """Pass (15): the stop literal (a negated literal of the walk's recursive clause) that every clause reading the walk entails at the member it reads; EndsRefuse, naming the clause, where there is none."""
+    h = shape["h"]
+    info = plan.bits[h]
+    if h in QUESTION_RELS or h in INPUT_RELS or h.startswith(("next.", "init.")):
+        raise EndsRefuse(f"{h} is read by a question or is a state or an input")
+    rc = rec_rule.clause
+    reclit = next(x for x in rc.body if x[0] == "pos" and x[1] in comp)
+    keyp, ct = shape["keyp"], info.tiles[info.canon]
+    kvars = [reclit[2][p] for p in keyp]
+    xvars = [reclit[2][p] for p in ct.places]
+    readers = []
+    for k2, (c2, _r) in enumerate(d.strata):
+        if c2 == comp:
+            continue
+        for r2 in plan.rules[k2]:
+            pos = [x for x in r2.clause.body if x[0] == "pos" and x[1] == h]
+            if any(x[0] == "neg" and x[1] == h for x in r2.clause.body):
+                raise EndsRefuse(f"read negated: {r2.clause.text.replace(chr(10), ' ')}")
+            if len(pos) > 1:
+                raise EndsRefuse(f"read twice by one clause: {r2.clause.text.replace(chr(10), ' ')}")
+            if pos:
+                readers.append((r2.clause, pos[0]))
+    if not readers:
+        raise EndsRefuse("no clause reads it")
+    why = []
+    for z in [x for x in rc.body if x[0] == "neg"]:
+        zrel, zargs = z[1], z[2]
+        if any(isinstance(a, tuple) or (GDL.is_var(a) and a not in kvars and a not in xvars) for a in zargs):
+            why.append(f"the stop literal over {zrel} has a place that is not a key variable, a free tile variable or a constant")
+            continue
+        failed = None
+        for clause, wl in readers:
+            text = clause.text.replace("\n", " ")
+            if any(not GDL.is_var(a) for a in wl[2]):
+                failed = f"a place of the walk is read with a term that is no variable: {text}"
+                break
+            theta = {v: wl[2][p] for v, p in zip(kvars, keyp)}
+            theta.update({v: wl[2][p] for v, p in zip(xvars, ct.places)})
+            if not entails_stop(plan, zrel, [theta.get(a, a) for a in zargs], clause, wl):
+                failed = f"the reader does not entail a stop at {zrel}: {text}"
+                break
+        if failed is None:
+            return z
+        why.append(failed)
+    raise EndsRefuse("; ".join(why) or "the recursive clause has no negated stop literal")
+
+
+RUNTIME_ENDS = r'''
+/// Displace the bits of `x` by `n` places (to the higher numbers when n is positive); nothing is left when the displacement is a word or more.
+#[inline]
+pub fn shw(x: u64, n: i32) -> u64 { if n >= 0 { if n >= 64 { 0 } else { x << n } } else if n <= -64 { 0 } else { x >> (-n) } }
+'''
+
+
+def write_shift(w, d, plan, places, name: str, comp, rule, shape: dict, ends: bool = False):
     """The function of a walk compiled by whole words (module text, (9)): for each key word of the set, the closure of the walk from the words the base clauses made, by shifts; one function, no rounds over lists of words."""
     bw = BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), False)
     info, h, text = shape["info"], shape["h"], shape["text"]
@@ -2019,7 +2207,7 @@ def write_shift(w, d, plan, places, name: str, comp, rule, shape: dict):
     bw.lines.append(f"fn {name}(s: &St, d: &mut Dy, tm: &mut Terms, dw: &mut Dw) -> u64 {{")
     bw.out("let mut made = 0u64;")
     u = bw.fresh()
-    src = f"d.{rid}.o{info.canon}"
+    src = f"dw.sb_{rid}" if ends else f"d.{rid}.o{info.canon}"
     bw.open(f"for ti{u} in 0..{src}.nz.len() {{")
     bw.out(f"let ix{u} = {src}.nz[ti{u}] as usize;")
     bw.out(f"let mut fr{u} = {src}.w[ix{u}];")
@@ -2036,21 +2224,38 @@ def write_shift(w, d, plan, places, name: str, comp, rule, shape: dict):
         e = bw.tile_expr(rel, sim.tiles[i], sargs)
         acc_sel = e if n == 0 else f"({acc_sel}) * {sim.tiles[i].size} + {e}"
     bw.out(f"let tab{u} = SH{tab_id}[{acc_sel}];")
-    bw.out("loop {")
-    bw.depth += 1
-    bw.out(f"let x{u} = fr{u} & live{u};")
-    bw.out(f"if x{u} == 0 {{ break; }}")
-    bw.out(f"let mut nx{u} = 0u64;")
-    bw.out(f"for &(dl, m) in tab{u}.iter() {{ let y = x{u} & m; nx{u} |= if dl >= 0 {{ y << dl }} else {{ y >> (-dl) }}; }}")
-    bw.out(f"nx{u} &= !acc{u};")
-    bw.out(f"if nx{u} == 0 {{ break; }}")
-    bw.out(f"acc{u} |= nx{u};")
-    bw.out(f"fr{u} = nx{u};")
-    bw.depth -= 1
-    bw.out("}")
-    bw.out(f"let nb{u} = d.{rid}.or_word(ix{u}, acc{u});")
+    if ends and all(len(dd) <= 1 for dd in by):
+        # pass (15): the doubling form (generate and propagate), a constant number of rounds
+        rounds = max(1, (info.tiles[info.canon].size - 1).bit_length())
+        bw.out(f"if let Some(&(dl, m)) = tab{u}.first() {{")
+        bw.depth += 1
+        bw.out(f"let mut q = shw(live{u} & m, dl);")
+        bw.out("let mut s = dl;")
+        bw.out(f"for _ in 0..{rounds} {{ acc{u} |= q & shw(acc{u}, s); q &= shw(q, s); s = s.saturating_mul(2); }}")
+        bw.depth -= 1
+        bw.out("}")
+    else:
+        bw.out("loop {")
+        bw.depth += 1
+        bw.out(f"let x{u} = fr{u} & live{u};")
+        bw.out(f"if x{u} == 0 {{ break; }}")
+        bw.out(f"let mut nx{u} = 0u64;")
+        bw.out(f"for &(dl, m) in tab{u}.iter() {{ let y = x{u} & m; nx{u} |= if dl >= 0 {{ y << dl }} else {{ y >> (-dl) }}; }}")
+        bw.out(f"nx{u} &= !acc{u};")
+        bw.out(f"if nx{u} == 0 {{ break; }}")
+        bw.out(f"acc{u} |= nx{u};")
+        bw.out(f"fr{u} = nx{u};")
+        bw.depth -= 1
+        bw.out("}")
+    if ends:
+        bw.out(f"let out{u} = if dw.full {{ acc{u} }} else {{ acc{u} & !live{u} }};")
+        bw.out(f"let nb{u} = d.{rid}.or_word(ix{u}, out{u});")
+    else:
+        bw.out(f"let nb{u} = d.{rid}.or_word(ix{u}, acc{u});")
     bw.out(f"if nb{u} != 0 {{ made += nb{u}.count_ones() as u64; }}")
     bw.close(1)
+    if ends:
+        bw.out(f"dw.sb_{rid}.clear();")
     bw.out("made")
     bw.lines.append("}")
     plan.shift_used.add(key_of_table(rel, fin, fout))
@@ -2177,7 +2382,11 @@ def w_api(w, d: Description, plan: Plan, pooled: bool):
     w("    /// For each query (a demanded relation, a key with FREE at the places not bound): the rows by the way of asking that key, and, where that exact key has a mode that asks existence, whether a row exists.")
     w("    pub fn ask_many(&mut self, s: &State, does: &[(u32, u32)], queries: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)> {")
     w("        let mut d = self.load(s, does);")
+    if plan.ends:
+        w("        self.dw.full = true;")
     w("        self.run(&mut d, ALL_DYNAMIC);")
+    if plan.ends:
+        w("        self.dw.full = false;")
     w("        let mut out = vec![];")
     w("        for (rel, key) in queries {")
     w("            let at: Vec<usize> = key.iter().enumerate().filter(|(_, k)| **k != FREE).map(|(i, _)| i).collect();")
@@ -2232,6 +2441,90 @@ def clause_writer(d, places, name, rule, comp, plan, mode="full", record=False):
     return ClauseWriter(d, places, name, rule, comp, plan, mode)
 
 
+def start_orders(plan, rule, comp) -> list:
+    """Pass (13): the distinct orders a clause is joined in when each of its positive literals over a relation held as bits is taken first (the reader's order first)."""
+    have = {repr(rule.steps)}
+    out = [rule]
+    for lit in rule.clause.body:
+        if lit[0] != "pos" or lit[1] not in plan.bits:
+            continue
+        jr = JoinRule(rule.clause, comp, plan.demanded, lit, est=plan.est)
+        if repr(jr.steps) not in have:
+            have.add(repr(jr.steps))
+            out.append(jr)
+    return out
+
+
+def emit_full_clause(w, d, plan, places, name, rule, comp, recursive, refusals, alias=None) -> str:
+    """A clause whose head is held as bits, made once from the words held (mode bfull). With the pass start and two or more admitted orders (module text, (13)): one function for each order, `{name}v<j>`, and a chooser `{name}` that runs the order of the least
+    estimate; otherwise `{name}` is the clause in the reader's order, as before. -> the name to call."""
+    def one(order, fname):
+        return BitWriter(d, places, fname, order, comp, plan, "bfull", None, (), recursive, alias)
+    if "start" not in plan.passes or d.static[rule.head_rel] or plan.start_off or plan.start_base is None:
+        write_clause(w, one(rule, name), refusals)
+        return name
+    orders = start_orders(plan, rule, comp)
+    if len(orders) < 2:
+        write_clause(w, one(rule, name), refusals)
+        return name
+    key = (name, rule.clause.text)
+    base = one(orders[0], f"{name}v0")
+    try:
+        text0 = base.write()
+    except BitRefuse as e:
+        if refusals is None:
+            raise
+        refusals.setdefault(e.rel, e.why)
+        return name
+    memo = plan.start_choice.get(key)
+    admitted = [(0, text0, base.prof)]
+    others: list = []
+    for j in (range(1, len(orders)) if memo is None else [x for x in memo if x]):
+        saved = {r: dict(i.orients) for r, i in plan.bits.items()}
+        wr = one(orders[j], f"{name}v{len(admitted) + len(others)}")
+        try:
+            txt = wr.write()
+        except (BitRefuse, ValueError) as e:                  # (a ValueError: the order asks a relation not held as bits by places no clause asks it by, and its indexes are fixed)
+            for r, i in plan.bits.items():
+                i.orients = saved[r]
+            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = e.why if isinstance(e, BitRefuse) else f"it reads a relation not held as bits by places no clause before it reads it by: {orders[j].clause.text}".replace("\n", " ")
+            continue
+        new = sorted((r, f) for r, i in plan.bits.items() for f in i.orients if f not in plan.start_base.get(r, ()))
+        if new:
+            for r, i in plan.bits.items():
+                i.orients = saved[r]
+            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = f"it asks the orientation {new[0][1]} of {new[0][0]}, which no clause in the reader's order asks: {orders[j].clause.text.replace(chr(10), ' ')}"
+            continue
+        others.append((j, txt, wr.prof))
+    if memo is None:
+        others.sort(key=lambda x: (sum(1 for p in x[2] if "nz.len()" in p), x[0]))
+        others = others[:START_MAX - 1]
+    admitted += others
+    plan.start_choice[key] = [x[0] for x in admitted]
+    plan.start_written[key] = (len(admitted), len(orders))
+    if len(admitted) == 1:
+        w(text0.replace(f"fn {name}v0(", f"fn {name}(", 1))
+        return name
+    # the functions are named by their place among those admitted
+    for n, (j, txt, prof) in enumerate(admitted):
+        m = re.match(r"(?s).*?\nfn (" + re.escape(name) + r"v\d+)\(", "\n" + txt)
+        w(txt.replace(f"fn {m.group(1)}(", f"fn {name}v{n}(", 1) if m else txt)
+    lines = [f"fn {name}(s: &St, d: &mut Dy, tm: &mut Terms, dw: &mut Dw) -> u64 {{", "    let mut best = 0usize; let mut best_e = u64::MAX;"]
+    for n, (j, txt, prof) in enumerate(admitted):
+        lines.append("    { let mut p = 1u64; let mut e = 0u64;")
+        for fct in prof:
+            lines.append(f"      p = p.saturating_mul((({fct}) as u64).max(1)); e = e.saturating_add(p);")
+        lines.append(f"      if e < best_e {{ best_e = e; best = {n}; }} }}")
+    lines.append("    match best {")
+    for n in range(len(admitted) - 1):
+        lines.append(f"        {n} => {name}v{n}(s, d, tm, dw),")
+    lines.append(f"        _ => {name}v{len(admitted) - 1}(s, d, tm, dw),")
+    lines.append("    }")
+    lines.append("}")
+    w("\n".join(lines))
+    return name
+
+
 def emit_shift_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
     """Pass (9): a recursive set held as bits that is a walk, as one function that closes each key's frontier by shifts (once the base clauses have run); None (and the reason in `Plan.shift_refused`) where it is not that shape, the set then being made as above."""
     recs = [x for x in rules if x.rec_steps]
@@ -2242,17 +2535,26 @@ def emit_shift_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
         if len(recs) != 1:
             raise ShiftRefuse(f"the set has {len(recs)} recursive clauses: " + "; ".join(x.clause.text.replace("\n", " ") for x in recs))
         shape = shift_shape(d, plan, comp, recs[0], places)
-        write_shift(buf.append, d, plan, places, f"c{cid + len(bases)}", comp, recs[0], shape)
+        ends = False
+        if "ends" in plan.passes:
+            try:
+                plan.ends[h] = find_ends(d, plan, comp, recs[0], shape)
+                ends = True
+            except EndsRefuse as e:
+                plan.ends_refused[h] = str(e)
+        write_shift(buf.append, d, plan, places, f"c{cid + len(bases)}", comp, recs[0], shape, ends)
     except ShiftRefuse as e:
         plan.shift_refused[h] = str(e)
+        plan.ends.pop(h, None)
         return None
     except BitRefuse as e:
         plan.shift_refused[h] = e.why
+        plan.ends.pop(h, None)
         return None
     names = []
     for rule in bases:
         name = f"c{cid}"
-        write_clause(w, BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), False), refusals)
+        emit_full_clause(w, d, plan, places, name, rule, comp, False, refusals, f"dw.sb_{d.rid[h]}" if h in plan.ends else None)
         names.append(name)
         cid += 1
     for t in buf:
@@ -2285,7 +2587,7 @@ def emit_bit_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
                 rec.append(name)
         else:
             name = f"c{cid}"
-            write_clause(w, BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), recursive), refusals)
+            emit_full_clause(w, d, plan, places, name, rule, comp, recursive, refusals)
             base.append(name)
         cid += 1
     if static:
@@ -2320,6 +2622,7 @@ def emit_strata(w, d, plan, places, refusals=None) -> list:
         plan.keep_out, plan.keep_rec = set(), []
     if plan:
         plan.shift_used = set()
+        plan.ends, plan.ends_refused = {}, {}
     cid = 0
     stratum_fns = []
     for k, (comp, rules) in enumerate(d.strata):
@@ -2436,6 +2739,7 @@ def w_bit_relation(w, d, plan, info: BitInfo):
     name = "B" + rid[1:]
     n, m, c = info.n, info.m, info.canon
     ors = sorted(info.orients)
+    strides: dict = {}
     tt = {i: f"t[{i}]" for i in range(m)}
     w(f"pub struct {name} {{ " + ", ".join(f"o{f}: Bw" for f in ors) + " }")
     w(f"impl {name} {{")
@@ -2459,12 +2763,29 @@ def w_bit_relation(w, d, plan, info: BitInfo):
         kt = info.key_tiles(c)
         for i in reversed(kt):
             w(f"            t[{i}] = rm % {info.tiles[i].size}; rm /= {info.tiles[i].size};")
-        w("            let mut b = nb;")
-        w(f"            while b != 0 {{ t[{c}] = b.trailing_zeros() as usize; b &= b - 1;")
-        for f in ors:
-            if f != c:
-                w(f"                self.o{f}.set({ix(f, tt)}, t[{f}]);")
-        w("            }")
+        if "orient" in plan.passes:
+            # pass (14): the other orientations are set from the new bits of the word; what does not change with the bit (the index with the bit at nought, the tile that is free there) is made once, the bit moves the index by a constant
+            for f in ors:
+                if f != c:
+                    kf = info.key_tiles(f)
+                    stride = 1
+                    for i in kf[kf.index(c) + 1:]:
+                        stride *= info.tiles[i].size
+                    w(f"            let (bf{f}, af{f}) = ({IndexExpr(info, f, {i: ('0' if i == c else f't[{i}]') for i in range(m)})}, t[{f}]);")
+                    strides[f] = stride
+            w("            let mut b = nb;")
+            w("            while b != 0 { let p = b.trailing_zeros() as usize; b &= b - 1;")
+            for f in ors:
+                if f != c:
+                    w(f"                self.o{f}.set(bf{f} + p * {strides[f]}, af{f});")
+            w("            }")
+        else:
+            w("            let mut b = nb;")
+            w(f"            while b != 0 {{ t[{c}] = b.trailing_zeros() as usize; b &= b - 1;")
+            for f in ors:
+                if f != c:
+                    w(f"                self.o{f}.set({ix(f, tt)}, t[{f}]);")
+            w("            }")
         w("        }")
     w("        nb")
     w("    }")
@@ -2527,6 +2848,12 @@ def w_dw(w, d, plan):
     """The working memory the questions share (pass bits: the words new in the last round and in this one, for each relation of a recursive set held as bits, the last tile's orientation; pass keep: the buffers of the rows a clause that is not held as words gives,
     and for a recursive set that is not held as words the rows new in a round and the set that dedupes them), kept between questions."""
     fields, inits = [], []
+    if plan.ends:
+        fields.append("pub full: bool")
+        inits.append("full: false")
+        for r in sorted(plan.ends):
+            fields.append(f"pub sb_{d.rid[r]}: Bw")
+            inits.append(f"sb_{d.rid[r]}: Bw::new({plan.bits[r].key_size(plan.bits[r].canon)})")
     for r in plan.bit_rec:
         n = plan.bits[r].key_size(plan.bits[r].canon)
         fields += [f"pub dl_{d.rid[r]}: Bw", f"pub nw_{d.rid[r]}: Bw"]
@@ -2632,6 +2959,8 @@ def translate(text: str, module: str, passes=()) -> str:
     stratum_fns = emit_strata(w, d, plan, places)
     if plan:
         w_shift_tables(w, plan)
+        if plan.ends:
+            w(RUNTIME_ENDS)
     if has_dw:
         w_dw(w, d, plan)
     if plan:
@@ -2645,6 +2974,7 @@ def translate(text: str, module: str, passes=()) -> str:
         w(f"pub const PASSES: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.passes)}];")
         w(f"pub const COPIED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.copy))}];")
         w(f"pub const UNFOLDED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.unfolded)}];")
+        w(f"pub const ENDS: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.ends))}];")
     dyn_all = [k for k, s, c in stratum_fns if not s and not (c & demanded)]
     coned = plan.cone if (plan and plan.unfolded) else d.cone
     legal_cone = [k for k in d.dynamic_meeting(coned([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
@@ -2857,7 +3187,11 @@ def translate(text: str, module: str, passes=()) -> str:
     w("    /// Every relation that reads the state, evaluated in full on a state and a joint turn (the turn's rows void when `does` is void).")
     w("    pub fn all_relations(&mut self, s: &State, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)> {")
     w("        let mut d = self.load(s, does);")
+    if plan and plan.ends:
+        w("        self.dw.full = true;")
     w("        self.run(&mut d, ALL_DYNAMIC);")
+    if plan and plan.ends:
+        w("        self.dw.full = false;")
     if not plan:
         w("        vec![")
         for r in d.nodes:
