@@ -161,6 +161,17 @@ whose tiles are not all bound was looped over whatever it held), and the board t
               state as they stand when a question has loaded them; a question on a state whose words are those of the last question (the same state, as `next` follows `moves`) does not load or clear them; the public items are the same. WHERE IT DOES NOT HELP (the
               load of a state is a few hundred nanoseconds of tens of microseconds) it is measured and said, and not built.
   A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside. The harness of 79.38 holds each of them to the plain module (the tiles and the displacements are an inside of the module: rows are compared as text).
+  AS BUILT, where the body differs from the text above (said here because the text was committed first); PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base"):
+    (8) is the unfolding of the text, not the form "the base answer made once, and for each key the derivations that read a removed or added row made again" that the plan's words suggest: the argument above covers the unfolding (a union is
+        distributed), it does not cover the other form for a recursive set, and it was not needed for the others, since once the view is unfolded the base relation is read as its words, the same for every key, with the words of what the key removes anded
+        out and the words of what it adds or-ed in. The pass takes the views of both games it finds (the number of them is printed by the test of the renamed description) and refuses one relation in each, naming the clause: a view read negated (the stopping test of a walk). A relation in a recursive set
+        is never unfolded and the walk's own clause is not changed. The views stay in the document and run in `all_relations` only (`UNFOLDED`); the cones of the questions are made from the clauses as unfolded (`Plan.cone`). `base` brings `scan` with it:
+        on top of bits alone the unfolded clauses ask words with key tiles unbound, and the module was half as fast as without the pass (diagnosed; scan answers it, and `bits+base` names both).
+    (9) is one function for the whole set (the closure of each key's frontier, run behind the base clauses), not the rounds of the pass bits; it is taken for a set of one relation with one recursive clause of the form in the text, and the other walks of
+        a description remain as the pass bits builds them. The table is TESTED against every row at translation (`shift_table`); a relation whose rows are not that form is refused, naming the relation, the key and the rows that differ.
+    (10) the loop over combinations is kept as the other branch of one body; the number of the word is made from the loop in either case and the tiles are read from it, so a literal with some key tile bound and some not costs the same lines in either case.
+    (11) the block is a labeled block of the rest of the clause (a `continue` may not leave one, so a failing test in it is a `break` of its label); a head row is complete when every variable of the head is bound.
+    (12) NOT BUILT: the pieces together are most of the wall of a position in the clocks (the profile prints the share), the rest being the load of a state, its clearing and the reading of the answers; the text of (12) let the measurement end it.
 """
 from __future__ import annotations
 
