@@ -265,3 +265,186 @@ lemma_tests!(chess_lemma, "lemma", chess_lemma_static_relations_are_the_plain_on
 lemma_tests!(chess_lm_plain, "lm_plain", chess_lm_plain_static_relations_are_the_plain_ones, chess_lm_plain_every_piece_at_every_fixture_position_is_the_plain_one, chess_lm_plain_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
 lemma_tests!(chess_lm_nogate, "lm_nogate", chess_lm_nogate_static_relations_are_the_plain_ones, chess_lm_nogate_every_piece_at_every_fixture_position_is_the_plain_one, chess_lm_nogate_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ part D: the certificate of the lemma by translated code
+
+#[derive(Default, Debug, Clone)]
+pub struct Cert {
+    pub states: usize,
+    pub held: usize,
+    pub rows_left: usize,
+    pub rows_right: usize,
+    pub rows_compared: usize,
+    pub bad_states: usize,
+    pub bad_rows: usize,
+    /// the flag and the condition read from the module's own rows disagree
+    pub flag_bad: usize,
+    pub examples: Vec<String>,
+}
+
+impl Cert {
+    fn add(&mut self, o: &Cert) {
+        self.states += o.states; self.held += o.held; self.rows_left += o.rows_left; self.rows_right += o.rows_right; self.rows_compared += o.rows_compared;
+        self.bad_states += o.bad_states; self.bad_rows += o.bad_rows; self.flag_bad += o.flag_bad;
+        for e in &o.examples { if self.examples.len() < 5 { self.examples.push(e.clone()); } }
+    }
+}
+
+/// One state of the module read as the certificate of discovery reads one: where the condition holds (from the module's own rows of the relations it names), the left relation is compared with the right.
+fn cert_state<B: Tr + LemmaTr>(m: &mut B, s: &B::S, label: &str, c: &mut Cert) {
+    let all = m.all_t(s, &[]);
+    let rows = rows_by_name(m, &all);
+    c.states += 1;
+    for l in m.lemmas_t() {
+        let empty = BTreeSet::new();
+        let held = cond_holds(&rows, &l.condition);
+        let flag = rows.get(&l.flag).map_or(false, |r| !r.is_empty());
+        if held != flag { c.flag_bad += 1; if c.examples.len() < 5 { c.examples.push(format!("{label}: the flag says {flag}, the condition on the module's rows {held}")); } }
+        if !held { continue; }
+        let (left, right) = (rows.get(&l.left).unwrap_or(&empty), rows.get(&l.right).unwrap_or(&empty));
+        c.held += 1;
+        c.rows_left += left.len();
+        c.rows_right += right.len();
+        c.rows_compared += left.union(right).count();
+        let bad = left.symmetric_difference(right).count();
+        if bad > 0 {
+            c.bad_states += 1;
+            c.bad_rows += bad;
+            if c.examples.len() < 5 { c.examples.push(format!("{label}: {}", diff(left, right))); }
+        }
+    }
+}
+
+/// The states of a text of states, one a line, as the fixtures of a lemma are written: the fluents of the description without `true`, `(f a b) (g c)`; a line that starts with `;` is a note.
+pub fn facts_of_line(line: &str) -> Vec<(String, Vec<String>)> {
+    let spaced = line.replace('(', " ( ").replace(')', " ) ");
+    let toks: Vec<&str> = spaced.split_whitespace().collect();
+    fn term(toks: &[&str], i: &mut usize) -> String {
+        if toks[*i] != "(" { *i += 1; return toks[*i - 1].to_string(); }
+        *i += 1;
+        let mut parts = vec![];
+        while toks[*i] != ")" { parts.push(term(toks, i)); }
+        *i += 1;
+        format!("({})", parts.join(" "))
+    }
+    let mut i = 0;
+    let mut out = vec![];
+    while i < toks.len() {
+        assert_eq!(toks[i], "(", "a fixture line is fluents in parentheses: {line}");
+        i += 1;
+        let name = toks[i].to_string();
+        i += 1;
+        let mut args = vec![];
+        while toks[i] != ")" { args.push(term(&toks, &mut i)); }
+        i += 1;
+        out.push((name, args));
+    }
+    out
+}
+
+fn lines_of(path: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display())).lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty() && !l.starts_with(';')).collect()
+}
+
+fn lemma_fixture_lines() -> Vec<String> { lines_of(&rules_path("lemmas/chess/states.txt")) }
+
+fn print_cert(what: &str, module: &str, c: &Cert, seconds: f64) {
+    println!("OBS 79.45 D certificate by translated code, {module}, {what}: {} states, {} where the condition held, {} rows of the left relation and {} of the right one there, {} rows compared, {} disagreeing states ({} rows), {} states where the flag and the condition differ; {:.1} s, load {}",
+             c.states, c.held, c.rows_left, c.rows_right, c.rows_compared, c.bad_states, c.bad_rows, c.flag_bad, seconds, load_average());
+    for e in &c.examples { println!("OBS 79.45 D disagreement: {e}"); }
+}
+
+fn certificate_corpus<B: Tr + LemmaTr>(module: &str) -> (Cert, Cert) {
+    let mut m = B::make();
+    let t0 = std::time::Instant::now();
+    let mut fx = Cert::default();
+    let lines = lemma_fixture_lines();
+    for (i, ln) in lines.iter().enumerate() {
+        let s = m.state_of_facts_t(&facts_of_line(ln)).unwrap_or_else(|e| panic!("fixture {i}: {e}"));
+        cert_state(&mut m, &s, &format!("fixture {i}"), &mut fx);
+    }
+    print_cert(&format!("the {} fixtures of the lemma", lines.len()), module, &fx, t0.elapsed().as_secs_f64());
+    let mut games = Cert::default();
+    if let Ok(p) = std::env::var("LEMMA_CORPUS") {
+        let t1 = std::time::Instant::now();
+        let all = lines_of(std::path::Path::new(&p));
+        for (i, ln) in all.iter().enumerate() {
+            let s = m.state_of_facts_t(&facts_of_line(ln)).unwrap_or_else(|e| panic!("game state {i}: {e}"));
+            cert_state(&mut m, &s, &format!("game state {i}"), &mut games);
+        }
+        print_cert(&format!("the {} states of the 20 seeded games of the 79.44 certificate (read from {p})", all.len()), module, &games, t1.elapsed().as_secs_f64());
+    }
+    (fx, games)
+}
+
+#[test]
+fn certificate_small_by_the_kept_module() {
+    let (fx, games) = certificate_corpus::<chess_lemma::Game>("chess_lemma");
+    let mut all = fx.clone();
+    all.add(&games);
+    if std::env::var("LEMMA_CORPUS").is_ok() { print_cert("fixtures and games together", "chess_lemma", &all, 0.0); }
+    assert!(all.bad_states == 0 && all.flag_bad == 0, "the lemma fails by translated code: {:?}", all.examples);
+    assert!(all.held > 0 && all.rows_compared > 0, "vacuous: the condition never held or the left relation never had a row");
+}
+
+#[cfg(singles)]
+#[test]
+fn certificate_small_by_the_rewrite_with_no_pass() {
+    let (fx, games) = certificate_corpus::<chess_lm_plain::Game>("chess_lm_plain");
+    let mut all = fx.clone();
+    all.add(&games);
+    assert!(all.bad_states == 0 && all.flag_bad == 0, "{:?}", all.examples);
+    assert!(all.held > 0 && all.rows_compared > 0);
+}
+
+/// One thread's share of the large certificate: the games g with g % threads == t, each a seeded random game of the kernel (the certificate's walk), the module followed move by move, read at every state.
+fn large_share(t: usize, threads: usize, games: usize, seed: u64) -> Cert {
+    let kernel = KernelGame::new("chess", 518).unwrap();
+    let mut m = chess_lemma::Game::make();
+    let mut c = Cert::default();
+    for g in (t..games).step_by(threads) {
+        let mut rng = Rng::new(seed.wrapping_mul(1_000_003).wrapping_add(g as u64));
+        let (mut ks, mut ts) = (kernel.initial(), m.initial_t());
+        for ply in 0..=FUSE {
+            cert_state(&mut m, &ts, &format!("game {g} ply {ply}"), &mut c);
+            let km = kernel.moves(&ks);
+            if kernel.outcome(&ks).is_some() || km.is_empty() { break; }
+            let mut sorted: Vec<(String, usize)> = km.iter().enumerate().map(|(i, mv)| (kernel.move_name(&ks, mv), i)).collect();
+            sorted.sort();
+            let (nm, i) = sorted[rng.below(sorted.len())].clone();
+            let mv = m.term_t(&spec_term(&nm)).unwrap();
+            ts = m.next_t(&ts, mv);
+            ks = kernel.apply(&ks, &km[i]);
+        }
+    }
+    c
+}
+
+fn env_usize(k: &str, d: usize) -> usize { std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d) }
+
+fn json_str(s: &str) -> String { format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")) }
+
+/// The large certificate (ignored: run by hand with LEMMA_GAMES and LEMMA_THREADS; the record goes to LEMMA_RECORD when it names a file).
+#[test]
+#[ignore]
+fn certificate_large() {
+    let games = env_usize("LEMMA_GAMES", 200);
+    let threads = env_usize("LEMMA_THREADS", 10);
+    let load0 = load_average();
+    let t0 = std::time::Instant::now();
+    let handles: Vec<_> = (0..threads).map(|t| std::thread::spawn(move || large_share(t, threads, games, SEED))).collect();
+    let mut c = Cert::default();
+    for h in handles { c.add(&h.join().unwrap()); }
+    let secs = t0.elapsed().as_secs_f64();
+    print_cert(&format!("{games} seeded random games of the kernel (seed {SEED}, {threads} threads, {FUSE} plies at most), load before {load0}"), "chess_lemma", &c, secs);
+    if let Ok(path) = std::env::var("LEMMA_RECORD") {
+        let l = &chess_lemma::LEMMAS[0];
+        let doc = format!("{{\n \"binding\": {},\n \"lemma\": {},\n \"evidence\": {},\n \"module\": \"chess_lemma\",\n \"passes\": {},\n \"corpus\": {},\n \"games\": {},\n \"threads\": {},\n \"ply_fuse\": {},\n \"states\": {},\n \"states_held\": {},\n \"rows_left\": {},\n \"rows_right\": {},\n \"rows_compared\": {},\n \"disagreeing_states\": {},\n \"disagreeing_rows\": {},\n \"flag_disagreements\": {},\n \"examples\": [{}],\n \"seconds\": {:.1},\n \"load_before\": {}\n}}\n",
+            json_str("lemma chess exposed_by_cases by translated code"), json_str(l.name), json_str(l.evidence), json_str(&chess_lemma::PASSES.join(",")),
+            json_str(&format!("{games} seeded random games of the kernel (seed {SEED}, game g from seed {SEED} * 1000003 + g), {FUSE} plies at most")), games, threads, FUSE,
+            c.states, c.held, c.rows_left, c.rows_right, c.rows_compared, c.bad_states, c.bad_rows, c.flag_bad, c.examples.iter().map(|e| json_str(e)).collect::<Vec<_>>().join(", "), secs, json_str(&load0));
+        std::fs::write(&path, doc).unwrap();
+        println!("OBS 79.45 D record written to {path}");
+    }
+    assert!(c.bad_states == 0 && c.flag_bad == 0, "the lemma fails by translated code: {:?}", c.examples);
+}
