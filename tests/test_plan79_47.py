@@ -360,3 +360,152 @@ def test_the_make_script_names_the_games_and_makes_the_five_more():
     for g in FIVE:
         assert f'"{g}"' in text, g
     assert "SCRATCH_GAMES" in text and "def rust_name" in text
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ (4) part C and (5) part D: the records of the seven games
+
+RUST_KERNEL_TEST = ROOT / "rust" / "engine" / "game" / "tests" / "translated_kernel.rs"
+RUST_LOWER_TEST = ROOT / "rust" / "engine" / "game" / "tests" / "translated_lower.rs"
+# a game with a CAUSE NAMED in advance (a known fault: the cause as the record keeps it, with the place that explains it). The gate test of such a game passes only while the causes of its record are exactly these.
+KNOWN: dict = {}
+needs_cargo = pytest.mark.skipif(shutil.which("cargo") is None, reason="needs cargo (offline) to run the small co-play")
+
+
+def KT():
+    from catspace.incubator.analyst.discovery import kernel_translated as m
+    return m
+
+
+def causes_of(r: dict) -> set:
+    return set(r["small"].get("causes", {})) | set(r["large"].get("causes", {}))
+
+
+def test_there_is_a_kept_module_and_a_record_for_each_of_the_seven_games():
+    kt = KT()
+    assert kt.games() == sorted(SEVEN), kt.games()
+    for g in SEVEN:
+        assert kt.path_of(g).exists(), f"no record for {g}: python -m catspace.incubator.analyst.discovery.kernel_translated run {g}"
+    print(f"OBS 79.47 C: the games with a kept translated module are the seven kernels {kt.games()}, each with a record")
+
+
+@pytest.mark.parametrize("game", [g for g in SEVEN if g not in KNOWN])
+def test_the_record_of_a_game_with_no_named_cause_is_fresh_counted_and_has_no_disagreement(game):
+    kt = KT()
+    r = kt.load(game)
+    st = kt.status(game)
+    assert st == "fresh", f"{game}: {st}: python -m catspace.incubator.analyst.discovery.kernel_translated run {game}"
+    assert r["disagreements"] == 0
+    s, lg = r["small"], r["large"]
+    assert s["states"] == s["certificate_positions"] == kt.certificate_positions(game) and s["equals_certificate"]
+    assert lg["states"] > s["states"] and lg["nexts"] >= lg["states"] and lg["ended"] > 0 and lg["results"] == lg["ended"] and lg["cores"] >= 1 and not lg["left_out"] and not s["left_out"]
+    print(f"OBS 79.47 C record {game}: fresh; small {s['states']} states (the certificate's {s['certificate_positions']}), large {lg['games']} games {lg['states']} states {lg['moves']} allowed moves and {lg['nexts']} next states compared, {lg['ended']} ended, 0 disagreements, {lg['seconds']} s on {lg['cores']} cores")
+
+
+@pytest.mark.parametrize("game", sorted(KNOWN))
+def test_the_record_of_a_game_with_a_named_cause_holds_exactly_the_named_causes(game):
+    kt = KT()
+    r = kt.load(game)
+    assert kt.status(game) == "failing", kt.status(game)
+    assert causes_of(r) == set(KNOWN[game]), (causes_of(r) ^ set(KNOWN[game]))
+    assert r["small"]["states"] == kt.certificate_positions(game)
+
+
+@needs_cargo
+@pytest.mark.parametrize("game", SEVEN)
+def test_a_fresh_small_run_counts_the_certificates_positions_and_holds_the_named_causes_only(game):
+    kt = KT()
+    c = kt.small_counts(game)
+    assert c["states"] == kt.certificate_positions(game) and not c["left_out"]
+    assert set(c["causes"]) <= set(KNOWN.get(game, ())), c["causes"]
+    assert c["moves"] > c["states"] and c["nexts"] == c["moves"] and c["ended"] > 0 and c["results"] == c["ended"]
+    print(f"OBS 79.47 C small {game}: {c['games']} games, {c['states']} states (the certificate's {kt.certificate_positions(game)}), {c['moves']} allowed moves and {c['nexts']} next states compared, disagreements {sum(c['causes'].values())}")
+
+
+def test_the_lower_link_is_in_each_record_and_found_no_disagreement_on_about_two_thousand_games():
+    kt = KT()
+    for g in SEVEN:
+        low = kt.load(g)["chain"]["lower_link"]
+        assert low["disagreements"] == 0 and low["games"] >= 1500 and low["states"] > low["games"] and low["moves"] > low["states"] and low["nexts"] >= low["states"] - low["games"], (g, low)
+        print(f"OBS 79.47 D lower link {g}: the module held to the evaluator on {low['games']} seeded games, {low['states']} states, {low['moves']} allowed moves and {low['nexts']} next states compared, 0 disagreements, {low['seconds']} s on {low['cores']} cores")
+
+
+def test_a_record_with_no_lower_link_or_with_a_disagreement_in_it_is_short():
+    import copy
+    kt = KT()
+    good = copy.deepcopy(kt.load("chess"))
+    assert kt.status("chess", good) == "fresh"
+    none = copy.deepcopy(good)
+    none["chain"].pop("lower_link")
+    assert kt.status("chess", none) == "short"
+    bad = copy.deepcopy(good)
+    bad["chain"]["lower_link"]["disagreements"] = 1
+    assert kt.status("chess", bad) == "short"
+    zero = copy.deepcopy(good)
+    zero["chain"]["lower_link"]["states"] = 0
+    assert kt.status("chess", zero) == "short"
+
+
+def test_the_large_and_the_lower_link_runs_are_ignored_tests_with_a_named_cause_and_the_small_ones_are_not():
+    text = RUST_KERNEL_TEST.read_text()
+    large = re.findall(r'#\[test\]\n#\[ignore = "([^"]+)"\]\nfn (\w+_large_\w+)', text)
+    assert len(large) == 7 and all("large run" in why and "run by hand" in why for why, _n in large), large
+    small = re.findall(r"#\[test\]\nfn (\w+_agree_on_the_certificates_games)", text)
+    assert len(small) == 7
+    low = re.findall(r'#\[test\]\n#\[ignore = "([^"]+)"\]\nfn (\w+_the_lower_link_\w+)', RUST_LOWER_TEST.read_text())
+    assert len(low) == 7 and all("lower link" in why and "run by hand" in why for why, _n in low), low
+
+
+RUST_KNOWN_TEST = ROOT / "rust" / "engine" / "game" / "tests" / "translated_known.rs"
+# the causes named in advance that the records did NOT meet: the state that shows each is held in an ignored test of translated_known.rs with the cause in its ignore text
+NAMED_STATES = {"chess960": "chess960_known_cause_a_right_held_by_a_corner_unit_that_is_not_the_outermost"}
+
+
+def test_a_game_with_a_named_cause_has_an_ignored_rust_test_with_the_cause_in_its_ignore_text_and_its_record_holds_exactly_the_causes_it_met():
+    text = RUST_KNOWN_TEST.read_text()
+    for g, name in NAMED_STATES.items():
+        found = re.findall(rf'#\[ignore = "([^"]+)"\]\nfn {name}\(', text)
+        assert len(found) == 1 and "known cause" in found[0] and "79.36" in found[0], (g, found)
+        r = KT().load(g)
+        assert causes_of(r) == set(KNOWN.get(g, ())), causes_of(r)                   # the record met no cause of this game: the state is the evidence of the named one
+    assert len(re.findall(r"fn \w+_known_cause_\w+", text)) == len(NAMED_STATES)
+
+
+@needs_cargo
+def test_the_comparison_still_sees_the_known_cause_at_its_state():
+    kt = KT()
+    rc, text = kt.cargo(["--test", "translated_known", "--", "--ignored", "--nocapture"], {})
+    assert rc == 0, text[-2000:]
+    line = next(ln for ln in text.splitlines() if ln.startswith("OBS 79.47 C known cause chess960"))
+    print(line[:400])
+    assert "only the kernel allows" in line and "the module's moves: true" in line
+
+
+def test_the_module_of_the_record_names_the_games_by_argument_only():
+    text = (ROOT / "catspace" / "incubator" / "analyst" / "discovery" / "kernel_translated.py").read_text()
+    for g in ("3check", "kingofthehill", "antichess", "chess960", "horde", "atomic"):
+        assert not re.search(rf"\b{g}\b", text), g
+
+
+def test_part_e_changed_one_function_of_the_bridge_and_nothing_else_under_a_src():
+    import subprocess as sp
+    BEFORE = "6550cdaf"
+    if sp.run(["git", "cat-file", "-e", f"{BEFORE}^{{commit}}"], cwd=ROOT, capture_output=True).returncode:
+        pytest.skip(f"{BEFORE} not in this clone")
+    changed = sp.run(["git", "diff", "--name-only", BEFORE, "--", "rust/engine"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+    srcs = [c for c in changed if re.match(r"rust/engine/[^/]+/src/", c)]
+    assert srcs in ([], ["rust/engine/game/src/outside.rs"]), srcs
+    assert not [c for c in changed if c.endswith("Cargo.toml") or c.endswith("Cargo.lock")], changed
+    if srcs:
+        diff = sp.run(["git", "diff", "-U0", BEFORE, "--", "rust/engine/game/src/outside.rs"], cwd=ROOT, capture_output=True, text=True).stdout
+        hunks = re.findall(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", diff, re.M)
+        assert len(hunks) == 1, hunks                                                # one place, inside `state_facts`
+        assert "ThreeCheck" in diff and "checks" in diff
+    for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs"):
+        assert sp.run(["git", "diff", "--quiet", BEFORE, "--", protected], cwd=ROOT).returncode == 0, protected
+    assert sp.run(["git", "diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", "catspace/incubator/analyst/discovery/gdl.py", "catspace/incubator/analyst/discovery/certify.py"], cwd=ROOT).returncode == 0
+    print(f"OBS 79.47 E: files under a crate's src that differ from {BEFORE}: {srcs}")
+# ------------------------------------------------------------------------------------------------------------------------------------------ (6)
+
+def test_the_gate_lists_this_test_after_the_one_of_plan_79_46():
+    text = (ROOT / "scripts" / "gate.py").read_text()
+    assert "test_plan79_47" in text and text.index("test_plan79_46") < text.index("test_plan79_47")

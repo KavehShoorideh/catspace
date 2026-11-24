@@ -200,7 +200,7 @@ def chain(game: str) -> dict:
     p = rust_name(game)
     names = [f"{p}_with_the_passes_{x}" for x in ("every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain", "every_fixture_position_and_every_move_of_the_file_and_every_relation_agree",
                                                  "the_certificates_random_games_agree_at_every_state", "the_counts_of_positions_after_a_few_plies_equal_the_fixtures")]
-    rc, text = cargo(["--test", "translated_agree", "--", *names, "--exact", "--nocapture"], {})              # (exact names: a name is a part of another game's, `chess` of `antichess`)
+    rc, text = cargo(["--test", "translated_agree", "--", *names, "--exact", "--nocapture"], {})              # (exact names: the name of one game can be a part of another's)
     if rc:
         raise RuntimeError("translated_agree failed:\n" + text[-2000:])
     g = re.escape(game)

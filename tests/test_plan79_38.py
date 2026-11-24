@@ -79,14 +79,16 @@ def test_the_translation_with_no_pass_is_the_committed_plain_file(game):
 @pytest.mark.skipif(not have_before(), reason="the commit before the plan is not on this machine")
 @pytest.mark.parametrize("game", GAMES)
 def test_the_plain_files_differ_from_those_before_the_plan_in_the_line_of_the_translator_hash_only(game):
+    import difflib
     old = git("show", f"{BEFORE}:rust/engine/game/tests/generated/{game}.rs").stdout.splitlines()
     new = (GEN / f"{game}.rs").read_text().splitlines()
-    assert len(old) == len(new)
-    differ = [i for i, (a, b) in enumerate(zip(old, new)) if a != b]
-    assert len(differ) <= 1, differ
-    if differ:
-        assert old[differ[0]].startswith("// translator-sha256:") and new[differ[0]].startswith("// translator-sha256:")
-    print(f"OBS 79.38 E {game}: the plain file differs from the one before the plan in {len(differ)} line (the translator hash)")
+    # 2026-11-24 (plan 79.47): the plain file gained two pure insertions, the item `restart` of the module and the `clear` of a relation that it needs; no line of the plain translation changed but the translator's hash
+    ops = [o for o in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes() if o[0] != "equal"]
+    differ = [o for o in ops if o[0] == "replace"]
+    assert all(o[0] == "insert" or (o[0] == "replace" and o[2] - o[1] == 1 and o[4] - o[3] == 1 and old[o[1]].startswith("// translator-sha256:") and new[o[3]].startswith("// translator-sha256:")) for o in ops), ops
+    inserted = "\n".join("\n".join(new[o[3]:o[4]]) for o in ops if o[0] == "insert")
+    assert "pub fn restart(" in inserted and inserted.count("pub fn clear") == 1 and "plan 79.47" in inserted
+    print(f"OBS 79.38 E {game}: the plain file differs from the one before the plan in {len(differ)} line (the translator hash) and by two insertions (`restart` and the `clear` it needs)")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ (2)
@@ -145,7 +147,8 @@ def test_a_file_with_passes_carries_the_hashes_and_the_passes_and_a_fresh_transl
 
 
 def test_the_files_of_the_generated_folder_are_the_plain_ones_and_those_with_every_pass():
-    want = {f"{g}.rs" for g in GAMES} | {f"{g}_{v}.rs" for g in GAMES for v in KEPT} | {"chess_lemma.rs"}              # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
+    more = ("3check", "kingofthehill", "antichess", "chess960", "horde")                                          # 2026-11-24 (plan 79.47): the five more games of the seven certified kernels, plain and every pass
+    want = {f"{g}.rs" for g in GAMES + more} | {f"{g}_{v}.rs" for g in GAMES + more for v in KEPT} | {"chess_lemma.rs"}              # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
     assert {p.name for p in GEN.iterdir() if p.is_file()} == want
 
 

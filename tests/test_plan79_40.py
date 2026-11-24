@@ -83,7 +83,8 @@ def test_a_kept_file_carries_the_hashes_and_the_passes_and_a_fresh_translation_i
 
 def test_only_the_plain_files_and_the_files_with_every_pass_are_kept():
     names = sorted(p.name for p in GEN.iterdir() if p.is_file())
-    assert names == sorted([f"{g}.rs" for g in GAMES] + [f"{g}_fast.rs" for g in GAMES] + ["chess_lemma.rs"]), names          # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
+    more = ("3check", "kingofthehill", "antichess", "chess960", "horde")                                                    # 2026-11-24 (plan 79.47): the five more games of the seven certified kernels, plain and every pass
+    assert names == sorted([f"{g}.rs" for g in GAMES + more] + [f"{g}_fast.rs" for g in GAMES + more] + ["chess_lemma.rs"]), names          # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
     tracked = git("ls-files", "rust/engine/game/tests/generated").stdout.split()
     assert sorted(Path(x).name for x in tracked) == names, tracked
     assert "generated/scratch/" in (ROOT / ".gitignore").read_text()
@@ -107,7 +108,7 @@ def test_the_maker_writes_the_scratch_files_of_the_single_passes_and_nothing_is_
     spec = importlib.util.spec_from_file_location("gdl_to_rust_make", ROOT / "scripts" / "gdl_to_rust_make.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
-    m.make(tmp_path, {"_bits": ["bits"]})
+    m.make(tmp_path, {"_bits": ["bits"]}, None, m.SCRATCH_GAMES)                       # 2026-11-24 (plan 79.47): the files of the single passes are made for the first two games only (SCRATCH_GAMES)
     assert sorted(p.name for p in tmp_path.iterdir()) == ["atomic_bits.rs", "chess_bits.rs"]
     assert {f"_{k}" for k in SINGLES} <= set(m.SCRATCH)
     assert m.KEPT == {"": [], "_fast": list(translator().PASSES)}
@@ -135,14 +136,17 @@ def test_a_fresh_translation_is_the_same_under_two_hash_seeds_of_the_process():
 @pytest.mark.skipif(git("cat-file", "-e", f"{BEFORE}^{{commit}}").returncode != 0, reason="the commit before the plan is not on this machine")
 @pytest.mark.parametrize("game", GAMES)
 def test_the_plain_files_differ_from_those_before_the_plan_in_the_line_of_the_translator_hash_only(game):
+    import difflib
     old = git("show", f"{BEFORE}:rust/engine/game/tests/generated/{game}.rs").stdout.splitlines()
     new = (GEN / f"{game}.rs").read_text().splitlines()
-    assert len(old) == len(new)
-    differ = [i for i, (a, b) in enumerate(zip(old, new)) if a != b]
-    assert len(differ) <= 1, differ
-    if differ:
-        assert old[differ[0]].startswith("// translator-sha256:") and new[differ[0]].startswith("// translator-sha256:")
-    print(f"OBS 79.40 F {game}: the plain file differs from the one before the plan in {len(differ)} line (the translator hash)")
+    # 2026-11-24 (plan 79.47): the plain file gained two pure insertions, the item `restart` of the module and the `clear` of a relation that it needs (no line of the plain translation changed: the lines of the file that the
+    # plan before it made are all there, in order, and the only line that differs is the translator's hash)
+    ops = [o for o in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes() if o[0] != "equal"]
+    differ = [o for o in ops if o[0] == "replace"]
+    assert all(o[0] == "insert" or (o[0] == "replace" and o[2] - o[1] == 1 and o[4] - o[3] == 1 and old[o[1]].startswith("// translator-sha256:") and new[o[3]].startswith("// translator-sha256:")) for o in ops), ops
+    inserted = "\n".join(new[o[3]:o[4]] and "\n".join(new[o[3]:o[4]]) for o in ops if o[0] == "insert")
+    assert "pub fn restart(" in inserted and inserted.count("pub fn clear") == 1 and "plan 79.47" in inserted
+    print(f"OBS 79.40 F {game}: the plain file differs from the one before the plan in {len(differ)} line (the translator hash) and by two insertions (`restart` and the `clear` it needs)")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ (3)

@@ -17,8 +17,8 @@
  "disagreeing_rows": 0,
  "flag_disagreements": 0,
  "examples": [],
- "seconds": 135.9,
- "load_before": "{ 1.85 2.43 5.00 }",
+ "seconds": 138.4,
+ "load_before": "{ 1.40 4.19 7.17 }",
  "lemma_certificate": "exposed_by_cases.certificate.json",
  "certificate_counts": {
   "positions": 5054,
@@ -29,7 +29,7 @@
   "disagreements": 0
  },
  "certificate_key": "75266d1f6dc1efad",
- "module_sha256": "3a7dc3cdd760b3afe06527d83a1bdf88f9e509660272a5b10ecee7569fe85a74",
- "translator_sha256": "99c1ffcb36708e09b8f87eb6ec3b50a645e719cf829816dfcf4a0e0c2a5bbc53",
+ "module_sha256": "94d6d5b38a6e2e021e0cb60c3e61f8886256956e4f91dea4ce234afb0e50d683",
+ "translator_sha256": "4987593f6483729b73d2a8491e0b47a26f9164c3d37ac4ef7cac95d4b352ee4b",
  "date": "2026-11-24"
 }

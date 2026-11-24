@@ -1,0 +1,101 @@
+{
+ "binding": "the kernel of antichess held to its translated module",
+ "ingests": "the rules of the game as the kernel answers them: the mover, the allowed moves, the next state after every allowed move, whether ended, the result (plan 79.46)",
+ "oracle": "the translated module of the description (every pass), itself held to the evaluator of the description (translated_agree.rs) and to the plain translation piece by piece (translated_pieces.rs)",
+ "game": "antichess",
+ "module": "rust/engine/game/tests/generated/antichess_fast.rs",
+ "module_header": {
+  "description-sha256": "bce4eec29edc7dafd6098c4a18d33a74af55a85be246a8b6b4e1afa8f2be6968",
+  "translator-sha256": "4987593f6483729b73d2a8491e0b47a26f9164c3d37ac4ef7cac95d4b352ee4b",
+  "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated"
+ },
+ "small": {
+  "game": "antichess",
+  "kind": "small",
+  "games": 116,
+  "plies": 2449,
+  "states": 2565,
+  "moves": 22715,
+  "nexts": 22715,
+  "ended": 116,
+  "results": 116,
+  "left_out": {},
+  "causes": {},
+  "examples": [],
+  "seconds": 0.2,
+  "cores": 1,
+  "seeds": 1,
+  "seed0": 1000,
+  "games_a_seed": 20,
+  "test_returned": 0,
+  "certificate_positions": 2565,
+  "equals_certificate": true
+ },
+ "large": {
+  "game": "antichess",
+  "kind": "large",
+  "games": 192000,
+  "plies": 13164921,
+  "states": 13356921,
+  "moves": 148531286,
+  "nexts": 148531286,
+  "ended": 192000,
+  "results": 192000,
+  "left_out": {},
+  "causes": {},
+  "examples": [],
+  "seconds": 205.5,
+  "cores": 11,
+  "seeds": 128,
+  "seed0": 1000,
+  "games_a_seed": 1500,
+  "test_returned": 0,
+  "states_a_second": 64997
+ },
+ "chain": {
+  "held_to_the_evaluator": {
+   "coplay_states": 1373,
+   "coplay_allowed_moves": 14629,
+   "coplay_next_states": 1426,
+   "coplay_relation_by_state": 28896,
+   "fixture_positions": 100,
+   "fixture_allowed_moves": 1048,
+   "fixture_nexts": 192,
+   "counts_positions": 162632
+  },
+  "held_to_the_plain_module": {
+   "tests": 3,
+   "piece_by_piece_comparisons": 74000
+  },
+  "lower_link": {
+   "game": "antichess",
+   "seeds": 100,
+   "seed0": 5000,
+   "games_a_seed": 20,
+   "games": 2000,
+   "states": 139362,
+   "moves": 1556040,
+   "nexts": 137362,
+   "ended": 2000,
+   "disagreements": 0,
+   "first": [],
+   "seconds": 54.8,
+   "cores": 11,
+   "test_returned": 0
+  }
+ },
+ "disagreements": 0,
+ "examples": [],
+ "hashes": {
+  "description": "aad2589e7bdbc007",
+  "translator": "1c51c994e27cab95",
+  "module": "2fa71000b28ffdc9",
+  "kernel": "487238bab26ede14",
+  "bridge": "431291fff21dbcaa",
+  "test": "d00dd42da271a1ae",
+  "lock": "91fd9fd42c1ba92b"
+ },
+ "key": "d54694b3a04d10d7",
+ "date": "2026-11-24",
+ "seconds": 269.1
+}
