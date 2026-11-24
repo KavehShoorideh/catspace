@@ -50,6 +50,10 @@ include!("generated/scratch/atomic_bits.rs");
 include!("generated/scratch/atomic_order.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_keep.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_scan.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_cut.rs");
 impl_tr!(chess);
 impl_tr!(chess_fast, passes);
 #[cfg(singles)]
@@ -68,6 +72,10 @@ impl_tr!(chess_bits, passes);
 impl_tr!(chess_order, passes);
 #[cfg(singles)]
 impl_tr!(chess_keep, passes);
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_scan.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_cut.rs");
 impl_tr!(atomic);
 impl_tr!(atomic_fast, passes);
 #[cfg(singles)]
@@ -86,6 +94,14 @@ impl_tr!(atomic_bits, passes);
 impl_tr!(atomic_order, passes);
 #[cfg(singles)]
 impl_tr!(atomic_keep, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_scan, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_scan, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_cut, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_cut, passes);
 
 const SEED: u64 = 77; // the certificate's (discovery/certify.py)
 
@@ -181,3 +197,11 @@ pieces_tests!("atomic", atomic, "bits", atomic_bits, atomic_bits_static_relation
 pieces_tests!("atomic", atomic, "order", atomic_order, atomic_order_static_relations_are_the_plain_ones, atomic_order_every_piece_at_every_fixture_position_is_the_plain_one, atomic_order_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
 pieces_tests!("atomic", atomic, "keep", atomic_keep, atomic_keep_static_relations_are_the_plain_ones, atomic_keep_every_piece_at_every_fixture_position_is_the_plain_one, atomic_keep_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("chess", chess, "bits_scan", chess_bits_scan, chess_bits_scan_static_relations_are_the_plain_ones, chess_bits_scan_every_piece_at_every_fixture_position_is_the_plain_one, chess_bits_scan_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "bits_scan", atomic_bits_scan, atomic_bits_scan_static_relations_are_the_plain_ones, atomic_bits_scan_every_piece_at_every_fixture_position_is_the_plain_one, atomic_bits_scan_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("chess", chess, "bits_cut", chess_bits_cut, chess_bits_cut_static_relations_are_the_plain_ones, chess_bits_cut_every_piece_at_every_fixture_position_is_the_plain_one, chess_bits_cut_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "bits_cut", atomic_bits_cut, atomic_bits_cut_static_relations_are_the_plain_ones, atomic_bits_cut_every_piece_at_every_fixture_position_is_the_plain_one, atomic_bits_cut_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);

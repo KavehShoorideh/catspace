@@ -174,7 +174,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -1274,6 +1274,12 @@ class BitWriter(ClauseWriter):
         self.record = record
         self.head_bit = mode in ("bfull", "bdelta")
         self.quiet = self.head_bit
+        self.cut = "cut" in plan.passes and self.head_bit            # pass (11): a block left at the first row once the head is complete
+        self.cut_label = None
+        self.cut_loops = 0
+        self.head_vars: set = set()
+        for h in rule.head:
+            self.head_vars |= comp_vars(h)
         self.text = rule.clause.text.replace("\n", " ")
         vs: dict = {}
 
@@ -1293,6 +1299,8 @@ class BitWriter(ClauseWriter):
 
     def fail(self) -> str:
         if self.loops:
+            if self.cut_label is not None and self.loops == self.cut_loops:
+                return f"break {self.cut_label};"                  # a `continue` may not leave a labeled block: the block is the rest of the loop's body
             return "continue;"
         if self.head_bit:
             return "return made;"
@@ -1425,6 +1433,17 @@ class BitWriter(ClauseWriter):
         if k == len(r.steps):
             self.finish()
             return
+        if self.cut and self.cut_label is None and self.head_vars <= self.bound and any(j not in self.done and r.steps[j][0] == "pos" for j in range(k, len(r.steps))):
+            u = self.fresh()
+            self.cut_label = f"'h{u}"
+            self.cut_loops = self.loops
+            self.out(f"{self.cut_label}: {{")
+            self.depth += 1
+            self.steps(k)
+            self.depth -= 1
+            self.out("}")
+            self.cut_label = None
+            return
         st = r.steps[k]
         if st[0] == "distinct":
             a, b = st[1], st[2]
@@ -1461,6 +1480,8 @@ class BitWriter(ClauseWriter):
             ix = self.index_of(info, info.canon, {i: f"tt{u}[{i}]" for i in range(info.m)})
             rec = f" dw.nw_{rid}.set({ix}, tt{u}[{info.canon}]);"
         self.out(f"if {h}.{rid}.set_t(tt{u}) {{ made += 1;{rec} }}")
+        if self.cut_label is not None:
+            self.out(f"break {self.cut_label};")
 
     def fold(self, k: int, ftile: Tile, fargs, vvars: set, wname: str) -> bool:
         """Literals later than k over the same variables of the same sort of tile as the free tile of literal k are anded into its word (and-not when negated); -> whether any was."""
@@ -1513,6 +1534,23 @@ class BitWriter(ClauseWriter):
                 hv |= comp_vars(r.head[p])
         return not (vvars & hv) and hv <= self.bound
 
+    def decode_key(self, u: int, kt: list, info: BitInfo, rel: str, args):
+        """The tiles of the key of the word `ix{u}` (the number of a word of an orientation), bound to the variables at their places or tested against the ones bound."""
+        if not kt:
+            return
+        self.out(f"let mut rm{u} = ix{u};")
+        names = {}
+        for i in reversed(kt):
+            names[i] = f"t{u}_{i}"
+            last = i == kt[0]
+            self.out(f"let {names[i]} = rm{u} % {info.tiles[i].size};" if not last else f"let {names[i]} = rm{u};")
+            if not last:
+                self.out(f"rm{u} /= {info.tiles[i].size};")
+        for i in kt:
+            t = info.tiles[i]
+            for c, p in enumerate(t.places):
+                self.bind_or_check(rel, args[p], t.sorts[c], self.comp_of(t, c, names[i]))
+
     def bit_literal(self, k: int):
         r = self.rule
         st = r.steps[k]
@@ -1543,25 +1581,57 @@ class BitWriter(ClauseWriter):
         u = self.fresh()
         kt = info.key_tiles(f)
         w = f"w{u}"
-        if delta or (kt and all(unb(args[p]) for i in kt for p in info.tiles[i].places)):
+        all_unbound = bool(kt) and all(unb(args[p]) for i in kt for p in info.tiles[i].places)
+        slots = [(i, c, p) for i in kt for c, p in enumerate(info.tiles[i].places) if unb(args[p])]
+        scan_ok = "scan" in self.plan.passes and bool(kt) and not delta and not all_unbound and bool(slots) and len({args[p][1] for _i, _c, p in slots}) == len(slots)
+        if delta or all_unbound:
             src = f"dw.dl_{rid}" if delta else f"{h}.{rid}.o{f}"
             self.open(f"for ti{u} in 0..{src}.nz.len() {{")
             opened += 1
             self.out(f"let ix{u} = {src}.nz[ti{u}] as usize;")
             self.out(f"let mut {w} = {src}.w[ix{u}];")
-            if kt:
-                self.out(f"let mut rm{u} = ix{u};")
-                names = {}
-                for i in reversed(kt):
-                    names[i] = f"t{u}_{i}"
-                    last = i == kt[0]
-                    self.out(f"let {names[i]} = rm{u} % {info.tiles[i].size};" if not last else f"let {names[i]} = rm{u};")
-                    if not last:
-                        self.out(f"rm{u} /= {info.tiles[i].size};")
-                for i in kt:
-                    t = info.tiles[i]
-                    for c, p in enumerate(t.places):
-                        self.bind_or_check(rel, args[p], t.sorts[c], self.comp_of(t, c, names[i]))
+            self.decode_key(u, kt, info, rel, args)
+        elif scan_ok:
+            # pass (10): the tiles not bound are looped over as combinations, or the words the relation holds are looped over and tested at the tiles that are bound, whichever is fewer
+            vals = {}
+            for i in kt:
+                t = info.tiles[i]
+                row = []
+                for c, p in enumerate(t.places):
+                    a = args[p]
+                    if a[0] == "c":
+                        row.append(str(self.const_ord(rel, a[1], t.sorts[c])))
+                    elif a[1] in self.bound:
+                        row.append(self.var_ord(a[1], t.sorts[c]))
+                    else:
+                        row.append(None)
+                vals[i] = row
+            nc = " * ".join(str(info.tiles[i].sizes[c]) for i, c, _p in slots)
+            self.out(f"let nc{u}: usize = {nc};")
+            self.out(f"let sc{u} = {h}.{rid}.o{f}.nz.len() < nc{u};")
+            self.open(f"for ti{u} in 0..(if sc{u} {{ {h}.{rid}.o{f}.nz.len() }} else {{ nc{u} }}) {{")
+            opened += 1
+            self.out(f"let ix{u}: usize = if sc{u} {{ {h}.{rid}.o{f}.nz[ti{u}] as usize }} else {{")
+            self.depth += 1
+            self.out(f"let mut cm{u} = ti{u};")
+            names = {}
+            for j, (i, c, _p) in enumerate(reversed(slots)):
+                nm = f"c{u}_{i}_{c}"
+                names[(i, c)] = nm
+                if j < len(slots) - 1:
+                    self.out(f"let {nm} = cm{u} % {info.tiles[i].sizes[c]}; cm{u} /= {info.tiles[i].sizes[c]};")
+                else:
+                    self.out(f"let {nm} = cm{u};")
+            tiles = {}
+            for i in kt:
+                t = info.tiles[i]
+                comps = [names[(i, c)] if e is None else e for c, e in enumerate(vals[i])]
+                tiles[i] = comps[0] if len(comps) == 1 else f"({comps[0]}) * {t.sizes[1]} + {comps[1]}"
+            self.out(self.index_of(info, f, tiles))
+            self.depth -= 1
+            self.out("};")
+            self.out(f"let mut {w} = {h}.{rid}.o{f}.w[ix{u}];")
+            self.decode_key(u, kt, info, rel, args)
         else:
             tiles = {}
             for i in kt:

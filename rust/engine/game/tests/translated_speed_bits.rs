@@ -1,6 +1,7 @@
-//! PLAN 79.40 PART E (SYSTEM_SPEC 11, "The crux of layer 2 is a translator ..."; ledger row 45; piece: rules): THE TIMES OF THE PASSES OF 79.40. The same two questions at the same list of positions as translated_speed_passes.rs, for each game: the kernel, the plain translation,
-//! the module of the four passes of 79.38 (`prev`), each new pass alone, and every pass together (`fast`). The modules of the single passes are not in the repository: tests/test_plan79_40.py makes them under generated/scratch and this file is compiled with `--cfg singles`
-//! (see that test); without the flag only the plain module and `fast` are compared. Ignored by default (`-- --ignored --nocapture --test-threads=1`); a short run is always made.
+//! PLAN 79.41 PART E (SYSTEM_SPEC 11, "The crux of layer 2 is a translator ..."; ledger row 45; piece: rules): THE TIMES OF THE PASSES OF 79.41 (this file began as the clock of 79.40, translated_speed_bits.rs, and keeps its name and its list of positions). The same two questions at the same list of
+//! positions for each game: the kernel, the plain translation, the module of every pass of 79.40 (`prev`), bits alone, each new pass alone on top of bits, and every pass together (`fast`). The modules of the single passes are not in the repository:
+//! tests/test_plan79_41.py makes them under generated/scratch (scripts/gdl_to_rust_make.py --scratch) and this file is compiled with `--cfg singles` (see that test); without the flag only the plain module and `fast` are compared. Ignored by default
+//! (`-- --ignored --nocapture --test-threads=1`); a short run is always made.
 #![allow(unexpected_cfgs)]
 mod variants_common;
 #[macro_use]
@@ -35,93 +36,37 @@ include!("generated/scratch/chess_prev.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_bits.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_order.rs");
+include!("generated/scratch/chess_bits_scan.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_keep.rs");
+include!("generated/scratch/chess_bits_cut.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_bits.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_order.rs");
+include!("generated/scratch/atomic_bits_scan.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_keep.rs");
-#[cfg(singles)]
-include!("generated/scratch/chess_bits_keep.rs");
-#[cfg(singles)]
-include!("generated/scratch/chess_bits_order.rs");
-#[cfg(singles)]
-include!("generated/scratch/chess_bits_order_keep.rs");
-#[cfg(singles)]
-include!("generated/scratch/chess_bits_demand.rs");
-#[cfg(singles)]
-include!("generated/scratch/chess_bits_dense.rs");
-#[cfg(singles)]
-include!("generated/scratch/chess_bits_copy.rs");
-#[cfg(singles)]
-include!("generated/scratch/chess_bits_delta.rs");
-#[cfg(singles)]
-include!("generated/scratch/atomic_bits_keep.rs");
-#[cfg(singles)]
-include!("generated/scratch/atomic_bits_order.rs");
-#[cfg(singles)]
-include!("generated/scratch/atomic_bits_order_keep.rs");
-#[cfg(singles)]
-include!("generated/scratch/atomic_bits_demand.rs");
-#[cfg(singles)]
-include!("generated/scratch/atomic_bits_dense.rs");
-#[cfg(singles)]
-include!("generated/scratch/atomic_bits_copy.rs");
-#[cfg(singles)]
-include!("generated/scratch/atomic_bits_delta.rs");
+include!("generated/scratch/atomic_bits_cut.rs");
 impl_tr!(chess);
 impl_tr!(chess_fast, passes);
 impl_tr!(atomic);
 impl_tr!(atomic_fast, passes);
 #[cfg(singles)]
-impl_tr!(chess_bits_keep, passes);
-#[cfg(singles)]
-impl_tr!(chess_bits_order, passes);
-#[cfg(singles)]
-impl_tr!(chess_bits_order_keep, passes);
-#[cfg(singles)]
-impl_tr!(chess_bits_demand, passes);
-#[cfg(singles)]
-impl_tr!(chess_bits_dense, passes);
-#[cfg(singles)]
-impl_tr!(chess_bits_copy, passes);
-#[cfg(singles)]
-impl_tr!(chess_bits_delta, passes);
-#[cfg(singles)]
-impl_tr!(atomic_bits_keep, passes);
-#[cfg(singles)]
-impl_tr!(atomic_bits_order, passes);
-#[cfg(singles)]
-impl_tr!(atomic_bits_order_keep, passes);
-#[cfg(singles)]
-impl_tr!(atomic_bits_demand, passes);
-#[cfg(singles)]
-impl_tr!(atomic_bits_dense, passes);
-#[cfg(singles)]
-impl_tr!(atomic_bits_copy, passes);
-#[cfg(singles)]
-impl_tr!(atomic_bits_delta, passes);
-#[cfg(singles)]
 impl_tr!(chess_prev, passes);
 #[cfg(singles)]
 impl_tr!(chess_bits, passes);
 #[cfg(singles)]
-impl_tr!(chess_order, passes);
+impl_tr!(chess_bits_scan, passes);
 #[cfg(singles)]
-impl_tr!(chess_keep, passes);
+impl_tr!(chess_bits_cut, passes);
 #[cfg(singles)]
 impl_tr!(atomic_prev, passes);
 #[cfg(singles)]
 impl_tr!(atomic_bits, passes);
 #[cfg(singles)]
-impl_tr!(atomic_order, passes);
+impl_tr!(atomic_bits_scan, passes);
 #[cfg(singles)]
-impl_tr!(atomic_keep, passes);
+impl_tr!(atomic_bits_cut, passes);
 
 const SEED: u64 = 77;
 
@@ -281,11 +226,11 @@ fn pieces<F: Tr + 'static>(game: &str, label: &str) {
 
 
 #[cfg(singles)]
-fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("order", chess_order::Game), ("keep", chess_keep::Game), ("fast", chess_fast::Game)] }
+fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("fast", chess_fast::Game)] }
 #[cfg(not(singles))]
 fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("fast", chess_fast::Game)] }
 #[cfg(singles)]
-fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("order", atomic_order::Game), ("keep", atomic_keep::Game), ("fast", atomic_fast::Game)] }
+fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("fast", atomic_fast::Game)] }
 #[cfg(not(singles))]
 fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("fast", atomic_fast::Game)] }
 
@@ -307,9 +252,9 @@ fn chess_the_time_by_piece_of_each_module() { pieces::<chess::Game>("chess", "pl
 fn atomic_the_time_by_piece_of_each_module() { pieces::<atomic::Game>("atomic", "plain"); pieces::<atomic_fast::Game>("atomic", "fast"); }
 
 #[cfg(singles)]
-fn chess_combos() -> Vec<Maker> { makers![("bits", chess_bits::Game), ("b+keep", chess_bits_keep::Game), ("b+order", chess_bits_order::Game), ("b+o+k", chess_bits_order_keep::Game), ("b+demand", chess_bits_demand::Game), ("b+dense", chess_bits_dense::Game), ("b+copy", chess_bits_copy::Game), ("b+delta", chess_bits_delta::Game), ("fast", chess_fast::Game)] }
+fn chess_combos() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("fast", chess_fast::Game)] }
 #[cfg(singles)]
-fn atomic_combos() -> Vec<Maker> { makers![("bits", atomic_bits::Game), ("b+keep", atomic_bits_keep::Game), ("b+order", atomic_bits_order::Game), ("b+o+k", atomic_bits_order_keep::Game), ("b+demand", atomic_bits_demand::Game), ("b+dense", atomic_bits_dense::Game), ("b+copy", atomic_bits_copy::Game), ("b+delta", atomic_bits_delta::Game), ("fast", atomic_fast::Game)] }
+fn atomic_combos() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("fast", atomic_fast::Game)] }
 #[cfg(singles)]
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
