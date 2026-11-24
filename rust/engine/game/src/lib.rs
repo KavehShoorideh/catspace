@@ -63,6 +63,12 @@ pub trait Game {
     fn initial(&self) -> Self::State;
     /// The role to move; None at a terminal state.
     fn mover(&self, s: &Self::State) -> Option<Role>;
+    /// PLAN 79.39 (SYSTEM_SPEC 11; piece: rules; ledger row 46). THE SIDE TO MOVE AS THE STATE SAYS IT, with NO reading of the end of the game: the role whose turn it
+    /// is; at an ended state, the role that would have moved. Takes a state, returns an index among `roles()` (any number of roles: two, four, two boards), never None; at a
+    /// state not ended it equals `mover`. Called by every asker that only wants the side (the shared
+    /// search, the layers above); an asker that needs to learn that the game ended keeps `mover` or `outcome`. The default keeps every game correct: it is `mover`,
+    /// and at an end the first role, index 0 (the one fallback: no arithmetic on roles, no `other`, no assumption of two roles; an ended state's answer is not to be relied on by an asker, and a game that knows the side that would have moved overrides it) (a game whose end is cheap to read need not override it; a game that can read its turn off the state does, and pays nothing for the end).
+    fn turn(&self, s: &Self::State) -> Role { self.mover(s).unwrap_or(0) }
     /// The mover's legal moves (empty at a terminal state).
     fn moves(&self, s: &Self::State) -> Vec<Self::Move>;
     /// The state after the mover plays `m` (a legal move).
