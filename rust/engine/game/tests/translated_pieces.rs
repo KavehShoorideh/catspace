@@ -59,6 +59,8 @@ include!("generated/scratch/chess_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_bits_base.rs");
 #[cfg(singles)]
+include!("generated/scratch/chess_prev_ends.rs");
+#[cfg(singles)]
 include!("generated/scratch/chess_prev_start.rs");
 impl_tr!(chess);
 impl_tr!(chess_fast, passes);
@@ -86,6 +88,8 @@ include!("generated/scratch/atomic_bits_cut.rs");
 include!("generated/scratch/atomic_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_bits_base.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_ends.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev_start.rs");
 impl_tr!(atomic);
@@ -121,9 +125,13 @@ impl_tr!(atomic_bits_shift, passes);
 #[cfg(singles)]
 impl_tr!(chess_bits_base, passes);
 #[cfg(singles)]
+impl_tr!(chess_prev_ends, passes);
+#[cfg(singles)]
 impl_tr!(chess_prev_start, passes);
 #[cfg(singles)]
 impl_tr!(atomic_bits_base, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_ends, passes);
 #[cfg(singles)]
 impl_tr!(atomic_prev_start, passes);
 
@@ -241,3 +249,7 @@ pieces_tests!("atomic", atomic, "bits_base", atomic_bits_base, atomic_bits_base_
 pieces_tests!("chess", chess, "prev_start", chess_prev_start, chess_prev_start_static_relations_are_the_plain_ones, chess_prev_start_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
 pieces_tests!("atomic", atomic, "prev_start", atomic_prev_start, atomic_prev_start_static_relations_are_the_plain_ones, atomic_prev_start_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("chess", chess, "prev_ends", chess_prev_ends, chess_prev_ends_static_relations_are_the_plain_ones, chess_prev_ends_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_ends_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev_ends", atomic_prev_ends, atomic_prev_ends_static_relations_are_the_plain_ones, atomic_prev_ends_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_ends_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);

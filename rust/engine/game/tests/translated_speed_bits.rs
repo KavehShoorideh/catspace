@@ -44,6 +44,8 @@ include!("generated/scratch/chess_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_bits_base.rs");
 #[cfg(singles)]
+include!("generated/scratch/chess_prev_ends.rs");
+#[cfg(singles)]
 include!("generated/scratch/chess_prev_start.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev.rs");
@@ -57,6 +59,8 @@ include!("generated/scratch/atomic_bits_cut.rs");
 include!("generated/scratch/atomic_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_bits_base.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_ends.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev_start.rs");
 impl_tr!(chess);
@@ -76,6 +80,8 @@ impl_tr!(chess_bits_shift, passes);
 #[cfg(singles)]
 impl_tr!(chess_bits_base, passes);
 #[cfg(singles)]
+impl_tr!(chess_prev_ends, passes);
+#[cfg(singles)]
 impl_tr!(chess_prev_start, passes);
 #[cfg(singles)]
 impl_tr!(atomic_prev, passes);
@@ -89,6 +95,8 @@ impl_tr!(atomic_bits_cut, passes);
 impl_tr!(atomic_bits_shift, passes);
 #[cfg(singles)]
 impl_tr!(atomic_bits_base, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_ends, passes);
 #[cfg(singles)]
 impl_tr!(atomic_prev_start, passes);
 
@@ -250,11 +258,11 @@ fn pieces<F: Tr + 'static>(game: &str, label: &str) {
 
 
 #[cfg(singles)]
-fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev_start::Game), ("fast", chess_fast::Game)] }
+fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev_start::Game), ("p+ends", chess_prev_ends::Game), ("fast", chess_fast::Game)] }
 #[cfg(not(singles))]
 fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("fast", chess_fast::Game)] }
 #[cfg(singles)]
-fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev_start::Game), ("fast", atomic_fast::Game)] }
+fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev_start::Game), ("p+ends", atomic_prev_ends::Game), ("fast", atomic_fast::Game)] }
 #[cfg(not(singles))]
 fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("fast", atomic_fast::Game)] }
 
@@ -276,9 +284,9 @@ fn chess_the_time_by_piece_of_each_module() { pieces::<chess::Game>("chess", "pl
 fn atomic_the_time_by_piece_of_each_module() { pieces::<atomic::Game>("atomic", "plain"); pieces::<atomic_fast::Game>("atomic", "fast"); }
 
 #[cfg(singles)]
-fn chess_combos() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev_start::Game), ("fast", chess_fast::Game)] }
+fn chess_combos() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev_start::Game), ("p+ends", chess_prev_ends::Game), ("fast", chess_fast::Game)] }
 #[cfg(singles)]
-fn atomic_combos() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev_start::Game), ("fast", atomic_fast::Game)] }
+fn atomic_combos() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev_start::Game), ("p+ends", atomic_prev_ends::Game), ("fast", atomic_fast::Game)] }
 #[cfg(singles)]
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
