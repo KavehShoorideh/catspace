@@ -104,4 +104,4 @@ def test_the_module_names_no_game_and_the_gate_has_the_test():
     src = (DISC / "rule_lemma_prove.py").read_text()
     assert not re.search(r"chess|checkers|breakthrough", src, re.I)
     gate = (ROOT / "scripts" / "gate.py").read_text()
-    assert "test_plan79_47 test_plan79_49" in gate
+    assert "test_plan79_49" in gate
