@@ -88,6 +88,44 @@ holds for the relation or clause, everywhere else the plain translation stands f
                 depend on the order of its literals, the safety of the negated literals and tests is kept by the same rule as before (each as soon as its variables are bound), and the semi-naive rule (one literal of the set from the
                 new rows, the others from all) is unchanged.
   A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside.
+
+PLAN 79.40 PARTS A, C, D: THE FORM OF A RELATION OVER SMALL SORTS (SYSTEM_SPEC 11, "The crux of layer 2 is a translator ... made fast piece by piece under tests"; piece: rules; ledger row 45).
+This text is the interface of 3 more passes, written and committed before any body. PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep"); `translate(text, module, passes)` is as above; with no pass the
+document is still the plain one byte for byte but for the translator hash. The new passes add no public item to a module: the questions and the items of 79.38 are the same, so the harness holds them to the plain module as before.
+
+  (5) "bits"   TAKES the signature of each relation, the declared sorts, and every written clause with its join order. IT FINDS, from the clauses and signatures alone (told no sort and no product):
+                TILES. A sort of constants of at most 64 members is a tile. Two sorts (A, B) are one tile, a PRODUCT, when in one clause the same two variables stand next to each other, in that order, at places of sorts A and B in at least two
+                literals (head included) and |A|*|B| <= 64: the pair travels together, so it is one number (a*|B|+b). The places of a relation are cut into tiles from the left, a product where one is found.
+                HELD AS BITS. A relation is held as bits when every place has a declared sort of constants, the cut into tiles is made, and for every way a written clause asks it (which tiles are bound) the tile that is left free has at most
+                64 members and the product of the sizes of the other tiles is at most BIT_KEYS (2^20: the first writing of this text had 2^16, the size of the keys of an index of the pass dense; the relations that hold what a turn changes are larger, and a word that is never set is never made resident). Its form is then, for each such way (an ORIENTATION: which tile is free), an array of words with one word for each combination of the other tiles'
+                numbers, and bit t of the word is set when the row with the free tile's number t is there; a list of the words that are not nought keeps the clearing and the scan proportional to what is held. A row is set in every orientation.
+                A state is loaded by setting these bits; the evaluation is kept between questions and cleared by its lists of words (no row is made, hashed or freed: Part D below states what else is kept).
+                CLAUSES AS WORD OPERATIONS. A clause whose literals are asked in the join order is written as nested loops over what is NOT yet bound: a positive literal whose tiles but one are bound reads one word (and, for the places of the free
+                tile that are bound or constants, ands it with a mask); a literal with no tile bound is scanned by its list of words; a literal all bound is a bit test; a negated literal is a bit test, or an and-not when it stands over the same
+                variables as the free tile of a literal before it; a literal over the same variables as that free tile is anded in before the bits are looped over (every later literal of the clause that stands over the same variables of the same
+                tiles is folded in so); a literal read only to know that a row exists is `word != 0`; where the variables of the free tile are used by nothing but the head's last tile, the word is or-ed into the head whole, with no loop over its bits.
+                A RECURSIVE SET of such relations is evaluated by the semi-naive rule on words: the words new in the last round are the first literal of each rule (scanned by their list), the rest read the whole relation; a round adds its words
+                to the relation and to the next round's list. The shape recognised is exactly: every relation of the set is held as bits; this is the walk along a table of successors until a test fails, found as such because it is a clause that
+                joins the set's relation, tests the same variables as its free tile, and reads a relation that takes those variables to the next ones, and is compiled by the one rule above, not by a pattern of any game.
+                WHAT IT REFUSES, naming the clause: a relation with a place of a sort that has a compound or a symbol that is not a member of the sort at the place; a free tile of more than 64 members, or other tiles with more than BIT_KEYS (2^20: the first writing of this text had 2^16, the size of the keys of an index of the pass dense; the relations that hold what a turn changes are larger, and a word that is never set is never made resident)
+                combinations, in any way a clause asks it; a place whose term is a compound; a tile whose two places carry one variable. A relation refused remains as it is (a hash relation, or dense if the pass dense accepts it) and the clauses that
+                read it through its rows continue as today: a clause is written in the word form when it reads or makes a relation held as bits, and otherwise as before. A relation answered on demand (pass demand) is not held as bits.
+                `Plan.bits_refused` holds each refusal with its clause.
+  (6) "order" TAKES the written clauses of a stratum and the number of rows of each relation that does not read the state, known at translation by evaluating those strata once with the reader's evaluator. CONDITION: a clause has two or more
+                positive literals that start equally well (the same number of bound places); RETURNS: the clause joined choosing, among those, the literal of the fewest rows (static relations by their number of rows, relations that read the state
+                by the size of the product of the sorts of the places that remain unbound, the same everywhere; a literal of the recursive set the clause belongs to counts as half a row, for the rows new in a round are the fewest and are read first), otherwise the reader's order. The reader's is kept where the two have the same count of bound places; the order is a different order of the same conjunction,
+                with the same safety rule, and so the same rows.
+  (7) "keep"  TAKES the pieces and the questions. RETURNS: the working memory of a question kept between questions where it was made at each: the lists a clause makes, the terms of a compound built again, and the state that a question returns
+                built in the vector of a former one. Any place that makes and frees memory in a question where the profile shows it is named in the commit with its share before and then.
+  A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside. The harness of 79.38 holds each of them to the plain module (tile numbers are an inside of the module: rows are compared as text).
+  AS BUILT, where the body differs from the text above (said here because the text was committed first):
+    (5) BIT_KEYS is 2^20 words for an orientation (the text had 2^16). A way of asking that would need an orientation outside the limits is answered by the last tile's orientation, the tiles not bound looped over and the last tile tested (the relation is
+        dropped only when that orientation itself is outside the limits). The state of a game remains a list of rows (`State` is as in the plain module); a question loads its rows into the words and clears them through their lists when it is done, so no row is
+        made or hashed for a relation held as bits, but the state is not itself a fixed array of words (the plan's part A (2) asked for that; not built). A relation is held as bits only when a written clause reads it (a relation only the questions read would
+        be made as words to be turned back into rows). The pass bits is decided before the pass demand and the pass dense: what it holds is neither answered on demand nor dense. Recursive sets held as bits are evaluated by their own rounds
+        (the pass delta has nothing to do for them). Every refusal and its reason is in `Plan.bits_refused`.
+    (6) a literal of the set the clause belongs to counts as half a row (the first version did not, and made the plain translation slower: the semi-naive rule read the rows new in a round only behind a loop over a table).
+    (7) the lookup of a compound builds its key on the stack; `Game` keeps the reading of a state, the joint turn and, in a `Dw`, the rows a clause gives and the rows new in a round of a set not held as bits.
 """
 from __future__ import annotations
 
@@ -101,7 +139,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -226,6 +264,23 @@ pub struct Stat { pub calls: u64, pub nanos: u64, pub rows: u64, pub visits: u64
 #[derive(Clone)]
 pub struct Reading { pub legal: Vec<(u32, u32)>, pub terminal: bool, pub goals: Vec<(u32, u32)> }
 '''
+# PASS (7), the one change of the runtime text: a compound that is there is found by a key made on the stack, not in a vector made for each question.
+RUNTIME_KEEP = RUNTIME.replace("""        let mut k = Vec::with_capacity(args.len() + 1);
+        k.push(f);
+        k.extend_from_slice(args);
+        if let Some(&i) = self.ids.get(&k) { return i; }
+""", """        if args.len() < 15 {
+            let mut buf = [0u32; 16];
+            buf[0] = f;
+            buf[1..=args.len()].copy_from_slice(args);
+            if let Some(&i) = self.ids.get(&buf[..=args.len()]) { return i; }
+        }
+        let mut k = Vec::with_capacity(args.len() + 1);
+        k.push(f);
+        k.extend_from_slice(args);
+        if let Some(&i) = self.ids.get(&k) { return i; }
+""")
+assert RUNTIME_KEEP != RUNTIME
 # The text of the pieces of a term: a symbol of a term, kept separate so the names scan sees the language's words only.
 
 
@@ -392,7 +447,7 @@ class JoinRule:
     relation in `avoid` that no variable already bound reaches (constants do not count) is taken last (pass 2: a demanded relation is joined from a key, never read whole), and the literal `first` (an element of the clause's body) is taken before every other (pass 4). With `avoid` vacant the steps are the reader's, to the tuple (tests/test_plan79_38.py pins this on every clause
     of every description). The fields are the reader's `_Rule`: clause, nvars, head_rel, head, steps, rec_steps."""
 
-    def __init__(self, clause, scc: set, avoid=(), first=None):
+    def __init__(self, clause, scc: set, avoid=(), first=None, est=None):
         self.clause = clause
         names: dict = {}
 
@@ -433,7 +488,7 @@ class JoinRule:
                     return (2,)
                 nb = sum(1 for a in x[2] if GDL.term_vars(a, set()) <= bound)
                 keyed = sum(1 for a in x[2] if GDL.term_vars(a, set()) and GDL.term_vars(a, set()) <= bound)
-                return (not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -len(x[2]))
+                return (not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -est(x, bound, scc) if est else 0, -len(x[2]))
             best = max(pending, key=ranking)
             pending.remove(best)
             order.append(best)
@@ -465,6 +520,42 @@ class JoinRule:
         self.rec_steps = [i for i, s in enumerate(self.steps) if s[0] == "pos" and s[1] in scc]
 
 
+class Sizes:
+    """Pass (6): what is known of the size of a relation at translation, to choose among literals that start equally well. A relation that does not read the state has the rows the reader's evaluator made once from the description; a relation that reads the
+    state is as large as the product of the sizes of its sorts; one without a signature (an input) is taken as one row; a relation of the set the clause belongs to is taken as half a row, as the rows new in a round are the fewest. The estimate of a literal is the rows of its relation over the sizes of the sorts of the places that are bound."""
+
+    def __init__(self, d: "Description"):
+        self.d = d
+
+    def size_of(self, sort) -> int:
+        ms = self.d.prog.sorts.get(sort)
+        return max(1, len(ms)) if ms else 64
+
+    def rows(self, rel: str) -> float:
+        d = self.d
+        r = d.prog.static.get(rel) if d.static.get(rel) else None
+        if r is not None:
+            return float(max(1, len(r.facts)))
+        sig = d.prog.signature(rel)
+        if sig is None:
+            return 1.0
+        n = 1.0
+        for sort in sig:
+            n *= self.size_of(sort)
+        return n
+
+    def __call__(self, lit, bound: set, scc=()) -> float:
+        if lit[1] in scc:
+            return 0.5                                         # the rows of the set being made that are new in a round: the fewest, and the semi-naive rule reads them first
+        sig = self.d.prog.signature(lit[1])
+        n = self.rows(lit[1])
+        if sig is not None and len(sig) == len(lit[2]):
+            for sort, a in zip(sig, lit[2]):
+                if GDL.term_vars(a, set()) <= bound:
+                    n /= self.size_of(sort)
+        return max(n, 1e-9)
+
+
 class Plan:
     """What the passes decided for one description, from its clauses, sorts, signatures and dependency graph alone (no name of a relation is known here).
     dense:    {relation: its sorts, one for each place}                  (pass "dense")
@@ -486,8 +577,21 @@ class Plan:
         self.ask_rules: dict = {}
         self.dense: dict = {}
         self.delta: dict = {}                                   # stratum -> [(rule written in full, [(the delta literal's relation, the rule joined from the delta rows)])]   (pass "delta")
+        self.bits: dict = {}                                    # relation -> BitInfo   (pass "bits")
+        self.bits_refused: dict = {}                            # relation -> why pass (5) does not hold it as bits
+        self.sids: dict = {}
+        self.tids: dict = {}
+        self.bit_rec: list = []
+        self.keep: bool = "keep" in self.passes                  # pass (7)
+        self.keep_out: set = set()                               # the arities of the rows a clause that is not held as words gives (their buffers are kept)
+        self.keep_rec: list = []                                 # the relations of a recursive set that is not held as words (the rows new in a round are kept)
+        self.units: dict = {}                                   # the products of two sorts found (pass bits), with their weights
         self.refused: dict = {}                                # relation -> why pass (2) keeps it in full: the (relation, places) chain and the clause that defeats it
-        self.rules: dict = {k: rules for k, (comp, rules) in enumerate(d.strata)}          # the rules of each stratum as they are written (the reader's, or joined in another order by pass (2))
+        self.est = Sizes(d) if "order" in self.passes else None                              # pass (6): what is known of the size of a relation, for the order of joining
+        self.rules: dict = {k: rules for k, (comp, rules) in enumerate(d.strata)}          # the rules of each stratum as they are written (the reader's, or joined in another order by pass (2) or (6))
+        if self.est is not None:
+            self.rules = {k: [JoinRule(x.clause, comp, (), None, self.est) for x in rules] for k, (comp, rules) in enumerate(d.strata)}
+        self.pre_bits: set = set(self.bit_candidates()) if "bits" in self.passes else set()          # pass (5) comes before pass (2): a relation that can be held as bits is not answered on demand
         if "demand" in self.passes:
             self.find_demand()
         if "copy" in self.passes:
@@ -495,6 +599,8 @@ class Plan:
         if "delta" in self.passes:
             self.find_delta()
         self.places = self.index_places()
+        if "bits" in self.passes:
+            self.find_bits()
         if "dense" in self.passes:
             self.find_dense()
 
@@ -548,7 +654,7 @@ class Plan:
         for k, (comp, rules) in enumerate(self.d.strata):
             if comp & demanded:
                 continue
-            out += [JoinRule(x.clause, comp, demanded) for x in rules] if fresh else self.rules[k]
+            out += [JoinRule(x.clause, comp, demanded, est=self.est) for x in rules] if fresh else self.rules[k]
         return out
 
     def compile_ask(self, rel: str, places: tuple, demanded: set) -> list:
@@ -557,7 +663,7 @@ class Plan:
             names: set = set()
             for j in places:
                 GDL.term_vars(c.head[1][j], names)
-            out.append((JoinRule(bind_clause(c, names), set(), demanded), c))
+            out.append((JoinRule(bind_clause(c, names), set(), demanded, est=self.est), c))
         return out
 
     def scans(self, rule) -> bool:
@@ -585,7 +691,7 @@ class Plan:
             if len(comp) != 1:
                 continue
             r = next(iter(comp))
-            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules):
+            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules) or r in self.pre_bits:
                 continue
             cand.add(r)
         demanded = set(cand)
@@ -643,7 +749,7 @@ class Plan:
         self.demanded = demanded
         for k, (comp, rules) in enumerate(d.strata):
             if not (comp & demanded):
-                self.rules[k] = [JoinRule(x.clause, comp, demanded) for x in rules]
+                self.rules[k] = [JoinRule(x.clause, comp, demanded, est=self.est) for x in rules]
         self.ask_rules = asks
         prod = {(rel, places, m) for (rel, places), ms in noted.items() for m in ms}
         # the ways the tests ask: every demanded relation whole, and what that asks in turn
@@ -686,7 +792,7 @@ class Plan:
                 lits = [x for x in rule.clause.body if x[0] == "pos" and x[1] in comp]
                 got = []
                 for lit in lits:
-                    got.append((lit[1], JoinRule(rule.clause, comp, self.demanded, lit)))
+                    got.append((lit[1], JoinRule(rule.clause, comp, self.demanded, lit, est=self.est)))
                 self.delta.setdefault(k, []).append((rule, got))
 
     # ---------------------------------------------------------------------------------------------- the index places, and pass (1)
@@ -713,7 +819,7 @@ class Plan:
         for r in d.nodes:
             n = d.arity.get(r, 0)
             sig = d.prog.signature(r)
-            if r in self.demanded or n == 0 or sig is None or len(sig) != n:
+            if r in self.demanded or r in self.bits or n == 0 or sig is None or len(sig) != n:
                 continue
             if not all(s in sorts and sorts[s] and all(isinstance(m, str) for m in sorts[s]) and len(sorts[s]) < 65535 for s in sig):
                 continue
@@ -733,6 +839,80 @@ class Plan:
                 self.dense[r] = tuple(sig)
 
 
+    # ---------------------------------------------------------------------------------------------- pass (5): relations held as bits
+
+    def recursive_bits(self) -> list:
+        """The relations held as bits that are in a recursive set (each has the words new in the last round)."""
+        return sorted(h for k, (comp, _r) in enumerate(self.d.strata) for h in comp if h in self.bits and any(x.rec_steps for x in self.rules[k]) and not (comp & self.demanded))
+
+    def bit_candidates(self) -> dict:
+        """The relations that may be held as bits before any clause is written: every place of a declared sort of constants, cut into tiles, the last tile of at most TILE_MAX members and the others of at most DENSE_KEYS combinations, not an input,
+        not answered on demand, and read by a written clause (a relation only the questions read would be made as words to be turned into rows)."""
+        d = self.d
+        prog = d.prog
+        units = self.units = find_units(d)
+        reads: set = set()
+        for k, (comp, _rules) in enumerate(d.strata):
+            if comp & self.demanded:
+                continue
+            for rule in self.rules[k]:
+                if self.is_copy_rule(rule):
+                    continue
+                for st in rule.steps:
+                    if st[0] in ("pos", "neg"):
+                        reads.add(st[1])
+        cand: dict = {}
+        for r in d.nodes:
+            n = d.arity.get(r, 0)
+            sig = prog.signature(r)
+            if r in self.demanded or r in INPUT_RELS or n == 0 or sig is None or len(sig) != n:
+                continue
+            tiles = tile_relation(prog, r, sig, units)
+            if tiles is None:
+                continue
+            if r not in reads:
+                self.bits_refused[r] = "no written clause reads it: only the questions do, so words would be made to be turned into rows"
+                continue
+            info = BitInfo(r, sig, tiles)
+            if info.tiles[info.canon].size > TILE_MAX or info.key_size(info.canon) > BIT_KEYS:
+                self.bits_refused[r] = f"its last tile has {info.tiles[info.canon].size} members and the others {info.key_size(info.canon)} combinations"
+                continue
+            cand[r] = info
+        return cand
+
+    def find_bits(self):
+        """Which relations are held as bits (see the module text): the candidates, then the refusals found by writing every clause with them and dropping, one round at a time, each relation a clause or an orientation defeats."""
+        d = self.d
+        cand = self.bit_candidates()
+        self.sids = {s: n for n, s in enumerate(sorted({s for i in cand.values() for t in i.tiles for s in t.sorts}))}
+        self.tids = {s: n for n, s in enumerate(sorted({t.sorts for i in cand.values() for t in i.tiles}))}
+        self.bits = cand
+        while True:
+            bad: dict = {}
+            for k, (comp, rules) in enumerate(d.strata):
+                if comp & self.demanded:
+                    continue
+                inside = [h for h in comp if h in self.bits]
+                if inside and len(inside) != len(comp) and any(x.rec_steps for x in self.rules[k]):
+                    for h in inside:
+                        bad.setdefault(h, "it is in a recursive set with a relation that is not held as bits: " + "; ".join(sorted(comp)))
+            if not bad:
+                for i in self.bits.values():
+                    i.orients = {i.canon: "the membership test"}
+                self.bit_rec = self.recursive_bits()
+                emit_strata(lambda text: None, d, self, self.places, bad)
+                for i in self.bits.values():
+                    for f, text in sorted(i.orients.items()):
+                        if i.tiles[f].size > TILE_MAX or i.key_size(f) > BIT_KEYS:
+                            bad.setdefault(i.rel, f"asked with tile {f} free ({i.tiles[f].size} members, and {i.key_size(f)} combinations of the others) by: {text}")
+            if not bad:
+                break
+            for rel, why in bad.items():
+                self.bits_refused.setdefault(rel, why)
+                self.bits.pop(rel, None)
+        self.bit_rec = self.recursive_bits()
+
+
 class ClauseWriter:
     """One clause as nested loops. `mode`: "full" (the clause of a relation made in full: its rows into `o`), "rows" or "exists" (a clause of a demanded relation joined from a key: its rows into `o`, or whether a row exists)."""
 
@@ -744,6 +924,7 @@ class ClauseWriter:
         self.depth = 0
         self.loops = 0
         self.bound: set = set()
+        self.quiet = False
 
     def out(self, s: str):
         self.lines.append("    " * (self.depth + 1) + s)
@@ -759,6 +940,9 @@ class ClauseWriter:
 
     def holder(self, rel: str) -> str:
         return "s" if self.d.static[rel] else "d"
+
+    def is_bit(self, rel: str) -> bool:
+        return bool(self.plan) and rel in self.plan.bits
 
     def sym(self, name: str) -> str:
         """A constant of the clause: its number; or the variable the key of a demanded relation bound."""
@@ -819,7 +1003,7 @@ class ClauseWriter:
 
     def steps(self, k: int):
         r = self.rule
-        counting = self.mode != "exists"
+        counting = self.mode != "exists" and not self.quiet
         demanded = self.plan.demanded if self.plan else ()
         if k == len(r.steps):
             if self.mode == "exists":
@@ -877,10 +1061,10 @@ class ClauseWriter:
                 key = "[" + ", ".join(kv.get(i, "FREE") for i in range(n)) + "]"
                 self.out(f"let key{k}: [u32; {n}] = {key};")
                 ix = self.places[rel].index(tuple(keypos))
-                get = f"{src}.{rid}.get({ix}, &key{k})"
+                get = f"{'&' if self.is_bit(rel) else ''}{src}.{rid}.get({ix}, &key{k})"
                 kp = "&[" + ", ".join(str(i) for i in keypos) + "]"
             else:
-                get = f"&{src}.{rid}.order"
+                get = f"&{src}.{rid}.rows_all()" if self.is_bit(rel) else f"&{src}.{rid}.order"
                 kp = "&[]"
                 self.out(f"let key{k}: [u32; {n}] = [FREE; {n}];")
             if counting:
@@ -930,6 +1114,515 @@ class ClauseWriter:
         self.steps(0)
         if self.mode == "exists":
             self.out("false")
+        self.lines.append("}")
+        return "\n".join(self.lines)
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ pass (5): the form of a relation over small sorts
+
+NONE = 65535                                            # the number of "not a member" in a table of symbols to ordinals
+TILE_MAX = 64                                           # a tile is held as the bits of one word
+BIT_KEYS = 1 << 20                                      # a relation held as bits has at most this many words for any orientation (8 MB; the words never set are never made resident)
+RUNTIME_BITS = r'''
+/// A set of words (pass "bits"): one word for each combination of the key tiles of an orientation of a relation; `nz` lists the words that are not nought, so that a scan and a clearing cost what the relation holds.
+pub struct Bw { pub w: Vec<u64>, pub nz: Vec<u32> }
+impl Bw {
+    pub fn new(n: usize) -> Bw { Bw { w: vec![0u64; n], nz: Vec::new() } }
+    /// Set bit `b` of word `i`; true when it was not set.
+    #[inline]
+    pub fn set(&mut self, i: usize, b: usize) -> bool { let x = self.w[i]; let m = 1u64 << b; if x & m != 0 { return false; } if x == 0 { self.nz.push(i as u32); } self.w[i] = x | m; true }
+    /// Or `v` into word `i`; the bits that were not set.
+    #[inline]
+    pub fn or(&mut self, i: usize, v: u64) -> u64 { let x = self.w[i]; let n = v & !x; if n != 0 { if x == 0 { self.nz.push(i as u32); } self.w[i] = x | n; } n }
+    pub fn clear(&mut self) { for &i in self.nz.iter() { self.w[i as usize] = 0; } self.nz.clear(); }
+}
+/// The ordinal of a symbol in a sort (NONE when it is no member of the sort, or is a compound).
+pub const NONE: usize = 65535;
+#[inline]
+pub fn ordof(t: &[u16], e: u32) -> usize { match t.get(e as usize) { Some(&o) => o as usize, None => NONE } }
+'''
+
+
+class BitRefuse(Exception):
+    """A relation that the pass bits cannot hold soundly, with the reason (the clause is named in it)."""
+
+    def __init__(self, rel: str, why: str):
+        super().__init__(why)
+        self.rel, self.why = rel, why
+
+
+class Tile:
+    """One or two places of a relation held as one number: a sort of constants, or a product of two (the first place's ordinal times the second sort's size plus the second's)."""
+
+    def __init__(self, places: tuple, sorts: tuple, sizes: tuple):
+        self.places, self.sorts, self.sizes = places, sorts, sizes
+        self.size = 1
+        for x in sizes:
+            self.size *= x
+
+
+class BitInfo:
+    """A relation held as bits: its tiles, and the orientations asked (the index of the tile left free by a way a clause asks it; the last tile is always held)."""
+
+    def __init__(self, rel: str, sig: tuple, tiles: list):
+        self.rel, self.sig, self.tiles = rel, tuple(sig), tiles
+        self.n, self.m = len(sig), len(tiles)
+        self.canon = self.m - 1
+        self.orients: dict = {self.canon: "the membership test"}          # orientation -> the clause that first asked it
+
+    def request(self, f: int, text: str):
+        self.orients.setdefault(f, text)
+
+    def key_tiles(self, f: int) -> list:
+        return [i for i in range(self.m) if i != f]
+
+    def key_size(self, f: int) -> int:
+        n = 1
+        for i in self.key_tiles(f):
+            n *= self.tiles[i].size
+        return n
+
+
+def sort_ok(prog, s: str) -> bool:
+    ms = prog.sorts.get(s)
+    return bool(ms) and all(isinstance(m, str) for m in ms) and len(ms) < NONE
+
+
+def find_units(d: "Description") -> dict:
+    """The products of two sorts, found from the clauses and signatures, each with its weight: in one clause the same two distinct variables stand next to each other, in that order, at places of the sorts (A, B) in at least two literals
+    (head included), and the product is at most TILE_MAX; the weight is the number of those literals, summed. Of (A, B) and (B, A) the one of more weight is kept."""
+    prog = d.prog
+    weight: dict = {}
+    for rel, clauses in prog.rules_of.items():
+        for c in clauses:
+            lits = [(c.head[0], c.head[1])] + [(x[1], x[2]) for x in c.body if x[0] in ("pos", "neg")]
+            pairs: dict = {}
+            for li, (r, args) in enumerate(lits):
+                sig = prog.signature(r)
+                if sig is None or len(sig) != len(args):
+                    continue
+                for i in range(len(args) - 1):
+                    a, b = args[i], args[i + 1]
+                    if GDL.is_var(a) and GDL.is_var(b) and a != b and sig[i] != sig[i + 1] and sort_ok(prog, sig[i]) and sort_ok(prog, sig[i + 1]):
+                        pairs.setdefault((a, b, sig[i], sig[i + 1]), set()).add(li)
+            for (a, b, sa, sb), ls in pairs.items():
+                if len(ls) >= 2 and len(prog.sorts[sa]) * len(prog.sorts[sb]) <= TILE_MAX:
+                    weight[(sa, sb)] = weight.get((sa, sb), 0) + len(ls)
+    return {u: w for u, w in weight.items() if w > weight.get((u[1], u[0]), 0)}
+
+
+def tile_relation(prog, rel: str, sig: tuple, units: dict):
+    """The cut of a relation's places into tiles that has the most weight of products (the cut with fewer tiles where equal); None when a place's sort is not of constants."""
+    if not all(sort_ok(prog, s) for s in sig):
+        return None
+    n = len(sig)
+    best = {n: (0, 0, [])}                                  # from place i on: (weight, -tiles, cut)
+    for i in range(n - 1, -1, -1):
+        opts = []
+        w1, t1, c1 = best[i + 1]
+        opts.append((w1, t1 - 1, [(i,)] + c1))
+        if i + 1 < n and (sig[i], sig[i + 1]) in units:
+            w2, t2, c2 = best[i + 2]
+            opts.append((w2 + units[(sig[i], sig[i + 1])], t2 - 1, [(i, i + 1)] + c2))
+        best[i] = max(opts, key=lambda o: (o[0], o[1]))
+    return [Tile(pl, tuple(sig[p] for p in pl), tuple(len(prog.sorts[sig[p]]) for p in pl)) for pl in best[0][2]]
+
+
+class BitWriter(ClauseWriter):
+    """One clause as nested loops over what is not yet bound, over relations held as bits (pass bits; see the module text). Modes: "full" and "delta" (the functions of ClauseWriter: the rows of a head that is not held as bits into `o`), and
+    "bfull" and "bdelta" (a head held as bits: its bits are set in the head's relation; "bdelta" reads the first literal from the words new in the last round of the recursive set). A literal of a relation not held as bits is written as ClauseWriter does."""
+
+    def __init__(self, d, places, cid, rule, scc, plan, mode="full", clause=None, key_places=(), record=False):
+        super().__init__(d, places, cid, rule, scc, plan, mode, clause, key_places)
+        self.bi = plan.bits
+        self.done: set = set()
+        self.record = record
+        self.head_bit = mode in ("bfull", "bdelta")
+        self.quiet = self.head_bit
+        self.text = rule.clause.text.replace("\n", " ")
+        vs: dict = {}
+
+        def note(rel, args):
+            info = self.bi.get(rel)
+            if info is not None:
+                for i, a in enumerate(args):
+                    if a[0] == "v":
+                        vs.setdefault(a[1], set()).add(info.sig[i])
+        for st in rule.steps:
+            if st[0] in ("pos", "neg"):
+                note(st[1], st[2])
+        note(rule.head_rel, rule.head)
+        self.vsort = {n: next(iter(s)) for n, s in vs.items() if len(s) == 1}
+
+    # ---------------------------------------------------------------------------------------------- the pieces of a clause
+
+    def fail(self) -> str:
+        if self.loops:
+            return "continue;"
+        if self.head_bit:
+            return "return made;"
+        return "return false;" if self.mode == "exists" else "return;"
+
+    def sid(self, s: str) -> int:
+        return self.plan.sids[s]
+
+    def is_ord(self, n: int, sort: str) -> bool:
+        return self.vsort.get(n) == sort
+
+    def build(self, p) -> str:
+        if p[0] == "v" and p[1] in self.vsort:
+            if p[1] not in self.bound:
+                raise Untranslatable(f"a variable is read before it is bound: {self.rule.clause.text}")
+            return f"SS{self.sid(self.vsort[p[1]])}[v{p[1]}]"
+        return super().build(p)
+
+    def match(self, p, e: str):
+        if p[0] == "v" and p[1] in self.vsort:
+            n, si = p[1], self.sid(self.vsort[p[1]])
+            if n in self.bound:
+                self.out(f"if ordof(&OS{si}, {e}) != v{n} {{ {self.fail()} }}")
+            else:
+                self.out(f"let v{n} = ordof(&OS{si}, {e});")
+                self.out(f"if v{n} == NONE {{ {self.fail()} }}")
+                self.bound.add(n)
+        else:
+            super().match(p, e)
+
+    def const_ord(self, rel: str, name: str, sort: str) -> int:
+        ms = self.d.prog.sorts[sort]
+        if name not in ms:
+            raise BitRefuse(rel, f"the constant {name} is no member of the sort {sort} at its place: {self.text}")
+        return ms.index(name)
+
+    def var_ord(self, n: int, sort: str) -> str:
+        """The ordinal, in `sort`, of the bound variable n (a number, and a test that it is a member where the variable is held as a symbol)."""
+        if self.is_ord(n, sort):
+            return f"v{n}"
+        u = self.fresh()
+        self.out(f"let o{u} = ordof(&OS{self.sid(sort)}, v{n});")
+        self.out(f"if o{u} == NONE {{ {self.fail()} }}")
+        return f"o{u}"
+
+    def term_ord(self, rel: str, a, sort: str) -> str:
+        if a[0] == "c":
+            return str(self.const_ord(rel, a[1], sort))
+        if a[0] == "v":
+            if a[1] not in self.bound:
+                raise Untranslatable(f"a variable is read before it is bound: {self.rule.clause.text}")
+            return self.var_ord(a[1], sort)
+        raise BitRefuse(rel, f"a compound term at a place of a relation held as bits: {self.text}")
+
+    def tile_expr(self, rel: str, tile: Tile, args) -> str:
+        comps = [self.term_ord(rel, args[p], tile.sorts[c]) for c, p in enumerate(tile.places)]
+        if len(comps) == 1:
+            return comps[0]
+        return f"({comps[0]}) * {tile.sizes[1]} + {comps[1]}"
+
+    def index_of(self, info: BitInfo, f: int, tiles: dict) -> str:
+        """The number of the word of orientation f for the tiles' numbers (expressions) given."""
+        kt = info.key_tiles(f)
+        if not kt:
+            return "0"
+        acc = tiles[kt[0]]
+        for i in kt[1:]:
+            acc = f"({acc}) * {info.tiles[i].size} + {tiles[i]}"
+        return acc
+
+    def member(self, info: BitInfo, rel: str, args) -> str:
+        """A Rust test that the row is in the relation (all its places bound)."""
+        h, rid = self.holder(rel), self.d.rid[rel]
+        if any(a[0] == "v" and not self.is_ord(a[1], info.sig[p]) for p, a in enumerate(args)):
+            return f"{h}.{rid}.has(&[{', '.join(self.build(a) for a in args)}])"
+        tiles = {i: self.tile_expr(rel, t, args) for i, t in enumerate(info.tiles)}
+        c = info.canon
+        return f"(({h}.{rid}.o{c}.w[{self.index_of(info, c, tiles)}] >> ({tiles[c]})) & 1) == 1"
+
+    def mask(self, tile: Tile, c: int, e: str) -> str:
+        if len(tile.places) == 1:
+            return f"(1u64 << ({e}))"
+        return f"MK{self.plan.tids[tile.sorts]}_{c}[{e}]"
+
+    def comp_of(self, tile: Tile, c: int, b: str) -> str:
+        """The component c of the tile's number b."""
+        if len(tile.places) == 1:
+            return b
+        return f"{b} / {tile.sizes[1]}" if c == 0 else f"{b} % {tile.sizes[1]}"
+
+    def bind(self, n: int, sort: str, e: str):
+        """Bind variable n to the ordinal e (a number) in `sort`."""
+        if self.is_ord(n, sort):
+            self.out(f"let v{n} = {e};")
+        else:
+            self.out(f"let v{n} = SS{self.sid(sort)}[{e}];")
+        self.bound.add(n)
+
+    def bind_or_check(self, rel: str, a, sort: str, e: str):
+        if a[0] == "c":
+            self.out(f"if {e} != {self.const_ord(rel, a[1], sort)} {{ {self.fail()} }}")
+        elif a[1] in self.bound:
+            if self.is_ord(a[1], sort):
+                self.out(f"if v{a[1]} != {e} {{ {self.fail()} }}")
+            else:
+                self.out(f"if v{a[1]} != SS{self.sid(sort)}[{e}] {{ {self.fail()} }}")
+        else:
+            self.bind(a[1], sort, e)
+
+    def fits(self, info: BitInfo, f: int) -> bool:
+        return info.tiles[f].size <= TILE_MAX and info.key_size(f) <= BIT_KEYS
+
+    def open(self, header: str):
+        self.out(header)
+        self.depth += 1
+        self.loops += 1
+
+    def close(self, n: int):
+        for _ in range(n):
+            self.loops -= 1
+            self.depth -= 1
+            self.out("}")
+
+    # ---------------------------------------------------------------------------------------------- the steps
+
+    def steps(self, k: int):
+        r = self.rule
+        while k in self.done:
+            k += 1
+        if k == len(r.steps):
+            self.finish()
+            return
+        st = r.steps[k]
+        if st[0] == "distinct":
+            a, b = st[1], st[2]
+            if a[0] == "c" and b[0] == "v":
+                a, b = b, a
+            if a[0] == "v" and a[1] in self.vsort and b[0] == "v" and self.vsort.get(b[1]) == self.vsort[a[1]] and a[1] in self.bound and b[1] in self.bound:
+                self.out(f"if v{a[1]} == v{b[1]} {{ {self.fail()} }}")
+            elif a[0] == "v" and a[1] in self.vsort and b[0] == "c" and a[1] in self.bound:
+                ms = self.d.prog.sorts[self.vsort[a[1]]]
+                if b[1] in ms:
+                    self.out(f"if v{a[1]} == {ms.index(b[1])} {{ {self.fail()} }}")
+            else:
+                self.out(f"if {self.build(st[1])} == {self.build(st[2])} {{ {self.fail()} }}")
+            self.steps(k + 1)
+            return
+        if st[0] in ("pos", "neg") and st[1] in self.bi:
+            self.bit_literal(k)
+            return
+        super().steps(k)
+
+    def finish(self):
+        r = self.rule
+        if not self.head_bit:
+            super().steps(len(r.steps))
+            return
+        info = self.bi[r.head_rel]
+        rid = self.d.rid[r.head_rel]
+        h = self.holder(r.head_rel)
+        tiles = [self.tile_expr(r.head_rel, t, r.head) for t in info.tiles]
+        u = self.fresh()
+        self.out(f"let tt{u}: [usize; {info.m}] = [{', '.join(tiles)}];")
+        rec = ""
+        if self.record and r.head_rel in self.scc:
+            ix = self.index_of(info, info.canon, {i: f"tt{u}[{i}]" for i in range(info.m)})
+            rec = f" dw.nw_{rid}.set({ix}, tt{u}[{info.canon}]);"
+        self.out(f"if {h}.{rid}.set_t(tt{u}) {{ made += 1;{rec} }}")
+
+    def fold(self, k: int, ftile: Tile, fargs, vvars: set, wname: str) -> bool:
+        """Literals later than k over the same variables of the same sort of tile as the free tile of literal k are anded into its word (and-not when negated); -> whether any was."""
+        r = self.rule
+        any_ = False
+        for j in range(k + 1, len(r.steps)):
+            if j in self.done:
+                continue
+            sj = r.steps[j]
+            if sj[0] not in ("pos", "neg") or sj[1] not in self.bi:
+                continue
+            im, args = self.bi[sj[1]], sj[2]
+            if any(a[0] == "f" for a in args):
+                continue
+            unb = {a[1] for a in args if a[0] == "v" and a[1] not in self.bound}
+            if not unb or not unb <= vvars:
+                continue
+            hit = [i for i, t in enumerate(im.tiles) if any(args[p][0] == "v" and args[p][1] in unb for p in t.places)]
+            if len(hit) != 1:
+                continue
+            fm = hit[0]
+            if not self.fits(im, fm):
+                continue
+            tm_ = im.tiles[fm]
+            if tm_.sorts != ftile.sorts or tuple(args[p] for p in tm_.places) != tuple(fargs[p] for p in ftile.places):
+                continue
+            if any(a[0] == "v" and a[1] not in self.bound and i not in tm_.places for i, a in enumerate(args)):
+                continue
+            im.request(fm, self.text)
+            tiles = {i: self.tile_expr(sj[1], t, args) for i, t in enumerate(im.tiles) if i != fm}
+            wm = f"{self.holder(sj[1])}.{self.d.rid[sj[1]]}.o{fm}.w[{self.index_of(im, fm, tiles)}]"
+            self.out(f"{wname} &= {'!' if sj[0] == 'neg' else ''}{wm};")
+            self.done.add(j)
+            any_ = True
+        return any_
+
+    def or_word_ok(self, k: int, info: BitInfo, f: int, args, vvars: set) -> bool:
+        r = self.rule
+        if not self.head_bit:
+            return False
+        if any(j not in self.done for j in range(k + 1, len(r.steps))):
+            return False
+        hi = self.bi[r.head_rel]
+        ht, ft = hi.tiles[hi.canon], info.tiles[f]
+        if ht.sorts != ft.sorts or tuple(r.head[p] for p in ht.places) != tuple(args[p] for p in ft.places):
+            return False
+        hv: set = set()
+        for t in hi.tiles[:-1]:
+            for p in t.places:
+                hv |= comp_vars(r.head[p])
+        return not (vvars & hv) and hv <= self.bound
+
+    def bit_literal(self, k: int):
+        r = self.rule
+        st = r.steps[k]
+        neg = st[0] == "neg"
+        rel, args = st[1], st[2]
+        info = self.bi[rel]
+        h, rid = self.holder(rel), self.d.rid[rel]
+        for a in args:
+            if a[0] == "f":
+                raise BitRefuse(rel, f"a compound term at a place of a relation held as bits: {self.text}")
+        unb = lambda a: a[0] == "v" and a[1] not in self.bound
+        if neg:
+            self.out(f"if {self.member(info, rel, args)} {{ {self.fail()} }}")
+            self.steps(k + 1)
+            return
+        free = [i for i, t in enumerate(info.tiles) if any(unb(args[p]) for p in t.places)]
+        if not free:
+            self.out(f"if !({self.member(info, rel, args)}) {{ {self.fail()} }}")
+            self.steps(k + 1)
+            return
+        delta = self.mode == "bdelta" and k == 0
+        f = info.canon if delta else free[-1]
+        if f != info.canon and not self.fits(info, f):
+            f = info.canon                                   # that way of asking would need too many words: the tiles not bound are looped over and the last tile is tested
+        info.request(f, self.text)
+        saved = set(self.bound)
+        opened = 0
+        u = self.fresh()
+        kt = info.key_tiles(f)
+        w = f"w{u}"
+        if delta or (kt and all(unb(args[p]) for i in kt for p in info.tiles[i].places)):
+            src = f"dw.dl_{rid}" if delta else f"{h}.{rid}.o{f}"
+            self.open(f"for ti{u} in 0..{src}.nz.len() {{")
+            opened += 1
+            self.out(f"let ix{u} = {src}.nz[ti{u}] as usize;")
+            self.out(f"let mut {w} = {src}.w[ix{u}];")
+            if kt:
+                self.out(f"let mut rm{u} = ix{u};")
+                names = {}
+                for i in reversed(kt):
+                    names[i] = f"t{u}_{i}"
+                    last = i == kt[0]
+                    self.out(f"let {names[i]} = rm{u} % {info.tiles[i].size};" if not last else f"let {names[i]} = rm{u};")
+                    if not last:
+                        self.out(f"rm{u} /= {info.tiles[i].size};")
+                for i in kt:
+                    t = info.tiles[i]
+                    for c, p in enumerate(t.places):
+                        self.bind_or_check(rel, args[p], t.sorts[c], self.comp_of(t, c, names[i]))
+        else:
+            tiles = {}
+            for i in kt:
+                t = info.tiles[i]
+                comps = []
+                for c, p in enumerate(t.places):
+                    a = args[p]
+                    if a[0] == "c":
+                        comps.append(str(self.const_ord(rel, a[1], t.sorts[c])))
+                    elif a[1] in self.bound:
+                        comps.append(self.var_ord(a[1], t.sorts[c]))
+                    else:
+                        n = a[1]
+                        if self.is_ord(n, t.sorts[c]):
+                            self.open(f"for v{n} in 0..{t.sizes[c]}usize {{")
+                            comps.append(f"v{n}")
+                        else:
+                            u2 = self.fresh()
+                            self.open(f"for o{u2} in 0..{t.sizes[c]}usize {{")
+                            self.out(f"let v{n} = SS{self.sid(t.sorts[c])}[o{u2}];")
+                            comps.append(f"o{u2}")
+                        opened += 1
+                        self.bound.add(n)
+                tiles[i] = comps[0] if len(comps) == 1 else f"({comps[0]}) * {t.sizes[1]} + {comps[1]}"
+            self.out(f"let mut {w} = {h}.{rid}.o{f}.w[{self.index_of(info, f, tiles)}];")
+        # the free tile: masks for the places already bound or constants
+        ft = info.tiles[f]
+        vlist = []
+        masked = False
+        for c, p in enumerate(ft.places):
+            a = args[p]
+            if a[0] == "c":
+                self.out(f"{w} &= {self.mask(ft, c, str(self.const_ord(rel, a[1], ft.sorts[c])))};")
+                masked = True
+            elif a[1] in self.bound:
+                self.out(f"{w} &= {self.mask(ft, c, self.var_ord(a[1], ft.sorts[c]))};")
+                masked = True
+            else:
+                if any(a[1] == x[1] for x in vlist):
+                    raise BitRefuse(rel, f"one variable at two places of one tile: {self.text}")
+                vlist.append((c, a[1]))
+        vvars = {n for _, n in vlist}
+        folded = self.fold(k, ft, args, vvars, w) if vlist else False
+        if masked or folded or delta or opened:
+            self.out(f"if {w} == 0 {{ {self.fail()} }}")
+        if vlist and self.or_word_ok(k, info, f, args, vvars):
+            hi = self.bi[r.head_rel]
+            hrid = self.d.rid[r.head_rel]
+            hh = self.holder(r.head_rel)
+            tiles = {i: self.tile_expr(r.head_rel, t, r.head) for i, t in enumerate(hi.tiles) if i != hi.canon}
+            self.out(f"let hk{u} = {self.index_of(hi, hi.canon, tiles)};")
+            self.out(f"let nb{u} = {hh}.{hrid}.or_word(hk{u}, {w});")
+            rec = f" dw.nw_{hrid}.or(hk{u}, nb{u});" if (self.record and r.head_rel in self.scc) else ""
+            self.out(f"if nb{u} != 0 {{ made += nb{u}.count_ones() as u64;{rec} }}")
+        else:
+            used: set = set()
+            for j in range(k + 1, len(r.steps)):
+                if j in self.done:
+                    continue
+                s2 = r.steps[j]
+                if s2[0] == "distinct":
+                    used |= comp_vars(s2[1]) | comp_vars(s2[2])
+                else:
+                    for a2 in s2[2]:
+                        used |= comp_vars(a2)
+            for a2 in r.head:
+                used |= comp_vars(a2)
+            if vlist and (vvars & used):
+                u3 = self.fresh()
+                self.out(f"let mut m{u3} = {w};")
+                self.open(f"while m{u3} != 0 {{")
+                opened += 1
+                self.out(f"let b{u3} = m{u3}.trailing_zeros() as usize;")
+                self.out(f"m{u3} &= m{u3} - 1;")
+                for c, n in vlist:
+                    self.bind(n, ft.sorts[c], self.comp_of(ft, c, f"b{u3}"))
+                self.steps(k + 1)
+            else:
+                if vlist and not masked and not folded and not delta and not opened:
+                    self.out(f"if {w} == 0 {{ {self.fail()} }}")
+                self.steps(k + 1)
+        self.close(opened)
+        self.bound = saved
+
+    def write(self) -> str:
+        if not self.head_bit:
+            return super().write()
+        r = self.rule
+        self.lines.append(f"// {self.text}")
+        if self.d.static[r.head_rel]:
+            self.lines.append(f"fn {self.cid}(s: &mut St, d: &Dy, tm: &mut Terms, dw: &mut Dw) -> u64 {{")
+        else:
+            self.lines.append(f"fn {self.cid}(s: &St, d: &mut Dy, tm: &mut Terms, dw: &mut Dw) -> u64 {{")
+        self.out("let mut made = 0u64;")
+        self.steps(0)
+        self.out("made")
         self.lines.append("}")
         return "\n".join(self.lines)
 
@@ -986,6 +1679,9 @@ impl<const N: usize> Dense<N> {
         self.order = rows;
     }
 }
+'''
+
+RUNTIME_REL_CLEAR = r'''
 impl<const N: usize> Rel<N> {
     /// Clear it (the hash relations of a state evaluation that is kept).
     pub fn clear(&mut self) { self.order.clear(); self.set.clear(); for m in self.ix.iter_mut() { m.clear(); } }
@@ -1076,6 +1772,295 @@ def w_api(w, d: Description, plan: Plan, pooled: bool):
     w("    }")
 
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ what the pass bits adds to the document
+
+def write_clause(w, writer, refusals):
+    """The text of one clause; a relation the pass bits cannot hold for this clause is recorded in `refusals` (the dry run that decides which relations are held) and the clause is left out of that run."""
+    try:
+        w(writer.write())
+    except BitRefuse as e:
+        if refusals is None:
+            raise
+        refusals.setdefault(e.rel, e.why)
+
+
+def clause_writer(d, places, name, rule, comp, plan, mode="full", record=False):
+    if plan and plan.bits and (any(st[0] in ("pos", "neg") and st[1] in plan.bits for st in rule.steps) or (mode in ("bfull", "bdelta"))):
+        return BitWriter(d, places, name, rule, comp, plan, mode, None, (), record)
+    return ClauseWriter(d, places, name, rule, comp, plan, mode)
+
+
+def emit_bit_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
+    """The functions of a stratum all of whose relations are held as bits: each clause (a recursive one once for each of its literals of the set, that literal first and read from the words new in the last round) and the piece."""
+    static = d.static[sorted(comp)[0]]
+    recursive = any(x.rec_steps for x in rules)
+    base, rec = [], []
+    for rule in rules:
+        if rule.rec_steps:
+            for j, lit in enumerate([x for x in rule.clause.body if x[0] == "pos" and x[1] in comp]):
+                name = f"c{cid}d{j}"
+                write_clause(w, BitWriter(d, places, name, JoinRule(rule.clause, comp, plan.demanded, lit, est=plan.est), comp, plan, "bdelta", None, (), True), refusals)
+                rec.append(name)
+        else:
+            name = f"c{cid}"
+            write_clause(w, BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), recursive), refusals)
+            base.append(name)
+        cid += 1
+    if static:
+        w(f"fn st{k}(s: &mut St, tm: &mut Terms, dy: &Dy, dw: &mut Dw) -> (u64, u64, u64) {{")
+        call = lambda c: f"{c}(s, dy, tm, dw)"
+    else:
+        w(f"fn st{k}(s: &St, d: &mut Dy, tm: &mut Terms, dw: &mut Dw) -> (u64, u64, u64) {{")
+        call = lambda c: f"{c}(s, d, tm, dw)"
+    w("    let mut made = 0u64;")
+    for c in base:
+        w(f"    made += {call(c)};")
+    if recursive:
+        rels = [d.rid[h] for h in sorted(comp)]
+        w("    loop {")
+        for r in rels:
+            w(f"        std::mem::swap(&mut dw.dl_{r}, &mut dw.nw_{r}); dw.nw_{r}.clear();")
+        w("        if " + " && ".join(f"dw.dl_{r}.nz.is_empty()" for r in rels) + " { break; }")
+        for c in rec:
+            w(f"        made += {call(c)};")
+        w("    }")
+    w("    (made, 0, 0)")
+    w("}")
+    return cid
+
+
+def emit_strata(w, d, plan, places, refusals=None) -> list:
+    """Every clause and the piece of every stratum, to `w`; -> [(stratum number, whether it reads no state, its relations)]."""
+    demanded = plan.demanded if plan else set()
+    bits = plan.bits if plan else {}
+    keep = bool(plan and plan.keep)
+    if keep:
+        plan.keep_out, plan.keep_rec = set(), []
+    cid = 0
+    stratum_fns = []
+    for k, (comp, rules) in enumerate(d.strata):
+        static = d.static[sorted(comp)[0]]
+        if comp & demanded:
+            stratum_fns.append((k, static, comp))              # answered on demand: no piece runs it
+            continue
+        if plan:
+            rules = [x for x in plan.rules[k] if not plan.is_copy_rule(x)]
+        if bits and all(h in bits for h in comp):
+            cid = emit_bit_stratum(w, d, plan, places, k, comp, rules, cid, refusals)
+            stratum_fns.append((k, static, comp))
+            continue
+        cids = []
+        dl_fns: dict = {}
+        for rule in rules:
+            write_clause(w, clause_writer(d, places, cid, rule, comp, plan), refusals)
+            cids.append((cid, rule))
+            if plan and plan.delta.get(k):
+                for r0, got in plan.delta[k]:
+                    if r0 is rule:
+                        for j, (rel, jr) in enumerate(got):
+                            name = f"c{cid}d{j}"
+                            write_clause(w, clause_writer(d, places, name, jr, comp, plan, "delta"), refusals)
+                            dl_fns.setdefault(cid, []).append((name, rel))
+            cid += 1
+        heads = sorted({r.head_rel for r in rules})
+        recursive = any(r.rec_steps for r in rules)
+        X = "s" if static else "d"
+        dwp = ", dw: &mut Dw" if (bits or keep) else ""
+        if static:
+            w(f"fn st{k}(s: &mut St, tm: &mut Terms, dy: &Dy{dwp}) -> (u64, u64, u64) {{")
+            call = lambda c, di: f"c{c}(&*s, dy, tm, {di}, &dl, &mut o);"
+            calld = lambda name: f"{name}(&*s, dy, tm, &dl, &mut o);"
+        else:
+            w(f"fn st{k}(s: &St, d: &mut Dy, tm: &mut Terms{dwp}) -> (u64, u64, u64) {{")
+            call = lambda c, di: f"c{c}(s, &*d, tm, {di}, &dl, &mut o);"
+            calld = lambda name: f"{name}(s, &*d, tm, &dl, &mut o);"
+        new_out = (lambda n: f"let mut o = Out::<{n}> {{ rows: std::mem::take(&mut dw.o{n}), visits: 0, probes: 0 }};") if keep else (lambda n: f"let mut o = Out::<{n}>::new();")
+        rows_of = "o.rows.drain(..)" if keep else "o.rows"
+        end_out = (lambda n: f" dw.o{n} = o.rows;") if keep else (lambda n: "")
+        w("    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);")
+        w("    let mut dl = std::mem::take(&mut dw.dl);" if keep else "    let mut dl = Dl::default();")
+        for c, rule in cids:
+            h = rule.head_rel
+            n = len(rule.head)
+            if keep:
+                plan.keep_out.add(n)
+            w(f"    {{ {new_out(n)} {call(c, 'usize::MAX')} visits += o.visits; probes += o.probes;")
+            if recursive:
+                w(f"      for row in {rows_of} {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; dl.{d.rid[h]}.push(row); }} }}{end_out(n)} }}")
+            else:
+                w(f"      for row in {rows_of} {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; }} }}{end_out(n)} }}")
+        if recursive:
+            w("    loop {")
+            w("        if " + " && ".join(f"dl.{d.rid[h]}.is_empty()" for h in sorted(comp)) + " { break; }")
+            for h in sorted(comp):
+                n = d.arity.get(h, 0)
+                if keep:
+                    if h not in plan.keep_rec:
+                        plan.keep_rec.append(h)
+                    w(f"        let mut nw{d.rid[h]}: Vec<[u32; {n}]> = std::mem::take(&mut dw.nw{d.rid[h]}); nw{d.rid[h]}.clear(); let mut sn{d.rid[h]}: HashSet<[u32; {n}], B> = std::mem::take(&mut dw.sn{d.rid[h]}); sn{d.rid[h]}.clear();")
+                else:
+                    w(f"        let mut nw{d.rid[h]}: Vec<[u32; {n}]> = vec![]; let mut sn{d.rid[h]}: HashSet<[u32; {n}], B> = HashSet::default();")
+            for c, rule in cids:
+                h = rule.head_rel
+                n = len(rule.head)
+                if c in dl_fns:
+                    todo = [(d.rid[rel], calld(name)) for name, rel in dl_fns[c]]
+                else:
+                    todo = [(d.rid[rule.steps[i][1]], call(c, str(i))) for i in rule.rec_steps]
+                for rr, text_call in todo:
+                    w(f"        if !dl.{rr}.is_empty() {{ {new_out(n)} {text_call} visits += o.visits; probes += o.probes;")
+                    w(f"            for row in {rows_of} {{ if !{X}.{d.rid[h]}.has(&row) && sn{d.rid[h]}.insert(row) {{ nw{d.rid[h]}.push(row); }} }}{end_out(n)} }}")
+            for h in sorted(comp):
+                w(f"        for row in &nw{d.rid[h]} {{ {X}.{d.rid[h]}.add(*row); made += 1; }}")
+                if keep:
+                    w(f"        std::mem::swap(&mut dl.{d.rid[h]}, &mut nw{d.rid[h]}); dw.nw{d.rid[h]} = nw{d.rid[h]}; dw.sn{d.rid[h]} = sn{d.rid[h]};")
+                else:
+                    w(f"        dl.{d.rid[h]} = nw{d.rid[h]};")
+            w("    }")
+        if keep:
+            w("    dw.dl = dl;")
+        w("    (made, visits, probes)")
+        w("}")
+        stratum_fns.append((k, static, comp))
+    return stratum_fns
+
+
+def w_bit_tables(w, d, plan):
+    """The tables of the pass bits: for each sort a held relation uses, the ordinal of each symbol and the symbol of each ordinal; for each sort of tile, the masks of the tiles whose component has one value."""
+    p = d.prog
+    by_id = sorted(plan.sids.items(), key=lambda kv: kv[1])
+    used = {s for i in plan.bits.values() for t in i.tiles for s in t.sorts}
+    for s, n in by_id:
+        if s not in used:
+            continue
+        table = [NONE] * len(d.syms)
+        for j, m in enumerate(p.sorts[s]):
+            table[d.sym_id[m]] = j
+        w(f"static OS{n}: [u16; {len(d.syms)}] = [{', '.join(map(str, table))}];")
+        w(f"static SS{n}: [u32; {len(p.sorts[s])}] = [{', '.join(str(d.sym_id[m]) for m in p.sorts[s])}];")
+    kinds = sorted({t.sorts for i in plan.bits.values() for t in i.tiles if len(t.sorts) == 2})
+    for sorts in kinds:
+        n = plan.tids[sorts]
+        a, b = len(p.sorts[sorts[0]]), len(p.sorts[sorts[1]])
+        w(f"static MK{n}_0: [u64; {a}] = [{', '.join(str(sum(1 << (x * b + y) for y in range(b))) + 'u64' for x in range(a))}];")
+        w(f"static MK{n}_1: [u64; {b}] = [{', '.join(str(sum(1 << (x * b + y) for x in range(a))) + 'u64' for y in range(b))}];")
+
+
+def w_bit_relation(w, d, plan, info: BitInfo):
+    """The struct of a relation held as bits: an array of words for each orientation asked, `set_t` (every orientation), `or_word` (a word into the last tile's orientation), and the items the rest of the document reads a relation by (`add`, `has`, `get`, `rows_all`, `is_empty`, `clear`)."""
+    rid = d.rid[info.rel]
+    name = "B" + rid[1:]
+    n, m, c = info.n, info.m, info.canon
+    ors = sorted(info.orients)
+    tt = {i: f"t[{i}]" for i in range(m)}
+    w(f"pub struct {name} {{ " + ", ".join(f"o{f}: Bw" for f in ors) + " }")
+    w(f"impl {name} {{")
+    w(f"    pub fn new() -> {name} {{ {name} {{ " + ", ".join(f"o{f}: Bw::new({info.key_size(f)})" for f in ors) + " } }")
+    ix = lambda f, t: IndexExpr(info, f, t)
+    w(f"    #[inline] pub fn set_t(&mut self, t: [usize; {m}]) -> bool {{")
+    w(f"        if !self.o{c}.set({ix(c, tt)}, t[{c}]) {{ return false; }}")
+    for f in ors:
+        if f != c:
+            w(f"        self.o{f}.set({ix(f, tt)}, t[{f}]);")
+    w("        true")
+    w("    }")
+    w(f"    #[inline] pub fn has_t(&self, t: [usize; {m}]) -> bool {{ (self.o{c}.w[{ix(c, tt)}] >> t[{c}]) & 1 == 1 }}")
+    w(f"    /// Or the word `v` into the word `key` of the last tile's orientation (the tiles before it numbered as that orientation numbers them); the bits that were not set.")
+    w("    pub fn or_word(&mut self, key: usize, v: u64) -> u64 {")
+    w(f"        let nb = self.o{c}.or(key, v);")
+    if len(ors) > 1:
+        w(f"        if nb != 0 {{")
+        w(f"            let mut t = [0usize; {m}];")
+        w("            let mut rm = key;")
+        kt = info.key_tiles(c)
+        for i in reversed(kt):
+            w(f"            t[{i}] = rm % {info.tiles[i].size}; rm /= {info.tiles[i].size};")
+        w("            let mut b = nb;")
+        w(f"            while b != 0 {{ t[{c}] = b.trailing_zeros() as usize; b &= b - 1;")
+        for f in ors:
+            if f != c:
+                w(f"                self.o{f}.set({ix(f, tt)}, t[{f}]);")
+        w("            }")
+        w("        }")
+    w("        nb")
+    w("    }")
+    # tiles of a row, and the row of tiles
+    w(f"    pub fn tiles_of(r: &[u32; {n}]) -> Option<[usize; {m}]> {{")
+    parts = []
+    for i, t in enumerate(info.tiles):
+        cs = [f"ordof(&OS{plan.sids[t.sorts[x]]}, r[{p}])" for x, p in enumerate(t.places)]
+        w(f"        let a{i} = [{', '.join(cs)}];")
+        w(f"        if a{i}.iter().any(|&x| x == NONE) {{ return None; }}")
+        parts.append(f"a{i}[0]" if len(cs) == 1 else f"a{i}[0] * {t.sizes[1]} + a{i}[1]")
+    w(f"        Some([{', '.join(parts)}])")
+    w("    }")
+    w(f"    pub fn row_of(t: [usize; {m}]) -> [u32; {n}] {{")
+    w(f"        let mut r = [0u32; {n}];")
+    for i, t in enumerate(info.tiles):
+        for x, p in enumerate(t.places):
+            comp = f"t[{i}]" if len(t.places) == 1 else (f"t[{i}] / {t.sizes[1]}" if x == 0 else f"t[{i}] % {t.sizes[1]}")
+            w(f"        r[{p}] = SS{plan.sids[t.sorts[x]]}[{comp}];")
+    w("        r")
+    w("    }")
+    w(f"    pub fn add(&mut self, r: [u32; {n}]) -> bool {{ let t = Self::tiles_of(&r).expect(\"a row outside the sorts of its relation\"); self.set_t(t) }}")
+    w(f"    pub fn has(&self, r: &[u32; {n}]) -> bool {{ match Self::tiles_of(r) {{ Some(t) => self.has_t(t), None => false }} }}")
+    w(f"    pub fn rows_all(&self) -> Vec<[u32; {n}]> {{")
+    w("        let mut out = vec![];")
+    w(f"        for &key in self.o{c}.nz.iter() {{")
+    w(f"            let mut t = [0usize; {m}];")
+    w("            let mut rm = key as usize;")
+    for i in reversed(info.key_tiles(c)):
+        w(f"            t[{i}] = rm % {info.tiles[i].size}; rm /= {info.tiles[i].size};")
+    w(f"            let mut b = self.o{c}.w[key as usize];")
+    w(f"            while b != 0 {{ t[{c}] = b.trailing_zeros() as usize; b &= b - 1; out.push(Self::row_of(t)); }}")
+    w("        }")
+    w("        out")
+    w("    }")
+    w(f"    pub fn get(&self, _i: usize, key: &[u32; {n}]) -> Vec<[u32; {n}]> {{ self.rows_all().into_iter().filter(|r| (0..{n}).all(|p| key[p] == FREE || r[p] == key[p])).collect() }}")
+    w(f"    pub fn is_empty(&self) -> bool {{ self.o{c}.nz.is_empty() }}")
+    w("    pub fn clear(&mut self) { " + " ".join(f"self.o{f}.clear();" for f in ors) + " }")
+    w("}")
+
+
+class IndexExpr:
+    """The Rust text of the number of the word of orientation f for tile numbers given as text (str() of it)."""
+
+    def __init__(self, info: BitInfo, f: int, tiles: dict):
+        kt = info.key_tiles(f)
+        if not kt:
+            self.text = "0"
+        else:
+            acc = tiles[kt[0]]
+            for i in kt[1:]:
+                acc = f"({acc}) * {info.tiles[i].size} + {tiles[i]}"
+            self.text = acc
+
+    def __str__(self):
+        return self.text
+
+
+def w_dw(w, d, plan):
+    """The working memory the questions share (pass bits: the words new in the last round and in this one, for each relation of a recursive set held as bits, the last tile's orientation; pass keep: the buffers of the rows a clause that is not held as words gives,
+    and for a recursive set that is not held as words the rows new in a round and the set that dedupes them), kept between questions."""
+    fields, inits = [], []
+    for r in plan.bit_rec:
+        n = plan.bits[r].key_size(plan.bits[r].canon)
+        fields += [f"pub dl_{d.rid[r]}: Bw", f"pub nw_{d.rid[r]}: Bw"]
+        inits += [f"dl_{d.rid[r]}: Bw::new({n})", f"nw_{d.rid[r]}: Bw::new({n})"]
+    if plan.keep:
+        fields.append("pub dl: Dl")
+        inits.append("dl: Dl::default()")
+        for n in sorted(plan.keep_out):
+            fields.append(f"pub o{n}: Vec<[u32; {n}]>")
+            inits.append(f"o{n}: Vec::new()")
+        for h in plan.keep_rec:
+            n = d.arity.get(h, 0)
+            fields += [f"pub nw{d.rid[h]}: Vec<[u32; {n}]>", f"pub sn{d.rid[h]}: HashSet<[u32; {n}], B>"]
+            inits += [f"nw{d.rid[h]}: Vec::new()", f"sn{d.rid[h]}: HashSet::default()"]
+    w("pub struct Dw { " + ", ".join(fields) + (" " if fields else "") + "}")
+    w("impl Dw { pub fn new() -> Dw { Dw { " + ", ".join(inits) + " } } }")
+
+
 # ------------------------------------------------------------------------------------------------------------------------------------------ the document
 
 def translate(text: str, module: str, passes=()) -> str:
@@ -1088,7 +2073,10 @@ def translate(text: str, module: str, passes=()) -> str:
     plan = Plan(d, passes) if passes else None
     demanded = plan.demanded if plan else set()
     dense = plan.dense if plan else {}
-    pooled = bool(dense)
+    bits = plan.bits if plan else {}
+    keep = bool(plan and plan.keep)
+    has_dw = bool(bits) or keep
+    pooled = bool(dense) or bool(bits) or keep
     out: list = []
     w = out.append
     w(f"// GENERATED by catspace/incubator/analyst/discovery/gdl_to_rust.py (plan 79.37). Do not edit: make it again.")
@@ -1098,13 +2086,18 @@ def translate(text: str, module: str, passes=()) -> str:
         w(f"// passes: {','.join(plan.passes)}")
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
     w(f"pub mod {module} {{")
-    w(RUNTIME)
-    if pooled:
+    w(RUNTIME_KEEP if keep else RUNTIME)
+    if dense:
         w(RUNTIME_DENSE)
+    if pooled:
+        w(RUNTIME_REL_CLEAR)
+    if bits:
+        w(RUNTIME_BITS)
+        w_bit_tables(w, d, plan)
     w(f"pub const SYMS: [&str; {len(d.syms)}] = [{', '.join(repr(s).replace(chr(39), chr(34)) for s in d.syms)}];")
     places = plan.places if plan else d.index_places()
     for r in d.nodes:
-        if r in demanded:
+        if r in demanded or r in bits:
             continue
         pl = places[r]
         w(f"const KP{d.rid[r][1:]}: &[&[usize]] = &[{', '.join('&[' + ', '.join(map(str, t)) + ']' for t in pl)}];")
@@ -1132,9 +2125,9 @@ def translate(text: str, module: str, passes=()) -> str:
         rels = [r for r in d.nodes if d.static[r] == holder and r not in demanded]
         w(f"pub struct {name} {{")
         for r in rels:
-            w(f"    pub {d.rid[r]}: {'Dense' if r in dense else 'Rel'}<{d.arity.get(r, 0)}>,")
+            w(f"    pub {d.rid[r]}: {('B' + d.rid[r][1:]) if r in bits else ('Dense<%d>' % d.arity.get(r, 0) if r in dense else 'Rel<%d>' % d.arity.get(r, 0))},")
         w("}")
-        new = lambda r: f"Dense::new(DS{d.rid[r][1:]}, RX{d.rid[r][1:]}, KP{d.rid[r][1:]})" if r in dense else f"Rel::new(KP{d.rid[r][1:]})"
+        new = lambda r: f"B{d.rid[r][1:]}::new()" if r in bits else (f"Dense::new(DS{d.rid[r][1:]}, RX{d.rid[r][1:]}, KP{d.rid[r][1:]})" if r in dense else f"Rel::new(KP{d.rid[r][1:]})")
         w(f"impl {name} {{ pub fn new() -> {name} {{ {name} {{ " + ", ".join(f"{d.rid[r]}: {new(r)}" for r in rels) + " } } }")
         if pooled and not holder:
             w(f"impl {name} {{ pub fn clear(&mut self) {{ " + " ".join(f"self.{d.rid[r]}.clear();" for r in rels) + " } }")
@@ -1148,76 +2141,19 @@ def translate(text: str, module: str, passes=()) -> str:
     for r in rec_rels:
         w(f"    pub {d.rid[r]}: Vec<[u32; {d.arity.get(r, 0)}]>,")
     w("}")
+    if bits:
+        for r in sorted(bits):
+            w_bit_relation(w, d, plan, bits[r])
     # the clauses and the pieces
-    cid = 0
-    stratum_fns = []
-    for k, (comp, rules) in enumerate(d.strata):
-        static = d.static[sorted(comp)[0]]
-        if comp & demanded:
-            stratum_fns.append((k, static, comp))              # answered on demand: no piece runs it
-            continue
-        if plan:
-            rules = [x for x in plan.rules[k] if not plan.is_copy_rule(x)]
-        cids = []
-        dl_fns: dict = {}
-        for rule in rules:
-            w(ClauseWriter(d, places, cid, rule, comp, plan).write())
-            cids.append((cid, rule))
-            if plan and plan.delta.get(k):
-                for r0, got in plan.delta[k]:
-                    if r0 is rule:
-                        for j, (rel, jr) in enumerate(got):
-                            name = f"c{cid}d{j}"
-                            w(ClauseWriter(d, places, name, jr, comp, plan, "delta").write())
-                            dl_fns.setdefault(cid, []).append((name, rel))
-            cid += 1
-        heads = sorted({r.head_rel for r in rules})
-        recursive = any(r.rec_steps for r in rules)
-        X = "s" if static else "d"
-        if static:
-            w(f"fn st{k}(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {{")
-            call = lambda c, di: f"c{c}(&*s, dy, tm, {di}, &dl, &mut o);"
-            calld = lambda name: f"{name}(&*s, dy, tm, &dl, &mut o);"
-        else:
-            w(f"fn st{k}(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {{")
-            call = lambda c, di: f"c{c}(s, &*d, tm, {di}, &dl, &mut o);"
-            calld = lambda name: f"{name}(s, &*d, tm, &dl, &mut o);"
-        w("    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);")
-        w("    let mut dl = Dl::default();")
-        for c, rule in cids:
-            h = rule.head_rel
-            n = len(rule.head)
-            w(f"    {{ let mut o = Out::<{n}>::new(); {call(c, 'usize::MAX')} visits += o.visits; probes += o.probes;")
-            if recursive:
-                w(f"      for row in o.rows {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; dl.{d.rid[h]}.push(row); }} }} }}")
-            else:
-                w(f"      for row in o.rows {{ if {X}.{d.rid[h]}.add(row) {{ made += 1; }} }} }}")
-        if recursive:
-            w("    loop {")
-            w("        if " + " && ".join(f"dl.{d.rid[h]}.is_empty()" for h in sorted(comp)) + " { break; }")
-            for h in sorted(comp):
-                n = d.arity.get(h, 0)
-                w(f"        let mut nw{d.rid[h]}: Vec<[u32; {n}]> = vec![]; let mut sn{d.rid[h]}: HashSet<[u32; {n}], B> = HashSet::default();")
-            for c, rule in cids:
-                h = rule.head_rel
-                n = len(rule.head)
-                if c in dl_fns:
-                    todo = [(d.rid[rel], calld(name)) for name, rel in dl_fns[c]]
-                else:
-                    todo = [(d.rid[rule.steps[i][1]], call(c, str(i))) for i in rule.rec_steps]
-                for rr, text_call in todo:
-                    w(f"        if !dl.{rr}.is_empty() {{ let mut o = Out::<{n}>::new(); {text_call} visits += o.visits; probes += o.probes;")
-                    w(f"            for row in o.rows {{ if !{X}.{d.rid[h]}.has(&row) && sn{d.rid[h]}.insert(row) {{ nw{d.rid[h]}.push(row); }} }} }}")
-            for h in sorted(comp):
-                w(f"        for row in &nw{d.rid[h]} {{ {X}.{d.rid[h]}.add(*row); made += 1; }}")
-                w(f"        dl.{d.rid[h]} = nw{d.rid[h]};")
-            w("    }")
-        w("    (made, visits, probes)")
-        w("}")
-        stratum_fns.append((k, static, comp))
+    stratum_fns = emit_strata(w, d, plan, places)
+    if has_dw:
+        w_dw(w, d, plan)
     if plan:
         w_asks(w, d, plan)
     nst = len(d.strata)
+    ro = lambda holder, rel: f"{holder}.{d.rid[rel]}.rows_all()" if rel in bits else f"{holder}.{d.rid[rel]}.order"
+    dwp = ", dw: &mut Dw" if has_dw else ""
+    dwa = ", dw" if has_dw else ""
     w(f"pub const PIECES: [(&str, bool); {nst}] = [" + ", ".join('("%s", %s)' % ("+".join(sorted(c)), "true" if s else "false") for _, s, c in stratum_fns) + "];")
     if plan:
         w(f"pub const PASSES: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.passes)}];")
@@ -1226,10 +2162,10 @@ def translate(text: str, module: str, passes=()) -> str:
     legal_cone = [k for k in d.dynamic_meeting(d.cone([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
     next_pairs = [f for f in d.fluents if f"next.{f}" in d.prog.nodes]
     next_cone = [k for k in d.dynamic_meeting(d.cone([f"next.{f}" for f in next_pairs])) if not (d.strata[k][0] & demanded)]
-    w("fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms, k: usize) -> (u64, u64, u64) {")
+    w(f"fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms{dwp}, k: usize) -> (u64, u64, u64) {{")
     w("    match k {")
     for k in dyn_all:
-        w(f"        {k} => st{k}(s, d, tm),")
+        w(f"        {k} => st{k}(s, d, tm{dwa}),")
     w("        _ => panic!(\"not a piece of the state\"),")
     w("    }")
     w("}")
@@ -1238,24 +2174,26 @@ def translate(text: str, module: str, passes=()) -> str:
     w(f"const READ_CONE: &[usize] = {lst(legal_cone)};")
     w(f"const NEXT_CONE: &[usize] = {lst(next_cone)};")
     # the game
-    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + " }")
+    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + " }")
     w("impl Game {")
     w(f"    pub fn new() -> Game {{")
     w("        let mut st = St::new();")
     w("        let mut tm = Terms::new();")
     w("        let dy = Dy::new();")
+    if has_dw:
+        w("        let mut dw = Dw::new();")
     for k, s, _ in stratum_fns:
         if s:
-            w(f"        st{k}(&mut st, &mut tm, &dy);")
-    w(f"        let roles: Vec<u32> = st.{d.rid['role']}.order.iter().map(|r| r[0]).collect();")
-    w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + " }")
+            w(f"        st{k}(&mut st, &mut tm, &dy{', &mut dw' if has_dw else ''});")
+    w(f"        let roles: Vec<u32> = {ro('st', 'role')}.iter().map(|r| r[0]).collect();")
+    w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + " }")
     w("    }")
     w("    pub fn roles(&self) -> &[u32] { &self.roles }")
     w("    pub fn initial(&self) -> State {")
     w("        let mut s = State::default();")
     for f in d.fluents:
         if f"init.{f}" in d.prog.nodes:
-            w(f"        s.f_{ident(f)} = self.st.{d.rid['init.' + f]}.order.clone();")
+            w(f"        s.f_{ident(f)} = {ro('self.st', 'init.' + f)}.clone();")
     w("        s.sort();")
     w("        s")
     w("    }")
@@ -1276,59 +2214,101 @@ def translate(text: str, module: str, passes=()) -> str:
     w("        for &k in which {")
     w("            if self.profiling {")
     w("                let t = std::time::Instant::now();")
-    w("                let (a, b, c) = run_piece(&self.st, d, &mut self.tm, k);")
+    w(f"                let (a, b, c) = run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k);")
     w("                let p = &mut self.prof[k];")
     w("                p.calls += 1; p.nanos += t.elapsed().as_nanos() as u64; p.rows += a; p.visits += b; p.probes += c;")
     w("            } else {")
-    w("                run_piece(&self.st, d, &mut self.tm, k);")
+    w(f"                run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k);")
     w("            }")
     w("        }")
     w("    }")
-    w("    fn read(&mut self, s: &State) -> Reading {")
-    w("        if let Some((k, r)) = &self.last { if k == s { return r.clone(); } }")
-    w("        let mut d = self.load(s, &[]);")
-    w("        self.run(&mut d, READ_CONE);")
-    lg = f"d.{d.rid['legal']}.order.iter().map(|x| (x[0], x[1])).collect()" if "legal" in d.prog.nodes else "vec![]"
-    tm_ = f"!d.{d.rid['terminal']}.order.is_empty()" if "terminal" in d.prog.nodes else "false"
-    gl = f"d.{d.rid['goal']}.order.iter().map(|x| (x[0], x[1])).collect()" if "goal" in d.prog.nodes else "vec![]"
-    w(f"        let rd = Reading {{ legal: {lg}, terminal: {tm_}, goals: {gl} }};")
-    w("        self.last = Some((s.clone(), rd.clone()));")
-    if pooled:
+    if keep:
+        w("    fn ensure(&mut self, s: &State) {")
+        w("        if let Some((k, _)) = &self.last { if k == s { return; } }")
+        w("        let mut d = self.load(s, &[]);")
+        w("        self.run(&mut d, READ_CONE);")
+        w("        let (mut ls, mut lr) = match self.last.take() { Some(x) => x, None => (State::default(), Reading { legal: vec![], terminal: false, goals: vec![] }) };")
+        w("        ls.assign(s);")
+        lg = f"lr.legal.extend({ro('d', 'legal')}.iter().map(|x| (x[0], x[1])));" if "legal" in d.prog.nodes else ""
+        tm_ = f"lr.terminal = !{ro('d', 'terminal')}.is_empty();" if "terminal" in d.prog.nodes else "lr.terminal = false;"
+        gl = f"lr.goals.extend({ro('d', 'goal')}.iter().map(|x| (x[0], x[1])));" if "goal" in d.prog.nodes else ""
+        w("        lr.legal.clear(); lr.goals.clear();")
+        w(f"        {lg} {tm_} {gl}")
+        w("        self.last = Some((ls, lr));")
         w("        d.clear();")
         w("        self.pool = Some(d);")
-    w("        rd")
-    w("    }")
-    w("    pub fn mover(&mut self, s: &State) -> Option<usize> {")
-    w("        let rd = self.read(s);")
-    w("        if rd.terminal { return None; }")
-    w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
-    w("    }")
-    w("    pub fn moves(&mut self, s: &State) -> Vec<u32> {")
-    w("        let Some(r) = self.mover(s) else { return vec![] };")
-    w("        let rd = self.read(s);")
-    w("        rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m).collect()")
-    w("    }")
-    w("    pub fn terminal(&mut self, s: &State) -> bool { self.read(s).terminal }")
-    w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
-    w("        let rd = self.read(s);")
-    w("        if !rd.terminal { return None; }")
-    w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
-    w("    }")
+        w("    }")
+        w("    pub fn mover(&mut self, s: &State) -> Option<usize> {")
+        w("        self.ensure(s);")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        if rd.terminal { return None; }")
+        w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
+        w("    }")
+        w("    pub fn moves(&mut self, s: &State) -> Vec<u32> {")
+        w("        let Some(r) = self.mover(s) else { return vec![] };")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m).collect()")
+        w("    }")
+        w("    pub fn terminal(&mut self, s: &State) -> bool { self.ensure(s); self.last.as_ref().unwrap().1.terminal }")
+        w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
+        w("        self.ensure(s);")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        if !rd.terminal { return None; }")
+        w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
+        w("    }")
+    else:
+        w("    fn read(&mut self, s: &State) -> Reading {")
+        w("        if let Some((k, r)) = &self.last { if k == s { return r.clone(); } }")
+        w("        let mut d = self.load(s, &[]);")
+        w("        self.run(&mut d, READ_CONE);")
+        lg = f"{ro('d', 'legal')}.iter().map(|x| (x[0], x[1])).collect()" if "legal" in d.prog.nodes else "vec![]"
+        tm_ = f"!{ro('d', 'terminal')}.is_empty()" if "terminal" in d.prog.nodes else "false"
+        gl = f"{ro('d', 'goal')}.iter().map(|x| (x[0], x[1])).collect()" if "goal" in d.prog.nodes else "vec![]"
+        w(f"        let rd = Reading {{ legal: {lg}, terminal: {tm_}, goals: {gl} }};")
+        w("        self.last = Some((s.clone(), rd.clone()));")
+        if pooled:
+            w("        d.clear();")
+            w("        self.pool = Some(d);")
+        w("        rd")
+        w("    }")
+        w("    pub fn mover(&mut self, s: &State) -> Option<usize> {")
+        w("        let rd = self.read(s);")
+        w("        if rd.terminal { return None; }")
+        w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
+        w("    }")
+        w("    pub fn moves(&mut self, s: &State) -> Vec<u32> {")
+        w("        let Some(r) = self.mover(s) else { return vec![] };")
+        w("        let rd = self.read(s);")
+        w("        rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m).collect()")
+        w("    }")
+        w("    pub fn terminal(&mut self, s: &State) -> bool { self.read(s).terminal }")
+        w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
+        w("        let rd = self.read(s);")
+        w("        if !rd.terminal { return None; }")
+        w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
+        w("    }")
     w("    pub fn next(&mut self, s: &State, mv: u32) -> State {")
     w("        let me = self.mover(s);")
-    w("        let does: Vec<(u32, u32)> = self.roles.iter().enumerate().map(|(i, r)| (*r, if Some(i) == me { mv } else { self.noop })).collect();")
+    if keep:
+        w("        let mut does = std::mem::take(&mut self.does_buf);")
+        w("        does.clear();")
+        w("        does.extend(self.roles.iter().enumerate().map(|(i, r)| (*r, if Some(i) == me { mv } else { self.noop })));")
+    else:
+        w("        let does: Vec<(u32, u32)> = self.roles.iter().enumerate().map(|(i, r)| (*r, if Some(i) == me { mv } else { self.noop })).collect();")
     w("        let mut d = self.load(s, &does);")
     w("        self.run(&mut d, NEXT_CONE);")
     w("        let mut n = State::default();")
     for f in next_pairs:
         if plan and f"next.{f}" in plan.copy:
-            w(f"        n.f_{ident(f)} = {{ let mut v: Vec<[u32; {d.arity['true.' + f]}]> = vec![]; for r in &s.f_{ident(f)} {{ if {copy_condition(d, plan, f'next.{f}', 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')} {{ v.push(*r); }} }} v.extend_from_slice(&d.{d.rid['next.' + f]}.order); v }};")
+            w(f"        n.f_{ident(f)} = {{ let mut v: Vec<[u32; {d.arity['true.' + f]}]> = vec![]; for r in &s.f_{ident(f)} {{ if {copy_condition(d, plan, f'next.{f}', 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')} {{ v.push(*r); }} }} v.extend_from_slice(&{ro('d', 'next.' + f)}); v }};")
         else:
-            w(f"        n.f_{ident(f)} = d.{d.rid['next.' + f]}.order.clone();")
+            w(f"        n.f_{ident(f)} = {ro('d', 'next.' + f)}.clone();")
     w("        n.sort();")
     if pooled:
         w("        d.clear();")
         w("        self.pool = Some(d);")
+    if keep:
+        w("        self.does_buf = does;")
     w("        n")
     w("    }")
     w("    pub fn sym(&self, name: &str) -> Option<u32> { SYMS.binary_search(&name).ok().map(|i| i as u32) }")
@@ -1383,7 +2363,7 @@ def translate(text: str, module: str, passes=()) -> str:
     w("        vec![")
     for r in d.nodes:
         if d.static[r]:
-            w(f"            (\"{r}\", self.st.{d.rid[r]}.order.iter().map(|x| x.to_vec()).collect()),")
+            w(f"            (\"{r}\", {ro('self.st', r)}.iter().map(|x| x.to_vec()).collect()),")
     w("        ]")
     w("    }")
     w("    /// Every relation that reads the state, evaluated in full on a state and a joint turn (the turn's rows void when `does` is void).")
@@ -1394,7 +2374,7 @@ def translate(text: str, module: str, passes=()) -> str:
         w("        vec![")
         for r in d.nodes:
             if not d.static[r]:
-                w(f"            (\"{r}\", d.{d.rid[r]}.order.iter().map(|x| x.to_vec()).collect()),")
+                w(f"            (\"{r}\", {ro('d', r)}.iter().map(|x| x.to_vec()).collect()),")
         w("        ]")
     else:
         w("        let out = vec![")
@@ -1403,9 +2383,9 @@ def translate(text: str, module: str, passes=()) -> str:
                 continue
             if r in plan.copy:
                 f = r[len("next."):]
-                w(f"            (\"{r}\", {{ let mut v: Vec<Vec<u32>> = d.{d.rid[r]}.order.iter().map(|x| x.to_vec()).collect(); for r in &s.f_{ident(f)} {{ if {copy_condition(d, plan, r, 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')} {{ v.push(r.to_vec()); }} }} v.sort(); v.dedup(); v }}),")
+                w(f"            (\"{r}\", {{ let mut v: Vec<Vec<u32>> = {ro('d', r)}.iter().map(|x| x.to_vec()).collect(); for r in &s.f_{ident(f)} {{ if {copy_condition(d, plan, r, 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')} {{ v.push(r.to_vec()); }} }} v.sort(); v.dedup(); v }}),")
             else:
-                w(f"            (\"{r}\", d.{d.rid[r]}.order.iter().map(|x| x.to_vec()).collect()),")
+                w(f"            (\"{r}\", {ro('d', r)}.iter().map(|x| x.to_vec()).collect()),")
         w("        ];")
         if pooled:
             w("        d.clear();")
@@ -1417,6 +2397,14 @@ def translate(text: str, module: str, passes=()) -> str:
     w("    pub fn noop(&self) -> u32 { self.noop }")
     w("    pub fn reset_profile(&mut self) { for p in self.prof.iter_mut() { *p = Stat::default(); } }")
     w("}")
+    if keep:
+        w("impl State {")
+        w("    /// Copy `o` into this state, keeping the memory of the lists it holds.")
+        w("    pub fn assign(&mut self, o: &State) {")
+        for f in d.fluents:
+            w(f"        self.f_{ident(f)}.clear(); self.f_{ident(f)}.extend_from_slice(&o.f_{ident(f)});")
+        w("    }")
+        w("}")
     w("impl State {")
     w("    pub fn sort(&mut self) {")
     for f in d.fluents:

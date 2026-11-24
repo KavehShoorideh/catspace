@@ -24,7 +24,8 @@ ENGINE = ROOT / "rust" / "engine"
 GEN = ENGINE / "game" / "tests" / "generated"
 TRANSLATOR = ROOT / "catspace" / "incubator" / "analyst" / "discovery" / "gdl_to_rust.py"
 BEFORE = "12f17e26"                      # the commit before this plan's code (the plan block's own commit: documents only)
-VARIANTS = {"dense": ["dense"], "demand": ["demand"], "copy": ["copy"], "delta": ["delta"], "fast": ["dense", "demand", "copy", "delta"]}
+KEPT = ("fast",)                         # plan 79.40 part F: of the files with passes only `fast` (every pass) is kept in the repository; the others are made here, in the test run
+VARIANTS = {"dense": ["dense"], "demand": ["demand"], "copy": ["copy"], "delta": ["delta"], "bits": ["bits"], "order": ["order"], "keep": ["keep"], "fast": ["dense", "demand", "copy", "delta", "bits", "order", "keep"]}
 GAMES = ("chess", "atomic")
 
 
@@ -112,7 +113,8 @@ def test_no_pass_branches_on_a_name_the_same_passes_give_the_same_decisions_on_a
     for i, n in enumerate(sorted(names, key=len, reverse=True)):
         renamed = re.sub(rf"(?<![a-z0-9_?.]){re.escape(n)}(?![a-z0-9_.])", f"zz{i}", renamed)
     d2 = T.Description(renamed)
-    a, b = T.Plan(d, T.PASSES), T.Plan(d2, T.PASSES)
+    four = ["dense", "demand", "copy", "delta"]                 # (the four passes of plan 79.38: the pass bits of 79.40 takes relations the pass dense and the pass demand would; tests/test_plan79_40.py renames for it)
+    a, b = T.Plan(d, four), T.Plan(d2, four)
     assert len(a.demanded) == len(b.demanded) > 20
     assert len(a.dense) == len(b.dense) > 20
     assert len(a.copy) == len(b.copy) == 2
@@ -128,17 +130,23 @@ def test_a_file_with_passes_carries_the_hashes_and_the_passes_and_a_fresh_transl
     module = f"{game}_{variant}"
     path = GEN / f"{module}.rs"
     text = description_of(game)
-    assert head_line(path, "description-sha256") == hashlib.sha256(text.encode()).hexdigest(), f"{module}: the description changed; make the file again"
-    assert head_line(path, "translator-sha256") == T.translator_hash(), f"{module}: the translator changed; make the file again"
-    assert head_line(path, "passes") == ",".join(VARIANTS[variant]), module
     fresh = T.translate(text, module, VARIANTS[variant])
-    assert fresh == path.read_text(), f"{module}: a fresh translation differs from the committed file"
-    print(f"OBS 79.38 E {module}: {len(fresh)} bytes, {fresh.count(chr(10))} lines, passes {head_line(path, 'passes')}, the hashes at its head match and a fresh translation is identical")
+    lines = fresh.splitlines()[:6]
+    got = lambda key: next((x.split(":", 1)[1].strip() for x in lines if x.startswith(f"// {key}:")), None)
+    assert got("description-sha256") == hashlib.sha256(text.encode()).hexdigest() and got("translator-sha256") == T.translator_hash() and got("passes") == ",".join(VARIANTS[variant]), module
+    if variant in KEPT:                          # the kept file carries the hashes and the passes and is the fresh translation; a file of a single pass is made in the test run and is not in the repository
+        assert head_line(path, "description-sha256") == hashlib.sha256(text.encode()).hexdigest(), f"{module}: the description changed; make the file again"
+        assert head_line(path, "translator-sha256") == T.translator_hash(), f"{module}: the translator changed; make the file again"
+        assert head_line(path, "passes") == ",".join(VARIANTS[variant]), module
+        assert fresh == path.read_text(), f"{module}: a fresh translation differs from the committed file"
+    else:
+        assert not path.exists(), f"{module}: the file of a single pass is not kept in the repository"
+    print(f"OBS 79.38 E {module}: {len(fresh)} bytes, {fresh.count(chr(10))} lines, passes {got('passes')}, the hashes at its head match and a fresh translation is identical{' to the kept file' if variant in KEPT else ' (made here, not kept)'}")
 
 
-def test_the_files_of_the_generated_folder_are_the_plain_ones_and_those_with_each_pass_alone_and_with_all():
-    want = {f"{g}.rs" for g in GAMES} | {f"{g}_{v}.rs" for g in GAMES for v in VARIANTS}
-    assert {p.name for p in GEN.iterdir()} == want
+def test_the_files_of_the_generated_folder_are_the_plain_ones_and_those_with_every_pass():
+    want = {f"{g}.rs" for g in GAMES} | {f"{g}_{v}.rs" for g in GAMES for v in KEPT}
+    assert {p.name for p in GEN.iterdir() if p.is_file()} == want
 
 
 def test_a_fresh_translation_is_the_same_under_two_hash_seeds_of_the_process():
@@ -147,7 +155,7 @@ def test_a_fresh_translation_is_the_same_under_two_hash_seeds_of_the_process():
             "from pathlib import Path\n"
             "from catspace.incubator.analyst.discovery import gdl_to_rust as T\n"
             "text = Path(%r).read_text()\n"
-            "print(hashlib.sha256(T.translate(text, 'm', ['dense','demand','copy','delta']).encode()).hexdigest())\n") % (str(ROOT), str(ROOT / "rules" / "chess.gdl"))
+            "print(hashlib.sha256(T.translate(text, 'm', list(T.PASSES)).encode()).hexdigest())\n") % (str(ROOT), str(ROOT / "rules" / "chess.gdl"))
     outs = []
     for seed in ("1", "2"):
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env={"PYTHONHASHSEED": seed, "PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT)})
