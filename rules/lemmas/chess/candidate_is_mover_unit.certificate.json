@@ -12,18 +12,18 @@
  },
  "ingests": "the lemma candidate_is_mover_unit of chess: under its condition candidate has its rows among those of mover_unit_move",
  "oracle": "the description with the lemma's delta, evaluated by discovery/gdl.py",
- "corpus": "208 fixture states and 20 seeded games (seed 77, fuse 300 plies), 4845 game states",
- "positions": 5053,
- "states_held": 5053,
- "rows_left": 141571,
- "rows_right": 2719616,
- "rows_compared": 141571,
+ "corpus": "209 fixture states and 20 seeded games (seed 77, fuse 300 plies), 4845 game states",
+ "positions": 5054,
+ "states_held": 5054,
+ "rows_left": 141578,
+ "rows_right": 2719744,
+ "rows_compared": 141578,
  "disagreeing_states": 0,
  "disagreeing_rows": 0,
  "disagreements": 0,
  "vacuous": false,
  "examples": [],
- "key": "362ddca0021d089a",
+ "key": "25cc87775a3a18aa",
  "sources": [
   "the description chess/chess",
   "the delta of candidate_is_mover_unit",
@@ -32,6 +32,6 @@
   "discovery/rule_lemma_certify.py",
   "the fixtures"
  ],
- "date": "2026-11-23",
- "seconds": 18.5
+ "date": "2026-11-24",
+ "seconds": 16.5
 }

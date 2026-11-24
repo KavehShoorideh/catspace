@@ -1,7 +1,7 @@
 {
  "binding": "lemma chess exposed_by_cases by translated code",
  "lemma": "exposed_by_cases",
- "evidence": "CERTIFIED 05d6a81da826c7a6",
+ "evidence": "CERTIFIED 75266d1f6dc1efad",
  "module": "chess_lemma",
  "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated",
  "corpus": "4000 seeded random games of the kernel (seed 77, game g from seed 77 * 1000003 + g), 300 plies at most",
@@ -17,19 +17,19 @@
  "disagreeing_rows": 0,
  "flag_disagreements": 0,
  "examples": [],
- "seconds": 358.9,
- "load_before": "{ 11.64 15.41 12.62 }",
+ "seconds": 135.9,
+ "load_before": "{ 1.85 2.43 5.00 }",
  "lemma_certificate": "exposed_by_cases.certificate.json",
  "certificate_counts": {
-  "positions": 5053,
-  "states_held": 4730,
-  "rows_left": 8545,
-  "rows_right": 8545,
-  "rows_compared": 8545,
+  "positions": 5054,
+  "states_held": 4731,
+  "rows_left": 8547,
+  "rows_right": 8547,
+  "rows_compared": 8547,
   "disagreements": 0
  },
- "certificate_key": "05d6a81da826c7a6",
- "module_sha256": "37f18c6e1e004e99bbf96da8c3952bfa7e84299425ab3c7a7f21f3d506b79d6f",
+ "certificate_key": "75266d1f6dc1efad",
+ "module_sha256": "3a7dc3cdd760b3afe06527d83a1bdf88f9e509660272a5b10ecee7569fe85a74",
  "translator_sha256": "99c1ffcb36708e09b8f87eb6ec3b50a645e719cf829816dfcf4a0e0c2a5bbc53",
  "date": "2026-11-24"
 }

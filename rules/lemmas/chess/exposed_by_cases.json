@@ -26,6 +26,6 @@
   "(<= (exposed_by_cases ?f1 ?r1 ?f2 ?r2) (en_passant ?c ?f1 ?r1 ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?vf ?vr) (row_pair ?c ?d ?vf ?vr ?f1 ?r1))"
  ],
  "origin": "HAND",
- "standing": {"is": "CERTIFIED", "key": "05d6a81da826c7a6"},
+ "standing": {"is": "CERTIFIED", "key": "75266d1f6dc1efad"},
  "lean": {"module": "Ideas.Spec.Chess", "namespace": "Ideas.Spec.Chess", "position": "Chess.Position"}
 }

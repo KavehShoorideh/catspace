@@ -41,6 +41,8 @@
 (cell a 5 white king) (cell b 5 white pawn) (cell c 5 black pawn) (cell e 8 black king) (cell h 5 black rook) (control white) (ep_square c 6) (halfmove 0)
 ; en passant takes both units from the king's row, the other way: 4k3/8/8/r2pP2K/8/8/8/8 w - d6 0 1
 (cell a 5 black rook) (cell d 5 black pawn) (cell e 5 white pawn) (cell e 8 black king) (cell h 5 white king) (control white) (ep_square d 6) (halfmove 0)
+; en passant where the captured unit stands nearer the king than the capturer on the king's row: 4k3/8/8/KpP4r/8/8/8/8 w - b6 0 1
+(cell a 5 white king) (cell b 5 black pawn) (cell c 5 white pawn) (cell e 8 black king) (cell h 5 black rook) (control white) (ep_square b 6) (halfmove 0)
 ; a pawn pinned on a diagonal may take the pinner and may not leave: 4k3/8/8/8/8/2b5/3P4/4K3 w - - 0 1
 (cell c 3 black bishop) (cell d 2 white pawn) (cell e 1 white king) (cell e 8 black king) (control white) (halfmove 0)
 ; a pawn pinned on a file may push: 4k3/4r3/8/8/8/8/4P3/4K3 w - - 0 1

@@ -14,6 +14,6 @@
   "(<= (lone_on_file rook ?c ?f ?r1 ?f ?r2) (true (cell ?f ?r1 ?c rook)) (not (company ?f ?r1)) (rank ?r2) (distinct ?r1 ?r2))"
  ],
  "origin": "HAND",
- "standing": {"is": "CERTIFIED", "key": "ed19ab2468fbafa9"},
+ "standing": {"is": "CERTIFIED", "key": "f608da78783a3439"},
  "lean": {"module": "Ideas.Spec.Chess", "namespace": "Ideas.Spec.Chess", "position": "Chess.Position"}
 }

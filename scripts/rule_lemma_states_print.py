@@ -28,6 +28,7 @@ MADE = [
     ("en passant opens a diagonal to the king", "b3k3/8/8/3pP3/8/8/8/7K w - d6 0 2"),
     ("en passant takes both units from the king's row", "4k3/8/8/KPp4r/8/8/8/8 w - c6 0 1"),
     ("en passant takes both units from the king's row, the other way", "4k3/8/8/r2pP2K/8/8/8/8 w - d6 0 1"),
+    ("en passant where the captured unit stands nearer the king than the capturer on the king's row", "4k3/8/8/KpP4r/8/8/8/8 w - b6 0 1"),     # 2026-11-24: plan 79.45 found that no state reached the last clause of the lemma of the cases
     ("a pawn pinned on a diagonal may take the pinner and may not leave", "4k3/8/8/8/8/2b5/3P4/4K3 w - - 0 1"),
     ("a pawn pinned on a file may push", "4k3/4r3/8/8/8/8/4P3/4K3 w - - 0 1"),
     ("castling with the rook attacked and the king safe", "r3k2r/8/8/8/8/8/6b1/R3K2R w KQkq - 0 1"),

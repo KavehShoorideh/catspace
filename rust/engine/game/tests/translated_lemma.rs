@@ -426,7 +426,7 @@ fn json_str(s: &str) -> String { format!("\"{}\"", s.replace('\\', "\\\\").repla
 
 /// The large certificate (ignored: run by hand with LEMMA_GAMES and LEMMA_THREADS; the record goes to LEMMA_RECORD when it names a file).
 #[test]
-#[ignore]
+#[ignore = "a long run: the large certificate of a lemma by translated code, run by hand through scripts/rule_lemma_translated.py"]
 fn certificate_large() {
     let games = env_usize("LEMMA_GAMES", 200);
     let threads = env_usize("LEMMA_THREADS", 10);

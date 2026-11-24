@@ -2,7 +2,7 @@
 // description-sha256: ab7fa6f1c5ac384a87967db85039acb827dacac1ec1d542a4702e81e745e5a94
 // translator-sha256: 99c1ffcb36708e09b8f87eb6ec3b50a645e719cf829816dfcf4a0e0c2a5bbc53
 // passes: dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated
-// lemma: exposed_by_cases SAME exposed -> lemma1_rep, flag lemma1_flag, CERTIFIED 05d6a81da826c7a6
+// lemma: exposed_by_cases SAME exposed -> lemma1_rep, flag lemma1_flag, CERTIFIED 75266d1f6dc1efad
 #[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all, unreachable_code)]
 pub mod chess_lemma {
 
@@ -16636,7 +16636,7 @@ pub const ENDS: &[&str] = &["king_ray"];
 pub const ASKED: &[&str] = &[];
 pub const GATED: &[&str] = &["after_occupied", "exposed", "exposed_by_cases", "king_after", "king_ray", "on_wall", "row_pair", "walled"];
 pub struct Lm { pub name: &'static str, pub form: &'static str, pub left: &'static str, pub right: &'static str, pub replacement: &'static str, pub flag: &'static str, pub evidence: &'static str, pub condition: &'static [(&'static str, &'static [&'static str], bool)] }
-pub const LEMMAS: &[Lm] = &[Lm { name: "exposed_by_cases", form: "SAME", left: "exposed", right: "exposed_by_cases", replacement: "lemma1_rep", flag: "lemma1_flag", evidence: "CERTIFIED 05d6a81da826c7a6", condition: &[("true.control", &["?c"], false), ("check", &["?c"], true)] }];
+pub const LEMMAS: &[Lm] = &[Lm { name: "exposed_by_cases", form: "SAME", left: "exposed", right: "exposed_by_cases", replacement: "lemma1_rep", flag: "lemma1_flag", evidence: "CERTIFIED 75266d1f6dc1efad", condition: &[("true.control", &["?c"], false), ("check", &["?c"], true)] }];
 /// Whether the piece of stratum k is left out of a question: every clause that reads it is shut by a flag literal that is false, or has its head in a piece that is left out.
 fn off(d: &Dy, k: usize) -> bool {
     match k {

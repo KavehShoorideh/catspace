@@ -227,7 +227,7 @@ def test_the_small_run_over_two_workers_gives_the_one_run_s_counts():
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ (3) a wrong lemma, a vacuous one, a stale one
 
-CASES_FIXTURES = ["en passant opens a diagonal", "en passant takes both units from the king's row", "a unit alone between the king and a rook", "a pawn pinned on a diagonal",
+CASES_FIXTURES = ["en passant opens a diagonal", "en passant takes both units from the king's row", "en passant where the captured unit stands nearer", "a unit alone between the king and a rook", "a pawn pinned on a diagonal",
                   "the king steps next to a king", "castling with the rook attacked"]
 
 
@@ -237,7 +237,10 @@ def corpus() -> list:
 
 @pytest.mark.parametrize("clause,why", [("(ep_victim ?c ?f2 ?r2 ?vf ?vr) (walled", "the case where the captured unit leaves the line"),
                                          ("(true (cell ?f1 ?r1 ?c king)) (opponent ?c ?o) (attacked", "the case of the king itself"),
-                                         ("(walled ?c ?d ?f1 ?r1 ?sf ?sr) (not (on_wall", "the case of the unit held on a line")])
+                                         ("(walled ?c ?d ?f1 ?r1 ?sf ?sr) (not (on_wall", "the case of the unit held on a line"),
+                                         # 2026-11-24 (found by plan 79.45: no state reached the last clause; a fixture was added): the two orders of the pair on the leader's row
+                                         ("(row_pair ?c ?d ?f1 ?r1 ?vf ?vr)", "the pair on the row, the capturer nearer"),
+                                         ("(row_pair ?c ?d ?vf ?vr ?f1 ?r1)", "the pair on the row, the captured unit nearer")])
 def test_a_lemma_with_a_case_left_out_is_not_certified_and_its_disagreements_are_printed(clause, why):
     d = doc_of("exposed_by_cases")
     d["name"] = "wrong_lemma"
