@@ -498,7 +498,8 @@ def test_part_e_changed_one_function_of_the_bridge_and_nothing_else_under_a_src(
     if srcs:
         diff = sp.run(["git", "diff", "-U0", BEFORE, "--", "rust/engine/game/src/outside.rs"], cwd=ROOT, capture_output=True, text=True).stdout
         hunks = re.findall(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", diff, re.M)
-        assert len(hunks) == 1, hunks                                                # one place, inside `state_facts`
+        # 2026-11-24 (plan 79.50): the one other place of outside.rs that a plan changed is `reach_from` (tests/test_plan79_50.py holds it is that one place); plan 79.47's own hunk is the one inside `state_facts`
+        assert len(hunks) in (1, 2), hunks
         assert "ThreeCheck" in diff and "checks" in diff
     for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs"):
         assert sp.run(["git", "diff", "--quiet", BEFORE, "--", protected], cwd=ROOT).returncode == 0, protected

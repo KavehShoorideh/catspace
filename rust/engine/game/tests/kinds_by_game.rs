@@ -197,9 +197,9 @@ fn in_horde_the_smallest_kind_on_the_first_row_may_advance_one_or_two_places_and
     let (g3, s3) = open("horde", &[("a3", 'P'), ("h8", 'k')], 'w');
     let moves3: BTreeSet<String> = g3.moves(&s3).iter().map(|m| g3.move_name(&s3, m)).collect();
     assert_eq!(moves3, set(&["a3a4"]), "from the third row one place");
-    // what the kind may move to (one place ahead) does not say the double step: that is the move's
+    // 2026-11-24 (plan 79.50): what the kind may move to is the description's `move_by`, the first move of two places included (it was the one place ahead only, and the double step was said to be the move's)
     let k = kind_of(&g, "pawn");
-    assert_eq!(names(&g, Placed::reach_from(&g, &s, WHITE, k, place_of(&g, "a1"))), set(&["a2"]));
+    assert_eq!(names(&g, Placed::reach_from(&g, &s, WHITE, k, place_of(&g, "a1"))), set(&["a2", "a3"]));
     assert_eq!(names(&g, Placed::bearing_from(&g, &s, WHITE, k, place_of(&g, "a1"))), set(&["b2"]));
 }
 

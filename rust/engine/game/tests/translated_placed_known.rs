@@ -66,8 +66,8 @@ fn pairs_of(k: &KernelGame, fen: &str, control_only: Option<&str>) -> (KernelGam
 }
 
 #[test]
-#[ignore = "known cause (plan 79.48, reach_from): the kernel's reach_from reads a unit's STEP (a smallest unit one place ahead) while the description's `move_by` gives its first move of two places too; run by hand to see the comparison find it; the choice is Kaveh's (it changes the graph's may-move nodes in every game)"]
-fn chess_known_cause_the_smallest_kind_on_its_start_row_reaches_two_places_by_the_description_and_one_by_the_kernel() {
+// 2026-11-24 (plan 79.50): the cause is mended (reach_from gives the first move of two places as the description does); this test is an ordinary one now and holds that the kernel, the module and the evaluator agree at the state that showed it.
+fn chess_the_smallest_kind_on_its_start_row_reaches_two_places_by_the_description_and_by_the_kernel() {
     let text = text_of(None, "chess");
     let k = KernelGame::new("chess", 518).unwrap();
     let (kk, pairs) = pairs_of(&k, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", Some("white"));
@@ -76,9 +76,10 @@ fn chess_known_cause_the_smallest_kind_on_its_start_row_reaches_two_places_by_th
     let places = kk.place_names();
     let kernel: BTreeSet<String> = kk.reach_from(&kk.initial(), 0, 3, 1).into_iter().map(|p| places[p as usize].clone()).collect();      // the pawn on the second row of the file a (place 1), kind 3 = the smallest
     let from_a2 = |s: &BTreeSet<Vec<String>>| -> BTreeSet<String> { s.iter().filter(|r| r[0] == "pawn" && r[1] == "white" && r[2] == "a" && r[3] == "2").map(|r| format!("{}{}", r[4], r[5])).collect() };
-    println!("OBS 79.48 E known cause chess: the kernel's reach of the pawn on a2 {kernel:?}, the module's {:?}, the evaluator's {:?}", from_a2(&module), from_a2(&ev));
+    println!("OBS 79.50 A chess: the kernel's reach of the pawn on a2 {kernel:?}, the module's {:?}, the evaluator's {:?}", from_a2(&module), from_a2(&ev));
     assert_eq!(from_a2(&module), from_a2(&ev), "the module is the description's");
-    assert!(from_a2(&module).contains("a4") && !kernel.contains("a4"), "the kernel and the module agree here: the cause is gone");
+    assert!(from_a2(&module).contains("a4") && kernel.contains("a4") && kernel.contains("a3"), "the kernel and the module agree here");
+    assert_eq!(kernel, from_a2(&module), "the kernel's answer is the description's");
 }
 
 #[test]

@@ -384,7 +384,13 @@ fn bear_and_may_move_written_onto_layer_1s_graph_equal_a_hand_walk_of_the_board_
                 if kind == "pawn" {
                     let f = if side == "white" { 1 } else { -1 };
                     let ahead = (pos.0, pos.1 + f);
-                    if (0..8).contains(&ahead.1) && !board.contains_key(&ahead) { want_move.insert(ahead); }
+                    if (0..8).contains(&ahead.1) && !board.contains_key(&ahead) {
+                        want_move.insert(ahead);
+                        // 2026-11-24 (plan 79.50): the first move of two places is in may_move as the description's `move_by` says it: from the second row of white, the seventh of black, and in the game with a horde the first row of white too, over two empty places
+                        let start = if side == "white" { 1 } else { 6 };
+                        let beyond = (pos.0, pos.1 + 2 * f);
+                        if (pos.1 == start || (game == "horde" && side == "white" && pos.1 == 0)) && (0..8).contains(&beyond.1) && !board.contains_key(&beyond) { want_move.insert(beyond); }
+                    }
                     for q in &want_bear { if let Some((o, k)) = board.get(q) { if *o != side && (leader_takable || k != "king") { want_move.insert(*q); } } }
                 } else if kind == "king" && !leader_takes {
                     for q in &want_bear { if !board.contains_key(q) { want_move.insert(*q); } }
@@ -399,7 +405,7 @@ fn bear_and_may_move_written_onto_layer_1s_graph_equal_a_hand_walk_of_the_board_
                 bears += got_bear.len();
                 moves += got_move.len();
             }
-            // every allowed move is in may_move, but for the two-row step, the taking in passing and the two-unit move of the leader
+            // every allowed move is in may_move, but for the taking in passing and the two-unit move of the leader (the two-row step too before plan 79.50)
             if p.end.is_none() {
                 for m in g.moves(&s) {
                     let (from, to) = g.move_ends(&s, &m);
@@ -409,16 +415,16 @@ fn bear_and_may_move_written_onto_layer_1s_graph_equal_a_hand_walk_of_the_board_
                     allowed += 1;
                     if !in_may {
                         let (f, t) = (&pn[from as usize], &pn[to as usize]);
-                        let pawn_two = kind == "pawn" && f.as_bytes()[0] == t.as_bytes()[0] && (f.as_bytes()[1] as i32 - t.as_bytes()[1] as i32).abs() == 2;
+                        // 2026-11-24 (plan 79.50): the two-row step is not an exception any more (the pawn_two of the list is gone)
                         let passing = kind == "pawn" && f.as_bytes()[0] != t.as_bytes()[0] && g.kind_at(&s, to).is_none();
                         let two_unit = kind == "king" && (g.kind_at(&s, to).map(|k| g.kind_names()[k as usize] == "rook").unwrap_or(false) || (f.as_bytes()[0] as i32 - t.as_bytes()[0] as i32).abs() == 2);
-                        assert!(pawn_two || passing || two_unit, "{game}: {} {f}{t} is allowed but not in may_move and is none of the three listed exceptions at {}", p.label, p.text);
+                        assert!(passing || two_unit, "{game}: {} {f}{t} is allowed but not in may_move and is none of the two listed exceptions at {}", p.label, p.text);
                         exceptions += 1;
                     }
                 }
             }
         }
-        println!("OBS 79.35 E relations {game}: {units_read} units of {} positions: {bears} bear and {moves} may_move relations on layer 1's graph equal the hand walk; {allowed} allowed moves, {exceptions} of them outside may_move (the two-row step, the taking in passing, the two-unit move)", fx.pos.len());
+        println!("OBS 79.35 E relations {game}: {units_read} units of {} positions: {bears} bear and {moves} may_move relations on layer 1's graph equal the hand walk; {allowed} allowed moves, {exceptions} of them outside may_move (the taking in passing, the two-unit move)", fx.pos.len());
     }
 }
 
