@@ -253,6 +253,12 @@ for dropped, would do; the orders the pass start refuses for want of an orientat
          a reader that binds none of them refuses the walk, naming the reader. The text's rule that a prefix the base clause already holds adds nothing is applied by two tests, either of which keeps the base clause as it was for that reader: the prefix is a homomorphic image in the base clause's body with the key variables fixed (the text's test), or it binds no key variable through
          a relation that reads the state that the base clause does not already bind through one (the keys are then those the state already gives: the base clause makes its keys from the state, as the base clause of a walk over a table of places made for every key does not). The second is the rule that tells a walk made for every key of its sorts from one made for the keys of the moves of a position;
          it is a choice of the translator, not a condition of the argument (the argument holds for any prefix; the rule only chooses where the added literals pay). A walk where every base clause is kept so is refused, naming the reader. `Dw.full` is the one flag of the passes ends and asked (set by `all_relations` and `ask_many`, clear in every question).
+    (18) is written as the text says (PASSES gains "project"), with these choices: a relation is a projection when it is not static, is held as bits, has the one clause, a positive literal over a relation of the state that is held as bits with distinct variables, and its head keeps some of them and not all (`Plan.find_project`; a projection that keeps every place is a copy and is not used);
+         a reader's literal is rewritten when every place whose term is no variable that occurs only there is among the places a projection keeps, and the projection that keeps the fewest places of those that do is chosen; the places that are kept but are such variables stay variables of the literal (they are not used elsewhere, so they stand for "some"). THE ORDER OF THE STRATA: the projection must be made before the reader in every order of
+         the strata, which only a dependency decides (the order of strata of relations that do not depend on each other is by name): it is rewritten only where the head of the reader already reads the projection, closed (the relations the head reads), and otherwise the clause is left as written and named in `Plan.project_refused`. The projection is made by its own clause as before; THE BY-PRODUCT FORM (set when a row of R is set) is NOT built:
+         it would put the words of P inside the struct of R and send every reader of P through R, a change of every place that names a relation's words, and the pass here takes the reads that cost (the loops over R's words that the dropped tiles forced) and not the making of P, which is one loop over the words R holds. A clause of a pass asked keeps its place in the sets of the clauses run when everything is asked for, or only what is. The entailment of the pass ends (15) is shown on the clauses of the stop relation before this pass has read a projection in place of a relation (`Plan.rules_unread`): a literal of a relation entails the one of its projection, which the homomorphism does not see (found by the test of the renamed description: a walk was no longer made as its ends).
+    (13) MENDED by the pass project: the estimate of the order of a clause counted the bits of a word read by a key as 2 whatever the word held and a word that is or-ed into the head whole as a loop over its bits; the first made the chooser take an order that looped over the one word of a relation with no key (the places held) with a loop inside it over the candidates, the second made it count a word
+         that costs one operation as two. A literal read as a word that is or-ed into the head counts 1, and a literal that reads the one word of a relation with no key counts the bits that word holds (`count_ones` at the time of the question); every other literal counts as before.
 """
 from __future__ import annotations
 
@@ -266,7 +272,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -281,6 +287,15 @@ class Untranslatable(Exception):
 
 class AskedRefuse(Exception):
     """A walk that the pass asked cannot restrict to the keys its readers ask, with the reason (the clause or the reader is named in it)."""
+
+
+def count_vars(t, counts: dict):
+    """The number of times each variable occurs in a term, added to `counts`."""
+    if isinstance(t, tuple):
+        for y in t[1:]:
+            count_vars(y, counts)
+    elif GDL.is_var(t):
+        counts[t] = counts.get(t, 0) + 1
 
 
 def subst_term(t, m: dict):
@@ -712,8 +727,8 @@ class Plan:
             passes = tuple(passes) + ("scan",)                 # the clauses pass (8) makes ask words with their key tiles unbound, which only pass (10) answers by the words held (on top of bits alone it made the module half as fast: diagnosed, 79.41 part A)
         if "ends" in passes:
             passes = tuple(passes) + tuple(p for p in ("bits", "shift") if p not in passes)     # the pass ends is a form of a walk made by the pass shift, over relations held as bits
-        if "asked" in passes and "bits" not in passes:
-            passes = tuple(passes) + ("bits",)                  # the pass asked restricts a walk held as bits
+        if ("asked" in passes or "project" in passes) and "bits" not in passes:
+            passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
         self.passes = tuple(p for p in PASSES if p in passes)
         self.copy: dict = {}
         self.demanded: set = set()
@@ -740,6 +755,8 @@ class Plan:
         self.ends_refused: dict = {}                            # relation of a walk -> why pass (15) does not make it as its ends, the reader clause named
         self.asked: dict = {}                                   # relation of a walk -> {"k": its stratum, "plain": ids of the base clauses run when Dw.full, "guarded": ids of the clauses with the prefix of a reader added}   (pass "asked")
         self.asked_refused: dict = {}                           # relation of a walk -> why pass (17) does not restrict its keys, the reader or the clause named
+        self.projected: list = []                               # [(clause text, [(the relation a literal read, the projection it reads now)])]   (pass "project")
+        self.project_refused: dict = {}                         # clause text -> why a literal that could be a projection remains as written
         self.start_off: bool = False                            # pass (13): while the orientations the reader's orders ask are being found, no other order is written
         self.start_base: dict | None = None                     # relation -> the orientations asked by the clauses in the reader's orders, all of them (an order is admitted when it asks no other: the same whatever the order the clauses are written in)
         self.start_written: dict = {}                           # clause key -> (the number of orders written, the number of orders found)
@@ -758,6 +775,9 @@ class Plan:
         self.pre_bits: set = set(self.pre_info)                  # pass (5) comes before pass (2): a relation that can be held as bits is not answered on demand
         if "asked" in self.passes:
             self.find_asked()
+        self.rules_unread: dict = {k: list(rules) for k, rules in self.rules.items()}      # the clauses before pass (18) reads a projection in place of a relation: the entailment of pass (15) is shown on these (a literal of the relation entails the one of its projection, which the homomorphism does not see)
+        if "project" in self.passes:
+            self.find_project()
         if "demand" in self.passes:
             self.find_demand()
         if "copy" in self.passes:
@@ -981,6 +1001,77 @@ class Plan:
         if not guarded:
             raise AskedRefuse("every base clause already holds the prefix of a reader, so the keys are those it makes: " + "; ".join(t for _kv, _p, t in prefixes[:2]))
         return out, plain, guarded
+
+    # ---------------------------------------------------------------------------------------------- pass (18): a literal read from a word with tiles dropped
+
+    def find_project(self):
+        """Pass (18): the relations that are the projection of one relation (one clause, a literal of that relation, the head's variables some of the literal's), and every clause that reads that relation with places that nothing else uses, rewritten to read the projection (module text, (18));
+        the clauses it leaves as they are, and why, in `Plan.project_refused`."""
+        d = self.d
+        projections: dict = {}                                  # relation -> [(the places it keeps, in its head's order, the projection, the clause that makes it)]
+        defining: set = set()
+        for k, (comp, _r) in enumerate(d.strata):
+            if len(comp) != 1:
+                continue
+            p = next(iter(comp))
+            rules = self.rules[k]
+            if p not in self.pre_bits or d.static[p] or len(rules) != 1 or rules[0].rec_steps or len(rules[0].steps) != 1 or rules[0].steps[0][0] != "pos":
+                continue
+            x = rules[0]
+            r, args = x.steps[0][1], x.steps[0][2]
+            if r == p or r not in self.pre_bits or d.static[r] or any(a[0] != "v" for a in args) or len({a[1] for a in args}) != len(args):
+                continue
+            if any(h[0] != "v" for h in x.head) or len({h[1] for h in x.head}) != len(x.head):
+                continue
+            at = {a[1]: i for i, a in enumerate(args)}
+            if any(h[1] not in at for h in x.head) or len(x.head) >= len(args):
+                continue
+            projections.setdefault(r, []).append((tuple(at[h[1]] for h in x.head), p, x.clause))
+            defining.add(id(x.clause))
+        if not projections:
+            return
+        for k, (comp, _r) in enumerate(d.strata):
+            head_deps = None
+            out = []
+            for x in self.rules[k]:
+                c = x.clause
+                if id(c) in defining or not any(lit[0] == "pos" and lit[1] in projections for lit in c.body):
+                    out.append(x)
+                    continue
+                counts: dict = {}
+                for t in c.head[1]:
+                    count_vars(t, counts)
+                for lit in c.body:
+                    for t in ((lit[1], lit[2]) if lit[0] == "distinct" else lit[2]):
+                        count_vars(t, counts)
+                body, replaced = [], []
+                for lit in c.body:
+                    got = None
+                    if lit[0] == "pos" and lit[1] in projections:
+                        need = {i for i, a in enumerate(lit[2]) if not (GDL.is_var(a) and counts.get(a, 0) == 1)}
+                        if len(need) < len(lit[2]):
+                            for kept, p, _pc in sorted(projections[lit[1]], key=lambda o: (len(o[0]), o[0])):
+                                if need <= set(kept):
+                                    if head_deps is None:
+                                        head_deps = d.cone([c.head[0]]) - {c.head[0]}
+                                    if p in comp or p not in head_deps:
+                                        self.project_refused[c.text.replace("\n", " ")] = f"{p} is not made before this clause in every order of the strata (it is not among the relations the head reads)"
+                                        continue
+                                    got = ("pos", p, tuple(lit[2][i] for i in kept))
+                                    replaced.append((lit[1], p))
+                                    break
+                    body.append(got or lit)
+                if not replaced:
+                    out.append(x)
+                    continue
+                nc = GDL.Clause(c.head, body, c.text.replace("\n", " ") + " (with a projection read)")
+                self.projected.append((c.text.replace("\n", " "), replaced))
+                for info in self.asked.values():                  # the clause of a walk that the pass asked wrote keeps its place among those run when everything is asked for or only what is
+                    for which in ("plain", "guarded"):
+                        if id(c) in info[which]:
+                            info[which].add(id(nc))
+                out.append(JoinRule(nc, comp, (), None, self.est))
+            self.rules[k] = out
 
     def cone(self, wanted) -> set:
         """The relations the written rules need to make `wanted` (the dependency graph of the rules as written, which a pass that unfolds has changed)."""
@@ -2065,11 +2156,17 @@ class BitWriter(ClauseWriter):
                     raise BitRefuse(rel, f"one variable at two places of one tile: {self.text}")
                 vlist.append((c, a[1]))
         vvars = {n for _, n in vlist}
-        self.prof.append(f"({factor}) * 2" if vlist else f"({factor})")
         folded = self.fold(k, ft, args, vvars, w) if vlist else False
+        by_word = bool(vlist) and self.or_word_ok(k, info, f, args, vvars)
+        if by_word:
+            self.prof.append(f"({factor})")                              # (pass (13), the estimate) the word is or-ed into the head whole: no loop over its bits
+        elif vlist and not kt:
+            self.prof.append(f"({h}.{rid}.o{f}.w[0].count_ones() as usize)")      # the one word of a relation with no key: its bits are the loop
+        else:
+            self.prof.append(f"({factor}) * 2" if vlist else f"({factor})")
         if masked or folded or delta or opened:
             self.out(f"if {w} == 0 {{ {self.fail()} }}")
-        if vlist and self.or_word_ok(k, info, f, args, vvars):
+        if by_word:
             hi = self.bi[r.head_rel]
             hrid = self.d.rid[r.head_rel]
             hh = self.holder(r.head_rel)
@@ -2300,7 +2397,7 @@ def entails_stop(plan: "Plan", zrel: str, target: list, reader, wlit) -> bool:
     """Whether the literals of the reader clause other than `wlit` entail `zrel(target)`: a clause of `zrel` (as written) whose head unifies with the target and whose body maps into those literals (module text, (15))."""
     kz = next(k for k, (c, _r) in enumerate(plan.d.strata) if zrel in c)
     lits = [x for x in reader.body if x is not wlit]
-    for zr in plan.rules[kz]:
+    for zr in plan.rules_unread[kz]:
         zc = zr.clause
         if zc.head[0] != zrel or len(zc.head[1]) != len(target):
             continue
@@ -3157,7 +3254,7 @@ def translate(text: str, module: str, passes=()) -> str:
         w(f"pub const ENDS: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.ends))}];")
         w(f"pub const ASKED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.asked))}];")
     dyn_all = [k for k, s, c in stratum_fns if not s and not (c & demanded)]
-    coned = plan.cone if (plan and (plan.unfolded or plan.asked)) else d.cone
+    coned = plan.cone if (plan and (plan.unfolded or plan.asked or plan.projected)) else d.cone
     legal_cone = [k for k in d.dynamic_meeting(coned([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
     next_pairs = [f for f in d.fluents if f"next.{f}" in d.prog.nodes]
     next_cone = [k for k in d.dynamic_meeting(coned([f"next.{f}" for f in next_pairs])) if not (d.strata[k][0] & demanded)]
