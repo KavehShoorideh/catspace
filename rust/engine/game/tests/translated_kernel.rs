@@ -308,7 +308,7 @@ fn small<T: Tr>(variant: &str, text: &str) {
 
 fn large<T: Tr>(variant: &str, text: &str) {
     let cores = env_usize("CS_KT_CORES", std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1));
-    let (seeds, games) = (env_usize("CS_KT_SEEDS", 64), env_usize("CS_KT_GAMES", 20));
+    let (seeds, games) = (env_usize("CS_KT_SEEDS", 128), env_usize("CS_KT_GAMES", 280));
     let t0 = std::time::Instant::now();
     let c = large_run::<T>(variant, text, seeds, games, cores);
     emit(variant, "large", &c, t0.elapsed().as_secs_f64(), cores, seeds, games);
