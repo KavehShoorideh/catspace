@@ -25,7 +25,7 @@ GEN = ENGINE / "game" / "tests" / "generated"
 TRANSLATOR = ROOT / "catspace" / "incubator" / "analyst" / "discovery" / "gdl_to_rust.py"
 BEFORE = "12f17e26"                      # the commit before this plan's code (the plan block's own commit: documents only)
 KEPT = ("fast",)                         # plan 79.40 part F: of the files with passes only `fast` (every pass) is kept in the repository; the others are made here, in the test run
-VARIANTS = {"dense": ["dense"], "demand": ["demand"], "copy": ["copy"], "delta": ["delta"], "bits": ["bits"], "order": ["order"], "keep": ["keep"], "fast": ["dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends"]}           # plan 79.42: `fast` is every pass, the new ones too
+VARIANTS = {"dense": ["dense"], "demand": ["demand"], "copy": ["copy"], "delta": ["delta"], "bits": ["bits"], "order": ["order"], "keep": ["keep"], "fast": ["dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient"]}           # plan 79.42: `fast` is every pass, the new ones too
 GAMES = ("chess", "atomic")
 
 

@@ -212,6 +212,8 @@ bit by bit and make rows that no reader looks at. Each cause is machinery, none 
          places that must hold something, is refused: `Plan.ends_refused`); the doubling form is written when every key of the displacement table has at most one displacement, the closure by rounds otherwise (the ends kept in both); and the base clauses of the walk (the start words) are made into words
          of the working memory (`Dw.sb_<relation>`, the last tile's orientation only) and not into the relation, which is then given the ends by one word for each key (the whole word when `Dw.full`), so that the relation of an ends walk does not hold the rows of the first places that are no end (the first writing kept
          them, and they were most of the rows the walk made).
+    (14) is written as the text says for the one function it covers, `or_word` of a relation held as bits (the walks and every clause that ors a word into its head): with the pass, the index of each other orientation is made once for the word (`bf`, with the bit at nought, and the tile that is free there, `af`)
+         and each new bit moves it by a constant (`p * stride`); a relation with one orientation, or no new bit, is as before. The rows set one by one by `set_t` (a clause that makes a row, not a word) are not changed: the pass does not cover them.
 """
 from __future__ import annotations
 
@@ -225,7 +227,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -2722,6 +2724,7 @@ def w_bit_relation(w, d, plan, info: BitInfo):
     name = "B" + rid[1:]
     n, m, c = info.n, info.m, info.canon
     ors = sorted(info.orients)
+    strides: dict = {}
     tt = {i: f"t[{i}]" for i in range(m)}
     w(f"pub struct {name} {{ " + ", ".join(f"o{f}: Bw" for f in ors) + " }")
     w(f"impl {name} {{")
@@ -2745,12 +2748,29 @@ def w_bit_relation(w, d, plan, info: BitInfo):
         kt = info.key_tiles(c)
         for i in reversed(kt):
             w(f"            t[{i}] = rm % {info.tiles[i].size}; rm /= {info.tiles[i].size};")
-        w("            let mut b = nb;")
-        w(f"            while b != 0 {{ t[{c}] = b.trailing_zeros() as usize; b &= b - 1;")
-        for f in ors:
-            if f != c:
-                w(f"                self.o{f}.set({ix(f, tt)}, t[{f}]);")
-        w("            }")
+        if "orient" in plan.passes:
+            # pass (14): the other orientations are set from the new bits of the word; what does not change with the bit (the index with the bit at nought, the tile that is free there) is made once, the bit moves the index by a constant
+            for f in ors:
+                if f != c:
+                    kf = info.key_tiles(f)
+                    stride = 1
+                    for i in kf[kf.index(c) + 1:]:
+                        stride *= info.tiles[i].size
+                    w(f"            let (bf{f}, af{f}) = ({IndexExpr(info, f, {i: ('0' if i == c else f't[{i}]') for i in range(m)})}, t[{f}]);")
+                    strides[f] = stride
+            w("            let mut b = nb;")
+            w("            while b != 0 { let p = b.trailing_zeros() as usize; b &= b - 1;")
+            for f in ors:
+                if f != c:
+                    w(f"                self.o{f}.set(bf{f} + p * {strides[f]}, af{f});")
+            w("            }")
+        else:
+            w("            let mut b = nb;")
+            w(f"            while b != 0 {{ t[{c}] = b.trailing_zeros() as usize; b &= b - 1;")
+            for f in ors:
+                if f != c:
+                    w(f"                self.o{f}.set({ix(f, tt)}, t[{f}]);")
+            w("            }")
         w("        }")
     w("        nb")
     w("    }")
