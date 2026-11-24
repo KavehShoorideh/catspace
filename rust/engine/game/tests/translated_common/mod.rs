@@ -2,6 +2,7 @@
 //! discovery/gdl_to_rust.py) all have the same public items; `Tr` names the ones the tests use, `impl_tr!` forwards them, and everything below is written once for every game. The evaluator it is held against is cs_game's `GdlGame`
 //! (the five questions) and cs_gdl's `Program` (every relation). Nothing here is part of the crate's sources.
 #![allow(dead_code)]
+pub mod pieces;
 use cs_game::gdl_game::{parse_term, render_term, row_args, GdlGame, GdlState};
 use cs_game::kernel::KernelGame;
 use cs_game::outside::spec_term;
@@ -34,11 +35,17 @@ pub trait Tr {
     fn reset_profile_t(&mut self);
     /// (relations of the piece, static, calls, nanoseconds, rows made, rows visited, indexes asked)
     fn pieces_t(&self) -> Vec<(&'static str, bool, u64, u64, u64, u64, u64)>;
+    /// PLAN 79.38: the passes the module was made with (none: the plain translation), the relations it answers on demand with how each is asked, the next relations whose copy it keeps, and its answers to keys.
+    fn passes_t(&self) -> Vec<&'static str>;
+    fn demanded_t(&self) -> Vec<(&'static str, Vec<usize>, bool)>;
+    fn copied_t(&self) -> Vec<&'static str>;
+    fn ask_t(&mut self, s: &Self::S, does: &[(u32, u32)], queries: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)>;
 }
 
 #[macro_export]
 macro_rules! impl_tr {
-    ($m:ident) => {
+    ($m:ident) => { $crate::impl_tr!($m, plain); };
+    ($m:ident, $kind:ident) => {
         impl $crate::translated_common::Tr for $m::Game {
             type S = $m::State;
             fn make() -> Self { $m::Game::new() }
@@ -62,7 +69,24 @@ macro_rules! impl_tr {
             fn pieces_t(&self) -> Vec<(&'static str, bool, u64, u64, u64, u64, u64)> {
                 $m::PIECES.iter().zip(self.prof.iter()).map(|((n, st), p)| (*n, *st, p.calls, p.nanos, p.rows, p.visits, p.probes)).collect()
             }
+            $crate::impl_tr_passes!($m, $kind);
         }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_tr_passes {
+    ($m:ident, plain) => {
+        fn passes_t(&self) -> Vec<&'static str> { vec![] }
+        fn demanded_t(&self) -> Vec<(&'static str, Vec<usize>, bool)> { vec![] }
+        fn copied_t(&self) -> Vec<&'static str> { vec![] }
+        fn ask_t(&mut self, _s: &Self::S, _does: &[(u32, u32)], _q: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)> { panic!("the plain module has no demanded relation") }
+    };
+    ($m:ident, passes) => {
+        fn passes_t(&self) -> Vec<&'static str> { $m::PASSES.to_vec() }
+        fn demanded_t(&self) -> Vec<(&'static str, Vec<usize>, bool)> { $m::Game::demanded() }
+        fn copied_t(&self) -> Vec<&'static str> { $m::COPIED.to_vec() }
+        fn ask_t(&mut self, s: &Self::S, does: &[(u32, u32)], q: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)> { self.ask_many(s, does, q) }
     };
 }
 

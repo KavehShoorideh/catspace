@@ -135,3 +135,32 @@ fn atomic_the_certificates_random_games_agree_at_every_state() { random_play::<a
 fn chess_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { counts::<chess::Game>("chess", 4, 3); }
 #[test]
 fn atomic_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { counts::<atomic::Game>("atomic", 4, 3); }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ PLAN 79.38: the same tests on the modules with every pass (the game's name is the fixture's and the kernel's; the OBS line names the module)
+
+include!("generated/chess_fast.rs");
+include!("generated/atomic_fast.rs");
+impl_tr!(chess_fast, passes);
+impl_tr!(atomic_fast, passes);
+
+fn module_line<T: Tr>(module: &str) { println!("OBS 79.38 D module {module}: passes {:?}, {} relations answered on demand, copy kept for {:?}", T::make().passes_t(), T::make().demanded_t().len(), T::make().copied_t()); }
+
+#[test]
+fn chess_with_the_passes_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { module_line::<chess_fast::Game>("chess_fast"); statics::<chess_fast::Game>("chess", &description(None)); }
+#[test]
+fn atomic_with_the_passes_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { module_line::<atomic_fast::Game>("atomic_fast"); statics::<atomic_fast::Game>("atomic", &description(Some("variants/atomic.gdl"))); }
+
+#[test]
+fn chess_with_the_passes_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { module_line::<chess_fast::Game>("chess_fast"); fixture_positions::<chess_fast::Game>("chess", &description(None)); }
+#[test]
+fn atomic_with_the_passes_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { module_line::<atomic_fast::Game>("atomic_fast"); fixture_positions::<atomic_fast::Game>("atomic", &description(Some("variants/atomic.gdl"))); }
+
+#[test]
+fn chess_with_the_passes_the_certificates_random_games_agree_at_every_state() { module_line::<chess_fast::Game>("chess_fast"); random_play::<chess_fast::Game>("chess", &description(None), 20, 4, 10); }
+#[test]
+fn atomic_with_the_passes_the_certificates_random_games_agree_at_every_state() { module_line::<atomic_fast::Game>("atomic_fast"); random_play::<atomic_fast::Game>("atomic", &description(Some("variants/atomic.gdl")), 20, 4, 10); }
+
+#[test]
+fn chess_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<chess_fast::Game>("chess_fast"); counts::<chess_fast::Game>("chess", 4, 3); }
+#[test]
+fn atomic_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<atomic_fast::Game>("atomic_fast"); counts::<atomic_fast::Game>("atomic", 4, 3); }
