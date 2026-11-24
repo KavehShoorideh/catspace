@@ -174,7 +174,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -603,6 +603,8 @@ class Plan:
             if p not in PASSES:
                 raise Untranslatable(f"no pass named {p} (the passes: {', '.join(PASSES)})")
         self.d = d
+        if "base" in passes and "scan" not in passes:
+            passes = tuple(passes) + ("scan",)                 # the clauses pass (8) makes ask words with their key tiles unbound, which only pass (10) answers by the words held (on top of bits alone it made the module half as fast: diagnosed, 79.41 part A)
         self.passes = tuple(p for p in PASSES if p in passes)
         self.copy: dict = {}
         self.demanded: set = set()
@@ -620,12 +622,20 @@ class Plan:
         self.keep: bool = "keep" in self.passes                  # pass (7)
         self.keep_out: set = set()                               # the arities of the rows a clause that is not held as words gives (their buffers are kept)
         self.keep_rec: list = []                                 # the relations of a recursive set that is not held as words (the rows new in a round are kept)
+        self.shift_tables: dict = {}                            # (onward relation, tile read at, next tile) -> (number, displacements by key, keys, tiles that are keys)   (pass "shift")
+        self.shift_used: set = set()                            # the tables the last writing of the clauses used
+        self.shift_refused: dict = {}                           # relation of a recursive set -> why pass (9) does not compile it by shifts
         self.units: dict = {}                                   # the products of two sorts found (pass bits), with their weights
         self.refused: dict = {}                                # relation -> why pass (2) keeps it in full: the (relation, places) chain and the clause that defeats it
         self.est = Sizes(d) if "order" in self.passes else None                              # pass (6): what is known of the size of a relation, for the order of joining
         self.rules: dict = {k: rules for k, (comp, rules) in enumerate(d.strata)}          # the rules of each stratum as they are written (the reader's, or joined in another order by pass (2) or (6))
         if self.est is not None:
             self.rules = {k: [JoinRule(x.clause, comp, (), None, self.est) for x in rules] for k, (comp, rules) in enumerate(d.strata)}
+        self.unfolded: list = []                                # the views unfolded into their readers, in order   (pass "base")
+        self.base_refused: dict = {}                            # relation with a product clause -> why pass (8) does not unfold it
+        self.ub = 0
+        if "base" in self.passes:
+            self.find_base()
         self.pre_bits: set = set(self.bit_candidates()) if "bits" in self.passes else set()          # pass (5) comes before pass (2): a relation that can be held as bits is not answered on demand
         if "demand" in self.passes:
             self.find_demand()
@@ -638,6 +648,126 @@ class Plan:
             self.find_bits()
         if "dense" in self.passes:
             self.find_dense()
+
+    # ---------------------------------------------------------------------------------------------- pass (8): a view unfolded into its readers
+
+    @staticmethod
+    def is_product(clause) -> bool:
+        """Whether the positive literals of a clause fall in two or more groups that share no variable, each binding a variable of the head (so the rows of the head are as many as the product of the groups' rows)."""
+        pos = [x for x in clause.body if x[0] == "pos"]
+        hv: set = set()
+        for a in clause.head[1]:
+            GDL.term_vars(a, hv)
+        groups: list = []
+        for lit in pos:
+            vs: set = set()
+            for a in lit[2]:
+                GDL.term_vars(a, vs)
+            if not vs:
+                continue
+            merged = [g for g in groups if g & vs]
+            for g in merged:
+                groups.remove(g)
+                vs |= g
+            groups.append(vs)
+        return sum(1 for g in groups if g & hv) >= 2
+
+    def reads_of(self, rel: str) -> list:
+        """[(stratum, rule)] of every written rule that has a literal over `rel`."""
+        return [(k, r) for k in range(len(self.d.strata)) for r in self.rules[k] if any(st[0] != "distinct" and st[1] == rel for st in r.steps)]
+
+    def find_base(self):
+        """Pass (8): every view (see the module text) unfolded into the clauses that read it; repeated, for a reader that gains a product clause by it is a view in turn. Refusals, with the clause, in `base_refused`."""
+        d = self.d
+        while True:
+            progress = False
+            for k, (comp, _r) in enumerate(d.strata):
+                if len(comp) != 1:
+                    continue
+                s = next(iter(comp))
+                rules = self.rules[k]
+                if s in self.unfolded or d.static[s] or s in QUESTION_RELS or s in INPUT_RELS or s.startswith(("true.", "next.", "init.")) or not rules or any(x.rec_steps for x in rules):
+                    continue
+                prod = [x for x in rules if self.is_product(x.clause)]
+                readers = self.reads_of(s)
+                if not prod or not readers:
+                    continue
+                why = None
+                for x in rules:
+                    if any(h[0] != "v" for h in x.head) or len({h[1] for h in x.head}) != len(x.head):
+                        why = f"a head that is not a list of distinct variables: {x.clause.text}"
+                for _k2, rd in readers:
+                    for st in rd.steps:
+                        if st[0] == "neg" and st[1] == s:
+                            why = why or f"read negated, and the negation of a union is no conjunction of literals: {rd.clause.text}"
+                if why:
+                    self.base_refused[s] = why.replace("\n", " ")
+                    continue
+                self.base_refused.pop(s, None)
+                self.unfold(k, s)
+                progress = True
+            if not progress:
+                break
+
+    def unfold(self, ks: int, s: str):
+        """Replace every positive literal over `s` in the written rules by the body of each clause of `s` (variables of that clause renamed to names not used, its head variables replaced by the literal's terms)."""
+        d = self.d
+        s_clauses = [x.clause for x in self.rules[ks]]
+
+        def subst(t, m):
+            if isinstance(t, tuple):
+                return (t[0],) + tuple(subst(y, m) for y in t[1:])
+            return m.get(t, t) if GDL.is_var(t) else t
+
+        def inline(c, j, sc):
+            self.ub += 1
+            m = {h: c.body[j][2][i] for i, h in enumerate(sc.head[1])}
+            for lit in sc.body:
+                vs: set = set()
+                for a in (lit[1:] if lit[0] == "distinct" else lit[2]):
+                    GDL.term_vars(a, vs)
+                for v in vs:
+                    m.setdefault(v, f"?_u{self.ub}_{v[1:]}")
+            body = []
+            for lit in sc.body:
+                if lit[0] == "distinct":
+                    body.append(("distinct", subst(lit[1], m), subst(lit[2], m)))
+                else:
+                    body.append((lit[0], lit[1], tuple(subst(a, m) for a in lit[2])))
+            return GDL.Clause(c.head, list(c.body[:j]) + body + list(c.body[j + 1:]), c.text.replace("\n", " ") + f" (with {s} unfolded)")
+        for k2, (comp, _r) in enumerate(d.strata):
+            if not any(st[0] != "distinct" and st[1] == s for r in self.rules[k2] for st in r.steps):
+                continue
+            new = []
+            for r in self.rules[k2]:
+                todo = [r.clause]
+                while True:
+                    at = next(((i, j) for i, c in enumerate(todo) for j, lit in enumerate(c.body) if lit[0] == "pos" and lit[1] == s), None)
+                    if at is None:
+                        break
+                    i, j = at
+                    c = todo.pop(i)
+                    todo[i:i] = [inline(c, j, sc) for sc in s_clauses]
+                new += [JoinRule(c, comp, (), None, self.est) for c in todo]
+            self.rules[k2] = new
+        self.unfolded.append(s)
+
+    def cone(self, wanted) -> set:
+        """The relations the written rules need to make `wanted` (the dependency graph of the rules as written, which a pass that unfolds has changed)."""
+        deps: dict = {}
+        for k, (comp, _r) in enumerate(self.d.strata):
+            reads = {st[1] for r in self.rules[k] for st in r.steps if st[0] != "distinct"}
+            for h in comp:
+                deps.setdefault(h, set()).update(reads)
+        reached: set = set()
+        todo = [x for x in wanted if x in self.d.prog.nodes]
+        while todo:
+            r = todo.pop()
+            if r in reached:
+                continue
+            reached.add(r)
+            todo.extend(deps.get(r, ()))
+        return reached
 
     # ---------------------------------------------------------------------------------------------- pass (3): what a turn does not change
 
@@ -686,15 +816,16 @@ class Plan:
     def written_rules(self, demanded: set, fresh: bool = True) -> list:
         """The rules that are made as joins over all the facts: every rule of a relation not demanded, joined so that no demanded relation is read whole first (a copy clause is kept: its negated literals are uses)."""
         out = []
-        for k, (comp, rules) in enumerate(self.d.strata):
+        for k, (comp, _rules) in enumerate(self.d.strata):
             if comp & demanded:
                 continue
-            out += [JoinRule(x.clause, comp, demanded, est=self.est) for x in rules] if fresh else self.rules[k]
+            out += [JoinRule(x.clause, comp, demanded, est=self.est) for x in self.rules[k]] if fresh else self.rules[k]
         return out
 
     def compile_ask(self, rel: str, places: tuple, demanded: set) -> list:
         out = []
-        for c in self.d.prog.rules_of[rel]:
+        k = next(k for k, (comp, _r) in enumerate(self.d.strata) if rel in comp)
+        for c in [x.clause for x in self.rules[k]]:                # (the clauses as written: a view unfolded into this relation's clauses by pass (8) is read as it stands now)
             names: set = set()
             for j in places:
                 GDL.term_vars(c.head[1][j], names)
@@ -722,11 +853,12 @@ class Plan:
         d = self.d
         roots = set(QUESTION_RELS) | {r for r in d.nodes if r.startswith("next.")}
         cand: set = set()
-        for comp, rules in d.strata:
+        for k, (comp, _rules) in enumerate(d.strata):
+            rules = self.rules[k]
             if len(comp) != 1:
                 continue
             r = next(iter(comp))
-            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules) or r in self.pre_bits:
+            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules) or r in self.pre_bits or r in self.unfolded:
                 continue
             cand.add(r)
         demanded = set(cand)
@@ -782,9 +914,9 @@ class Plan:
                 self.refused.setdefault(rel, bad[rel])
             demanded -= chosen
         self.demanded = demanded
-        for k, (comp, rules) in enumerate(d.strata):
+        for k, (comp, _rules) in enumerate(d.strata):
             if not (comp & demanded):
-                self.rules[k] = [JoinRule(x.clause, comp, demanded, est=self.est) for x in rules]
+                self.rules[k] = [JoinRule(x.clause, comp, demanded, est=self.est) for x in self.rules[k]]
         self.ask_rules = asks
         prod = {(rel, places, m) for (rel, places), ms in noted.items() for m in ms}
         # the ways the tests ask: every demanded relation whole, and what that asks in turn
@@ -1732,6 +1864,200 @@ class BitWriter(ClauseWriter):
         return "\n".join(self.lines)
 
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ pass (9): walks by whole words
+
+SHIFT_MAX = 8                                           # a onward with more displacements than this for one key is no shift
+
+
+class ShiftRefuse(Exception):
+    """A recursive set that the pass shift cannot compile, with the reason (the clause or the relation is named in it)."""
+
+
+def tile_roles(info: BitInfo, args, xs: tuple, ys: tuple, keys: set, text: str) -> list:
+    """For each tile of a literal's relation: "X" (its places are the variables of the free tile of the recursive literal, in order), "Y" (those of the head's free tile), "K" (variables of the key and constants only); anything else refuses."""
+    out = []
+    for t in info.tiles:
+        here = tuple(args[p][1] if args[p][0] == "v" else None for p in t.places)
+        if here == xs:
+            out.append("X")
+        elif here == ys:
+            out.append("Y")
+        elif all(a is None or a in keys for a in here):
+            out.append("K")
+        else:
+            raise ShiftRefuse(f"a tile of {info.rel} that mixes the free tile's variables with others: {text}")
+    return out
+
+
+def shift_table(d: "Description", plan: "Plan", rel: str, info: BitInfo, fin: int, fout: int, text: str):
+    """The displacements of the onward relation `rel` (read from its rows at translation, which do not read the state): for each combination of the tiles that are neither the one a member is read at (`fin`) nor the next one (`fout`), the list of
+    (displacement of the tile's number, mask of the members that have a next one at that displacement). It is TESTED against every row: the rows made again from the masks and displacements are the rows, exactly (else the walk is refused naming the relation)."""
+    key = (rel, fin, fout)
+    if key in plan.shift_tables:
+        return plan.shift_tables[key]
+    prog = d.prog
+    rows = prog.static[rel].facts if rel in prog.static else None
+    if rows is None or not d.static[rel]:
+        raise ShiftRefuse(f"{rel} reads the state, its rows are not known at translation: {text}")
+    sel = [i for i in range(info.m) if i not in (fin, fout)]
+    nsel = 1
+    for i in sel:
+        nsel *= info.tiles[i].size
+
+    def tile_val(row, t: Tile) -> int:
+        cs = [prog.sorts[t.sorts[c]].index(row[p]) for c, p in enumerate(t.places)]
+        return cs[0] if len(cs) == 1 else cs[0] * t.sizes[1] + cs[1]
+    by: list = [dict() for _ in range(nsel)]
+    want = set()
+    for row in rows:
+        tv = [tile_val(row, t) for t in info.tiles]
+        s = 0
+        for i in sel:
+            s = s * info.tiles[i].size + tv[i]
+        dl = tv[fout] - tv[fin]
+        by[s][dl] = by[s].get(dl, 0) | (1 << tv[fin])
+        want.add(tuple(tv))
+    for s, dd in enumerate(by):
+        if len(dd) > SHIFT_MAX:
+            raise ShiftRefuse(f"{rel} has {len(dd)} displacements for the key {s} (at most {SHIFT_MAX}): {text}")
+    got = set()
+    for s, dd in enumerate(by):
+        rest, vals = s, {}
+        for i in reversed(sel):
+            vals[i] = rest % info.tiles[i].size
+            rest //= info.tiles[i].size
+        for dl, m in dd.items():
+            for b in range(info.tiles[fin].size):
+                if (m >> b) & 1:
+                    tv = [vals.get(i, 0) for i in range(info.m)]
+                    tv[fin], tv[fout] = b, b + dl
+                    got.add(tuple(tv))
+    if got != want:
+        raise ShiftRefuse(f"the rows of {rel} are not displacements of the free tile's number with masks of the members: {len(want ^ got)} rows differ, e.g. {sorted(want ^ got)[0]}: {text}")
+    plan.shift_tables[key] = (len(plan.shift_tables), by, nsel, sel)
+    return plan.shift_tables[key]
+
+
+def shift_shape(d: "Description", plan: "Plan", comp: set, rule, places) -> dict:
+    """The recursive clause of a walk, taken to pieces (module text, (9)): the relation of the set, its key places and free tile, the literals that stop a walk (words anded into the frontier), and the one literal that takes a member to the next ones (its relation, tiles and displacement table);
+    ShiftRefuse, naming the clause, where the set is not that shape."""
+    bits = plan.bits
+    text = rule.clause.text.replace("\n", " ")
+    if len(comp) != 1:
+        raise ShiftRefuse(f"the set has {len(comp)} relations: {text}")
+    h = next(iter(comp))
+    info = bits[h]
+    if len(rule.rec_steps) != 1:
+        raise ShiftRefuse(f"the clause reads its own set {len(rule.rec_steps)} times: {text}")
+    ri = rule.rec_steps[0]
+    largs, hargs = rule.steps[ri][2], rule.head
+    if any(a[0] != "v" for a in largs) or any(a[0] != "v" for a in hargs):
+        raise ShiftRefuse(f"a place of the set that is not a variable: {text}")
+    ct = info.tiles[info.canon]
+    keyp = [p for i, t in enumerate(info.tiles) if i != info.canon for p in t.places]
+    kv = [largs[p][1] for p in keyp]
+    if kv != [hargs[p][1] for p in keyp] or len(set(kv)) != len(kv):
+        raise ShiftRefuse(f"the key places of the head are not those of the literal of the set, one variable each: {text}")
+    xs, ys = tuple(largs[p][1] for p in ct.places), tuple(hargs[p][1] for p in ct.places)
+    if len(set(xs)) != len(xs) or len(set(ys)) != len(ys) or set(xs) & set(ys) or (set(xs) | set(ys)) & set(kv):
+        raise ShiftRefuse(f"the free tile's variables of the head and of the literal are not distinct from each other and from the key: {text}")
+    keys = set(kv)
+    stops, onward = [], None
+    for j, st in enumerate(rule.steps):
+        if j == ri:
+            continue
+        if st[0] == "distinct":
+            raise ShiftRefuse(f"a distinct test among the literals: {text}")
+        rel, args = st[1], st[2]
+        if rel not in bits:
+            raise ShiftRefuse(f"{rel} is not held as bits: {text}")
+        if any(a[0] == "f" for a in args):
+            raise ShiftRefuse(f"a compound term at a place of {rel}: {text}")
+        im = bits[rel]
+        vs = {a[1] for a in args if a[0] == "v"}
+        if not vs <= keys | set(xs) | set(ys):
+            raise ShiftRefuse(f"a variable of {rel} that is neither of the key nor of the free tiles: {text}")
+        roles = tile_roles(im, args, xs, ys, keys, text)
+        if "Y" in roles:
+            if onward is not None or st[0] != "pos" or roles.count("Y") != 1 or roles.count("X") != 1:
+                raise ShiftRefuse(f"{rel} is not the one positive literal that takes a member to the next ones: {text}")
+            fin, fout = roles.index("X"), roles.index("Y")
+            if im.tiles[fin].sorts != ct.sorts or im.tiles[fout].sorts != ct.sorts:
+                raise ShiftRefuse(f"the tiles of {rel} are not of the sorts of the free tile: {text}")
+            onward = (rel, args, im, fin, fout)
+        else:
+            if roles.count("X") != 1 or im.tiles[roles.index("X")].sorts != ct.sorts:
+                raise ShiftRefuse(f"{rel} is not a test of the members of the free tile (one tile of its sorts): {text}")
+            fm = roles.index("X")
+            if im.tiles[fm].size > TILE_MAX or im.key_size(fm) > BIT_KEYS:
+                raise ShiftRefuse(f"{rel} asked with tile {fm} free needs too many words: {text}")
+            stops.append((st[0] == "neg", rel, args, im, fm))
+    if onward is None:
+        raise ShiftRefuse(f"no literal takes a member to the next ones: {text}")
+    return {"h": h, "info": info, "kv": kv, "keyp": keyp, "largs": largs, "stops": stops, "onward": onward, "text": text}
+
+
+def write_shift(w, d, plan, places, name: str, comp, rule, shape: dict):
+    """The function of a walk compiled by whole words (module text, (9)): for each key word of the set, the closure of the walk from the words the base clauses made, by shifts; one function, no rounds over lists of words."""
+    bw = BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), False)
+    info, h, text = shape["info"], shape["h"], shape["text"]
+    rid = d.rid[h]
+    rel, sargs, sim, fin, fout = shape["onward"]
+    tab_id, by, nsel, sel = shift_table(d, plan, rel, sim, fin, fout, text)
+    bw.lines.append(f"// {text}")
+    bw.lines.append(f"fn {name}(s: &St, d: &mut Dy, tm: &mut Terms, dw: &mut Dw) -> u64 {{")
+    bw.out("let mut made = 0u64;")
+    u = bw.fresh()
+    src = f"d.{rid}.o{info.canon}"
+    bw.open(f"for ti{u} in 0..{src}.nz.len() {{")
+    bw.out(f"let ix{u} = {src}.nz[ti{u}] as usize;")
+    bw.out(f"let mut fr{u} = {src}.w[ix{u}];")
+    bw.out(f"let mut acc{u} = fr{u};")
+    kt = info.key_tiles(info.canon)
+    bw.decode_key(u, kt, info, h, shape["largs"])
+    bw.out(f"let mut live{u} = u64::MAX;")
+    for neg, srel, sargs2, sim2, fm in shape["stops"]:
+        tiles = {i: bw.tile_expr(srel, t, sargs2) for i, t in enumerate(sim2.tiles) if i != fm}
+        sim2.request(fm, bw.text)
+        bw.out(f"live{u} &= {'!' if neg else ''}{bw.holder(srel)}.{d.rid[srel]}.o{fm}.w[{bw.index_of(sim2, fm, tiles)}];")
+    acc_sel = "0"
+    for n, i in enumerate(sel):
+        e = bw.tile_expr(rel, sim.tiles[i], sargs)
+        acc_sel = e if n == 0 else f"({acc_sel}) * {sim.tiles[i].size} + {e}"
+    bw.out(f"let tab{u} = SH{tab_id}[{acc_sel}];")
+    bw.out("loop {")
+    bw.depth += 1
+    bw.out(f"let x{u} = fr{u} & live{u};")
+    bw.out(f"if x{u} == 0 {{ break; }}")
+    bw.out(f"let mut nx{u} = 0u64;")
+    bw.out(f"for &(dl, m) in tab{u}.iter() {{ let y = x{u} & m; nx{u} |= if dl >= 0 {{ y << dl }} else {{ y >> (-dl) }}; }}")
+    bw.out(f"nx{u} &= !acc{u};")
+    bw.out(f"if nx{u} == 0 {{ break; }}")
+    bw.out(f"acc{u} |= nx{u};")
+    bw.out(f"fr{u} = nx{u};")
+    bw.depth -= 1
+    bw.out("}")
+    bw.out(f"let nb{u} = d.{rid}.or_word(ix{u}, acc{u});")
+    bw.out(f"if nb{u} != 0 {{ made += nb{u}.count_ones() as u64; }}")
+    bw.close(1)
+    bw.out("made")
+    bw.lines.append("}")
+    plan.shift_used.add(key_of_table(rel, fin, fout))
+    w("\n".join(bw.lines))
+
+
+def key_of_table(rel: str, fin: int, fout: int) -> tuple:
+    return (rel, fin, fout)
+
+
+def w_shift_tables(w, plan):
+    """The tables of the pass shift that the document uses: for each combination of the onward's other tiles, its (displacement, mask) pairs."""
+    for key in sorted(plan.shift_used):
+        tid, by, nsel, sel = plan.shift_tables[key]
+        rows = ", ".join("&[" + ", ".join(f"({dl}, 0x{m:x}u64)" for dl, m in sorted(dd.items())) + "]" for dd in by)
+        w(f"static SH{tid}: [&[(i32, u64)]; {nsel}] = [{rows}];")
+
+
 # ------------------------------------------------------------------------------------------------------------------------------------------ what the passes add to the document
 
 RUNTIME_DENSE = r'''
@@ -1895,10 +2221,50 @@ def clause_writer(d, places, name, rule, comp, plan, mode="full", record=False):
     return ClauseWriter(d, places, name, rule, comp, plan, mode)
 
 
+def emit_shift_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
+    """Pass (9): a recursive set held as bits that is a walk, as one function that closes each key's frontier by shifts (once the base clauses have run); None (and the reason in `Plan.shift_refused`) where it is not that shape, the set then being made as above."""
+    recs = [x for x in rules if x.rec_steps]
+    bases = [x for x in rules if not x.rec_steps]
+    buf: list = []
+    h = sorted(comp)[0]
+    try:
+        if len(recs) != 1:
+            raise ShiftRefuse(f"the set has {len(recs)} recursive clauses: " + "; ".join(x.clause.text.replace("\n", " ") for x in recs))
+        shape = shift_shape(d, plan, comp, recs[0], places)
+        write_shift(buf.append, d, plan, places, f"c{cid + len(bases)}", comp, recs[0], shape)
+    except ShiftRefuse as e:
+        plan.shift_refused[h] = str(e)
+        return None
+    except BitRefuse as e:
+        plan.shift_refused[h] = e.why
+        return None
+    names = []
+    for rule in bases:
+        name = f"c{cid}"
+        write_clause(w, BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), False), refusals)
+        names.append(name)
+        cid += 1
+    for t in buf:
+        w(t)
+    names.append(f"c{cid}")
+    cid += 1
+    w(f"fn st{k}(s: &St, d: &mut Dy, tm: &mut Terms, dw: &mut Dw) -> (u64, u64, u64) {{")
+    w("    let mut made = 0u64;")
+    for c in names:
+        w(f"    made += {c}(s, d, tm, dw);")
+    w("    (made, 0, 0)")
+    w("}")
+    return cid
+
+
 def emit_bit_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
     """The functions of a stratum all of whose relations are held as bits: each clause (a recursive one once for each of its literals of the set, that literal first and read from the words new in the last round) and the piece."""
     static = d.static[sorted(comp)[0]]
     recursive = any(x.rec_steps for x in rules)
+    if "shift" in plan.passes and recursive and not static:
+        got = emit_shift_stratum(w, d, plan, places, k, comp, rules, cid, refusals)
+        if got is not None:
+            return got
     base, rec = [], []
     for rule in rules:
         if rule.rec_steps:
@@ -1941,6 +2307,8 @@ def emit_strata(w, d, plan, places, refusals=None) -> list:
     keep = bool(plan and plan.keep)
     if keep:
         plan.keep_out, plan.keep_rec = set(), []
+    if plan:
+        plan.shift_used = set()
     cid = 0
     stratum_fns = []
     for k, (comp, rules) in enumerate(d.strata):
@@ -2251,6 +2619,8 @@ def translate(text: str, module: str, passes=()) -> str:
             w_bit_relation(w, d, plan, bits[r])
     # the clauses and the pieces
     stratum_fns = emit_strata(w, d, plan, places)
+    if plan:
+        w_shift_tables(w, plan)
     if has_dw:
         w_dw(w, d, plan)
     if plan:
@@ -2263,10 +2633,12 @@ def translate(text: str, module: str, passes=()) -> str:
     if plan:
         w(f"pub const PASSES: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.passes)}];")
         w(f"pub const COPIED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.copy))}];")
+        w(f"pub const UNFOLDED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.unfolded)}];")
     dyn_all = [k for k, s, c in stratum_fns if not s and not (c & demanded)]
-    legal_cone = [k for k in d.dynamic_meeting(d.cone([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
+    coned = plan.cone if (plan and plan.unfolded) else d.cone
+    legal_cone = [k for k in d.dynamic_meeting(coned([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
     next_pairs = [f for f in d.fluents if f"next.{f}" in d.prog.nodes]
-    next_cone = [k for k in d.dynamic_meeting(d.cone([f"next.{f}" for f in next_pairs])) if not (d.strata[k][0] & demanded)]
+    next_cone = [k for k in d.dynamic_meeting(coned([f"next.{f}" for f in next_pairs])) if not (d.strata[k][0] & demanded)]
     w(f"fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms{dwp}, k: usize) -> (u64, u64, u64) {{")
     w("    match k {")
     for k in dyn_all:
