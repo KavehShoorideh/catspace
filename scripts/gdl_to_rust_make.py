@@ -14,7 +14,8 @@ from catspace.incubator.analyst.discovery import gdl_to_rust as T
 
 GAMES = {"chess": [ROOT / "rules" / "chess.gdl"], "atomic": [ROOT / "rules" / "chess.gdl", ROOT / "rules" / "variants" / "atomic.gdl"]}
 KEPT = {"": [], "_fast": list(T.PASSES)}
-SCRATCH = {"_prev": ["dense", "demand", "copy", "delta"], **{f"_{p}": [p] for p in T.PASSES}}
+COMBOS = {"bits_keep": ["bits", "keep"], "bits_order": ["bits", "order"], "bits_order_keep": ["bits", "order", "keep"], "bits_demand": ["bits", "demand"], "bits_dense": ["bits", "dense"], "bits_copy": ["bits", "copy"], "bits_delta": ["bits", "delta"]}
+SCRATCH = {"_prev": ["dense", "demand", "copy", "delta"], **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
 OUT = ROOT / "rust" / "engine" / "game" / "tests" / "generated"
 OUT_SCRATCH = OUT / "scratch"
 

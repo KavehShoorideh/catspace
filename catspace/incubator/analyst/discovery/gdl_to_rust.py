@@ -113,7 +113,7 @@ document is still the plain one byte for byte but for the translator hash. The n
                 `Plan.bits_refused` holds each refusal with its clause.
   (6) "order" TAKES the written clauses of a stratum and the number of rows of each relation that does not read the state, known at translation by evaluating those strata once with the reader's evaluator. CONDITION: a clause has two or more
                 positive literals that start equally well (the same number of bound places); RETURNS: the clause joined choosing, among those, the literal of the fewest rows (static relations by their number of rows, relations that read the state
-                by the size of the product of the sorts of the places that remain unbound, the same everywhere), otherwise the reader's order. The reader's is kept where the two have the same count of bound places; the order is a different order of the same conjunction,
+                by the size of the product of the sorts of the places that remain unbound, the same everywhere; a literal of the recursive set the clause belongs to counts as half a row, for the rows new in a round are the fewest and are read first), otherwise the reader's order. The reader's is kept where the two have the same count of bound places; the order is a different order of the same conjunction,
                 with the same safety rule, and so the same rows.
   (7) "keep"  TAKES the pieces and the questions. RETURNS: the working memory of a question kept between questions where it was made at each: the lists a clause makes, the terms of a compound built again, and the state that a question returns
                 built in the vector of a former one. Any place that makes and frees memory in a question where the profile shows it is named in the commit with its share before and then.
@@ -422,7 +422,7 @@ class JoinRule:
     relation in `avoid` that no variable already bound reaches (constants do not count) is taken last (pass 2: a demanded relation is joined from a key, never read whole), and the literal `first` (an element of the clause's body) is taken before every other (pass 4). With `avoid` vacant the steps are the reader's, to the tuple (tests/test_plan79_38.py pins this on every clause
     of every description). The fields are the reader's `_Rule`: clause, nvars, head_rel, head, steps, rec_steps."""
 
-    def __init__(self, clause, scc: set, avoid=(), first=None):
+    def __init__(self, clause, scc: set, avoid=(), first=None, est=None):
         self.clause = clause
         names: dict = {}
 
@@ -463,7 +463,7 @@ class JoinRule:
                     return (2,)
                 nb = sum(1 for a in x[2] if GDL.term_vars(a, set()) <= bound)
                 keyed = sum(1 for a in x[2] if GDL.term_vars(a, set()) and GDL.term_vars(a, set()) <= bound)
-                return (not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -len(x[2]))
+                return (not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -est(x, bound, scc) if est else 0, -len(x[2]))
             best = max(pending, key=ranking)
             pending.remove(best)
             order.append(best)
@@ -495,6 +495,42 @@ class JoinRule:
         self.rec_steps = [i for i, s in enumerate(self.steps) if s[0] == "pos" and s[1] in scc]
 
 
+class Sizes:
+    """Pass (6): what is known of the size of a relation at translation, to choose among literals that start equally well. A relation that does not read the state has the rows the reader's evaluator made once from the description; a relation that reads the
+    state is as large as the product of the sizes of its sorts; one without a signature (an input) is taken as one row; a relation of the set the clause belongs to is taken as half a row, as the rows new in a round are the fewest. The estimate of a literal is the rows of its relation over the sizes of the sorts of the places that are bound."""
+
+    def __init__(self, d: "Description"):
+        self.d = d
+
+    def size_of(self, sort) -> int:
+        ms = self.d.prog.sorts.get(sort)
+        return max(1, len(ms)) if ms else 64
+
+    def rows(self, rel: str) -> float:
+        d = self.d
+        r = d.prog.static.get(rel) if d.static.get(rel) else None
+        if r is not None:
+            return float(max(1, len(r.facts)))
+        sig = d.prog.signature(rel)
+        if sig is None:
+            return 1.0
+        n = 1.0
+        for sort in sig:
+            n *= self.size_of(sort)
+        return n
+
+    def __call__(self, lit, bound: set, scc=()) -> float:
+        if lit[1] in scc:
+            return 0.5                                         # the rows of the set being made that are new in a round: the fewest, and the semi-naive rule reads them first
+        sig = self.d.prog.signature(lit[1])
+        n = self.rows(lit[1])
+        if sig is not None and len(sig) == len(lit[2]):
+            for sort, a in zip(sig, lit[2]):
+                if GDL.term_vars(a, set()) <= bound:
+                    n /= self.size_of(sort)
+        return max(n, 1e-9)
+
+
 class Plan:
     """What the passes decided for one description, from its clauses, sorts, signatures and dependency graph alone (no name of a relation is known here).
     dense:    {relation: its sorts, one for each place}                  (pass "dense")
@@ -523,7 +559,10 @@ class Plan:
         self.bit_rec: list = []
         self.units: dict = {}                                   # the products of two sorts found (pass bits), with their weights
         self.refused: dict = {}                                # relation -> why pass (2) keeps it in full: the (relation, places) chain and the clause that defeats it
-        self.rules: dict = {k: rules for k, (comp, rules) in enumerate(d.strata)}          # the rules of each stratum as they are written (the reader's, or joined in another order by pass (2))
+        self.est = Sizes(d) if "order" in self.passes else None                              # pass (6): what is known of the size of a relation, for the order of joining
+        self.rules: dict = {k: rules for k, (comp, rules) in enumerate(d.strata)}          # the rules of each stratum as they are written (the reader's, or joined in another order by pass (2) or (6))
+        if self.est is not None:
+            self.rules = {k: [JoinRule(x.clause, comp, (), None, self.est) for x in rules] for k, (comp, rules) in enumerate(d.strata)}
         self.pre_bits: set = set(self.bit_candidates()) if "bits" in self.passes else set()          # pass (5) comes before pass (2): a relation that can be held as bits is not answered on demand
         if "demand" in self.passes:
             self.find_demand()
@@ -587,7 +626,7 @@ class Plan:
         for k, (comp, rules) in enumerate(self.d.strata):
             if comp & demanded:
                 continue
-            out += [JoinRule(x.clause, comp, demanded) for x in rules] if fresh else self.rules[k]
+            out += [JoinRule(x.clause, comp, demanded, est=self.est) for x in rules] if fresh else self.rules[k]
         return out
 
     def compile_ask(self, rel: str, places: tuple, demanded: set) -> list:
@@ -596,7 +635,7 @@ class Plan:
             names: set = set()
             for j in places:
                 GDL.term_vars(c.head[1][j], names)
-            out.append((JoinRule(bind_clause(c, names), set(), demanded), c))
+            out.append((JoinRule(bind_clause(c, names), set(), demanded, est=self.est), c))
         return out
 
     def scans(self, rule) -> bool:
@@ -682,7 +721,7 @@ class Plan:
         self.demanded = demanded
         for k, (comp, rules) in enumerate(d.strata):
             if not (comp & demanded):
-                self.rules[k] = [JoinRule(x.clause, comp, demanded) for x in rules]
+                self.rules[k] = [JoinRule(x.clause, comp, demanded, est=self.est) for x in rules]
         self.ask_rules = asks
         prod = {(rel, places, m) for (rel, places), ms in noted.items() for m in ms}
         # the ways the tests ask: every demanded relation whole, and what that asks in turn
@@ -725,7 +764,7 @@ class Plan:
                 lits = [x for x in rule.clause.body if x[0] == "pos" and x[1] in comp]
                 got = []
                 for lit in lits:
-                    got.append((lit[1], JoinRule(rule.clause, comp, self.demanded, lit)))
+                    got.append((lit[1], JoinRule(rule.clause, comp, self.demanded, lit, est=self.est)))
                 self.delta.setdefault(k, []).append((rule, got))
 
     # ---------------------------------------------------------------------------------------------- the index places, and pass (1)
@@ -1732,7 +1771,7 @@ def emit_bit_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
         if rule.rec_steps:
             for j, lit in enumerate([x for x in rule.clause.body if x[0] == "pos" and x[1] in comp]):
                 name = f"c{cid}d{j}"
-                write_clause(w, BitWriter(d, places, name, JoinRule(rule.clause, comp, plan.demanded, lit), comp, plan, "bdelta", None, (), True), refusals)
+                write_clause(w, BitWriter(d, places, name, JoinRule(rule.clause, comp, plan.demanded, lit, est=plan.est), comp, plan, "bdelta", None, (), True), refusals)
                 rec.append(name)
         else:
             name = f"c{cid}"

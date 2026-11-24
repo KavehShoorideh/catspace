@@ -11,6 +11,20 @@ use cs_game::rng::Rng;
 use cs_game::Game;
 use std::time::Instant;
 use translated_common::*;
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Counts the allocations of the process (this binary only), so that a question's making of memory is a number: the clock tests print allocations a position.
+struct Counting;
+static ALLOCS: AtomicU64 = AtomicU64::new(0);
+static BYTES: AtomicU64 = AtomicU64::new(0);
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 { ALLOCS.fetch_add(1, Ordering::Relaxed); BYTES.fetch_add(l.size() as u64, Ordering::Relaxed); System.alloc(l) }
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) { System.dealloc(p, l) }
+    unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 { ALLOCS.fetch_add(1, Ordering::Relaxed); BYTES.fetch_add(n as u64, Ordering::Relaxed); System.realloc(p, l, n) }
+}
+#[global_allocator]
+static GLOBAL: Counting = Counting;
 
 include!("generated/chess.rs");
 include!("generated/chess_fast.rs");
@@ -32,10 +46,66 @@ include!("generated/scratch/atomic_bits.rs");
 include!("generated/scratch/atomic_order.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_keep.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_keep.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_order.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_order_keep.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_demand.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_dense.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_copy.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits_delta.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_keep.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_order.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_order_keep.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_demand.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_dense.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_copy.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits_delta.rs");
 impl_tr!(chess);
 impl_tr!(chess_fast, passes);
 impl_tr!(atomic);
 impl_tr!(atomic_fast, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_keep, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_order, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_order_keep, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_demand, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_dense, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_copy, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits_delta, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_keep, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_order, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_order_keep, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_demand, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_dense, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_copy, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits_delta, passes);
 #[cfg(singles)]
 impl_tr!(chess_prev, passes);
 #[cfg(singles)]
@@ -190,9 +260,12 @@ fn pieces<F: Tr + 'static>(game: &str, label: &str) {
     t.profiling_t(true);
     t.reset_profile_t();
     let t0 = Instant::now();
+    let (a0, b0) = (ALLOCS.load(Ordering::Relaxed), BYTES.load(Ordering::Relaxed));
     let mut sink = 0;
     for _ in 0..5 { sink += pass_trans(&mut t, &p, n, Work::MovesAndNext); }
     let wall = t0.elapsed().as_secs_f64();
+    let (a1, b1) = (ALLOCS.load(Ordering::Relaxed), BYTES.load(Ordering::Relaxed));
+    println!("OBS 79.40 E allocations {game} {label}: {:.1} allocations and {:.0} bytes allocated a position (moves and one next each)", (a1 - a0) as f64 / (5 * n) as f64, (b1 - b0) as f64 / (5 * n) as f64);
     t.profiling_t(false);
     let pcs = t.pieces_t();
     let total: u64 = pcs.iter().map(|x| x.3).sum();
@@ -232,3 +305,16 @@ fn chess_the_time_by_piece_of_each_module() { pieces::<chess::Game>("chess", "pl
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
 fn atomic_the_time_by_piece_of_each_module() { pieces::<atomic::Game>("atomic", "plain"); pieces::<atomic_fast::Game>("atomic", "fast"); }
+
+#[cfg(singles)]
+fn chess_combos() -> Vec<Maker> { makers![("bits", chess_bits::Game), ("b+keep", chess_bits_keep::Game), ("b+order", chess_bits_order::Game), ("b+o+k", chess_bits_order_keep::Game), ("b+demand", chess_bits_demand::Game), ("b+dense", chess_bits_dense::Game), ("b+copy", chess_bits_copy::Game), ("b+delta", chess_bits_delta::Game), ("fast", chess_fast::Game)] }
+#[cfg(singles)]
+fn atomic_combos() -> Vec<Maker> { makers![("bits", atomic_bits::Game), ("b+keep", atomic_bits_keep::Game), ("b+order", atomic_bits_order::Game), ("b+o+k", atomic_bits_order_keep::Game), ("b+demand", atomic_bits_demand::Game), ("b+dense", atomic_bits_dense::Game), ("b+copy", atomic_bits_copy::Game), ("b+delta", atomic_bits_delta::Game), ("fast", atomic_fast::Game)] }
+#[cfg(singles)]
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_times_of_the_combinations() { run_game::<chess::Game>("chess", true, chess_combos(), 3); }
+#[cfg(singles)]
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn atomic_the_times_of_the_combinations() { run_game::<atomic::Game>("atomic", true, atomic_combos(), 3); }

@@ -109,7 +109,7 @@ def test_the_maker_writes_the_scratch_files_of_the_single_passes_and_nothing_is_
     spec.loader.exec_module(m)
     m.make(tmp_path, {"_bits": ["bits"]})
     assert sorted(p.name for p in tmp_path.iterdir()) == ["atomic_bits.rs", "chess_bits.rs"]
-    assert set(m.SCRATCH) == {f"_{k}" for k in SINGLES}
+    assert {f"_{k}" for k in SINGLES} <= set(m.SCRATCH)
     assert m.KEPT == {"": [], "_fast": list(translator().PASSES)}
 
 
@@ -308,6 +308,25 @@ def test_a_relation_in_a_recursive_set_with_one_that_is_not_held_as_bits_is_refu
     p = T.Plan(T.Description(text), ["bits"])
     assert "mix1" not in p.bits and "mix2" not in p.bits
     assert "recursive set" in p.bits_refused["mix1"] and "mix2" in p.bits_refused["mix1"], p.bits_refused
+
+
+@pytest.mark.parametrize("game", GAMES)
+def test_the_pass_order_joins_the_same_clauses_in_another_order_only_where_literals_start_equally_well(game):
+    T = translator()
+    G = reader()
+    d = T.Description(description_of(game))
+    plan = T.Plan(d, ["order"])
+    changed = total = 0
+    for k, (comp, rules) in enumerate(d.strata):
+        for a, b in zip(rules, plan.rules[k]):
+            total += 1
+            assert a.clause is b.clause
+            assert sorted(s[1] for s in a.steps if s[0] != "distinct") == sorted(s[1] for s in b.steps if s[0] != "distinct"), a.clause.text
+            assert len(a.steps) == len(b.steps) and a.nvars == b.nvars and a.head_rel == b.head_rel
+            if a.steps != b.steps:
+                changed += 1
+    assert 5 <= changed < total // 4, (changed, total)
+    print(f"OBS 79.40 J order {game}: {total} clauses, {changed} joined in another order (the same literals, the same variables)")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ (5)
