@@ -63,6 +63,8 @@ impl Game for KernelGame {
         if self.outcome(s).is_some() { return None; }
         Some(if s.turn() == Color::White { 0 } else { 1 })
     }
+    /// PLAN 79.39: the side to move read off the position; the end is not asked (at an ended state, the side that would have moved).
+    fn turn(&self, s: &VariantPosition) -> Role { if s.turn() == Color::White { 0 } else { 1 } }
     fn moves(&self, s: &VariantPosition) -> Vec<Move> {
         if self.outcome(s).is_some() { return vec![]; }
         s.legal_moves().into_iter().collect()
