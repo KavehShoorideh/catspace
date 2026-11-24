@@ -64,7 +64,7 @@ def documents(game: str) -> list:
 
 
 def question_documents() -> list:
-    return [json.loads(p.read_text()) for p in sorted(DOCS.glob("*.json")) if p.name != "held.json"]
+    return [json.loads(p.read_text()) for p in sorted(DOCS.glob("*.json")) if p.name not in ("held.json", "known.json")]
 
 
 def delta(game: str) -> list:
