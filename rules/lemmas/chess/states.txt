@@ -1,0 +1,417 @@
+; the fixtures of the lemmas of this game (scripts/rule_lemma_states_print.py): one state a line, the fluents of the description without `true`; a line that starts with `;` is a note
+; a rule corner: 8/8/8/4k3/8/8/8/KN6 w - - 0 1
+(cell a 1 white king) (cell b 1 white knight) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 8/8/8/4k3/8/8/8/KB6 w - - 0 1
+(cell a 1 white king) (cell b 1 white bishop) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 8/8/8/4k3/8/8/8/KBB5 w - - 0 1
+(cell a 1 white king) (cell b 1 white bishop) (cell c 1 white bishop) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 8/8/8/4k3/8/8/8/KNN5 w - - 0 1
+(cell a 1 white king) (cell b 1 white knight) (cell c 1 white knight) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 8/8/8/4k3/8/8/2b5/KB6 w - - 0 1
+(cell a 1 white king) (cell b 1 white bishop) (cell c 2 black bishop) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 8/8/8/4k3/8/8/3b4/KB6 w - - 0 1
+(cell a 1 white king) (cell b 1 white bishop) (cell d 2 black bishop) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 8/8/8/4k3/8/8/8/K7 w - - 0 1
+(cell a 1 white king) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 8/8/8/4k3/8/8/2n5/KB6 w - - 0 1
+(cell a 1 white king) (cell b 1 white bishop) (cell c 2 black knight) (cell e 5 black king) (control white) (halfmove 0)
+; a rule corner: 7k/5Q2/8/8/8/8/8/K7 w - - 99 80
+(cell a 1 white king) (cell f 7 white queen) (cell h 8 black king) (control white) (halfmove 99)
+; a rule corner: r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1
+(castling_right black kingside) (castling_right black queenside) (castling_right white kingside) (castling_right white queenside) (cell a 1 white rook) (cell a 8 black rook) (cell e 1 white king) (cell e 8 black king) (cell h 1 white rook) (cell h 8 black rook) (control white) (halfmove 0)
+; a rule corner: r3k2r/8/8/8/8/5n2/8/R3K2R w KQkq - 0 1
+(castling_right black kingside) (castling_right black queenside) (castling_right white kingside) (castling_right white queenside) (cell a 1 white rook) (cell a 8 black rook) (cell e 1 white king) (cell e 8 black king) (cell f 3 black knight) (cell h 1 white rook) (cell h 8 black rook) (control white) (halfmove 0)
+; a rule corner: r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1
+(castling_right black kingside) (castling_right black queenside) (castling_right white kingside) (castling_right white queenside) (cell a 1 white rook) (cell a 8 black rook) (cell e 1 white king) (cell e 8 black king) (cell h 1 white rook) (cell h 8 black rook) (control black) (halfmove 0)
+; a rule corner: 4k3/1P6/8/8/8/8/6p1/4K2R b K - 0 1
+(castling_right white kingside) (cell b 7 white pawn) (cell e 1 white king) (cell e 8 black king) (cell g 2 black pawn) (cell h 1 white rook) (control black) (halfmove 0)
+; a unit alone between the king and a rook on a file: 4k3/4r3/8/8/4N3/8/8/4K3 w - - 0 1
+(cell e 1 white king) (cell e 4 white knight) (cell e 7 black rook) (cell e 8 black king) (control white) (halfmove 0)
+; a unit alone between the king and a bishop on a diagonal: 4k3/8/8/8/1b6/8/3N4/4K3 w - - 0 1
+(cell b 4 black bishop) (cell d 2 white knight) (cell e 1 white king) (cell e 8 black king) (control white) (halfmove 0)
+; two units between the king and a rook: no pin: 4k3/4r3/8/8/4N3/4B3/8/4K3 w - - 0 1
+(cell e 1 white king) (cell e 3 white bishop) (cell e 4 white knight) (cell e 7 black rook) (cell e 8 black king) (control white) (halfmove 0)
+; a pinned rook that may slide along its line: 4k3/4r3/8/8/4R3/8/8/4K3 w - - 0 1
+(cell e 1 white king) (cell e 4 white rook) (cell e 7 black rook) (cell e 8 black king) (control white) (halfmove 0)
+; the king steps next to a king and onto an attacked square: 8/8/8/8/8/2k5/8/K7 w - - 0 1
+(cell a 1 white king) (cell c 3 black king) (control white) (halfmove 0)
+; en passant opens a diagonal to the king: b3k3/8/8/3pP3/8/8/8/7K w - d6 0 2
+(cell a 8 black bishop) (cell d 5 black pawn) (cell e 5 white pawn) (cell e 8 black king) (cell h 1 white king) (control white) (ep_square d 6) (halfmove 0)
+; en passant takes both units from the king's row: 4k3/8/8/KPp4r/8/8/8/8 w - c6 0 1
+(cell a 5 white king) (cell b 5 white pawn) (cell c 5 black pawn) (cell e 8 black king) (cell h 5 black rook) (control white) (ep_square c 6) (halfmove 0)
+; en passant takes both units from the king's row, the other way: 4k3/8/8/r2pP2K/8/8/8/8 w - d6 0 1
+(cell a 5 black rook) (cell d 5 black pawn) (cell e 5 white pawn) (cell e 8 black king) (cell h 5 white king) (control white) (ep_square d 6) (halfmove 0)
+; a pawn pinned on a diagonal may take the pinner and may not leave: 4k3/8/8/8/8/2b5/3P4/4K3 w - - 0 1
+(cell c 3 black bishop) (cell d 2 white pawn) (cell e 1 white king) (cell e 8 black king) (control white) (halfmove 0)
+; a pawn pinned on a file may push: 4k3/4r3/8/8/8/8/4P3/4K3 w - - 0 1
+(cell e 1 white king) (cell e 2 white pawn) (cell e 7 black rook) (cell e 8 black king) (control white) (halfmove 0)
+; castling with the rook attacked and the king safe: r3k2r/8/8/8/8/8/6b1/R3K2R w KQkq - 0 1
+(castling_right black kingside) (castling_right black queenside) (castling_right white kingside) (castling_right white queenside) (cell a 1 white rook) (cell a 8 black rook) (cell e 1 white king) (cell e 8 black king) (cell g 2 black bishop) (cell h 1 white rook) (cell h 8 black rook) (control white) (halfmove 0)
+; black to move, a pinned knight: 4k3/4n3/8/8/8/8/4R3/4K3 b - - 0 1
+(cell e 1 white king) (cell e 2 white rook) (cell e 7 black knight) (cell e 8 black king) (control black) (halfmove 0)
+; a lone rook on its file, nothing else on the file: 4k3/8/8/8/8/8/8/R3K3 w - - 0 1
+(cell a 1 white rook) (cell e 1 white king) (cell e 8 black king) (control white) (halfmove 0)
+; a lone rook on its file, a unit beside it: 4k3/8/8/8/8/8/1P6/R3K3 w - - 0 1
+(cell a 1 white rook) (cell b 2 white pawn) (cell e 1 white king) (cell e 8 black king) (control white) (halfmove 0)
+; two lone rooks of the two sides: r3k3/8/8/8/8/8/8/R3K3 w - - 0 1
+(cell a 1 white rook) (cell a 8 black rook) (cell e 1 white king) (cell e 8 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/8/K7/8/4k3/4p2p/8 w - - 0 1
+(cell a 5 white king) (cell e 2 black pawn) (cell e 3 black king) (cell h 2 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/6k1/8/8/8/1p6/3B4/K7 w - - 0 1
+(cell a 1 white king) (cell b 3 black pawn) (cell d 2 white bishop) (cell g 7 black king) (control white) (halfmove 0)
+; a seeded endgame: 1n6/2N1P3/8/4k3/5p2/8/4K3/8 b - - 0 1
+(cell b 8 black knight) (cell c 7 white knight) (cell e 2 white king) (cell e 5 black king) (cell e 7 white pawn) (cell f 4 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/k2K4/8/1p3Pp1/8/8/7n/8 w - - 0 1
+(cell a 7 black king) (cell b 5 black pawn) (cell d 7 white king) (cell f 5 white pawn) (cell g 5 black pawn) (cell h 2 black knight) (control white) (halfmove 0)
+; a seeded endgame: 7K/8/k6p/8/3Q4/6p1/8/7q b - - 0 1
+(cell a 6 black king) (cell d 4 white queen) (cell g 3 black pawn) (cell h 1 black queen) (cell h 6 black pawn) (cell h 8 white king) (control black) (halfmove 0)
+; a seeded endgame: 8/k4P2/4n3/8/8/2K5/8/8 b - - 0 1
+(cell a 7 black king) (cell c 3 white king) (cell e 6 black knight) (cell f 7 white pawn) (control black) (halfmove 0)
+; a seeded endgame: k7/6P1/8/8/8/8/P4K2/8 b - - 0 1
+(cell a 2 white pawn) (cell a 8 black king) (cell f 2 white king) (cell g 7 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 2K5/7k/8/8/8/8/4p3/8 w - - 0 1
+(cell c 8 white king) (cell e 2 black pawn) (cell h 7 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/3p4/k7/3R4/8/5K2/8 w - - 0 1
+(cell a 5 black king) (cell d 4 white rook) (cell d 6 black pawn) (cell f 2 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/3K1pR1/1p6/8/8/b7/4k3/8 b - - 0 1
+(cell a 3 black bishop) (cell b 6 black pawn) (cell d 7 white king) (cell e 2 black king) (cell f 7 black pawn) (cell g 7 white rook) (control black) (halfmove 0)
+; a seeded endgame: 5K2/1P6/1p5k/rP6/1r6/8/8/8 w - - 0 1
+(cell a 5 black rook) (cell b 4 black rook) (cell b 5 white pawn) (cell b 6 black pawn) (cell b 7 white pawn) (cell f 8 white king) (cell h 6 black king) (control white) (halfmove 0)
+; a seeded endgame: 3k4/2p5/4p1K1/8/8/8/5P2/8 b - - 0 1
+(cell c 7 black pawn) (cell d 8 black king) (cell e 6 black pawn) (cell f 2 white pawn) (cell g 6 white king) (control black) (halfmove 0)
+; a seeded endgame: 8/2n1P3/k3p3/8/8/1p6/p6K/8 w - - 0 1
+(cell a 2 black pawn) (cell a 6 black king) (cell b 3 black pawn) (cell c 7 black knight) (cell e 6 black pawn) (cell e 7 white pawn) (cell h 2 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/1p4KP/7P/5k2/8/8/N2N4 b - - 0 1
+(cell a 1 white knight) (cell b 6 black pawn) (cell d 1 white knight) (cell f 4 black king) (cell g 6 white king) (cell h 5 white pawn) (cell h 6 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 1B3K2/1P6/8/2P1P3/8/4q3/5k2/8 w - - 0 1
+(cell b 7 white pawn) (cell b 8 white bishop) (cell c 5 white pawn) (cell e 3 black queen) (cell e 5 white pawn) (cell f 2 black king) (cell f 8 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/1kp5/7K/8/5p2/8/8 w - - 0 1
+(cell b 6 black king) (cell c 6 black pawn) (cell f 3 black pawn) (cell h 5 white king) (control white) (halfmove 0)
+; a seeded endgame: 4k3/8/2P5/8/4K3/6P1/1pp5/8 w - - 0 1
+(cell b 2 black pawn) (cell c 2 black pawn) (cell c 6 white pawn) (cell e 4 white king) (cell e 8 black king) (cell g 3 white pawn) (control white) (halfmove 0)
+; a seeded endgame: K7/3k3P/8/2p5/7R/8/8/8 b - - 0 1
+(cell a 8 white king) (cell c 5 black pawn) (cell d 7 black king) (cell h 4 white rook) (cell h 7 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 1K6/8/4k3/4B3/7r/8/1Pp5/8 w - - 0 1
+(cell b 2 white pawn) (cell b 8 white king) (cell c 2 black pawn) (cell e 5 white bishop) (cell e 6 black king) (cell h 4 black rook) (control white) (halfmove 0)
+; a seeded endgame: 8/8/8/5p2/3n2k1/8/6Q1/3K4 b - - 0 1
+(cell d 1 white king) (cell d 4 black knight) (cell f 5 black pawn) (cell g 2 white queen) (cell g 4 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/6P1/8/8/8/8/2K2k2 b - - 0 1
+(cell c 1 white king) (cell f 1 black king) (cell g 6 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/7p/6K1/1k3p2/8/8/6p1/8 w - - 0 1
+(cell b 5 black king) (cell f 5 black pawn) (cell g 2 black pawn) (cell g 6 white king) (cell h 7 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/8/7q/2q5/3K4/1k1P2P1/8/8 w - - 0 1
+(cell b 3 black king) (cell c 5 black queen) (cell d 3 white pawn) (cell d 4 white king) (cell g 3 white pawn) (cell h 6 black queen) (control white) (halfmove 0)
+; a seeded endgame: 5K2/8/6P1/5B2/P3k3/8/8/8 b - - 0 1
+(cell a 4 white pawn) (cell e 4 black king) (cell f 5 white bishop) (cell f 8 white king) (cell g 6 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/K6k/8/8/p4P2/8/8 b - - 0 1
+(cell a 3 black pawn) (cell a 6 white king) (cell f 3 white pawn) (cell h 6 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/p7/1PK5/8/8/5q2/7k/8 w - - 0 1
+(cell a 7 black pawn) (cell b 6 white pawn) (cell c 6 white king) (cell f 3 black queen) (cell h 2 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/4k3/8/8/8/7n/2P5/3K4 w - - 0 1
+(cell c 2 white pawn) (cell d 1 white king) (cell e 7 black king) (cell h 3 black knight) (control white) (halfmove 0)
+; a seeded endgame: 8/8/8/7k/5p2/8/4K3/8 w - - 0 1
+(cell e 2 white king) (cell f 4 black pawn) (cell h 5 black king) (control white) (halfmove 0)
+; a seeded endgame: 3k4/P7/8/3P4/8/1p2K3/8/8 w - - 0 1
+(cell a 7 white pawn) (cell b 3 black pawn) (cell d 5 white pawn) (cell d 8 black king) (cell e 3 white king) (control white) (halfmove 0)
+; a seeded endgame: K7/8/8/8/2p5/p7/3b2k1/8 b - - 0 1
+(cell a 3 black pawn) (cell a 8 white king) (cell c 4 black pawn) (cell d 2 black bishop) (cell g 2 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/2k5/5P2/8/3p4/8/8/3K4 b - - 0 1
+(cell c 7 black king) (cell d 1 white king) (cell d 4 black pawn) (cell f 6 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/p7/5P1K/5p2/8/5k2/8 w - - 0 1
+(cell a 6 black pawn) (cell f 2 black king) (cell f 4 black pawn) (cell f 5 white pawn) (cell h 5 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/8/8/2p5/3P4/k7/3K4 b - - 0 1
+(cell a 2 black king) (cell c 4 black pawn) (cell d 1 white king) (cell d 3 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 1k6/8/8/2P5/8/1K6/8/8 b - - 0 1
+(cell b 3 white king) (cell b 8 black king) (cell c 5 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/5k2/8/1N6/8/8/6p1/5K2 w - - 0 1
+(cell b 5 white knight) (cell f 1 white king) (cell f 7 black king) (cell g 2 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/7K/8/8/8/2P1k3/8/8 w - - 0 1
+(cell c 3 white pawn) (cell e 3 black king) (cell h 7 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/8/3K4/8/6k1/4p3/8 b - - 0 1
+(cell d 5 white king) (cell e 2 black pawn) (cell g 3 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/1p5k/2bK4/8/p7/8/8/8 b - - 0 1
+(cell a 4 black pawn) (cell b 7 black pawn) (cell c 6 black bishop) (cell d 6 white king) (cell h 7 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/5k2/1p5r/4K3/6p1/8 w - - 0 1
+(cell b 4 black pawn) (cell e 3 white king) (cell f 5 black king) (cell g 2 black pawn) (cell h 4 black rook) (control white) (halfmove 0)
+; a seeded endgame: 8/7P/6P1/q1p5/r7/8/8/1k3K2 b - - 0 1
+(cell a 4 black rook) (cell a 5 black queen) (cell b 1 black king) (cell c 5 black pawn) (cell f 1 white king) (cell g 6 white pawn) (cell h 7 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/3P4/4n3/2kn4/8/8/2K5 w - - 0 1
+(cell c 1 white king) (cell c 4 black king) (cell d 4 black knight) (cell d 6 white pawn) (cell e 5 black knight) (control white) (halfmove 0)
+; a seeded endgame: 8/2N5/3K4/8/5P2/1p3k2/3B2p1/8 b - - 0 1
+(cell b 3 black pawn) (cell c 7 white knight) (cell d 2 white bishop) (cell d 6 white king) (cell f 3 black king) (cell f 4 white pawn) (cell g 2 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/B1p2b2/8/3p1P2/8/7K/8/2k5 b - - 0 1
+(cell a 7 white bishop) (cell c 1 black king) (cell c 7 black pawn) (cell d 5 black pawn) (cell f 5 white pawn) (cell f 7 black bishop) (cell h 3 white king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/7K/6p1/1P6/2k5/8 w - - 0 1
+(cell b 3 white pawn) (cell c 2 black king) (cell g 4 black pawn) (cell h 5 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/5k2/7r/P7/8/3K4/8 w - - 0 1
+(cell a 4 white pawn) (cell d 2 white king) (cell f 6 black king) (cell h 5 black rook) (control white) (halfmove 0)
+; a seeded endgame: 8/8/8/6K1/5p2/4P3/8/6k1 w - - 0 1
+(cell e 3 white pawn) (cell f 4 black pawn) (cell g 1 black king) (cell g 5 white king) (control white) (halfmove 0)
+; a seeded endgame: K7/8/8/kP6/3P4/4P3/8/2b5 b - - 0 1
+(cell a 5 black king) (cell a 8 white king) (cell b 5 white pawn) (cell c 1 black bishop) (cell d 4 white pawn) (cell e 3 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/4K3/8/8/4P3/3Pk3/8 w - - 0 1
+(cell d 2 white pawn) (cell e 2 black king) (cell e 3 white pawn) (cell e 6 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/1k6/p7/8/5K2/7N/8/8 b - - 0 1
+(cell a 6 black pawn) (cell b 7 black king) (cell f 4 white king) (cell h 3 white knight) (control black) (halfmove 0)
+; a seeded endgame: 8/P6p/8/7p/8/8/8/2k4K b - - 0 1
+(cell a 7 white pawn) (cell c 1 black king) (cell h 1 white king) (cell h 5 black pawn) (cell h 7 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 5k2/8/pP6/6K1/8/Q7/2P5/6b1 b - - 0 1
+(cell a 3 white queen) (cell a 6 black pawn) (cell b 6 white pawn) (cell c 2 white pawn) (cell f 8 black king) (cell g 1 black bishop) (cell g 5 white king) (control black) (halfmove 0)
+; a seeded endgame: 2k5/6R1/8/8/5Qp1/8/4Kp2/8 b - - 0 1
+(cell c 8 black king) (cell e 2 white king) (cell f 2 black pawn) (cell f 4 white queen) (cell g 4 black pawn) (cell g 7 white rook) (control black) (halfmove 0)
+; a seeded endgame: K7/8/2Pk4/1r1b4/8/8/8/8 w - - 0 1
+(cell a 8 white king) (cell b 5 black rook) (cell c 6 white pawn) (cell d 5 black bishop) (cell d 6 black king) (control white) (halfmove 0)
+; a seeded endgame: 1k6/8/8/3Kp3/4p2p/8/3P4/8 b - - 0 1
+(cell b 8 black king) (cell d 2 white pawn) (cell d 5 white king) (cell e 4 black pawn) (cell e 5 black pawn) (cell h 4 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/6K1/P7/1p2k3/8/8/8/8 b - - 0 1
+(cell a 6 white pawn) (cell b 5 black pawn) (cell e 5 black king) (cell g 7 white king) (control black) (halfmove 0)
+; a seeded endgame: 8/1P4P1/2K5/8/5p2/8/6k1/8 w - - 0 1
+(cell b 7 white pawn) (cell c 6 white king) (cell f 4 black pawn) (cell g 2 black king) (cell g 7 white pawn) (control white) (halfmove 0)
+; a seeded endgame: 1K2R3/5k2/1p6/5P2/1p6/5r2/8/8 b - - 0 1
+(cell b 4 black pawn) (cell b 6 black pawn) (cell b 8 white king) (cell e 8 white rook) (cell f 3 black rook) (cell f 5 white pawn) (cell f 7 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/3p4/8/8/8/8/K3p3/3k4 b - - 0 1
+(cell a 2 white king) (cell d 1 black king) (cell d 7 black pawn) (cell e 2 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/2N5/2r2P2/1PK5/8/3k4 w - - 0 1
+(cell b 3 white pawn) (cell c 3 white king) (cell c 4 black rook) (cell c 5 white knight) (cell d 1 black king) (cell f 4 white pawn) (control white) (halfmove 0)
+; a seeded endgame: 4k3/1K6/6N1/1P6/8/8/1p6/8 w - - 0 1
+(cell b 2 black pawn) (cell b 5 white pawn) (cell b 7 white king) (cell e 8 black king) (cell g 6 white knight) (control white) (halfmove 0)
+; a seeded endgame: 6k1/8/3N4/P2P1K2/8/2P5/8/6n1 b - - 0 1
+(cell a 5 white pawn) (cell c 3 white pawn) (cell d 5 white pawn) (cell d 6 white knight) (cell f 5 white king) (cell g 1 black knight) (cell g 8 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/P7/3r4/7k/1b1P4/2K5/8/8 w - - 0 1
+(cell a 7 white pawn) (cell b 4 black bishop) (cell c 3 white king) (cell d 4 white pawn) (cell d 6 black rook) (cell h 5 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/2K5/7k/8/3P4/8/8 b - - 0 1
+(cell c 6 white king) (cell d 3 white pawn) (cell h 5 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/1p2k3/8/8/8/1KP5/R7 b - - 0 1
+(cell a 1 white rook) (cell b 2 white king) (cell b 6 black pawn) (cell c 2 white pawn) (cell e 6 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/2r5/3p4/6K1/p7/k1P5/8 w - - 0 1
+(cell a 2 black king) (cell a 3 black pawn) (cell c 2 white pawn) (cell c 6 black rook) (cell d 5 black pawn) (cell g 4 white king) (control white) (halfmove 0)
+; a seeded endgame: 3K4/P7/8/8/8/2k5/8/8 w - - 0 1
+(cell a 7 white pawn) (cell c 3 black king) (cell d 8 white king) (control white) (halfmove 0)
+; a seeded endgame: 5N2/5P2/2n4K/8/1k1p4/1p6/8/8 w - - 0 1
+(cell b 3 black pawn) (cell b 4 black king) (cell c 6 black knight) (cell d 4 black pawn) (cell f 7 white pawn) (cell f 8 white knight) (cell h 6 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/6k1/8/8/6P1/8/p5K1/8 w - - 0 1
+(cell a 2 black pawn) (cell g 2 white king) (cell g 4 white pawn) (cell g 7 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/k7/pN6/8/8/2K2p2/8/5b2 w - - 0 1
+(cell a 6 black pawn) (cell a 7 black king) (cell b 6 white knight) (cell c 3 white king) (cell f 1 black bishop) (cell f 3 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/5P2/8/1K6/4p3/1k5p/8/8 w - - 0 1
+(cell b 3 black king) (cell b 5 white king) (cell e 4 black pawn) (cell f 7 white pawn) (cell h 3 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/8/2P4p/8/1k4K1/1r6/8/8 b - - 0 1
+(cell b 3 black rook) (cell b 4 black king) (cell c 6 white pawn) (cell g 4 white king) (cell h 6 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 2k5/8/8/5r2/5P2/1P6/8/1K2N3 b - - 0 1
+(cell b 1 white king) (cell b 3 white pawn) (cell c 8 black king) (cell e 1 white knight) (cell f 4 white pawn) (cell f 5 black rook) (control black) (halfmove 0)
+; a seeded endgame: 8/4p3/K7/7p/3kP3/8/2P5/8 w - - 0 1
+(cell a 6 white king) (cell c 2 white pawn) (cell d 4 black king) (cell e 4 white pawn) (cell e 7 black pawn) (cell h 5 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/P4NR1/8/8/8/P1k4p/7K/8 w - - 0 1
+(cell a 3 white pawn) (cell a 7 white pawn) (cell c 3 black king) (cell f 7 white knight) (cell g 7 white rook) (cell h 2 white king) (cell h 3 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/4p3/3N4/3pk3/8/3K4/8/8 b - - 0 1
+(cell d 3 white king) (cell d 5 black pawn) (cell d 6 white knight) (cell e 5 black king) (cell e 7 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/4P3/8/5Q1p/4K3/8/2k5/8 b - - 0 1
+(cell c 2 black king) (cell e 4 white king) (cell e 7 white pawn) (cell f 5 white queen) (cell h 5 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/1p6/5n2/7R/1k6/1p3K2/8 w - - 0 1
+(cell b 2 black pawn) (cell b 3 black king) (cell b 6 black pawn) (cell f 2 white king) (cell f 5 black knight) (cell h 4 white rook) (control white) (halfmove 0)
+; a seeded endgame: 4q3/K1P5/2k2P2/8/8/5P2/8/8 b - - 0 1
+(cell a 7 white king) (cell c 6 black king) (cell c 7 white pawn) (cell e 8 black queen) (cell f 3 white pawn) (cell f 6 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/1Pk5/7K/3P2P1/8/8 w - - 0 1
+(cell b 5 white pawn) (cell c 5 black king) (cell d 3 white pawn) (cell g 3 white pawn) (cell h 4 white king) (control white) (halfmove 0)
+; a seeded endgame: 5r2/4k3/8/8/4p3/8/8/K7 b - - 0 1
+(cell a 1 white king) (cell e 4 black pawn) (cell e 7 black king) (cell f 8 black rook) (control black) (halfmove 0)
+; a seeded endgame: 8/5p2/P7/k7/2p5/6K1/8/8 w - - 0 1
+(cell a 5 black king) (cell a 6 white pawn) (cell c 4 black pawn) (cell f 7 black pawn) (cell g 3 white king) (control white) (halfmove 0)
+; a seeded endgame: 6k1/K3p3/1n3pP1/8/8/8/8/8 w - - 0 1
+(cell a 7 white king) (cell b 6 black knight) (cell e 7 black pawn) (cell f 6 black pawn) (cell g 6 white pawn) (cell g 8 black king) (control white) (halfmove 0)
+; a seeded endgame: 3K4/5p2/3PR3/1B6/8/8/8/3k4 b - - 0 1
+(cell b 5 white bishop) (cell d 1 black king) (cell d 6 white pawn) (cell d 8 white king) (cell e 6 white rook) (cell f 7 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/3K4/8/8/8/7p/6k1/8 w - - 0 1
+(cell d 7 white king) (cell g 2 black king) (cell h 3 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/3p4/8/4p3/1K3p2/5BR1/1p6/2k5 w - - 0 1
+(cell b 2 black pawn) (cell b 4 white king) (cell c 1 black king) (cell d 7 black pawn) (cell e 5 black pawn) (cell f 3 white bishop) (cell f 4 black pawn) (cell g 3 white rook) (control white) (halfmove 0)
+; a seeded endgame: 8/6p1/4k3/8/8/3p1K2/1r6/8 b - - 0 1
+(cell b 2 black rook) (cell d 3 black pawn) (cell e 6 black king) (cell f 3 white king) (cell g 7 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 5k2/1K6/8/8/8/2P4p/8/8 b - - 0 1
+(cell b 7 white king) (cell c 3 white pawn) (cell f 8 black king) (cell h 3 black pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/K2r4/8/4P3/8/6kq w - - 0 1
+(cell a 5 white king) (cell d 5 black rook) (cell e 3 white pawn) (cell g 1 black king) (cell h 1 black queen) (control white) (halfmove 0)
+; a seeded endgame: 8/5P2/8/k5P1/4p2n/8/5K2/8 b - - 0 1
+(cell a 5 black king) (cell e 4 black pawn) (cell f 2 white king) (cell f 7 white pawn) (cell g 5 white pawn) (cell h 4 black knight) (control black) (halfmove 0)
+; a seeded endgame: 8/2p5/2Pk2p1/8/8/5K2/2Q2R2/8 w - - 0 1
+(cell c 2 white queen) (cell c 6 white pawn) (cell c 7 black pawn) (cell d 6 black king) (cell f 2 white rook) (cell f 3 white king) (cell g 6 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/8/3k4/8/8/8/4p3/7K w - - 0 1
+(cell d 6 black king) (cell e 2 black pawn) (cell h 1 white king) (control white) (halfmove 0)
+; a seeded endgame: 4k3/8/8/5NK1/8/3p4/5P2/3Q4 w - - 0 1
+(cell d 1 white queen) (cell d 3 black pawn) (cell e 8 black king) (cell f 2 white pawn) (cell f 5 white knight) (cell g 5 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/3q4/1P1P2r1/8/8/8/1K6/5k2 b - - 0 1
+(cell b 2 white king) (cell b 6 white pawn) (cell d 6 white pawn) (cell d 7 black queen) (cell f 1 black king) (cell g 6 black rook) (control black) (halfmove 0)
+; a seeded endgame: 8/8/P2k4/8/1B2K3/8/8/8 b - - 0 1
+(cell a 6 white pawn) (cell b 4 white bishop) (cell d 6 black king) (cell e 4 white king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/8/7K/3p4/2P3P1/3k4 w - - 0 1
+(cell c 2 white pawn) (cell d 1 black king) (cell d 3 black pawn) (cell g 2 white pawn) (cell h 4 white king) (control white) (halfmove 0)
+; a seeded endgame: 8/1P6/8/8/8/1Pp3k1/8/7K w - - 0 1
+(cell b 3 white pawn) (cell b 7 white pawn) (cell c 3 black pawn) (cell g 3 black king) (cell h 1 white king) (control white) (halfmove 0)
+; a seeded endgame: 2k5/8/2r5/8/8/1P5K/4p2p/8 w - - 0 1
+(cell b 3 white pawn) (cell c 6 black rook) (cell c 8 black king) (cell e 2 black pawn) (cell h 2 black pawn) (cell h 3 white king) (control white) (halfmove 0)
+; a seeded endgame: 3K4/P7/8/8/6k1/3p4/p3Q3/8 b - - 0 1
+(cell a 2 black pawn) (cell a 7 white pawn) (cell d 3 black pawn) (cell d 8 white king) (cell e 2 white queen) (cell g 4 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/8/5k2/7P/3K4/8 w - - 0 1
+(cell d 2 white king) (cell f 4 black king) (cell h 3 white pawn) (control white) (halfmove 0)
+; a seeded endgame: 1K6/8/k7/3p4/3pQ3/8/8/8 w - - 0 1
+(cell a 6 black king) (cell b 8 white king) (cell d 4 black pawn) (cell d 5 black pawn) (cell e 4 white queen) (control white) (halfmove 0)
+; a seeded endgame: 8/8/6Pk/8/2K5/1P5p/8/8 b - - 0 1
+(cell b 3 white pawn) (cell c 4 white king) (cell g 6 white pawn) (cell h 3 black pawn) (cell h 6 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/3pk3/8/8/8/5p2/7K/8 w - - 0 1
+(cell d 7 black pawn) (cell e 7 black king) (cell f 3 black pawn) (cell h 2 white king) (control white) (halfmove 0)
+; a seeded endgame: 5k2/8/1p6/4p3/8/4K3/8/8 b - - 0 1
+(cell b 6 black pawn) (cell e 3 white king) (cell e 5 black pawn) (cell f 8 black king) (control black) (halfmove 0)
+; a seeded endgame: 3k4/8/8/4Q3/8/8/p7/2K5 b - - 0 1
+(cell a 2 black pawn) (cell c 1 white king) (cell d 8 black king) (cell e 5 white queen) (control black) (halfmove 0)
+; a seeded endgame: 5N2/6KP/8/8/2pk4/8/r7/8 b - - 0 1
+(cell a 2 black rook) (cell c 4 black pawn) (cell d 4 black king) (cell f 8 white knight) (cell g 7 white king) (cell h 7 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 2K2k2/8/8/2p5/8/1PP5/4P3/8 w - - 0 1
+(cell b 3 white pawn) (cell c 3 white pawn) (cell c 5 black pawn) (cell c 8 white king) (cell e 2 white pawn) (cell f 8 black king) (control white) (halfmove 0)
+; a seeded endgame: 1k2K3/8/5P2/8/1B6/8/8/8 b - - 0 1
+(cell b 4 white bishop) (cell b 8 black king) (cell e 8 white king) (cell f 6 white pawn) (control black) (halfmove 0)
+; a seeded endgame: 8/8/5K1k/8/2Pb4/p7/4r3/8 w - - 0 1
+(cell a 3 black pawn) (cell c 4 white pawn) (cell d 4 black bishop) (cell e 2 black rook) (cell f 6 white king) (cell h 6 black king) (control white) (halfmove 0)
+; a seeded endgame: 1K6/3p4/8/8/p7/8/5k2/8 w - - 0 1
+(cell a 4 black pawn) (cell b 8 white king) (cell d 7 black pawn) (cell f 2 black king) (control white) (halfmove 0)
+; a seeded endgame: 6k1/p7/8/6K1/R7/5p2/8/8 w - - 0 1
+(cell a 4 white rook) (cell a 7 black pawn) (cell f 3 black pawn) (cell g 5 white king) (cell g 8 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/5K2/8/8/1r6/8/2k2P2/8 b - - 0 1
+(cell b 4 black rook) (cell c 2 black king) (cell f 2 white pawn) (cell f 7 white king) (control black) (halfmove 0)
+; a seeded endgame: 2k5/8/8/2P5/8/P7/4p2K/8 b - - 0 1
+(cell a 3 white pawn) (cell c 5 white pawn) (cell c 8 black king) (cell e 2 black pawn) (cell h 2 white king) (control black) (halfmove 0)
+; a seeded endgame: 4k3/8/8/7r/6P1/1R6/2p5/K7 w - - 0 1
+(cell a 1 white king) (cell b 3 white rook) (cell c 2 black pawn) (cell e 8 black king) (cell g 4 white pawn) (cell h 5 black rook) (control white) (halfmove 0)
+; a seeded endgame: 1q2Q3/8/2P5/2K4k/1p6/6P1/8/8 b - - 0 1
+(cell b 4 black pawn) (cell b 8 black queen) (cell c 5 white king) (cell c 6 white pawn) (cell e 8 white queen) (cell g 3 white pawn) (cell h 5 black king) (control black) (halfmove 0)
+; a seeded endgame: 8/8/3KP3/8/8/7k/1q3p2/8 w - - 0 1
+(cell b 2 black queen) (cell d 6 white king) (cell e 6 white pawn) (cell f 2 black pawn) (cell h 3 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/3k4/7Q/8/K7/2p5/8 b - - 0 1
+(cell a 3 white king) (cell c 2 black pawn) (cell d 6 black king) (cell h 5 white queen) (control black) (halfmove 0)
+; a seeded endgame: 8/8/8/B4p2/8/8/7B/1k4K1 w - - 0 1
+(cell a 5 white bishop) (cell b 1 black king) (cell f 5 black pawn) (cell g 1 white king) (cell h 2 white bishop) (control white) (halfmove 0)
+; a seeded endgame: 8/8/3K4/1p4P1/8/7p/3pq3/1k6 w - - 0 1
+(cell b 1 black king) (cell b 5 black pawn) (cell d 2 black pawn) (cell d 6 white king) (cell e 2 black queen) (cell g 5 white pawn) (cell h 3 black pawn) (control white) (halfmove 0)
+; a seeded endgame: 8/5N2/8/8/1P5k/2K5/1p2P3/8 w - - 0 1
+(cell b 2 black pawn) (cell b 4 white pawn) (cell c 3 white king) (cell e 2 white pawn) (cell f 7 white knight) (cell h 4 black king) (control white) (halfmove 0)
+; a seeded endgame: 8/8/7B/8/3k1K2/5p2/4p3/8 b - - 0 1
+(cell d 4 black king) (cell e 2 black pawn) (cell f 3 black pawn) (cell f 4 white king) (cell h 6 white bishop) (control black) (halfmove 0)
+; a puzzle position: 2Q2bk1/5p1p/p5p1/2p3P1/4B3/7P/qPr2P2/2K4R w - - 0 33
+(cell a 2 black queen) (cell a 6 black pawn) (cell b 2 white pawn) (cell c 1 white king) (cell c 2 black rook) (cell c 5 black pawn) (cell c 8 white queen) (cell e 4 white bishop) (cell f 2 white pawn) (cell f 7 black pawn) (cell f 8 black bishop) (cell g 5 white pawn) (cell g 6 black pawn) (cell g 8 black king) (cell h 1 white rook) (cell h 3 white pawn) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: r6r/p1p1n1p1/bp2Pk1p/3p1Pnq/5b2/2P1BN1P/PPQ3P1/RN4K1 w - - 0 23
+(cell a 1 white rook) (cell a 2 white pawn) (cell a 6 black bishop) (cell a 7 black pawn) (cell a 8 black rook) (cell b 1 white knight) (cell b 2 white pawn) (cell b 6 black pawn) (cell c 2 white queen) (cell c 3 white pawn) (cell c 7 black pawn) (cell d 5 black pawn) (cell e 3 white bishop) (cell e 6 white pawn) (cell e 7 black knight) (cell f 3 white knight) (cell f 4 black bishop) (cell f 5 white pawn) (cell f 6 black king) (cell g 1 white king) (cell g 2 white pawn) (cell g 5 black knight) (cell g 7 black pawn) (cell h 3 white pawn) (cell h 5 black queen) (cell h 6 black pawn) (cell h 8 black rook) (control white) (halfmove 0)
+; a puzzle position: rn2k3/1p1b1p2/4pqp1/2pp4/2P1nPP1/1P2P3/1BP4Q/2KR1BN1 b q - 0 16
+(castling_right black queenside) (cell a 8 black rook) (cell b 2 white bishop) (cell b 3 white pawn) (cell b 7 black pawn) (cell b 8 black knight) (cell c 1 white king) (cell c 2 white pawn) (cell c 4 white pawn) (cell c 5 black pawn) (cell d 1 white rook) (cell d 5 black pawn) (cell d 7 black bishop) (cell e 3 white pawn) (cell e 4 black knight) (cell e 6 black pawn) (cell e 8 black king) (cell f 1 white bishop) (cell f 4 white pawn) (cell f 6 black queen) (cell f 7 black pawn) (cell g 1 white knight) (cell g 4 white pawn) (cell g 6 black pawn) (cell h 2 white queen) (control black) (halfmove 0)
+; a puzzle position: 3r3k/p1pB2pp/4P3/3Q1p1b/1r6/5P1q/PP5B/R4RK1 b - - 0 22
+(cell a 1 white rook) (cell a 2 white pawn) (cell a 7 black pawn) (cell b 2 white pawn) (cell b 4 black rook) (cell c 7 black pawn) (cell d 5 white queen) (cell d 7 white bishop) (cell d 8 black rook) (cell e 6 white pawn) (cell f 1 white rook) (cell f 3 white pawn) (cell f 5 black pawn) (cell g 1 white king) (cell g 7 black pawn) (cell h 2 white bishop) (cell h 3 black queen) (cell h 5 black bishop) (cell h 7 black pawn) (cell h 8 black king) (control black) (halfmove 0)
+; a puzzle position: rR4k1/6pp/B7/3pp3/P4rqn/8/1Q3PPP/R6K b - - 6 26
+(cell a 1 white rook) (cell a 4 white pawn) (cell a 6 white bishop) (cell a 8 black rook) (cell b 2 white queen) (cell b 8 white rook) (cell d 5 black pawn) (cell e 5 black pawn) (cell f 2 white pawn) (cell f 4 black rook) (cell g 2 white pawn) (cell g 4 black queen) (cell g 7 black pawn) (cell g 8 black king) (cell h 1 white king) (cell h 2 white pawn) (cell h 4 black knight) (cell h 7 black pawn) (control black) (halfmove 6)
+; a puzzle position: r3k2r/ppp2ppp/5n2/3pqb2/1b6/1BNQB3/PPP2PPP/R3K2R w KQkq - 2 12
+(castling_right black kingside) (castling_right black queenside) (castling_right white kingside) (castling_right white queenside) (cell a 1 white rook) (cell a 2 white pawn) (cell a 7 black pawn) (cell a 8 black rook) (cell b 2 white pawn) (cell b 3 white bishop) (cell b 4 black bishop) (cell b 7 black pawn) (cell c 2 white pawn) (cell c 3 white knight) (cell c 7 black pawn) (cell d 3 white queen) (cell d 5 black pawn) (cell e 1 white king) (cell e 3 white bishop) (cell e 5 black queen) (cell e 8 black king) (cell f 2 white pawn) (cell f 5 black bishop) (cell f 6 black knight) (cell f 7 black pawn) (cell g 2 white pawn) (cell g 7 black pawn) (cell h 1 white rook) (cell h 2 white pawn) (cell h 7 black pawn) (cell h 8 black rook) (control white) (halfmove 2)
+; a puzzle position: 6R1/pp5k/8/2pN2P1/1Pq5/8/4n2P/7K w - - 1 36
+(cell a 7 black pawn) (cell b 4 white pawn) (cell b 7 black pawn) (cell c 4 black queen) (cell c 5 black pawn) (cell d 5 white knight) (cell e 2 black knight) (cell g 5 white pawn) (cell g 8 white rook) (cell h 1 white king) (cell h 2 white pawn) (cell h 7 black king) (control white) (halfmove 1)
+; a puzzle position: 1r5k/6bp/p1N3p1/2Q2b2/2BP4/8/PPP2qPP/1K1R3R b - - 0 21
+(cell a 2 white pawn) (cell a 6 black pawn) (cell b 1 white king) (cell b 2 white pawn) (cell b 8 black rook) (cell c 2 white pawn) (cell c 4 white bishop) (cell c 5 white queen) (cell c 6 white knight) (cell d 1 white rook) (cell d 4 white pawn) (cell f 2 black queen) (cell f 5 black bishop) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 7 black bishop) (cell h 1 white rook) (cell h 2 white pawn) (cell h 7 black pawn) (cell h 8 black king) (control black) (halfmove 0)
+; a puzzle position: r1b4k/ppp1Qpp1/6p1/8/8/3q4/P4PPP/4R1K1 w - - 0 23
+(cell a 2 white pawn) (cell a 7 black pawn) (cell a 8 black rook) (cell b 7 black pawn) (cell c 7 black pawn) (cell c 8 black bishop) (cell d 3 black queen) (cell e 1 white rook) (cell e 7 white queen) (cell f 2 white pawn) (cell f 7 black pawn) (cell g 1 white king) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 7 black pawn) (cell h 2 white pawn) (cell h 8 black king) (control white) (halfmove 0)
+; a puzzle position: 2rr2k1/1b3pp1/p4P2/6Qp/B1p4P/2P5/PP1ppNP1/R6K b - - 0 31
+(cell a 1 white rook) (cell a 2 white pawn) (cell a 4 white bishop) (cell a 6 black pawn) (cell b 2 white pawn) (cell b 7 black bishop) (cell c 3 white pawn) (cell c 4 black pawn) (cell c 8 black rook) (cell d 2 black pawn) (cell d 8 black rook) (cell e 2 black pawn) (cell f 2 white knight) (cell f 6 white pawn) (cell f 7 black pawn) (cell g 2 white pawn) (cell g 5 white queen) (cell g 7 black pawn) (cell g 8 black king) (cell h 1 white king) (cell h 4 white pawn) (cell h 5 black pawn) (control black) (halfmove 0)
+; a puzzle position: 8/8/8/7k/4r2B/6RK/6P1/8 b - - 4 72
+(cell e 4 black rook) (cell g 2 white pawn) (cell g 3 white rook) (cell h 3 white king) (cell h 4 white bishop) (cell h 5 black king) (control black) (halfmove 4)
+; a puzzle position: 8/p7/1p6/4kppp/PPP5/4K1P1/7P/8 b - - 0 49
+(cell a 4 white pawn) (cell a 7 black pawn) (cell b 4 white pawn) (cell b 6 black pawn) (cell c 4 white pawn) (cell e 3 white king) (cell e 5 black king) (cell f 5 black pawn) (cell g 3 white pawn) (cell g 5 black pawn) (cell h 2 white pawn) (cell h 5 black pawn) (control black) (halfmove 0)
+; a puzzle position: r1bq3r/pp1nbkp1/2p1p2p/8/2BP4/1PN3P1/P3QP1P/3R1RK1 w - - 0 20
+(cell a 2 white pawn) (cell a 7 black pawn) (cell a 8 black rook) (cell b 3 white pawn) (cell b 7 black pawn) (cell c 3 white knight) (cell c 4 white bishop) (cell c 6 black pawn) (cell c 8 black bishop) (cell d 1 white rook) (cell d 4 white pawn) (cell d 7 black knight) (cell d 8 black queen) (cell e 2 white queen) (cell e 6 black pawn) (cell e 7 black bishop) (cell f 1 white rook) (cell f 2 white pawn) (cell f 7 black king) (cell g 1 white king) (cell g 3 white pawn) (cell g 7 black pawn) (cell h 2 white pawn) (cell h 6 black pawn) (cell h 8 black rook) (control white) (halfmove 0)
+; a puzzle position: 8/8/3k4/2pPp2B/4P3/1P1K4/6n1/8 b - - 3 58
+(cell b 3 white pawn) (cell c 5 black pawn) (cell d 3 white king) (cell d 5 white pawn) (cell d 6 black king) (cell e 4 white pawn) (cell e 5 black pawn) (cell g 2 black knight) (cell h 5 white bishop) (control black) (halfmove 3)
+; a puzzle position: 1r2r2k/5ppp/3R4/4q3/3Q4/P7/6PP/Rb4NK w - - 2 29
+(cell a 1 white rook) (cell a 3 white pawn) (cell b 1 black bishop) (cell b 8 black rook) (cell d 4 white queen) (cell d 6 white rook) (cell e 5 black queen) (cell e 8 black rook) (cell f 7 black pawn) (cell g 1 white knight) (cell g 2 white pawn) (cell g 7 black pawn) (cell h 1 white king) (cell h 2 white pawn) (cell h 7 black pawn) (cell h 8 black king) (control white) (halfmove 2)
+; a puzzle position: 6k1/3Q1p2/p1p2P2/8/7n/8/5PPK/2q5 w - - 0 35
+(cell a 6 black pawn) (cell c 1 black queen) (cell c 6 black pawn) (cell d 7 white queen) (cell f 2 white pawn) (cell f 6 white pawn) (cell f 7 black pawn) (cell g 2 white pawn) (cell g 8 black king) (cell h 2 white king) (cell h 4 black knight) (control white) (halfmove 0)
+; a puzzle position: 3B4/5p1p/3R1P2/1k3b1p/1pp5/1P6/KP5P/2r5 w - - 0 45
+(cell a 2 white king) (cell b 2 white pawn) (cell b 3 white pawn) (cell b 4 black pawn) (cell b 5 black king) (cell c 1 black rook) (cell c 4 black pawn) (cell d 6 white rook) (cell d 8 white bishop) (cell f 5 black bishop) (cell f 6 white pawn) (cell f 7 black pawn) (cell h 2 white pawn) (cell h 5 black pawn) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: 2kr1b1r/ppp1pppp/6b1/4Q3/5BP1/PP5P/1P4B1/qNKR3R b - - 0 18
+(cell a 1 black queen) (cell a 3 white pawn) (cell a 7 black pawn) (cell b 1 white knight) (cell b 2 white pawn) (cell b 3 white pawn) (cell b 7 black pawn) (cell c 1 white king) (cell c 7 black pawn) (cell c 8 black king) (cell d 1 white rook) (cell d 8 black rook) (cell e 5 white queen) (cell e 7 black pawn) (cell f 4 white bishop) (cell f 7 black pawn) (cell f 8 black bishop) (cell g 2 white bishop) (cell g 4 white pawn) (cell g 6 black bishop) (cell g 7 black pawn) (cell h 1 white rook) (cell h 3 white pawn) (cell h 7 black pawn) (cell h 8 black rook) (control black) (halfmove 0)
+; a puzzle position: 1r4rk/p2nqp2/8/2p1P2P/1p1p1QN1/3P1b2/PPP2P1K/6R1 w - - 0 33
+(cell a 2 white pawn) (cell a 7 black pawn) (cell b 2 white pawn) (cell b 4 black pawn) (cell b 8 black rook) (cell c 2 white pawn) (cell c 5 black pawn) (cell d 3 white pawn) (cell d 4 black pawn) (cell d 7 black knight) (cell e 5 white pawn) (cell e 7 black queen) (cell f 2 white pawn) (cell f 3 black bishop) (cell f 4 white queen) (cell f 7 black pawn) (cell g 1 white rook) (cell g 4 white knight) (cell g 8 black rook) (cell h 2 white king) (cell h 5 white pawn) (cell h 8 black king) (control white) (halfmove 0)
+; a puzzle position: 1rb1k2r/3nppbp/p1np2p1/q2P4/4P2P/P1N1BP2/1P1Q2P1/R3KBNR b KQk - 0 12
+(castling_right black kingside) (castling_right white kingside) (castling_right white queenside) (cell a 1 white rook) (cell a 3 white pawn) (cell a 5 black queen) (cell a 6 black pawn) (cell b 2 white pawn) (cell b 8 black rook) (cell c 3 white knight) (cell c 6 black knight) (cell c 8 black bishop) (cell d 2 white queen) (cell d 5 white pawn) (cell d 6 black pawn) (cell d 7 black knight) (cell e 1 white king) (cell e 3 white bishop) (cell e 4 white pawn) (cell e 7 black pawn) (cell e 8 black king) (cell f 1 white bishop) (cell f 3 white pawn) (cell f 7 black pawn) (cell g 1 white knight) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 7 black bishop) (cell h 1 white rook) (cell h 4 white pawn) (cell h 7 black pawn) (cell h 8 black rook) (control black) (halfmove 0)
+; a puzzle position: r4n2/8/p2kp3/1pq1b2Q/3p4/P1B1P3/1PK5/3R4 w - - 0 32
+(cell a 3 white pawn) (cell a 6 black pawn) (cell a 8 black rook) (cell b 2 white pawn) (cell b 5 black pawn) (cell c 2 white king) (cell c 3 white bishop) (cell c 5 black queen) (cell d 1 white rook) (cell d 4 black pawn) (cell d 6 black king) (cell e 3 white pawn) (cell e 5 black bishop) (cell e 6 black pawn) (cell f 8 black knight) (cell h 5 white queen) (control white) (halfmove 0)
+; a puzzle position: 3r1rk1/pb4pp/1p2p3/3qPp2/8/2P5/P3BPPP/1Q1RR1K1 b - - 0 18
+(cell a 2 white pawn) (cell a 7 black pawn) (cell b 1 white queen) (cell b 6 black pawn) (cell b 7 black bishop) (cell c 3 white pawn) (cell d 1 white rook) (cell d 5 black queen) (cell d 8 black rook) (cell e 1 white rook) (cell e 2 white bishop) (cell e 5 white pawn) (cell e 6 black pawn) (cell f 2 white pawn) (cell f 5 black pawn) (cell f 8 black rook) (cell g 1 white king) (cell g 2 white pawn) (cell g 7 black pawn) (cell g 8 black king) (cell h 2 white pawn) (cell h 7 black pawn) (control black) (halfmove 0)
+; a puzzle position: 8/r2r1k1p/PK3p2/2R3p1/8/2R2P2/8/8 w - - 0 42
+(cell a 6 white pawn) (cell a 7 black rook) (cell b 6 white king) (cell c 3 white rook) (cell c 5 white rook) (cell d 7 black rook) (cell f 3 white pawn) (cell f 6 black pawn) (cell f 7 black king) (cell g 5 black pawn) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: 6k1/5p2/6p1/q6r/7P/PQ4RK/6P1/8 b - - 4 50
+(cell a 3 white pawn) (cell a 5 black queen) (cell b 3 white queen) (cell f 7 black pawn) (cell g 2 white pawn) (cell g 3 white rook) (cell g 6 black pawn) (cell g 8 black king) (cell h 3 white king) (cell h 4 white pawn) (cell h 5 black rook) (control black) (halfmove 4)
+; a puzzle position: r1bqnr1k/1p1n2p1/p2p2P1/2pPp3/4Pp1b/2N1BP1N/PPP4Q/2KR1B2 w - - 0 1
+(cell a 2 white pawn) (cell a 6 black pawn) (cell a 8 black rook) (cell b 2 white pawn) (cell b 7 black pawn) (cell c 1 white king) (cell c 2 white pawn) (cell c 3 white knight) (cell c 5 black pawn) (cell c 8 black bishop) (cell d 1 white rook) (cell d 5 white pawn) (cell d 6 black pawn) (cell d 7 black knight) (cell d 8 black queen) (cell e 3 white bishop) (cell e 4 white pawn) (cell e 5 black pawn) (cell e 8 black knight) (cell f 1 white bishop) (cell f 3 white pawn) (cell f 4 black pawn) (cell f 8 black rook) (cell g 6 white pawn) (cell g 7 black pawn) (cell h 2 white queen) (cell h 3 white knight) (cell h 4 black bishop) (cell h 8 black king) (control white) (halfmove 0)
+; a puzzle position: 3r4/4q2k/p2p2pp/3R1N2/3Q4/8/PPP3PP/6K1 b - - 0 27
+(cell a 2 white pawn) (cell a 6 black pawn) (cell b 2 white pawn) (cell c 2 white pawn) (cell d 4 white queen) (cell d 5 white rook) (cell d 6 black pawn) (cell d 8 black rook) (cell e 7 black queen) (cell f 5 white knight) (cell g 1 white king) (cell g 2 white pawn) (cell g 6 black pawn) (cell h 2 white pawn) (cell h 6 black pawn) (cell h 7 black king) (control black) (halfmove 0)
+; a puzzle position: 1r1q2kr/R4pp1/4pn1p/1BQp4/1P6/1P2P3/5PPP/4K2R b K - 0 22
+(castling_right white kingside) (cell a 7 white rook) (cell b 3 white pawn) (cell b 4 white pawn) (cell b 5 white bishop) (cell b 8 black rook) (cell c 5 white queen) (cell d 5 black pawn) (cell d 8 black queen) (cell e 1 white king) (cell e 3 white pawn) (cell e 6 black pawn) (cell f 2 white pawn) (cell f 6 black knight) (cell f 7 black pawn) (cell g 2 white pawn) (cell g 7 black pawn) (cell g 8 black king) (cell h 1 white rook) (cell h 2 white pawn) (cell h 6 black pawn) (cell h 8 black rook) (control black) (halfmove 0)
+; a puzzle position: rn1q1rk1/pb3p1p/1p2p1p1/3nb1N1/2B5/1Q6/PP3PPP/RNBR2K1 w - - 0 14
+(cell a 1 white rook) (cell a 2 white pawn) (cell a 7 black pawn) (cell a 8 black rook) (cell b 1 white knight) (cell b 2 white pawn) (cell b 3 white queen) (cell b 6 black pawn) (cell b 7 black bishop) (cell b 8 black knight) (cell c 1 white bishop) (cell c 4 white bishop) (cell d 1 white rook) (cell d 5 black knight) (cell d 8 black queen) (cell e 5 black bishop) (cell e 6 black pawn) (cell f 2 white pawn) (cell f 7 black pawn) (cell f 8 black rook) (cell g 1 white king) (cell g 2 white pawn) (cell g 5 white knight) (cell g 6 black pawn) (cell g 8 black king) (cell h 2 white pawn) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: 8/1p1qrrk1/p2p3p/3PpQpP/2P1B3/1P2P3/P5P1/7K w - - 0 36
+(cell a 2 white pawn) (cell a 6 black pawn) (cell b 3 white pawn) (cell b 7 black pawn) (cell c 4 white pawn) (cell d 5 white pawn) (cell d 6 black pawn) (cell d 7 black queen) (cell e 3 white pawn) (cell e 4 white bishop) (cell e 5 black pawn) (cell e 7 black rook) (cell f 5 white queen) (cell f 7 black rook) (cell g 2 white pawn) (cell g 5 black pawn) (cell g 7 black king) (cell h 1 white king) (cell h 5 white pawn) (cell h 6 black pawn) (control white) (halfmove 0)
+; a puzzle position: 8/8/8/2k1p1p1/p2q3p/P1Q1pP1P/1P2K1P1/8 b - - 7 56
+(cell a 3 white pawn) (cell a 4 black pawn) (cell b 2 white pawn) (cell c 3 white queen) (cell c 5 black king) (cell d 4 black queen) (cell e 2 white king) (cell e 3 black pawn) (cell e 5 black pawn) (cell f 3 white pawn) (cell g 2 white pawn) (cell g 5 black pawn) (cell h 3 white pawn) (cell h 4 black pawn) (control black) (halfmove 7)
+; a puzzle position: 5rk1/1p3pp1/2p1b2p/p5q1/1nP1Q3/6NP/PP3PP1/1B1rR1K1 w - - 0 27
+(cell a 2 white pawn) (cell a 5 black pawn) (cell b 1 white bishop) (cell b 2 white pawn) (cell b 4 black knight) (cell b 7 black pawn) (cell c 4 white pawn) (cell c 6 black pawn) (cell d 1 black rook) (cell e 1 white rook) (cell e 4 white queen) (cell e 6 black bishop) (cell f 2 white pawn) (cell f 7 black pawn) (cell f 8 black rook) (cell g 1 white king) (cell g 2 white pawn) (cell g 3 white knight) (cell g 5 black queen) (cell g 7 black pawn) (cell g 8 black king) (cell h 3 white pawn) (cell h 6 black pawn) (control white) (halfmove 0)
+; a puzzle position: R7/8/R3bk2/7p/5P1K/6rP/8/8 b - - 1 58
+(cell a 6 white rook) (cell a 8 white rook) (cell e 6 black bishop) (cell f 4 white pawn) (cell f 6 black king) (cell g 3 black rook) (cell h 3 white pawn) (cell h 4 white king) (cell h 5 black pawn) (control black) (halfmove 1)
+; a puzzle position: 6k1/2p4p/p1PP2p1/4p3/PR2b3/6PP/6K1/4r3 w - - 0 41
+(cell a 4 white pawn) (cell a 6 black pawn) (cell b 4 white rook) (cell c 6 white pawn) (cell c 7 black pawn) (cell d 6 white pawn) (cell e 1 black rook) (cell e 4 black bishop) (cell e 5 black pawn) (cell g 2 white king) (cell g 3 white pawn) (cell g 6 black pawn) (cell g 8 black king) (cell h 3 white pawn) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: 8/8/R7/2k5/5K2/P3N2P/2p2P2/r3r3 w - - 2 46
+(cell a 1 black rook) (cell a 3 white pawn) (cell a 6 white rook) (cell c 2 black pawn) (cell c 5 black king) (cell e 1 black rook) (cell e 3 white knight) (cell f 2 white pawn) (cell f 4 white king) (cell h 3 white pawn) (control white) (halfmove 2)
+; a puzzle position: 4q2r/kb6/pN3p2/2Q5/2p1p3/2P2pP1/PP3P1P/3R2RK b - - 0 36
+(cell a 2 white pawn) (cell a 6 black pawn) (cell a 7 black king) (cell b 2 white pawn) (cell b 6 white knight) (cell b 7 black bishop) (cell c 3 white pawn) (cell c 4 black pawn) (cell c 5 white queen) (cell d 1 white rook) (cell e 4 black pawn) (cell e 8 black queen) (cell f 2 white pawn) (cell f 3 black pawn) (cell f 6 black pawn) (cell g 1 white rook) (cell g 3 white pawn) (cell h 1 white king) (cell h 2 white pawn) (cell h 8 black rook) (control black) (halfmove 0)
+; a puzzle position: 6rr/pp2k3/3bbnp1/q2p2Q1/2P5/8/PP4PP/4RRK1 w - - 0 22
+(cell a 2 white pawn) (cell a 5 black queen) (cell a 7 black pawn) (cell b 2 white pawn) (cell b 7 black pawn) (cell c 4 white pawn) (cell d 5 black pawn) (cell d 6 black bishop) (cell e 1 white rook) (cell e 6 black bishop) (cell e 7 black king) (cell f 1 white rook) (cell f 6 black knight) (cell g 1 white king) (cell g 2 white pawn) (cell g 5 white queen) (cell g 6 black pawn) (cell g 8 black rook) (cell h 2 white pawn) (cell h 8 black rook) (control white) (halfmove 0)
+; a puzzle position: 7k/8/2b5/P1p4p/4q1rP/4P1P1/1P3P1K/R4RQ1 b - - 6 37
+(cell a 1 white rook) (cell a 5 white pawn) (cell b 2 white pawn) (cell c 5 black pawn) (cell c 6 black bishop) (cell e 3 white pawn) (cell e 4 black queen) (cell f 1 white rook) (cell f 2 white pawn) (cell g 1 white queen) (cell g 3 white pawn) (cell g 4 black rook) (cell h 2 white king) (cell h 4 white pawn) (cell h 5 black pawn) (cell h 8 black king) (control black) (halfmove 6)
+; a puzzle position: 2r3k1/pb1n1p1p/1p1b2p1/3N4/8/1QBBP1qn/PP4P1/5R1K w - - 0 24
+(cell a 2 white pawn) (cell a 7 black pawn) (cell b 2 white pawn) (cell b 3 white queen) (cell b 6 black pawn) (cell b 7 black bishop) (cell c 3 white bishop) (cell c 8 black rook) (cell d 3 white bishop) (cell d 5 white knight) (cell d 6 black bishop) (cell d 7 black knight) (cell e 3 white pawn) (cell f 1 white rook) (cell f 7 black pawn) (cell g 2 white pawn) (cell g 3 black queen) (cell g 6 black pawn) (cell g 8 black king) (cell h 1 white king) (cell h 3 black knight) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: 5qk1/p4p2/1p3Pp1/2p4R/7Q/P2rr2P/1P4PK/5R2 b - - 1 41
+(cell a 3 white pawn) (cell a 7 black pawn) (cell b 2 white pawn) (cell b 6 black pawn) (cell c 5 black pawn) (cell d 3 black rook) (cell e 3 black rook) (cell f 1 white rook) (cell f 6 white pawn) (cell f 7 black pawn) (cell f 8 black queen) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 8 black king) (cell h 2 white king) (cell h 3 white pawn) (cell h 4 white queen) (cell h 5 white rook) (control black) (halfmove 1)
+; a puzzle position: 1k1r4/1pb4p/6p1/3r4/3pQ3/3B3P/PP3PP1/6K1 b - - 3 35
+(cell a 2 white pawn) (cell b 2 white pawn) (cell b 7 black pawn) (cell b 8 black king) (cell c 7 black bishop) (cell d 3 white bishop) (cell d 4 black pawn) (cell d 5 black rook) (cell d 8 black rook) (cell e 4 white queen) (cell f 2 white pawn) (cell g 1 white king) (cell g 2 white pawn) (cell g 6 black pawn) (cell h 3 white pawn) (cell h 7 black pawn) (control black) (halfmove 3)
+; a puzzle position: r5rk/1R1R2bp/6p1/4p3/qQ2P3/2p5/PP4PP/1KN5 b - - 0 26
+(cell a 2 white pawn) (cell a 4 black queen) (cell a 8 black rook) (cell b 1 white king) (cell b 2 white pawn) (cell b 4 white queen) (cell b 7 white rook) (cell c 1 white knight) (cell c 3 black pawn) (cell d 7 white rook) (cell e 4 white pawn) (cell e 5 black pawn) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 7 black bishop) (cell g 8 black rook) (cell h 2 white pawn) (cell h 7 black pawn) (cell h 8 black king) (control black) (halfmove 0)
+; a puzzle position: 8/1r6/8/6p1/7P/2k2KP1/1p6/1R6 b - - 0 51
+(cell b 1 white rook) (cell b 2 black pawn) (cell b 7 black rook) (cell c 3 black king) (cell f 3 white king) (cell g 3 white pawn) (cell g 5 black pawn) (cell h 4 white pawn) (control black) (halfmove 0)
+; a puzzle position: 2k5/1p6/p1P1p1p1/2P5/P2Pp1p1/4PrPq/2Q1RP1r/3RK3 b - - 0 34
+(cell a 4 white pawn) (cell a 6 black pawn) (cell b 7 black pawn) (cell c 2 white queen) (cell c 5 white pawn) (cell c 6 white pawn) (cell c 8 black king) (cell d 1 white rook) (cell d 4 white pawn) (cell e 1 white king) (cell e 2 white rook) (cell e 3 white pawn) (cell e 4 black pawn) (cell e 6 black pawn) (cell f 2 white pawn) (cell f 3 black rook) (cell g 3 white pawn) (cell g 4 black pawn) (cell g 6 black pawn) (cell h 2 black rook) (cell h 3 black queen) (control black) (halfmove 0)
+; a puzzle position: 8/1Rb3kp/p2q2p1/2p1pp2/pQ6/1bP4P/1P3PPK/8 w - - 0 35
+(cell a 4 black pawn) (cell a 6 black pawn) (cell b 2 white pawn) (cell b 3 black bishop) (cell b 4 white queen) (cell b 7 white rook) (cell c 3 white pawn) (cell c 5 black pawn) (cell c 7 black bishop) (cell d 6 black queen) (cell e 5 black pawn) (cell f 2 white pawn) (cell f 5 black pawn) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 7 black king) (cell h 2 white king) (cell h 3 white pawn) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: 2r3k1/5pp1/4p2p/r1NpP3/b7/2R5/6PP/2R3K1 w - - 0 26
+(cell a 4 black bishop) (cell a 5 black rook) (cell c 1 white rook) (cell c 3 white rook) (cell c 5 white knight) (cell c 8 black rook) (cell d 5 black pawn) (cell e 5 white pawn) (cell e 6 black pawn) (cell f 7 black pawn) (cell g 1 white king) (cell g 2 white pawn) (cell g 7 black pawn) (cell g 8 black king) (cell h 2 white pawn) (cell h 6 black pawn) (control white) (halfmove 0)
+; a puzzle position: 8/8/7p/p3kp2/PpKn4/3B1P2/6P1/8 w - - 6 46
+(cell a 4 white pawn) (cell a 5 black pawn) (cell b 4 black pawn) (cell c 4 white king) (cell d 3 white bishop) (cell d 4 black knight) (cell e 5 black king) (cell f 3 white pawn) (cell f 5 black pawn) (cell g 2 white pawn) (cell h 6 black pawn) (control white) (halfmove 6)
+; a puzzle position: 8/8/3k4/p1p3P1/2P3K1/1P6/P1pr4/2R5 b - - 2 53
+(cell a 2 white pawn) (cell a 5 black pawn) (cell b 3 white pawn) (cell c 1 white rook) (cell c 2 black pawn) (cell c 4 white pawn) (cell c 5 black pawn) (cell d 2 black rook) (cell d 6 black king) (cell g 4 white king) (cell g 5 white pawn) (control black) (halfmove 2)
+; a puzzle position: r2r2k1/5p1p/p4qp1/1pNbp3/3n4/2PB4/PP1Q1PPP/R4RK1 b - - 0 19
+(cell a 1 white rook) (cell a 2 white pawn) (cell a 6 black pawn) (cell a 8 black rook) (cell b 2 white pawn) (cell b 5 black pawn) (cell c 3 white pawn) (cell c 5 white knight) (cell d 2 white queen) (cell d 3 white bishop) (cell d 4 black knight) (cell d 5 black bishop) (cell d 8 black rook) (cell e 5 black pawn) (cell f 1 white rook) (cell f 2 white pawn) (cell f 6 black queen) (cell f 7 black pawn) (cell g 1 white king) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 8 black king) (cell h 2 white pawn) (cell h 7 black pawn) (control black) (halfmove 0)
+; a puzzle position: 3k1rr1/R2b3Q/2pqp3/8/N2P4/8/5PB1/R4K2 b - - 0 34
+(cell a 1 white rook) (cell a 4 white knight) (cell a 7 white rook) (cell c 6 black pawn) (cell d 4 white pawn) (cell d 6 black queen) (cell d 7 black bishop) (cell d 8 black king) (cell e 6 black pawn) (cell f 1 white king) (cell f 2 white pawn) (cell f 8 black rook) (cell g 2 white bishop) (cell g 8 black rook) (cell h 7 white queen) (control black) (halfmove 0)
+; a puzzle position: 8/8/8/p5p1/1p2k3/1P4KP/P7/8 w - - 1 40
+(cell a 2 white pawn) (cell a 5 black pawn) (cell b 3 white pawn) (cell b 4 black pawn) (cell e 4 black king) (cell g 3 white king) (cell g 5 black pawn) (cell h 3 white pawn) (control white) (halfmove 1)
+; a puzzle position: r3r1k1/pp3pb1/1n4p1/4p3/5BbQ/3q1N2/PP1N2P1/R3K2R w KQ - 2 21
+(castling_right white kingside) (castling_right white queenside) (cell a 1 white rook) (cell a 2 white pawn) (cell a 7 black pawn) (cell a 8 black rook) (cell b 2 white pawn) (cell b 6 black knight) (cell b 7 black pawn) (cell d 2 white knight) (cell d 3 black queen) (cell e 1 white king) (cell e 5 black pawn) (cell e 8 black rook) (cell f 3 white knight) (cell f 4 white bishop) (cell f 7 black pawn) (cell g 2 white pawn) (cell g 4 black bishop) (cell g 6 black pawn) (cell g 7 black bishop) (cell g 8 black king) (cell h 1 white rook) (cell h 4 white queen) (control white) (halfmove 2)
+; a puzzle position: 1r2r3/4BRbk/p2pP1p1/q1p4p/4P2P/2NQ4/p5P1/K4R2 b - - 0 27
+(cell a 1 white king) (cell a 2 black pawn) (cell a 5 black queen) (cell a 6 black pawn) (cell b 8 black rook) (cell c 3 white knight) (cell c 5 black pawn) (cell d 3 white queen) (cell d 6 black pawn) (cell e 4 white pawn) (cell e 6 white pawn) (cell e 7 white bishop) (cell e 8 black rook) (cell f 1 white rook) (cell f 7 white rook) (cell g 2 white pawn) (cell g 6 black pawn) (cell g 7 black bishop) (cell h 4 white pawn) (cell h 5 black pawn) (cell h 7 black king) (control black) (halfmove 0)
+; a puzzle position: 1r3rk1/p4p2/2p1p1pP/8/P6P/1P1P1Q2/2q2P2/3R2K1 w - - 0 27
+(cell a 4 white pawn) (cell a 7 black pawn) (cell b 3 white pawn) (cell b 8 black rook) (cell c 2 black queen) (cell c 6 black pawn) (cell d 1 white rook) (cell d 3 white pawn) (cell e 6 black pawn) (cell f 2 white pawn) (cell f 3 white queen) (cell f 7 black pawn) (cell f 8 black rook) (cell g 1 white king) (cell g 6 black pawn) (cell g 8 black king) (cell h 4 white pawn) (cell h 6 white pawn) (control white) (halfmove 0)
+; a puzzle position: 1r4k1/1pR3p1/1P2bq1p/p2p4/8/3B3P/1rQ2PP1/4R1K1 w - - 3 29
+(cell a 5 black pawn) (cell b 2 black rook) (cell b 6 white pawn) (cell b 7 black pawn) (cell b 8 black rook) (cell c 2 white queen) (cell c 7 white rook) (cell d 3 white bishop) (cell d 5 black pawn) (cell e 1 white rook) (cell e 6 black bishop) (cell f 2 white pawn) (cell f 6 black queen) (cell g 1 white king) (cell g 2 white pawn) (cell g 7 black pawn) (cell g 8 black king) (cell h 3 white pawn) (cell h 6 black pawn) (control white) (halfmove 3)
+; a puzzle position: 8/P3kpp1/8/4KPPP/8/5b2/8/8 w - - 1 55
+(cell a 7 white pawn) (cell e 5 white king) (cell e 7 black king) (cell f 3 black bishop) (cell f 5 white pawn) (cell f 7 black pawn) (cell g 5 white pawn) (cell g 7 black pawn) (cell h 5 white pawn) (control white) (halfmove 1)
+; a puzzle position: 8/8/1pk5/p1bR2pp/2K1P3/P4r1P/1P6/3R4 b - - 3 31
+(cell a 3 white pawn) (cell a 5 black pawn) (cell b 2 white pawn) (cell b 6 black pawn) (cell c 4 white king) (cell c 5 black bishop) (cell c 6 black king) (cell d 1 white rook) (cell d 5 white rook) (cell e 4 white pawn) (cell f 3 black rook) (cell g 5 black pawn) (cell h 3 white pawn) (cell h 5 black pawn) (control black) (halfmove 3)
+; a puzzle position: 3br1k1/ppp2p1p/3p1pq1/5b2/1nP5/3B1NP1/PB3P2/R3R1K1 w - - 0 21
+(cell a 1 white rook) (cell a 2 white pawn) (cell a 7 black pawn) (cell b 2 white bishop) (cell b 4 black knight) (cell b 7 black pawn) (cell c 4 white pawn) (cell c 7 black pawn) (cell d 3 white bishop) (cell d 6 black pawn) (cell d 8 black bishop) (cell e 1 white rook) (cell e 8 black rook) (cell f 2 white pawn) (cell f 3 white knight) (cell f 5 black bishop) (cell f 6 black pawn) (cell f 7 black pawn) (cell g 1 white king) (cell g 3 white pawn) (cell g 6 black queen) (cell g 8 black king) (cell h 7 black pawn) (control white) (halfmove 0)
+; a puzzle position: 2q2r1k/4b1pp/3p4/1R2p3/1P2Qn2/1BB2P2/5P1P/3RK3 b - - 0 31
+(cell b 3 white bishop) (cell b 4 white pawn) (cell b 5 white rook) (cell c 3 white bishop) (cell c 8 black queen) (cell d 1 white rook) (cell d 6 black pawn) (cell e 1 white king) (cell e 4 white queen) (cell e 5 black pawn) (cell e 7 black bishop) (cell f 2 white pawn) (cell f 3 white pawn) (cell f 4 black knight) (cell f 8 black rook) (cell g 7 black pawn) (cell h 2 white pawn) (cell h 7 black pawn) (cell h 8 black king) (control black) (halfmove 0)
+; a puzzle position: 2b2r1k/5pp1/2q1p3/1p2P3/3N1n2/R1p5/2Q2PPP/3R2K1 b - - 1 22
+(cell a 3 white rook) (cell b 5 black pawn) (cell c 2 white queen) (cell c 3 black pawn) (cell c 6 black queen) (cell c 8 black bishop) (cell d 1 white rook) (cell d 4 white knight) (cell e 5 white pawn) (cell e 6 black pawn) (cell f 2 white pawn) (cell f 4 black knight) (cell f 7 black pawn) (cell f 8 black rook) (cell g 1 white king) (cell g 2 white pawn) (cell g 7 black pawn) (cell h 2 white pawn) (cell h 8 black king) (control black) (halfmove 1)
+; a puzzle position: 8/5k2/3Kp3/3pPP2/2pP4/2P5/2n5/8 w - - 1 47
+(cell c 2 black knight) (cell c 3 white pawn) (cell c 4 black pawn) (cell d 4 white pawn) (cell d 5 black pawn) (cell d 6 white king) (cell e 5 white pawn) (cell e 6 black pawn) (cell f 5 white pawn) (cell f 7 black king) (control white) (halfmove 1)
