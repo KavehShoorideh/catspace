@@ -533,6 +533,48 @@ moves the calculation holds equal and never enters a line's value. READING of th
 (section 13 item 36): his go covers the use of the endgame table in sleep and in the measure, as the label of a position as won
 and as the defender, under the oracle rule of 2026-11-19; the wake never reads it.
 
+**Future prediction: one channel, two sub-layers, and the decision to stop** (Kaveh 2026-11-24: "I need a future prediction channel, and
+in the future prediction, I basically want two sub-layers. One is the near future, the future that's kind of concrete, and the other is
+kind of a more distant future ... where you can't really calculate ... the far future that I hope to make concrete ... I don't yet have it
+concrete. I need to gather the evidence for it. It's kind of like I believe on faith, and that's where the human intuition comes in.").
+DECIDED. This NAMES and BINDS what was decided on 2026-11-19 ("Calculation and estimate, decided together") and 2026-11-20 ("Goals beyond
+the search's horizon"); it replaces neither. Written out by the main agent, with the choices it made to remove ambiguity marked (M):
+- ONE CHANNEL. Everything the engine says about what will happen is one channel, FUTURE PREDICTION, with two sub-layers. Every statement
+  of the channel says which sub-layer made it.
+- THE NEAR SUB-LAYER is the concrete future: what the rules and a read line settle with every reply read. It is the calculation of
+  2026-11-19 (the questions, the line read, the search). A statement of it is a claim that stands or falls by the rules.
+- THE FAR SUB-LAYER is the future that cannot be calculated from here: a belief that a goal can still come true. It is the estimate per
+  frame and per goal of 2026-11-19. Today it is held on faith; it is to be MADE CONCRETE BY EVIDENCE gathered from results of games
+  (rows 24, 25), and whatever of it becomes provable moves to the near sub-layer as a lemma (row 49).
+- (M) THE BORDER IS NOT A COUNT OF PLIES (row 28). A goal is NEAR when a line is read in which every unmet fact of it is met against every
+  reply. Until then it is FAR, and the far sub-layer says only whether it is ALIVE: whether its unmet facts can still be met. A goal
+  moves from far to near when the near sub-layer closes it; nothing else moves it.
+- THE DECISION TO STOP. "Being able to stop here is very important ... there's no concrete future, and there's also no distant future
+  ... that stop decision is on the distant future, saying there's no future here." A target is LEFT only when BOTH sub-layers say
+  nothing: the near one has no line that gains, and the far one holds no goal on it that is alive. The stop is said with its cause and
+  is a statement like any other: it falls when a fact it read changes (section 4), and (M) a target that was left is taken up again
+  only through another goal or frame that reads it, as the frame rule of 2026-11-15 says for a pruned move.
+- THE ORDER OF LOOKING. Targets are taken by stake, the unit whose loss ends the game first, then the next in worth (the mined worths,
+  nothing assumed). (M) This is an order, not a cut: a lower target is looked at when the higher ones are left or kept.
+- A GOAL SOME UNMET FACTS AWAY. His example (position kept as a fixture, 2026-11-24): a long-moving unit of ours stands on a line with
+  a high target of theirs and two units between. That is a goal (the unit takes the target) with two unmet facts (each unit between
+  must leave the line), in the words that exist (a goal has facts; an unmet fact names what must change). For each unmet fact the
+  channel says which of our moves meet it and whether such a move is FORCING, that is, whether it makes a threat the other side must
+  answer. The goal is ALIVE when each unmet fact has a move that meets it, and it is a THREAT NOW when all but the first can be met by
+  forcing moves, because the other side then has no free move in which to take the target away.
+- FRAMES JOIN. "These two frames join together." A forcing move whose own line gains nothing (a goal the near sub-layer closed with no
+  gain) is still a TEMPO: it may be the move that meets an unmet fact of another goal. The channel therefore keeps, for a goal that was
+  left, the forcing moves it found, and offers them to every other goal as ways to meet an unmet fact. The join is by units and places
+  shared between the two goals, never by a name.
+- (M) WHAT THE FAR SUB-LAYER MAY DO. It orders, it keeps alive and it stops. It never adds to the value (rule 7 of AGENTS.md): a goal
+  kept alive changes what is read next and what is proposed, and the gain is counted only when the near sub-layer closes it.
+- (M) EVIDENCE. Each far statement is logged with what became of it (met, by what move, how many moves later, or dropped and why); a
+  kind of far statement that does not come true more often than its base rate on games not used to make it is not believed. The
+  oracle rule stands: evidence from results in the wake; labels of an outside engine in sleep only.
+- NOT DEFINED YET, and said so: what it means, beyond units on a line, that force CAN ARRIVE at a target ("I can't really imagine my
+  queen getting there"). The first concrete form is the reach of 2026-11-16 (my moves only, then the other side's veto, row 16). The
+  example gives one case; more cases are gathered before a definition is fixed (section 13).
+
 ## 8. Wake
 
 1. Bring forward the open tactics carried from the last move, and update only those whose facts changed.
@@ -1457,6 +1499,8 @@ every open tactic is checked (4); a sacrifice needs a reason, and one taken on t
 the sleep (3, 9); the overall goal and its two halves (1); the rule for choosing a move, as a guide (8); the threat
 list (8); every build checked against the spec (11); the pointing at a weakness is done from the graph only, language being the last step for a reader (7, 15); a counter-threat is an allowed answer to a threat (8); reachable has two layers, me playing only and with the opponent's veto (7); the language model is the judge of whether the engine reasons like a human, outside the engine (1, 11); the learned choosers are two, the sleep's and the opportunity policy, and the asking of questions has no model of its own (4, 7, 9).
 
+- OPEN (2026-11-24, future prediction): what it means that force can arrive at a target, beyond units on a line and the reach of row 16. One example is held (the fixture of 2026-11-24). To be defined from more cases, with Kaveh.
+
 ## 14. What was replaced, so that no earlier statement misleads
 
 | Earlier | Replaced by | When |
@@ -1563,4 +1607,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Several boards and several players are owed later; nothing new assumes two players | 2026-11-23 | 11 (last block) |
 | Two checks at a merge: lean off the engine's path, full on it; the measure of the whole only when a source on the path changed | 2026-11-23 | 11 (last block) |
 | One lemma machinery used twice: lemmas about the rules feed the translator, lemmas about play feed the layers above | 2026-11-23 | 11 (last block) |
+| Future prediction is one channel with a near (concrete) and a far (believed, to be made concrete by evidence) sub-layer; a target is left only when both say nothing; a goal some unmet facts away; frames join through forcing moves | 2026-11-24 | 7 (last block) |
 | What was replaced | 2026-11-16 | 14 |
