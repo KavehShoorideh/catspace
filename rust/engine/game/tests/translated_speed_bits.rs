@@ -31,6 +31,12 @@ include!("generated/chess.rs");
 include!("generated/chess_fast.rs");
 include!("generated/atomic.rs");
 include!("generated/atomic_fast.rs");
+// 2026-11-24 (plan 79.45): the first game's module with every pass and its lemma (kept), and under `--cfg singles` the module of every pass of 79.43 (`p43`: no gated, no lemma) and the lemma with every pass but gated (`lm_nogate`); the clocks of the lemma are at the end of the file
+include!("generated/chess_lemma.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_p43.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_lm_nogate.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_prev.rs");
 #[cfg(singles)]
@@ -89,6 +95,11 @@ include!("generated/scratch/atomic_prev_project.rs");
 include!("generated/scratch/atomic_prev_asked.rs");
 impl_tr!(chess);
 impl_tr!(chess_fast, passes);
+impl_tr!(chess_lemma, passes);
+#[cfg(singles)]
+impl_tr!(chess_p43, passes);
+#[cfg(singles)]
+impl_tr!(chess_lm_nogate, passes);
 impl_tr!(atomic);
 impl_tr!(atomic_fast, passes);
 #[cfg(singles)]
@@ -343,3 +354,23 @@ fn chess_the_times_of_the_combinations() { run_game::<chess::Game>("chess", true
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
 fn atomic_the_times_of_the_combinations() { run_game::<atomic::Game>("atomic", true, atomic_combos(), 3); }
+
+// 2026-11-24 (plan 79.45): THE TIMES OF THE LEMMA. The kernel, the plain translation, every pass of 79.43 (`prev43`), every pass but gated with the lemma (`lemma`) and every pass with the lemma (`lemma+gated`, the kept module); the same list, the same two questions. Without the flag `fast` stands for prev43 plus the pass gated, which does nothing without a lemma, and `lemma+gated` is the only module with the lemma.
+#[cfg(singles)]
+fn chess_lemma_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev43", chess_p43::Game), ("lemma", chess_lm_nogate::Game), ("lemma+gated", chess_lemma::Game)] }
+#[cfg(not(singles))]
+fn chess_lemma_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("fast", chess_fast::Game), ("lemma+gated", chess_lemma::Game)] }
+
+#[test]
+fn chess_a_short_run_of_the_modules_with_the_lemma_gives_the_same_number_of_moves() { run_game::<chess::Game>("chess", false, chess_lemma_makers(), 0); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_times_of_the_lemma() { run_game::<chess::Game>("chess", true, chess_lemma_makers(), 3); }
+#[cfg(singles)]
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_time_by_piece_of_the_lemma_modules() { pieces::<chess_p43::Game>("chess", "prev43"); pieces::<chess_lm_nogate::Game>("chess", "lemma"); pieces::<chess_lemma::Game>("chess", "lemma+gated"); }
+#[cfg(not(singles))]
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_time_by_piece_of_the_lemma_modules() { pieces::<chess_fast::Game>("chess", "fast"); pieces::<chess_lemma::Game>("chess", "lemma+gated"); }

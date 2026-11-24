@@ -262,6 +262,34 @@ for dropped, would do; the orders the pass start refuses for want of an orientat
     (19) is written as the text says in the one case where the cost of an orientation is nothing by the sizes: the orientation of a relation that does not read the state is set once, with the relation, in `Game::new`, and a question pays nothing for it, so an order that asks only such new orientations is admitted by the chooser of (13) (`Plan.worth_taken`).
          An order that asks the new orientation of a relation that reads the state is still refused, the refusal naming the orientation and "a relation that reads the state: each row set would set it too" (`Plan.start_refused`). A version that admitted those too was written and timed as a trial (every such order admitted, the orientation set with every row): the module with it was not faster than the one without it, so the estimate by sizes of the plan's text
          (the saving against the cost, in bit sets) was not built; the orientation made only when the chooser picks the order that reads it (kept for the question, made from the words of the relation) is the form that would be tried next, and is not built here. `Plan.worth_taken` lists, for each order the pass admitted, the orientations it made.
+
+PLAN 79.45 PARTS A, B: A LEMMA AS A REWRITE, AND A RELATION NOT MADE WHERE EVERY READER IS SHUT OFF (SYSTEM_SPEC 11, "One lemma machinery, used twice" and "The crux of layer 2 is a translator ..."; piece: rules; ledger rows 49, 45).
+This text is the interface, written and committed before any body. `translate` grows one argument and nothing else changes for the callers that do not give it:
+
+  translate(text, module, passes=(), lemmas=()) -> str
+  LEMMAS ARE DATA. `lemmas` is a list of documents, each {"name": str, "form": "SAME" | "IMPLIES", "left": {"relation": str, "places": int}, "right": {"relation": str, "places": int}, "condition": [{"relation": str, "args": [str], "neg": bool}],
+  "standing": {"is": "CERTIFIED", "key": str} | {"is": "PROVED", "theorem": str}} (the form of rules/lemmas/<game>/<name>.json that rule_lemma.py reads; the translator imports no reader of it and reads no folder). `text` is the composed description, the base with the lemma's delta
+  (`rule_lemma.composed_text`), so that the right relation is a relation of the text. WHO PASSES THEM: scripts/gdl_to_rust_make.py (which may name a game) loads the folder of the game it makes, computes each standing and passes only the lemmas whose computed standing is CERTIFIED or PROVED,
+  printing the others as refused; the translator refuses again, naming the lemma, a form that is not SAME (a lemma of inclusion is no rewrite), a standing that is neither of the two, a relation that is not in the text or has other places than the document says, and the cases below.
+  WHAT IT RETURNS: the module of the text read with the rewrite, `pub mod <module>`, with the same public items as without, and these: `LEMMAS: &[Lm]` (for each lemma: name, form, the left relation, the right relation, the relation that replaces the left one, the flag, the evidence it stands on, and its condition as data so that a test
+  may read it from the rows of the plain module), and, with the pass gated, `GATED: &[&str]`. The head lines of the document carry, for each lemma, `// lemma: <name> <form> <left> -> <replacement>, flag <flag>, <CERTIFIED key | PROVED theorem>`; tests/test_plan79_45.py fails a kept document whose lemma line differs from what the lemma's certificate now says.
+  THE REWRITE, in the text before anything else reads it (with no lemma the text is unchanged, byte for byte). Let L be the left relation, M the right one, c_1 .. c_n the literals of the condition, x_1 .. x_k the places of L. The text gets, with new names that no relation of the text has:
+      a FLAG of no places                  F  <=  c_1 .. c_n                      (a literal over a state fluent is written as the fluent; a `differ` literal is a `distinct`)
+      a replacement of L                   L' (x_1 .. x_k)  <=  F, M (x_1 .. x_k)
+                                           L' (x_1 .. x_k)  <=  (not F), L (x_1 .. x_k)
+      and in every clause whose head is not L, every literal over L, positive or negated, is a literal over L' with the same terms.
+  ARGUMENT, in two sentences. At a state where F holds the second clause of L' is silent, so L' has the rows of M, and by the lemma M has the rows of L there; at a state where F does not hold the first clause is silent and L' has the rows of L; so L' has the rows of L at every state, and every clause that read L read the same rows, so no
+  relation but the new ones changes. WHAT THE ARGUMENT NEEDS, and the translator tests it from the clauses, refusing with the lemma and the reason named: (i) L, M and the flag read the state only (no `does`, no `record`, none of the fluents of a turn: the lemma was certified at states), because F is evaluated in the same question as its readers; (ii) L is not read
+  by a question (`legal`, `terminal`, `goal`, a `next`, an `init`, a fluent) and is not in a recursive set, and neither M nor F reads L (else L' would read itself and the rows of L' would not be those of L); (iii) the text with the new clauses is stratified, safe and well sorted by the reader (the flag is below L' and so is L, M, the condition's relations). The lemma is as sure as its standing: the
+  clauses give L' the rows of L only where the lemma holds; the pieces test (translated_pieces.rs, `--cfg singles`) holds L' to the plain L at every state it visits, and the lemma's certificate by translated code (translated_lemma.rs) holds L to M where F holds on many more states than the certificate of 79.44 made.
+  THE PASSES AND THE REWRITE. The rewrite comes before the reader sees the text, so every pass reads the rewritten clauses as it would read any text; a flag of no places that a pass could answer on demand is made in full (it is read once by two clauses of L' and by whatever the lemma's other readers are; it costs one test).
+
+  (20) "gated" (part B; general, it needs no lemma to be stated) TAKES the clauses of every stratum as written once the other passes have run. A FLAG is a relation of no places that reads the state, is made in full, is no question and no input and is not in a recursive set. A READER of a stratum S is a clause outside S with a literal over a relation of S. A clause is
+              SHUT by a flag literal when it holds a positive literal over a flag or a negated one, and that literal is false in the state. CONDITION: S is gated when it is made as a piece (no relation of it answered on demand), holds no question relation, no fluent, no input and no flag, has at least one reader, and every reader is shut by a flag literal that it holds
+              or has its head in a stratum that is gated (the largest set of strata for which this holds, found by removing the strata that fail until none does); the flags it relies on are made before S (the piece order is the stratum order with the cone of each such flag moved before S when it came once, which no clause forbids because the flag does not read S: the translator
+              refuses, naming the stratum, when a flag reads a gated stratum or the order has a cycle). RETURNS: the piece of S is not run in a question where, for every reader, the flag literal that shuts it is false, or the head's piece is itself not run (`off`, a function of the flags' rows alone); `all_relations` and `ask_many` run every piece (a flag `Dy::whole`),
+              so that the harness compares every relation in full. SOUNDNESS. A piece that is not run leaves its relations void; every clause that reads them is shut, so it makes no row whatever the relation holds (a clause with a false literal makes no row), and a clause whose head is not made makes none; so every relation that is made has the rows it had, and the relations of S have none in
+              that question, where no clause that is run reads them. A stratum for which the condition cannot be shown is not gated, and `Plan.gated_refused` names the stratum and the reader that is not shut.
 """
 from __future__ import annotations
 
@@ -275,7 +303,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -500,6 +528,7 @@ class Description:
             names[i] = r
             self.rid[r] = i
         self.strata = p.strata
+        self.flags: set = set()                                  # the relations of no places that a lemma's rewrite made (plan 79.45): made in full, never answered on demand
         for comp, rules in self.strata:
             for r in rules:
                 for st in r.steps:
@@ -762,6 +791,9 @@ class Plan:
         self.asked_refused: dict = {}                           # relation of a walk -> why pass (17) does not restrict its keys, the reader or the clause named
         self.projected: list = []                               # [(clause text, [(the relation a literal read, the projection it reads now)])]   (pass "project")
         self.project_refused: dict = {}                         # clause text -> why a literal that could be a projection remains as written
+        self.gated: dict = {}                                   # stratum -> the Rust test that its piece is not run in this question (a function of the rows of flags alone)   (pass "gated")
+        self.gated_flags: dict = {}                             # stratum -> the flags (relations) its test reads, those of the strata it calls included
+        self.gated_refused: dict = {}                           # stratum -> why pass (20) does not gate it: the reader that no flag literal shuts
         self.worth_taken: dict = {}                             # (clause text, order) -> the orientations of relations that do not read the state that pass (19) made for the order   (pass "worth")
         self.start_off: bool = False                            # pass (13): while the orientations the reader's orders ask are being found, no other order is written
         self.start_base: dict | None = None                     # relation -> the orientations asked by the clauses in the reader's orders, all of them (an order is admitted when it asks no other: the same whatever the order the clauses are written in)
@@ -795,6 +827,98 @@ class Plan:
             self.find_bits()
         if "dense" in self.passes:
             self.find_dense()
+        if "gated" in self.passes:
+            self.find_gated()
+
+    # ---------------------------------------------------------------------------------------------- pass (20): a piece not run where every reader is shut off
+
+    def find_gated(self):
+        """Pass (20) (module text): the strata whose readers are all shut by a flag literal that is false in the state, or are heads of such strata; `gated[k]` is the Rust test that the piece of k is not to be run. The strata that fail are named in `gated_refused` with the reader."""
+        d = self.d
+        sidx = {h: k for k, (comp, _r) in enumerate(d.strata) for h in comp}
+        flags = {}
+        for k, (comp, _r) in enumerate(d.strata):
+            if len(comp) != 1:
+                continue
+            r = next(iter(comp))
+            if d.arity.get(r, 0) == 0 and not d.static[r] and r not in QUESTION_RELS and r not in INPUT_RELS and not r.startswith(("true.", "next.", "init.")) and not (comp & self.demanded) and self.rules[k] and not any(x.rec_steps for x in self.rules[k]):
+                flags[r] = k
+        reads: dict = {}
+        for k2 in range(len(d.strata)):
+            for rule in self.rules[k2]:
+                met: set = set()
+                for st in rule.steps:
+                    k = sidx.get(st[1]) if st[0] != "distinct" else None
+                    if k is not None and k != k2 and k not in met:
+                        met.add(k)
+                        reads.setdefault(k, []).append((k2, rule))
+
+        def flag_lits(rule):
+            return [(st[1], st[0] == "pos") for st in rule.steps if st[0] in ("pos", "neg") and st[1] in flags]
+        cand: set = set()
+        for k, (comp, _r) in enumerate(d.strata):
+            if d.static[sorted(comp)[0]] or (comp & self.demanded) or not self.rules[k] or k not in reads:
+                continue
+            if any(h in QUESTION_RELS or h in INPUT_RELS or h.startswith(("true.", "next.", "init.")) or h in flags for h in comp):
+                continue
+            cand.add(k)
+        while True:
+            changed = False
+            for k in sorted(cand):
+                for k2, rule in reads[k]:
+                    if not flag_lits(rule) and k2 not in cand:
+                        cand.discard(k)
+                        self.gated_refused[k] = f"{'+'.join(sorted(d.strata[k][0]))}: read by {rule.clause.text.replace(chr(10), ' ')}, which no flag literal shuts and whose head is not gated"
+                        changed = True
+                        break
+            used = {f for k in cand for _k2, rule in reads[k] for f, _pos in flag_lits(rule)}
+            need = self.cone(sorted(used)) if used else set()
+            for k in sorted(cand):
+                if d.strata[k][0] & need:
+                    cand.discard(k)
+                    self.gated_refused[k] = f"{'+'.join(sorted(d.strata[k][0]))}: it is made for a flag that shuts a reader"
+                    changed = True
+            if not changed:
+                break
+        for k in sorted(cand):
+            parts = []
+            fl: set = set()
+            for k2, rule in reads[k]:
+                alts = []
+                for f, pos in flag_lits(rule):
+                    alts.append(f"d.{d.rid[f]}.order.is_empty()" if pos else f"!d.{d.rid[f]}.order.is_empty()")
+                    fl.add(f)
+                if k2 in cand:
+                    alts.append(f"off(d, {k2})")
+                text = "(" + " || ".join(alts) + ")"
+                if text not in parts:
+                    parts.append(text)
+            self.gated[k] = " && ".join(parts)
+            self.gated_flags[k] = fl
+        for k in sorted(cand):                                   # the flags of the strata a test calls are read too
+            met, todo = set(self.gated_flags[k]), [k]
+            while todo:
+                x = todo.pop()
+                for k2, rule in reads[x]:
+                    if k2 in cand and k2 not in todo:
+                        todo.append(k2)
+                        met |= self.gated_flags[k2]
+            self.gated_flags[k] = met
+        self.flag_strata = flags
+
+    def gate_order(self, ks: list) -> list:
+        """The pieces `ks` (in the order of the strata) with, for each gated piece, the cone of every flag its test reads moved before it where that cone came later it (the cone does not read the piece: no flag reads a gated stratum)."""
+        out = list(ks)
+        for k in ks:
+            if k not in self.gated:
+                continue
+            for f in sorted(self.gated_flags[k]):
+                cone = {j for j, (comp, _r) in enumerate(self.d.strata) if comp & self.cone([f])}
+                at = out.index(k)
+                later = [x for x in out[at + 1:] if x in cone]
+                if later:
+                    out = [x for x in out[:at] if x not in later] + later + [k] + [x for x in out[at + 1:] if x not in later]
+        return out
 
     # ---------------------------------------------------------------------------------------------- pass (8): a view unfolded into its readers
 
@@ -1186,7 +1310,7 @@ class Plan:
             if len(comp) != 1:
                 continue
             r = next(iter(comp))
-            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules) or r in self.pre_bits or r in self.unfolded:
+            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules) or r in self.pre_bits or r in self.unfolded or r in d.flags:
                 continue
             cand.add(r)
         demanded = set(cand)
@@ -2655,6 +2779,8 @@ def w_api(w, d: Description, plan: Plan, pooled: bool):
     w("    /// For each query (a demanded relation, a key with FREE at the places not bound): the rows by the way of asking that key, and, where that exact key has a mode that asks existence, whether a row exists.")
     w("    pub fn ask_many(&mut self, s: &State, does: &[(u32, u32)], queries: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)> {")
     w("        let mut d = self.load(s, does);")
+    if plan.gated:
+        w("        d.whole = true;")
     if plan.ends or plan.asked:
         w("        self.dw.full = true;")
     w("        self.run(&mut d, ALL_DYNAMIC);")
@@ -3162,9 +3288,154 @@ def w_dw(w, d, plan):
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ the document
 
-def translate(text: str, module: str, passes=()) -> str:
-    """The Rust source of the description `text` (composed) as `pub mod <module>`, with the passes named (see the module text for the interface); with none, the plain translation."""
+# ------------------------------------------------------------------------------------------------------------------------------------------ a lemma as a rewrite (plan 79.45 part A)
+
+LEMMA_FORM = "SAME"                                     # the one form that is a rewrite: under the condition the left relation has the rows of the right one
+LEMMA_STANDINGS = ("CERTIFIED", "PROVED")               # the standings a lemma may be given to the translator with (the make script computes them; the translator refuses the others)
+NO_ROWS = "differ"                                      # the one literal of a condition that is no row: two terms that differ (the form of rule_lemma.py)
+
+
+def lemma_atom(prog, rel: str, args: list):
+    """The s-expression of a literal over `rel` (a relation of the text, or the fluent of that name) with `args`, and the relation's name in the text."""
+    if rel in prog.nodes:
+        name = rel
+    elif ("true." + rel) in prog.nodes:
+        name = "true." + rel
+    else:
+        raise Untranslatable(f"the relation {rel} is not in the text")
+    sig = prog.signature(name)
+    if sig is not None and len(sig) != len(args):
+        raise Untranslatable(f"{rel} takes {len(sig)} places and the literal gives {len(args)}")
+    if name.startswith("true."):
+        return ["true", ([name[len("true."):]] + list(args)) if args else name[len("true."):]], name
+    return (([name] + list(args)) if args else name), name
+
+
+def lemma_problems(lem: dict) -> list:
+    """What is wrong with the form of a lemma given as data (the keys, the form, the standing); the relations are read against the text by `rewrite_lemmas`."""
+    keys = ("name", "form", "left", "right", "condition", "standing")
+    miss = [k for k in keys if k not in lem]
+    if miss:
+        return [f"the lemma has no {miss}"]
+    bad = []
+    nm = lem["name"]
+    if lem["form"] != LEMMA_FORM:
+        bad.append(f"lemma {nm}: the form is {lem['form']}; only {LEMMA_FORM} is a rewrite (a lemma of inclusion changes no relation)")
+    st = lem["standing"]
+    if not isinstance(st, dict) or st.get("is") not in LEMMA_STANDINGS:
+        bad.append(f"lemma {nm}: the standing is {st}; only {' and '.join(LEMMA_STANDINGS)} lemmas are given to the translator")
+    elif (st["is"] == "CERTIFIED" and not st.get("key")) or (st["is"] == "PROVED" and not st.get("theorem")):
+        bad.append(f"lemma {nm}: a {st['is']} lemma names its evidence ({'key' if st['is'] == 'CERTIFIED' else 'theorem'})")
+    for end_of in ("left", "right"):
+        r = lem[end_of]
+        if not isinstance(r, dict) or not isinstance(r.get("relation"), str) or not isinstance(r.get("places"), int):
+            bad.append(f"lemma {nm}: {end_of} is {{relation, places}}")
+    for i, c in enumerate(lem["condition"]):
+        if not (isinstance(c, dict) and isinstance(c.get("relation"), str) and isinstance(c.get("args"), list) and all(isinstance(a, str) for a in c["args"])):
+            bad.append(f"lemma {nm}: the condition's literal {i} is not {{relation, args, neg}}")
+    return bad
+
+
+def swap_atom(x, old: str, new: str):
+    """A body literal of a clause with the atoms over `old` read over `new` (through `not` and `or`; the terms of an atom are not entered)."""
+    if isinstance(x, list) and x and x[0] in ("not", "or"):
+        return [x[0]] + [swap_atom(y, old, new) for y in x[1:]]
+    if isinstance(x, list) and x and x[0] == "distinct":
+        return x
+    if isinstance(x, list) and x and x[0] == old:
+        return [new] + x[1:]
+    if x == old:
+        return new
+    return x
+
+
+def rewrite_lemmas(text: str, lemmas) -> tuple:
+    """Plan 79.45 part A (the module text states the rewrite and its argument): -> (the text with each SAME lemma read as a rewrite, [the facts of each lemma for the document]). Untranslatable, naming the lemma and the reason, where the argument's needs (i) to (iii) are not met."""
+    cur = text
+    infos = []
+    for n, lem in enumerate(lemmas, 1):
+        bad = lemma_problems(lem)
+        if bad:
+            raise Untranslatable("; ".join(bad))
+        nm = lem["name"]
+        try:
+            prog = GDL.Program(cur)
+        except GDL.GDLError as e:
+            raise Untranslatable(f"lemma {nm}: the text does not read: {e}")
+        left, right = lem["left"]["relation"], lem["right"]["relation"]
+        for rel in (left, right):
+            if rel not in prog.nodes:
+                raise Untranslatable(f"lemma {nm}: the relation {rel} is not in the text (the composed text holds the lemma's delta)")
+        arity = lem["left"]["places"]
+        for rel, places in ((left, arity), (right, lem["right"]["places"])):
+            sig = prog.signature(rel)
+            if sig is not None and len(sig) != places:
+                raise Untranslatable(f"lemma {nm}: {rel} has {len(sig)} places in the text and the document says {places}")
+        if lem["right"]["places"] != arity:
+            raise Untranslatable(f"lemma {nm}: the two relations have different places")
+        if left in QUESTION_RELS or left in INPUT_RELS or left.startswith(("true.", "next.", "init.")):
+            raise Untranslatable(f"lemma {nm}: {left} is read by a question or is a state, an input or a next: its rows are not for a rewrite")
+        taken = set(prog.nodes) | set(prog.signatures)
+        flag, rep = f"lemma{n}_flag", f"lemma{n}_rep"
+        while flag in taken or rep in taken:
+            flag, rep = flag + "_", rep + "_"
+        cond, resolved = [], []
+        for c in lem["condition"]:
+            neg = bool(c.get("neg", False))
+            if c["relation"] == NO_ROWS:
+                if len(c["args"]) != 2 or neg:
+                    raise Untranslatable(f"lemma {nm}: a {NO_ROWS} literal takes two terms and is positive")
+                cond.append(["distinct", c["args"][0], c["args"][1]])
+                resolved.append((NO_ROWS, list(c["args"]), False))
+                continue
+            atom, name = lemma_atom(prog, c["relation"], c["args"])
+            cond.append(["not", atom] if neg else atom)
+            resolved.append((name, list(c["args"]), neg))
+        xs = [f"?x{i}" for i in range(1, arity + 1)]
+        atom_of = lambda rel: ([rel] + xs) if xs else rel
+        out = []
+        for x in GDL.parse(cur):
+            if isinstance(x, list) and x and x[0] == "<=" and GDL.to_atom(x[1])[0] != left:
+                x = [x[0], x[1]] + [swap_atom(y, left, rep) for y in x[2:]]
+            out.append(x)
+        sig = prog.signature(left)
+        if sig is not None:
+            out.append(["signature", rep] + list(sig))
+            out.append(["signature", flag])
+        out.append(["<=", flag] + cond)
+        out.append(["<=", atom_of(rep), flag, atom_of(right)])
+        out.append(["<=", atom_of(rep), ["not", flag], atom_of(left)])
+        new = "\n".join(GDL._unparse(x) for x in out) + "\n"
+        try:
+            d2 = Description(new)
+        except GDL.GDLError as e:
+            raise Untranslatable(f"lemma {nm}: the text with the rewrite is not a program: {e}")
+        if len(next(comp for comp, _r in d2.strata if left in comp)) > 1 or any(r.rec_steps for comp, rules in d2.strata if left in comp for r in rules):
+            raise Untranslatable(f"lemma {nm}: {left} is in a recursive set: its replacement would read itself")
+        for who, rel in (("the right relation", right), ("the flag", flag)):
+            if left in d2.cone([rel]):
+                raise Untranslatable(f"lemma {nm}: {who} reads {left}: the rewrite would read itself")
+        turn = sorted(set(INPUT_RELS) & d2.cone([left, right, flag]))
+        if turn:
+            raise Untranslatable(f"lemma {nm}: {left}, {right} or the condition reads the turn ({turn}): the lemma is about states")
+        ev = lem["standing"]
+        infos.append({"name": nm, "form": lem["form"], "left": left, "right": right, "rep": rep, "flag": flag, "evidence": f"{ev['is']} {ev.get('key') or ev.get('theorem')}", "condition": resolved})
+        cur = new
+    return cur, infos
+
+
+def rs_str(s: str) -> str:
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def translate(text: str, module: str, passes=(), lemmas=()) -> str:
+    """The Rust source of the description `text` (composed) as `pub mod <module>`, with the passes named and the lemmas read as rewrites (see the module text for the interface); with none, the plain translation."""
+    src_text = text
+    infos: list = []
+    if lemmas:
+        text, infos = rewrite_lemmas(text, lemmas)
     d = Description(text)
+    d.flags = {i["flag"] for i in infos}
     p = d.prog
     for needed in ("role",):
         if needed not in p.nodes:
@@ -3174,15 +3445,18 @@ def translate(text: str, module: str, passes=()) -> str:
     dense = plan.dense if plan else {}
     bits = plan.bits if plan else {}
     keep = bool(plan and plan.keep)
+    gated = plan.gated if plan else {}
     has_dw = bool(bits) or keep
     pooled = bool(dense) or bool(bits) or keep
     out: list = []
     w = out.append
     w(f"// GENERATED by catspace/incubator/analyst/discovery/gdl_to_rust.py (plan 79.37). Do not edit: make it again.")
-    w(f"// description-sha256: {sha(text.encode())}")
+    w(f"// description-sha256: {sha(src_text.encode())}")
     w(f"// translator-sha256: {translator_hash()}")
     if plan:
         w(f"// passes: {','.join(plan.passes)}")
+    for i in infos:
+        w(f"// lemma: {i['name']} {i['form']} {i['left']} -> {i['rep']}, flag {i['flag']}, {i['evidence']}")
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
     w(f"pub mod {module} {{")
     w(RUNTIME_KEEP if keep else RUNTIME)
@@ -3225,9 +3499,12 @@ def translate(text: str, module: str, passes=()) -> str:
         w(f"pub struct {name} {{")
         for r in rels:
             w(f"    pub {d.rid[r]}: {('B' + d.rid[r][1:]) if r in bits else ('Dense<%d>' % d.arity.get(r, 0) if r in dense else 'Rel<%d>' % d.arity.get(r, 0))},")
+        if gated and not holder:
+            w("    /// Set by the questions that ask for every relation in full (`all_relations`, `ask_many`): no piece is left out.")
+            w("    pub whole: bool,")
         w("}")
         new = lambda r: f"B{d.rid[r][1:]}::new()" if r in bits else (f"Dense::new(DS{d.rid[r][1:]}, RX{d.rid[r][1:]}, KP{d.rid[r][1:]})" if r in dense else f"Rel::new(KP{d.rid[r][1:]})")
-        w(f"impl {name} {{ pub fn new() -> {name} {{ {name} {{ " + ", ".join(f"{d.rid[r]}: {new(r)}" for r in rels) + " } } }")
+        w(f"impl {name} {{ pub fn new() -> {name} {{ {name} {{ " + ", ".join([f"{d.rid[r]}: {new(r)}" for r in rels] + (["whole: false"] if gated and not holder else [])) + " } } }")
         if pooled and not holder:
             w(f"impl {name} {{ pub fn clear(&mut self) {{ " + " ".join(f"self.{d.rid[r]}.clear();" for r in rels) + " } }")
     # the rows new in a round, for the relations of a recursive set
@@ -3264,15 +3541,35 @@ def translate(text: str, module: str, passes=()) -> str:
         w(f"pub const UNFOLDED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.unfolded)}];")
         w(f"pub const ENDS: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.ends))}];")
         w(f"pub const ASKED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.asked))}];")
+        if "gated" in plan.passes:
+            w(f"pub const GATED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted('+'.join(sorted(d.strata[k][0])) for k in gated))}];")
+    if infos:
+        w("pub struct Lm { pub name: &'static str, pub form: &'static str, pub left: &'static str, pub right: &'static str, pub replacement: &'static str, pub flag: &'static str, pub evidence: &'static str, pub condition: &'static [(&'static str, &'static [&'static str], bool)] }")
+        w("pub const LEMMAS: &[Lm] = &[" + ", ".join(
+            f"Lm {{ name: {rs_str(i['name'])}, form: {rs_str(i['form'])}, left: {rs_str(i['left'])}, right: {rs_str(i['right'])}, replacement: {rs_str(i['rep'])}, flag: {rs_str(i['flag'])}, evidence: {rs_str(i['evidence'])}, condition: &[" + ", ".join(
+                f"({rs_str(r)}, &[{', '.join(rs_str(a) for a in args)}], {'true' if ng else 'false'})" for r, args, ng in i["condition"]) + "] }" for i in infos) + "];")
     dyn_all = [k for k, s, c in stratum_fns if not s and not (c & demanded)]
     coned = plan.cone if (plan and (plan.unfolded or plan.asked or plan.projected)) else d.cone
     legal_cone = [k for k in d.dynamic_meeting(coned([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
     next_pairs = [f for f in d.fluents if f"next.{f}" in d.prog.nodes]
     next_cone = [k for k in d.dynamic_meeting(coned([f"next.{f}" for f in next_pairs])) if not (d.strata[k][0] & demanded)]
+    if gated:
+        legal_cone, next_cone = plan.gate_order(legal_cone), plan.gate_order(next_cone)
+        w("/// Whether the piece of stratum k is left out of a question: every clause that reads it is shut by a flag literal that is false, or has its head in a piece that is left out.")
+        w("fn off(d: &Dy, k: usize) -> bool {")
+        w("    match k {")
+        for k in sorted(gated):
+            w(f"        {k} => {gated[k]},")
+        w("        _ => false,")
+        w("    }")
+        w("}")
     w(f"fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms{dwp}, k: usize) -> (u64, u64, u64) {{")
     w("    match k {")
     for k in dyn_all:
-        w(f"        {k} => st{k}(s, d, tm{dwa}),")
+        if k in gated:
+            w(f"        {k} => {{ if !d.whole && off(d, {k}) {{ return (0, 0, 0); }} st{k}(s, d, tm{dwa}) }}")
+        else:
+            w(f"        {k} => st{k}(s, d, tm{dwa}),")
     w("        _ => panic!(\"not a piece of the state\"),")
     w("    }")
     w("}")
@@ -3308,6 +3605,8 @@ def translate(text: str, module: str, passes=()) -> str:
     if pooled:
         w("    fn load(&mut self, s: &State, does: &[(u32, u32)]) -> Dy {")
         w("        let mut d = match self.pool.take() { Some(d) => d, None => Dy::new() };")
+        if gated:
+            w("        d.whole = false;")
     else:
         w("    fn load(&self, s: &State, does: &[(u32, u32)]) -> Dy {")
         w("        let mut d = Dy::new();")
@@ -3476,6 +3775,8 @@ def translate(text: str, module: str, passes=()) -> str:
     w("    /// Every relation that reads the state, evaluated in full on a state and a joint turn (the turn's rows void when `does` is void).")
     w("    pub fn all_relations(&mut self, s: &State, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)> {")
     w("        let mut d = self.load(s, does);")
+    if gated:
+        w("        d.whole = true;")
     if plan and (plan.ends or plan.asked):
         w("        self.dw.full = true;")
     w("        self.run(&mut d, ALL_DYNAMIC);")

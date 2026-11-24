@@ -83,7 +83,7 @@ def test_a_kept_file_carries_the_hashes_and_the_passes_and_a_fresh_translation_i
 
 def test_only_the_plain_files_and_the_files_with_every_pass_are_kept():
     names = sorted(p.name for p in GEN.iterdir() if p.is_file())
-    assert names == sorted([f"{g}.rs" for g in GAMES] + [f"{g}_fast.rs" for g in GAMES]), names
+    assert names == sorted([f"{g}.rs" for g in GAMES] + [f"{g}_fast.rs" for g in GAMES] + ["chess_lemma.rs"]), names          # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
     tracked = git("ls-files", "rust/engine/game/tests/generated").stdout.split()
     assert sorted(Path(x).name for x in tracked) == names, tracked
     assert "generated/scratch/" in (ROOT / ".gitignore").read_text()
