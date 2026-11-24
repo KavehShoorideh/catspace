@@ -132,7 +132,9 @@ def test_nothing_under_the_sources_of_the_engine_names_the_generated_files_the_t
                         bad.append(f"{f.relative_to(ROOT)}: {w}")
     assert not bad, bad
     assert not list(ENGINE.glob("*/src/generated")) and not list(ENGINE.glob("*/src/**/generated"))
-    assert sorted(p.name for p in GEN.iterdir()) == ["atomic.rs", "chess.rs"]
+    names = sorted(p.name for p in GEN.iterdir())
+    assert {"atomic.rs", "chess.rs"} <= set(names)
+    assert all(re.fullmatch(r"(chess|atomic)(_(dense|demand|copy|delta|fast))?\.rs", n) for n in names), names     # (plan 79.38 puts the files with passes beside the plain ones; tests/test_plan79_38.py lists them)
 
 
 @pytest.mark.skipif(not have_before(), reason="the commit before the plan is not on this machine")
