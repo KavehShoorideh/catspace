@@ -1,0 +1,19 @@
+{
+ "name": "candidate_is_mover_unit",
+ "game": "chess",
+ "variant": "chess",
+ "form": "IMPLIES",
+ "says": "Every candidate move starts from a unit of the side to move: the colour of a candidate is the side to move and a unit of that colour stands on its first square. Stated over the description's relations: a row of `candidate` is a row of `mover_unit_move` (the side to move, a unit of that side on the first square, any second square). A fact about play that the layers above rely on when they take the moves of a side as moves of its units; its proof in the library is Ideas.LegalEquiv.candidate_unit.",
+ "left": {"relation": "candidate", "places": 5},
+ "right": {"relation": "mover_unit_move", "places": 5},
+ "condition": [],
+ "delta": [
+  "(signature mover_unit_move side file rank file rank)",
+  "(<= (mover_unit_move ?c ?f1 ?r1 ?f2 ?r2) (true (control ?c)) (true (cell ?f1 ?r1 ?c ?k)) (square ?f2 ?r2))"
+ ],
+ "origin": "HAND",
+ "standing": {"is": "PROVED", "theorem": "Ideas.Mined.rule_lemma_chess_candidate_is_mover_unit.candidate_is_mover_unit_implies"},
+ "lean": {"module": "Ideas.Spec.Chess", "namespace": "Ideas.Spec.Chess", "position": "Chess.Position", "imports": ["Ideas.Spec.LegalEquiv"],
+  "proof": ["intro h", "obtain ⟨hc, k, hb⟩ := Ideas.LegalEquiv.candidate_unit p a1 a2 a3 a4 a5 h", "exact moverUnitMove.c1 hc.symm hb (Ideas.NextEquiv.square_all a4 a5)"],
+  "uses": ["Ideas.LegalEquiv.candidate_unit", "Ideas.NextEquiv.square_all"]}
+}

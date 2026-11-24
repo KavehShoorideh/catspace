@@ -1,0 +1,31 @@
+{
+ "name": "exposed_by_cases",
+ "game": "chess",
+ "variant": "chess",
+ "form": "SAME",
+ "says": "When the side to move is not attacked at its king, a candidate move leaves that king exposed (the description's `exposed`) exactly when (1) the unit moved is the king and goes to a square the other side attacks, or (2) the unit moved is the first unit on a line out of the king, with an opposing unit that moves along that line next behind it, and the move leaves that line (the squares from the king to that opposing unit), or (3) the move is en passant and the captured pawn is such a first unit and the move does not fill that line, or (4) the move is en passant and the mover's pawn and the captured pawn are the first two units on a line out of the king, with an opposing unit that moves along that line behind them. Held by the cases, not by trying each candidate on the board after it.",
+ "left": {"relation": "exposed", "places": 4},
+ "right": {"relation": "exposed_by_cases", "places": 4},
+ "condition": [
+  {"relation": "control", "args": ["?c"], "neg": false},
+  {"relation": "check", "args": ["?c"], "neg": true}
+ ],
+ "delta": [
+  "(signature walled side direction file rank file rank)",
+  "(signature on_wall side direction file rank file rank)",
+  "(signature row_pair side direction file rank file rank)",
+  "(signature exposed_by_cases file rank file rank)",
+  "(<= (walled ?c ?d ?f1 ?r1 ?f2 ?r2) (true (cell ?kf ?kr ?c king)) (slide ?d ?kf ?kr ?f1 ?r1) (occupied ?f1 ?r1) (slide ?d ?f1 ?r1 ?f2 ?r2) (true (cell ?f2 ?r2 ?o ?k)) (opponent ?c ?o) (line_of ?k ?d))",
+  "(<= (on_wall ?c ?d ?f1 ?r1 ?f ?r) (walled ?c ?d ?f1 ?r1 ?f2 ?r2) (true (cell ?kf ?kr ?c king)) (slide ?d ?kf ?kr ?f ?r))",
+  "(<= (on_wall ?c ?d ?f1 ?r1 ?f ?r) (walled ?c ?d ?f1 ?r1 ?f2 ?r2) (slide ?d ?f1 ?r1 ?f ?r))",
+  "(<= (row_pair ?c ?d ?f1 ?r1 ?f2 ?r2) (true (cell ?kf ?kr ?c king)) (slide ?d ?kf ?kr ?f1 ?r1) (occupied ?f1 ?r1) (slide ?d ?f1 ?r1 ?f2 ?r2) (occupied ?f2 ?r2) (slide ?d ?f2 ?r2 ?f3 ?r3) (true (cell ?f3 ?r3 ?o ?k)) (opponent ?c ?o) (line_of ?k ?d))",
+  "(<= (exposed_by_cases ?f1 ?r1 ?f2 ?r2) (candidate ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c king)) (opponent ?c ?o) (attacked ?o ?f2 ?r2))",
+  "(<= (exposed_by_cases ?f1 ?r1 ?f2 ?r2) (candidate ?c ?f1 ?r1 ?f2 ?r2) (walled ?c ?d ?f1 ?r1 ?sf ?sr) (not (on_wall ?c ?d ?f1 ?r1 ?f2 ?r2)))",
+  "(<= (exposed_by_cases ?f1 ?r1 ?f2 ?r2) (en_passant ?c ?f1 ?r1 ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?vf ?vr) (walled ?c ?d ?vf ?vr ?sf ?sr) (not (on_wall ?c ?d ?vf ?vr ?f2 ?r2)))",
+  "(<= (exposed_by_cases ?f1 ?r1 ?f2 ?r2) (en_passant ?c ?f1 ?r1 ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?vf ?vr) (row_pair ?c ?d ?f1 ?r1 ?vf ?vr))",
+  "(<= (exposed_by_cases ?f1 ?r1 ?f2 ?r2) (en_passant ?c ?f1 ?r1 ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?vf ?vr) (row_pair ?c ?d ?vf ?vr ?f1 ?r1))"
+ ],
+ "origin": "HAND",
+ "standing": {"is": "CERTIFIED", "key": "05d6a81da826c7a6"},
+ "lean": {"module": "Ideas.Spec.Chess", "namespace": "Ideas.Spec.Chess", "position": "Chess.Position"}
+}

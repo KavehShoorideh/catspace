@@ -1,0 +1,37 @@
+{
+ "binding": "lemma chess exposed_by_cases",
+ "origin": "HAND",
+ "form": "SAME",
+ "left": {
+  "relation": "exposed",
+  "places": 4
+ },
+ "right": {
+  "relation": "exposed_by_cases",
+  "places": 4
+ },
+ "ingests": "the lemma exposed_by_cases of chess: under its condition exposed has the same rows as exposed_by_cases",
+ "oracle": "the description with the lemma's delta, evaluated by discovery/gdl.py",
+ "corpus": "208 fixture states and 20 seeded games (seed 77, fuse 300 plies), 4845 game states",
+ "positions": 5053,
+ "states_held": 4730,
+ "rows_left": 8545,
+ "rows_right": 8545,
+ "rows_compared": 8545,
+ "disagreeing_states": 0,
+ "disagreeing_rows": 0,
+ "disagreements": 0,
+ "vacuous": false,
+ "examples": [],
+ "key": "05d6a81da826c7a6",
+ "sources": [
+  "the description chess/chess",
+  "the delta of exposed_by_cases",
+  "discovery/gdl.py",
+  "discovery/rule_lemma.py",
+  "discovery/rule_lemma_certify.py",
+  "the fixtures"
+ ],
+ "date": "2026-11-23",
+ "seconds": 20.4
+}
