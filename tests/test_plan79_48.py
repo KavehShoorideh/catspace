@@ -43,7 +43,8 @@ def KT():
 
 # THE CAUSES NAMED FOR A GAME (the record holds exactly these, each a finding with its whole state in the record's examples); the explanation of each is in the BUILT block of docs/ANALYST_PLAN.md and in KNOWN of placed_translated.py
 TWO_PLACES = {"reach_from: only module, pawn, a two-place step along a file", "reach_from (given): only module, pawn, a two-place step along a file"}
-KNOWN = {g: set(TWO_PLACES) for g in SEVEN}
+# 2026-11-24 (plan 79.50): the one cause held until then, the first move of two places, is mended in `reach_from`; the records hold no cause now (rules/placed/known.json names none).
+KNOWN = {g: set() for g in SEVEN}
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ (1) part A: the list
@@ -300,7 +301,8 @@ def test_the_python_modules_of_the_plan_name_no_object_of_a_game(name):
 def test_the_known_states_of_the_causes_are_ignored_tests_with_the_cause_in_their_text():
     text = RUST_KNOWN.read_text()
     named = re.findall(r'#\[ignore = "([^"]+)"\]\nfn (\w+_known_(?:cause|difference)_\w+)', text)
-    assert len(named) == 2 and all("known cause" in why and "79.48" in why for why, _n in named), named
+    # 2026-11-24 (plan 79.50): the chess state of the first cause is an ordinary test now; the one ignored state left is the atomic difference of two meanings of a strike
+    assert len(named) == 1 and all("known cause" in why and "79.48" in why for why, _n in named), named
 
 
 @needs_cargo
@@ -310,7 +312,7 @@ def test_the_known_states_are_run_and_show_their_causes():
     rc, text = pt.cargo(["--test", "translated_placed_known", "--", "--ignored", "--nocapture"], {})
     assert rc == 0, text[-2000:]
     lines = [ln for ln in text.splitlines() if ln.startswith("OBS 79.48 E known")]
-    assert len(lines) == 2, lines
+    assert len(lines) == 1, lines                                                      # 2026-11-24 (plan 79.50): the other state is an ordinary test now
     for ln in lines:
         print(ln[:300])
 

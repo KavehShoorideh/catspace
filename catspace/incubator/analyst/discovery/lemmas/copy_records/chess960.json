@@ -44,13 +44,13 @@
   "left_out": {},
   "causes": {},
   "examples": [],
-  "seconds": 338.3,
+  "seconds": 334.5,
   "cores": 11,
   "seeds": 128,
   "seed0": 1000,
   "games_a_seed": 300,
   "test_returned": 0,
-  "states_a_second": 39100
+  "states_a_second": 39544
  },
  "chain": {
   "held_to_the_evaluator": {
@@ -79,7 +79,7 @@
    "ended": 2000,
    "disagreements": 0,
    "first": [],
-   "seconds": 300.3,
+   "seconds": 313.1,
    "cores": 11,
    "test_returned": 0
   }
@@ -91,11 +91,11 @@
   "translator": "1c51c994e27cab95",
   "module": "6b19bdd0c331734d",
   "kernel": "487238bab26ede14",
-  "bridge": "431291fff21dbcaa",
+  "bridge": "21927597ac637677",
   "test": "d00dd42da271a1ae",
   "lock": "91fd9fd42c1ba92b"
  },
- "key": "3952104753442479",
+ "key": "6a321f5f91759078",
  "date": "2026-11-24",
- "seconds": 701.1
+ "seconds": 711.4
 }
