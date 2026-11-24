@@ -1,0 +1,19 @@
+{
+ "name": "lone_rook_attacks_its_file",
+ "game": "chess",
+ "variant": "chess",
+ "form": "IMPLIES",
+ "says": "A rook on a file where no other unit stands attacks every other square of that file. Stated over the description's relations: a row of `lone_on_file` (a rook of a colour on a square, its file holding no other unit, and another square of that file) is a row of `attack_by` for the rook. The play lemma behind the layers' line facts; the Lean theorem that is its proof by reasoning is Ideas.Spec.Rook.rook_attacks_empty_file_spec, over the generated attack of the rook alone.",
+ "left": {"relation": "lone_on_file", "places": 6},
+ "right": {"relation": "attack_by", "places": 6},
+ "condition": [],
+ "delta": [
+  "(signature company file rank)",
+  "(signature lone_on_file kind side file rank file rank)",
+  "(<= (company ?f ?r1) (true (cell ?f ?r1 ?c ?k)) (true (cell ?f ?r2 ?d ?j)) (distinct ?r1 ?r2))",
+  "(<= (lone_on_file rook ?c ?f ?r1 ?f ?r2) (true (cell ?f ?r1 ?c rook)) (not (company ?f ?r1)) (rank ?r2) (distinct ?r1 ?r2))"
+ ],
+ "origin": "HAND",
+ "standing": {"is": "CERTIFIED", "key": "ed19ab2468fbafa9"},
+ "lean": {"module": "Ideas.Spec.Chess", "namespace": "Ideas.Spec.Chess", "position": "Chess.Position"}
+}

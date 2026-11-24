@@ -1,0 +1,37 @@
+{
+ "binding": "lemma chess lone_rook_attacks_its_file",
+ "origin": "HAND",
+ "form": "IMPLIES",
+ "left": {
+  "relation": "lone_on_file",
+  "places": 6
+ },
+ "right": {
+  "relation": "attack_by",
+  "places": 6
+ },
+ "ingests": "the lemma lone_rook_attacks_its_file of chess: under its condition lone_on_file has its rows among those of attack_by",
+ "oracle": "the description with the lemma's delta, evaluated by discovery/gdl.py",
+ "corpus": "208 fixture states and 20 seeded games (seed 77, fuse 300 plies), 4845 game states",
+ "positions": 5053,
+ "states_held": 5053,
+ "rows_left": 9590,
+ "rows_right": 371482,
+ "rows_compared": 9590,
+ "disagreeing_states": 0,
+ "disagreeing_rows": 0,
+ "disagreements": 0,
+ "vacuous": false,
+ "examples": [],
+ "key": "ed19ab2468fbafa9",
+ "sources": [
+  "the description chess/chess",
+  "the delta of lone_rook_attacks_its_file",
+  "discovery/gdl.py",
+  "discovery/rule_lemma.py",
+  "discovery/rule_lemma_certify.py",
+  "the fixtures"
+ ],
+ "date": "2026-11-23",
+ "seconds": 18.9
+}
