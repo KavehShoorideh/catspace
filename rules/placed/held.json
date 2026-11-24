@@ -1,0 +1,41 @@
+{
+ "name": "held",
+ "says": "What holds each fast answer of layer 2's kernel (kernel.rs and outside.rs) that is not a placed question (those are held by the placed record): `record` the answers the record of the kernel against its translated module compares at every state (plan 79.46), and `exceptions` the answers nothing holds, each with its cause in words (plan 79.48 part F). A key is <trait or owner>::<name>; a free function has an empty owner. A line that no longer names an answer of the sources fails the test (tests/test_plan79_48.py).",
+ "record": {
+  "Game::roles": "the roles' names, by the side to move compared at every state",
+  "Game::initial": "the start's fluents, compared at the first state of every game",
+  "Game::mover": "whose turn, at every state",
+  "Game::moves": "the allowed moves as a set of the description's terms, at every state",
+  "Game::apply": "the next state after every allowed move, as fluents",
+  "Game::outcome": "whether the game has ended and the result",
+  "Game::move_name": "the move's name as the description's term (`spec_term`), the moves compared as sets of terms",
+  "Game::base_facts": "the state as fluents (the certificate of each game compares them with the oracle's fluents too)",
+  "::spec_term": "the move's name as the description's term, the moves compared as sets of terms",
+  "DescriptionNames::description_name": "the move's name as the description's term (it is `spec_term`)",
+  "KernelGame::state_facts": "the state as fluents of the description, the one the record compares (bridge for every game)"
+ },
+ "exceptions": {
+  "KernelGame::new": "the kernel's own constructor (the library's variant and its start by number); the start it gives is compared at the first state of every game",
+  "KernelGame::from_fen": "a position read from the library's text notation of a position: a notation, not a rule; the positions it gives are the listed starts the small run begins from and the record compares from",
+  "KernelGame::fen": "the library's text notation of a position, for printing; no rule",
+  "KernelGame::parse": "the library's text notation of a move read on a position; no rule",
+  "Game::name": "the game's label; no rule",
+  "Game::turn": "the side to move read off the position with the end not asked (plan 79.39); the record compares `mover`, which is none at an end, so the side to move at an ended state is held by tests/test_plan79_39.py alone",
+  "Game::key": "a hash of the position's identity for the repeat tag; the description reads the game record as an input (`record`) and has no relation for a hash",
+  "Game::captured": "what a move takes as units removed (an explosion included): the description's `lifted` rows would answer it; not held yet (a plan after this one); the single unit a move takes is held under move_info",
+  "Game::taken_at": "what a move takes with the places it stood on: as `captured`; not held yet",
+  "Game::changed": "a unit changing kind by a move (a promotion): the description's `promotes` rows would answer it; not held yet",
+  "Game::pass": "the state with the side to move changed and nothing played, for the layers above: the description has no pass; the library builds the position",
+  "Game::units": "the units standing in the library's letters: a view of `cells`, which is held; the letters are not",
+  "Placed::why_not": "a diagnosis of why a step is refused, in the layers' own four words: the description has no relation that says it, and each word is a hand rule of the kernel's reading; held by tests/units_hand_checked.rs only",
+  "Placed::without": "a hypothetical board with a unit taken off (what depends on it made consistent; the library's refusal of a board): an edit of the board, not a question the description answers; held by tests/units_hand_checked_more.rs only",
+  "Placed::relocate": "a hypothetical board with a unit put elsewhere (the library's refusal of a board): an edit of the board; held by tests/units_hand_checked_more.rs only",
+  "KernelGame::edited": "the helper of `without` and `relocate`",
+  "Starts::start_count": "the number of starts of a game (960 for the game with a start by number): the description lists its starts in rules/variants/<game>.starts only for the game that has one; the numbering is the library's",
+  "Starts::with_start": "a start by its number (Scharnagl's numbering, kernel.rs): not a relation of the description",
+  "StateText::state_text": "the state as the library's text notation, keeping the passed-over place; a notation, not a rule",
+  "StateText::read_state_text": "a state read from the library's text notation; a notation, not a rule",
+  "::chess960_fen": "Scharnagl's numbering of the 960 starts (the library's); the start numbered 518 is compared at every game's first state and the listed starts are compared by the small run",
+  "::uci_to_spec_term": "the move's name in the description's notation, compared through `spec_term`, which calls it"
+ }
+}

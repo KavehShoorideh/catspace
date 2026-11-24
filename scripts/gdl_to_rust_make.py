@@ -82,8 +82,27 @@ def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: t
             print(f"OBS 79.45 translate {module}: composed description {len(ltext)} bytes, passes {','.join(passes) or '-'}, lemmas {','.join(x['name'] for x in docs)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
 
 
+OUT_PLACED = ROOT / "rust" / "engine" / "game" / "tests" / "generated_placed"
+
+
+def make_placed(out: Path = OUT_PLACED) -> None:
+    """2026-11-24 (plan 79.48 part C): the module of each of the seven games' descriptions composed with the additive text of the placed questions (rules/placed/), every pass, kept as generated_placed/<game>.rs (the Rust module is
+    `placed_<rust_name>`). The composition is discovery/placed_questions.py's `composed_text`; the translator is given the text as it is."""
+    from catspace.incubator.analyst.discovery import placed_questions as PQ
+    out.mkdir(parents=True, exist_ok=True)
+    for game in GAMES:
+        text = PQ.composed_text(game)
+        module = "placed_" + rust_name(game)
+        src = T.translate(text, module, list(T.PASSES))
+        (out / f"{game}.rs").write_text(src)
+        print(f"OBS 79.48 translate {game} (module {module}): composed description {len(text)} bytes, passes {','.join(T.PASSES)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
+
+
 def main(argv=None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    if "--placed" in args:
+        make_placed()
+        return 0
     make(OUT, KEPT, KEPT_LEMMA)
     if "--scratch" in args:
         make(OUT_SCRATCH, SCRATCH, SCRATCH_LEMMA, SCRATCH_GAMES)

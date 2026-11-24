@@ -1,0 +1,12 @@
+{
+ "name": "placed",
+ "applies_to": "atomic",
+ "says": "What a side strikes, in atomic, is what the description's `struck` says (a place beside a side's own leader is not struck by that side's units; the description's `check` reads `struck`, not `attacked`). The base text's definition of the question is replaced by the one over `struck`; nothing else of the base changes.",
+ "questions": [
+  {"relation": "placed_strikes", "places": 3, "asks": "strikes_place", "says": "the places a side's units strike, the board as it stands"}
+ ],
+ "delta": [
+  "(retract (<= (placed_strikes ?o ?f ?r) (attacked ?o ?f ?r)))",
+  "(<= (placed_strikes ?o ?f ?r) (struck ?o ?f ?r))"
+ ]
+}
