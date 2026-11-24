@@ -1,0 +1,457 @@
+{
+ "binding": "the placed answers of the kernel of antichess held to the translated module of their definitions",
+ "ingests": "the placed questions of layer 2 (rust/engine/game/src/placed.rs) as the kernel answers them: what stands where, what a unit bears on and may move to, what a side strikes, the ends of the allowed moves and what they play and take, the names (plan 79.48)",
+ "oracle": "the translated module (every pass) of the description composed with rules/placed/, its rows held to the evaluator of the composed description on the small corpus (the lower link)",
+ "game": "antichess",
+ "module": "rust/engine/game/tests/generated_placed/antichess.rs",
+ "small": {
+  "game": "antichess",
+  "kind": "small",
+  "games": 116,
+  "plies": 2449,
+  "states": 2565,
+  "probes": 123120,
+  "ended": 116,
+  "compared": {
+   "bearing_from": [
+    2565,
+    107279
+   ],
+   "bearing_from (given)": [
+    123120,
+    1013716
+   ],
+   "cells": [
+    2565,
+    30008
+   ],
+   "find_step": [
+    4898,
+    22531
+   ],
+   "kind_at": [
+    2565,
+    30008
+   ],
+   "kind_names": [
+    1,
+    6
+   ],
+   "move_ends": [
+    4898,
+    22531
+   ],
+   "move_info (kinds played)": [
+    2449,
+    22531
+   ],
+   "move_info (kinds taken)": [
+    2449,
+    1160
+   ],
+   "place_names": [
+    1,
+    64
+   ],
+   "reach_from": [
+    5130,
+    80645
+   ],
+   "reach_from (given)": [
+    123120,
+    928534
+   ],
+   "strikes_place": [
+    2565,
+    83452
+   ]
+  },
+  "lower": {
+   "placed_bears": [
+    5130,
+    233184
+   ],
+   "placed_cell": [
+    2565,
+    30008
+   ],
+   "placed_mover": [
+    2565,
+    22619
+   ],
+   "placed_reaches": [
+    7695,
+    138816
+   ],
+   "placed_strikes": [
+    2565,
+    83452
+   ],
+   "placed_takes": [
+    2565,
+    1160
+   ]
+  },
+  "lower_states": 10260,
+  "left_out": {
+   "a state the game calls over (move_ends, find_step, move_info)": 116
+  },
+  "causes": {
+   "reach_from (given): only module, pawn, a two-place step along a file": 1996,
+   "reach_from: only module, pawn, a two-place step along a file": 7742
+  },
+  "examples": [
+   {
+    "cause": "reach_from: only module, pawn, a two-place step along a file",
+    "seed": 77,
+    "game": 0,
+    "line": "",
+    "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on a2 -> a4",
+    "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+    "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from: only module, pawn, a two-place step along a file",
+    "seed": 77,
+    "game": 0,
+    "line": "",
+    "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on b2 -> b4",
+    "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+    "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from: only module, pawn, a two-place step along a file",
+    "seed": 77,
+    "game": 0,
+    "line": "",
+    "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on c2 -> c4",
+    "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+    "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+    "seed": 77,
+    "game": 0,
+    "line": "",
+    "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | given: black pawn on c7 | the row black pawn on c7 -> c5",
+    "kernel": "black pawn on c7 -> c6",
+    "module": "black pawn on c7 -> c5; black pawn on c7 -> c6",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+    "seed": 77,
+    "game": 0,
+    "line": "g2g4 a7a5",
+    "state": "rnbqkbnr/1ppppppp/8/p7/6P1/8/PPPPPP1P/RNBQKBNR w - - 0 2 | given: white pawn on h2 | the row white pawn on h2 -> h4",
+    "kernel": "white pawn on h2 -> h3",
+    "module": "white pawn on h2 -> h3; white pawn on h2 -> h4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+    "seed": 77,
+    "game": 0,
+    "line": "g2g4 a7a5 f1g2",
+    "state": "rnbqkbnr/1ppppppp/8/p7/6P1/8/PPPPPPBP/RNBQK1NR b - - 1 2 | given: white pawn on f2 | the row white pawn on f2 -> f4",
+    "kernel": "white pawn on f2 -> f3",
+    "module": "white pawn on f2 -> f3; white pawn on f2 -> f4",
+    "evaluator": "the evaluator HAS this row"
+   }
+  ],
+  "seconds": 17.1,
+  "cores": 1,
+  "seeds": 1,
+  "seed0": 1000,
+  "games_a_seed": 20,
+  "probes_a_state": 48,
+  "test_returned": 0,
+  "certificate_positions": 2565,
+  "equals_certificate": true
+ },
+ "large": {
+  "game": "antichess",
+  "kind": "large",
+  "games": 35840,
+  "plies": 2455656,
+  "states": 2491496,
+  "probes": 19931968,
+  "ended": 35840,
+  "compared": {
+   "bearing_from": [
+    2491496,
+    146218182
+   ],
+   "bearing_from (given)": [
+    19931968,
+    151243321
+   ],
+   "cells": [
+    2491496,
+    43134750
+   ],
+   "find_step": [
+    4911312,
+    27678844
+   ],
+   "kind_at": [
+    2491496,
+    43134750
+   ],
+   "kind_names": [
+    1,
+    6
+   ],
+   "move_ends": [
+    4911312,
+    27678844
+   ],
+   "move_info (kinds played)": [
+    2455656,
+    27678844
+   ],
+   "move_info (kinds taken)": [
+    2455656,
+    1530781
+   ],
+   "place_names": [
+    1,
+    64
+   ],
+   "reach_from": [
+    4982992,
+    104384821
+   ],
+   "reach_from (given)": [
+    19931968,
+    132356908
+   ],
+   "strikes_place": [
+    2491496,
+    107573656
+   ]
+  },
+  "lower": {},
+  "lower_states": 0,
+  "left_out": {
+   "a state the game calls over (move_ends, find_step, move_info)": 35840
+  },
+  "causes": {
+   "reach_from (given): only module, pawn, a two-place step along a file": 300086,
+   "reach_from: only module, pawn, a two-place step along a file": 11809173
+  },
+  "examples": [
+   {
+    "cause": "reach_from: only module, pawn, a two-place step along a file",
+    "seed": 1000,
+    "game": 0,
+    "line": "",
+    "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on a2 -> a4",
+    "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+    "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from: only module, pawn, a two-place step along a file",
+    "seed": 1000,
+    "game": 0,
+    "line": "",
+    "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on b2 -> b4",
+    "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+    "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from: only module, pawn, a two-place step along a file",
+    "seed": 1000,
+    "game": 0,
+    "line": "",
+    "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on c2 -> c4",
+    "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+    "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+    "seed": 1000,
+    "game": 0,
+    "line": "g2g3 g7g6 f1h3",
+    "state": "rnbqkbnr/pppppp1p/6p1/8/8/6PB/PPPPPP1P/RNBQK1NR b - - 1 2 | given: black pawn on c7 | the row black pawn on c7 -> c5",
+    "kernel": "black pawn on c7 -> c6",
+    "module": "black pawn on c7 -> c5; black pawn on c7 -> c6",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+    "seed": 1000,
+    "game": 0,
+    "line": "g2g3 g7g6 f1h3 f7f5 h3f5",
+    "state": "rnbqkbnr/ppppp2p/6p1/5B2/8/6P1/PPPPPP1P/RNBQK1NR b - - 0 3 | given: white pawn on d2 | the row white pawn on d2 -> d4",
+    "kernel": "white pawn on d2 -> d3",
+    "module": "white pawn on d2 -> d3; white pawn on d2 -> d4",
+    "evaluator": "the evaluator HAS this row"
+   },
+   {
+    "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+    "seed": 1000,
+    "game": 0,
+    "line": "g2g3 g7g6 f1h3 f7f5 h3f5 g6f5 g1h3 e7e6 e2e3 f8d6 c2c3 d6g3 f2g3 a7a6 h1g1 h7h5 d1h5 h8h5 b2b4 h5h3 e1f2 h3h2 g1e1 h2f2 e3e4 f2d2 b1d2 f5e4 d2e4 d8h4",
+    "state": "rnb1k1n1/1ppp4/p3p3/8/1P2N2q/2P3P1/P7/R1B1R3 w - - 1 16 | given: black pawn on h7 | the row black pawn on h7 -> h5",
+    "kernel": "black pawn on h7 -> h6",
+    "module": "black pawn on h7 -> h5; black pawn on h7 -> h6",
+    "evaluator": "the evaluator HAS this row"
+   }
+  ],
+  "seconds": 194.4,
+  "cores": 11,
+  "seeds": 128,
+  "seed0": 1000,
+  "games_a_seed": 280,
+  "probes_a_state": 8,
+  "test_returned": 0,
+  "states_a_second": 12816
+ },
+ "known": {
+  "reach_from: only module, pawn, a two-place step along a file": "the kernel's reach_from reads a unit's STEP (the smallest kind one place ahead, or a capture aside); the description's `move_by` gives its first move of two places as well (a pawn on its start row, in the game with a horde the first row too). A choice of what the question means, not a fault of a rule; it would change the graph's may-move nodes in every game, so it waits for Kaveh's word (the state is held in translated_placed_known.rs)",
+  "reach_from (given): only module, pawn, a two-place step along a file": "the kernel's reach_from reads a unit's STEP (the smallest kind one place ahead, or a capture aside); the description's `move_by` gives its first move of two places as well (a pawn on its start row, in the game with a horde the first row too). A choice of what the question means, not a fault of a rule; it would change the graph's may-move nodes in every game, so it waits for Kaveh's word (the state is held in translated_placed_known.rs)"
+ },
+ "disagreements": 12118997,
+ "examples": [
+  {
+   "cause": "reach_from: only module, pawn, a two-place step along a file",
+   "seed": 77,
+   "game": 0,
+   "line": "",
+   "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on a2 -> a4",
+   "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+   "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from: only module, pawn, a two-place step along a file",
+   "seed": 77,
+   "game": 0,
+   "line": "",
+   "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on b2 -> b4",
+   "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+   "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from: only module, pawn, a two-place step along a file",
+   "seed": 77,
+   "game": 0,
+   "line": "",
+   "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on c2 -> c4",
+   "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+   "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+   "seed": 77,
+   "game": 0,
+   "line": "",
+   "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | given: black pawn on c7 | the row black pawn on c7 -> c5",
+   "kernel": "black pawn on c7 -> c6",
+   "module": "black pawn on c7 -> c5; black pawn on c7 -> c6",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+   "seed": 77,
+   "game": 0,
+   "line": "g2g4 a7a5",
+   "state": "rnbqkbnr/1ppppppp/8/p7/6P1/8/PPPPPP1P/RNBQKBNR w - - 0 2 | given: white pawn on h2 | the row white pawn on h2 -> h4",
+   "kernel": "white pawn on h2 -> h3",
+   "module": "white pawn on h2 -> h3; white pawn on h2 -> h4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+   "seed": 77,
+   "game": 0,
+   "line": "g2g4 a7a5 f1g2",
+   "state": "rnbqkbnr/1ppppppp/8/p7/6P1/8/PPPPPPBP/RNBQK1NR b - - 1 2 | given: white pawn on f2 | the row white pawn on f2 -> f4",
+   "kernel": "white pawn on f2 -> f3",
+   "module": "white pawn on f2 -> f3; white pawn on f2 -> f4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from: only module, pawn, a two-place step along a file",
+   "seed": 1000,
+   "game": 0,
+   "line": "",
+   "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on a2 -> a4",
+   "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+   "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from: only module, pawn, a two-place step along a file",
+   "seed": 1000,
+   "game": 0,
+   "line": "",
+   "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on b2 -> b4",
+   "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+   "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from: only module, pawn, a two-place step along a file",
+   "seed": 1000,
+   "game": 0,
+   "line": "",
+   "state": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1 | every unit of white, white to move, no passed-over place | the row white pawn on c2 -> c4",
+   "kernel": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on b2 -> b3; white pawn on c2 -> c3; white pawn on d2 -> d3; white pawn on e2 -> e3; white pawn on f2 -> f3; white pawn on g2 -> g3; white pawn on h2 -> h3",
+   "module": "white knight on b1 -> a3; white knight on b1 -> c3; white knight on g1 -> f3; white knight on g1 -> h3; white pawn on a2 -> a3; white pawn on a2 -> a4; white pawn on b2 -> b3; white pawn on b2 -> b4; white pawn on c2 -> c3; white pawn on c2 -> c4; white pawn on d2 -> d3; white pawn on d2 -> d4; white pawn on e2 -> e3; white pawn on e2 -> e4; white pawn on f2 -> f3; white pawn on f2 -> f4; white pawn on g2 -> g3; white pawn on g2 -> g4; white pawn on h2 -> h3; white pawn on h2 -> h4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+   "seed": 1000,
+   "game": 0,
+   "line": "g2g3 g7g6 f1h3",
+   "state": "rnbqkbnr/pppppp1p/6p1/8/8/6PB/PPPPPP1P/RNBQK1NR b - - 1 2 | given: black pawn on c7 | the row black pawn on c7 -> c5",
+   "kernel": "black pawn on c7 -> c6",
+   "module": "black pawn on c7 -> c5; black pawn on c7 -> c6",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+   "seed": 1000,
+   "game": 0,
+   "line": "g2g3 g7g6 f1h3 f7f5 h3f5",
+   "state": "rnbqkbnr/ppppp2p/6p1/5B2/8/6P1/PPPPPP1P/RNBQK1NR b - - 0 3 | given: white pawn on d2 | the row white pawn on d2 -> d4",
+   "kernel": "white pawn on d2 -> d3",
+   "module": "white pawn on d2 -> d3; white pawn on d2 -> d4",
+   "evaluator": "the evaluator HAS this row"
+  },
+  {
+   "cause": "reach_from (given): only module, pawn, a two-place step along a file",
+   "seed": 1000,
+   "game": 0,
+   "line": "g2g3 g7g6 f1h3 f7f5 h3f5 g6f5 g1h3 e7e6 e2e3 f8d6 c2c3 d6g3 f2g3 a7a6 h1g1 h7h5 d1h5 h8h5 b2b4 h5h3 e1f2 h3h2 g1e1 h2f2 e3e4 f2d2 b1d2 f5e4 d2e4 d8h4",
+   "state": "rnb1k1n1/1ppp4/p3p3/8/1P2N2q/2P3P1/P7/R1B1R3 w - - 1 16 | given: black pawn on h7 | the row black pawn on h7 -> h5",
+   "kernel": "black pawn on h7 -> h6",
+   "module": "black pawn on h7 -> h5; black pawn on h7 -> h6",
+   "evaluator": "the evaluator HAS this row"
+  }
+ ],
+ "hashes": {
+  "description": "aad2589e7bdbc007",
+  "definitions": "7c0a4fdc8dde60b5",
+  "translator": "1c51c994e27cab95",
+  "module": "eba042101a34b874",
+  "kernel": "487238bab26ede14",
+  "bridge": "431291fff21dbcaa",
+  "test": "970b05e3eeb552a8",
+  "lock": "91fd9fd42c1ba92b"
+ },
+ "key": "e6c2476b2cbb29aa",
+ "date": "2026-11-24",
+ "seconds": 211.6
+}

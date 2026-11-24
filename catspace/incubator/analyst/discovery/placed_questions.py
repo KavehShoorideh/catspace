@@ -128,13 +128,13 @@ def _fn_at_depth0(body: str) -> list:
             m = re.match(r"(?:pub\s+)?fn\s+([a-z_0-9]+)", body[i:])
             if m and (i == 0 or not (body[i - 1].isalnum() or body[i - 1] == "_")):
                 end = i
-                d2 = 0
+                par = 0
                 while end < len(body):
                     if body[end] == "(":
-                        d2 += 1
+                        par += 1
                     elif body[end] == ")":
-                        d2 -= 1
-                    elif d2 == 0 and body[end] in "{;":
+                        par -= 1
+                    elif par == 0 and body[end] in "{;":
                         break
                     end += 1
                 out.append((m.group(1), " ".join(body[i:end].split()), end < len(body) and body[end] == "{"))

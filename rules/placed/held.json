@@ -19,7 +19,7 @@
   "KernelGame::from_fen": "a position read from the library's text notation of a position: a notation, not a rule; the positions it gives are the listed starts the small run begins from and the record compares from",
   "KernelGame::fen": "the library's text notation of a position, for printing; no rule",
   "KernelGame::parse": "the library's text notation of a move read on a position; no rule",
-  "Game::name": "the game's label; no rule",
+  "Game::name": "the game's label, a name for printing and for the listed starts; no rule of the game",
   "Game::turn": "the side to move read off the position with the end not asked (plan 79.39); the record compares `mover`, which is none at an end, so the side to move at an ended state is held by tests/test_plan79_39.py alone",
   "Game::key": "a hash of the position's identity for the repeat tag; the description reads the game record as an input (`record`) and has no relation for a hash",
   "Game::captured": "what a move takes as units removed (an explosion included): the description's `lifted` rows would answer it; not held yet (a plan after this one); the single unit a move takes is held under move_info",
