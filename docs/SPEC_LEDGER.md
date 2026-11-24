@@ -16,7 +16,7 @@ HOW IT IS USED (main agent; PROPOSED until Kaveh confirms):
 STATES. IN: the wake does it by default, tested. PART: some of it is in the wake; what is missing is said.
 OFF: built, behind a switch that is off. MEASURED: built once as a measurement outside the wake. NOT: not built.
 
-State on main after plan 79.48 (first made at c4275c44, after 79.16). First version: rows 31 to 34 are from the status table of section 12, the
+State on main after plan 79.48 (plans 79.49 and 79.50 paused unmerged on their branches, 2026-11-24) (first made at c4275c44, after 79.16). First version: rows 31 to 34 are from the status table of section 12, the
 sections 2, 3, 9 and 10 were not reread for it and are owed a pass.
 
 ## The wake, step by step (SYSTEM_SPEC 8)
