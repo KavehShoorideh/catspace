@@ -173,7 +173,7 @@ impl<'x, 'a, 'g, G: Game + Placed> ReadKind<Stepped<'g, G>> for Gains<'x, 'a, 'g
             f.gains.insert(key, r);
             return Ok(Pre::Done(r));
         }
-        let at = if f.g.mover(e) == Some(f.them) { Some(e.clone()) } else { f.g.pass(e) };
+        let at = if f.g.turn(e) == f.them { Some(e.clone()) } else { f.g.pass(e) };
         match at {
             Some(x) => { let r = f.their_gain_here(&x)?; f.gains.insert(key, r); Ok(Pre::Done(r)) }
             None => Ok(Pre::Go(key)),

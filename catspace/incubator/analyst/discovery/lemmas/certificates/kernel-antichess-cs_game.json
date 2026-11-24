@@ -7,7 +7,7 @@
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "ab86a76152d724f1",
+ "key": "52cccb5edaee61d6",
  "sources": [
   "rules/chess.gdl",
   "rules/variants/antichess.gdl",

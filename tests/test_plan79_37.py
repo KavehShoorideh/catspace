@@ -140,11 +140,14 @@ def test_nothing_under_the_sources_of_the_engine_names_the_generated_files_the_t
 @pytest.mark.skipif(not have_before(), reason="the commit before the plan is not on this machine")
 def test_no_source_of_the_engine_and_no_manifest_differs_from_the_commit_before_the_plan():
     changed = git("diff", "--name-only", BEFORE, "--", "rust").stdout.split()
-    srcs = [c for c in changed if re.match(r"rust/engine/[^/]+/src/", c) or c.endswith("Cargo.toml") or c.endswith("Cargo.lock")]
+    # 2026-11-23 (plan 79.39, Kaveh's word): sources under rust/engine/*/src now change for the side-to-move question (tests/test_plan79_39.py holds kernel.rs and ledger.rs); this test checks only what plan 79.37 owned:
+    # nothing of its generated files, translator or helpers is named under a crate's src, and no manifest differs
+    srcs = [c for c in changed if re.match(r"rust/engine/[^/]+/src/", c) and re.search(r"generated|translated|gdl_to_rust", c)]
+    srcs += [c for c in changed if c.endswith("Cargo.toml") or c.endswith("Cargo.lock")]
     assert not srcs, srcs
-    for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs"):
+    for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs"):
         assert git("diff", "--quiet", BEFORE, "--", protected).returncode == 0, protected
-    print(f"OBS 79.37 G: files under rust/ changed since {BEFORE}: {len(changed)}, none a source of a crate, a manifest or a protected file")
+    print(f"OBS 79.37 G: files under rust/ changed since {BEFORE}: {len(changed)}, none a manifest, none of 79.37's files under a src, none a protected file")
 
 
 def test_the_gate_lists_this_test_after_the_one_of_plan_79_36():

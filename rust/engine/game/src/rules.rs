@@ -162,6 +162,7 @@ impl<G: Game> Game for Ruled<G> {
     fn roles(&self) -> Vec<String> { self.game.roles() }
     fn initial(&self) -> G::State { self.game.initial() }
     fn mover(&self, s: &G::State) -> Option<Role> { self.game.mover(s) }
+    fn turn(&self, s: &G::State) -> Role { self.game.turn(s) }
     fn moves(&self, s: &G::State) -> Vec<G::Move> { self.game.moves(s) }
     fn apply(&self, s: &G::State, m: &G::Move) -> G::State { self.game.apply(s, m) }
     fn outcome(&self, s: &G::State) -> Option<Vec<i64>> { self.game.outcome(s) }

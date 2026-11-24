@@ -168,7 +168,7 @@ fn read_on<G: Game, J: Judge>(g: &G, judge: &J, me: Role, s: &G::State, names: &
 
 /// The kind changes of one move, for `me`.
 fn changes_of<G: Game>(g: &G, s: &G::State, m: &G::Move, me: Role) -> Vec<(bool, String, String)> {
-    let mover = g.mover(s).unwrap_or(me);
+    let mover = g.turn(s);
     g.changed(s, m).into_iter().map(|(a, b)| (mover == me, a, b)).collect()
 }
 

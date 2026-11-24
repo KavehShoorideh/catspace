@@ -276,7 +276,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
 
     /// EVERY FIRST MOVE'S VALUE at `depth` (each read with the full window: exact within the horizon) -> [(the move's index in `moves`, its value)], best first.
     pub fn root_values(&mut self, s: &G::State, depth: i32) -> Vec<(usize, i64)> {
-        let maxing = self.g.mover(s) == Some(self.me);
+        let maxing = self.g.turn(s) == self.me;
         let mut out = vec![];
         for (i, m, d) in self.ordered(s, maxing, None) {
             let q = self.g.apply(s, &m);
@@ -353,7 +353,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
 
     /// PLAN 79.02: the root moves in the order the deepening reads them (the table's best first, then `ordered_at` at the root with its killers and history).
     pub fn deepening_order(&self, s: &G::State) -> Vec<usize> {
-        let maxing = self.g.mover(s) == Some(self.me);
+        let maxing = self.g.turn(s) == self.me;
         let hint = self.tt.get(&self.g.key(s)).map(|e| e.best);
         self.ordered_at(s, maxing, hint, 0).into_iter().map(|(i, _, _)| i).collect()
     }
@@ -396,7 +396,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
 
     /// PLAN 79.02: `probes` with the root moves read in `order` (indices of the root's legal moves; None: the fixed reading order `ordered`).
     pub fn probes_in(&mut self, s: &G::State, depth: i32, best: i64, only: Option<&[usize]>, order: Option<&[usize]>) -> Vec<(usize, i64)> {
-        let maxing = self.g.mover(s) == Some(self.me);
+        let maxing = self.g.turn(s) == self.me;
         let mut out = vec![];
         let items: Vec<(usize, G::Move, i64)> = match order {
             None => self.ordered(s, maxing, None),
@@ -434,7 +434,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// THE FIRST MOVES THAT GAIN at `depth` -- each first asked only "above nothing?" (a null window: cheap), the gaining ones then read exact -> [(index, value)],
     /// best first. The census's reading: every move that gains, none that does not.
     pub fn gainers(&mut self, s: &G::State, depth: i32) -> Vec<(usize, i64)> {
-        let maxing = self.g.mover(s) == Some(self.me);
+        let maxing = self.g.turn(s) == self.me;
         let mut out = vec![];
         for (i, m, d) in self.ordered(s, maxing, None) {
             let q = self.g.apply(s, &m);
@@ -454,7 +454,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     pub fn line_from(&self, s: &G::State, first: usize, n: usize) -> (Vec<String>, Vec<(Role, String)>) {
         let ms = self.g.moves(s);
         let Some(m) = ms.get(first) else { return (vec![], vec![]) };
-        let mover = self.g.mover(s).unwrap_or(self.me);
+        let mover = self.g.turn(s);
         let mut ev: Vec<(Role, String)> = self.g.captured(s, m).into_iter().map(|(o, k)| (o, format!("lose {k}"))).collect();
         ev.extend(self.g.changed(s, m).into_iter().map(|(a, b)| (mover, format!("promote {} to {b}", if a.is_empty() { "-" } else { a.as_str() }))));
         let q = self.g.apply(s, m);
@@ -472,7 +472,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// What one move adds to the ledger for `me`, by the judge (what it takes, what changes kind).
     pub fn gain(&self, s: &G::State, m: &G::Move) -> i64 {
         let took: i64 = self.g.captured(s, m).iter().map(|(o, k)| self.judge.delta(self.me, *o, k)).sum();
-        let mover = self.g.mover(s).unwrap_or(self.me);
+        let mover = self.g.turn(s);
         took + self.g.changed(s, m).iter().map(|(a, b)| self.judge.change(self.me, mover, a, b)).sum::<i64>()
     }
 
@@ -507,7 +507,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             if ply == 0 && !self.root_last.is_empty() { v.sort_by_key(|(i, _, _)| self.root_last.contains(i)); }          // (stable: the rest keeps its order)
             return v;
         }
-        let mover = known.unwrap_or_else(|| self.g.mover(s)).unwrap_or(self.me);
+        let mover = known.unwrap_or_else(|| Some(self.g.turn(s))).unwrap_or(self.me);
         let k = self.killers.get(ply as usize);
         let ro = ply == 0 && !self.root_pos.is_empty();         // (plan 78.51: a caller's root order is given)
         let mut v: Vec<(usize, G::Move, i64, i64)> = self.g.moves(s).into_iter().enumerate().map(|(i, m)| {
@@ -526,7 +526,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
         let p = ply as usize;
         if self.killers.len() <= p { self.killers.resize(p + 1, [None, None]); }
         if self.killers[p][0].as_ref() != Some(m) { self.killers[p][1] = self.killers[p][0].take(); self.killers[p][0] = Some(m.clone()); }
-        let mover = known.unwrap_or_else(|| self.g.mover(s)).unwrap_or(self.me);
+        let mover = known.unwrap_or_else(|| Some(self.g.turn(s))).unwrap_or(self.me);
         *self.hist.entry((mover, m.clone())).or_insert(0) += (depth as i64) * (depth as i64);
     }
 
@@ -534,7 +534,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     fn quiet(&mut self, s: &G::State, ply: i32, mut alpha: i64, mut beta: i64, depth: u32) -> i64 {
         if let Some(v) = self.g.outcome(s) { return self.terminal(&v, ply); }
         if self.tick() || depth >= QUIET_FUSE { return 0; }
-        let maxing = self.g.mover(s) == Some(self.me);
+        let maxing = self.g.turn(s) == self.me;
         let mut best = 0i64;                                   // standing: no further capture
         if maxing { if best >= beta { return best; } alpha = alpha.max(best); } else { if best <= alpha { return best; } beta = beta.min(best); }
         let moves: Vec<(usize, G::Move, i64)> = if self.lean { self.ordered_captures(s, maxing) } else { self.ordered(s, maxing, None) };
@@ -566,11 +566,11 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
                 if alpha >= beta { return e.value; }
             }
         }
-        let node_mover = self.g.mover(s);
+        let node_mover = Some(self.g.turn(s));
         let known = if self.lean { Some(node_mover) } else { None };
         let maxing = node_mover == Some(self.me);
         if self.prune && self.null_move && ply > 0 && depth >= NULL_MIN_DEPTH && beta < WIN - 1000 && alpha > -WIN + 1000 {
-            let mover = known.unwrap_or_else(|| self.g.mover(s));
+            let mover = known.unwrap_or_else(|| Some(self.g.turn(s)));
             let mine = self.g.units(s).iter().filter(|(o, _)| Some(*o) == mover).count();
             if mine > ZUGZWANG_UNITS {
                 if let Some(p) = self.g.pass(s) {
@@ -654,7 +654,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
             let Some(m) = ms.get(e.best) else { break };
             names.push(self.g.move_name(&cur, m));
             lost.extend(self.g.captured(&cur, m).into_iter().map(|(o, k)| (o, format!("lose {k}"))));
-            let mover = self.g.mover(&cur).unwrap_or(self.me);
+            let mover = self.g.turn(&cur);
             lost.extend(self.g.changed(&cur, m).into_iter().map(|(a, b)| (mover, format!("promote {} to {b}", if a.is_empty() { "-" } else { a.as_str() }))));
             cur = self.g.apply(&cur, m);
         }
@@ -666,7 +666,7 @@ impl<'a, G: Game, J: Judge> Search<'a, G, J> {
     /// holds the value (read in full): that move answers at depth `d`; or at the end of the root (all failed): the best move of depth `d` answers. The seconds ending leave the answer of depth d-1 (`cut`).
     fn read_on_failed_first(&mut self, s: &G::State, d: i32, out: &mut Line) {
         let (Some(fi), true) = (out.first_index, out.value.abs() < WIN - 1000) else { return };
-        let maxing = self.g.mover(s) == Some(self.me);
+        let maxing = self.g.turn(s) == self.me;
         let goal = out.value;
         let known = self.root_done.iter().find(|x| x.0 == fi).map(|x| x.1);
         let fails = |v: i64| if maxing { v < goal } else { v > goal };

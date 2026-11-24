@@ -64,7 +64,7 @@ pub fn wins_in<G: Game>(g: &G, s: &G::State, me: Role, n: u32, b: &mut Budget) -
             let q2 = g.apply(&q, &r);
             let ok = match g.outcome(&q2) {
                 Some(v) => won(&v, me),
-                None => g.mover(&q2) == Some(me) && wins_in(g, &q2, me, n - 1, b)?.is_some(),
+                None => g.turn(&q2) == me && wins_in(g, &q2, me, n - 1, b)?.is_some(),
             };
             if !ok { all = false; break; }
         }
