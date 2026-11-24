@@ -88,6 +88,36 @@ holds for the relation or clause, everywhere else the plain translation stands f
                 depend on the order of its literals, the safety of the negated literals and tests is kept by the same rule as before (each as soon as its variables are bound), and the semi-naive rule (one literal of the set from the
                 new rows, the others from all) is unchanged.
   A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside.
+
+PLAN 79.40 PARTS A, C, D: THE FORM OF A RELATION OVER SMALL SORTS (SYSTEM_SPEC 11, "The crux of layer 2 is a translator ... made fast piece by piece under tests"; piece: rules; ledger row 45).
+This text is the interface of 3 more passes, written and committed before any body. PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep"); `translate(text, module, passes)` is as above; with no pass the
+document is still the plain one byte for byte but for the translator hash. The new passes add no public item to a module: the questions and the items of 79.38 are the same, so the harness holds them to the plain module as before.
+
+  (5) "bits"   TAKES the signature of each relation, the declared sorts, and every written clause with its join order. IT FINDS, from the clauses and signatures alone (told no sort and no product):
+                TILES. A sort of constants of at most 64 members is a tile. Two sorts (A, B) are one tile, a PRODUCT, when in one clause the same two variables stand next to each other, in that order, at places of sorts A and B in at least two
+                literals (head included) and |A|*|B| <= 64: the pair travels together, so it is one number (a*|B|+b). The places of a relation are cut into tiles from the left, a product where one is found.
+                HELD AS BITS. A relation is held as bits when every place has a declared sort of constants, the cut into tiles is made, and for every way a written clause asks it (which tiles are bound) the tile that is left free has at most
+                64 members and the product of the sizes of the other tiles is at most DENSE_KEYS. Its form is then, for each such way (an ORIENTATION: which tile is free), an array of words with one word for each combination of the other tiles'
+                numbers, and bit t of the word is set when the row with the free tile's number t is there; a list of the words that are not nought keeps the clearing and the scan proportional to what is held. A row is set in every orientation.
+                A state is loaded by setting these bits; the evaluation is kept between questions and cleared by its lists of words (no row is made, hashed or freed: Part D below states what else is kept).
+                CLAUSES AS WORD OPERATIONS. A clause whose literals are asked in the join order is written as nested loops over what is NOT yet bound: a positive literal whose tiles but one are bound reads one word (and, for the places of the free
+                tile that are bound or constants, ands it with a mask); a literal with no tile bound is scanned by its list of words; a literal all bound is a bit test; a negated literal is a bit test, or an and-not when it stands over the same
+                variables as the free tile of a literal before it; a literal over the same variables as that free tile is anded in before the bits are looped over (every later literal of the clause that stands over the same variables of the same
+                tiles is folded in so); a literal read only to know that a row exists is `word != 0`; where the variables of the free tile are used by nothing but the head's last tile, the word is or-ed into the head whole, with no loop over its bits.
+                A RECURSIVE SET of such relations is evaluated by the semi-naive rule on words: the words new in the last round are the first literal of each rule (scanned by their list), the rest read the whole relation; a round adds its words
+                to the relation and to the next round's list. The shape recognised is exactly: every relation of the set is held as bits; this is the walk along a table of successors until a test fails, found as such because it is a clause that
+                joins the set's relation, tests the same variables as its free tile, and reads a relation that takes those variables to the next ones, and is compiled by the one rule above, not by a pattern of any game.
+                WHAT IT REFUSES, naming the clause: a relation with a place of a sort that has a compound or a symbol that is not a member of the sort at the place; a free tile of more than 64 members, or other tiles with more than DENSE_KEYS
+                combinations, in any way a clause asks it; a place whose term is a compound; a tile whose two places carry one variable. A relation refused remains as it is (a hash relation, or dense if the pass dense accepts it) and the clauses that
+                read it through its rows continue as today: a clause is written in the word form when it reads or makes a relation held as bits, and otherwise as before. A relation answered on demand (pass demand) is not held as bits.
+                `Plan.bits_refused` holds each refusal with its clause.
+  (6) "order" TAKES the written clauses of a stratum and the number of rows of each relation that does not read the state, known at translation by evaluating those strata once with the reader's evaluator. CONDITION: a clause has two or more
+                positive literals that start equally well (the same number of bound places); RETURNS: the clause joined choosing, among those, the literal of the fewest rows (static relations by their number of rows, relations that read the state
+                by the size of the product of the sorts of the places that remain unbound, the same everywhere), otherwise the reader's order. The reader's is kept where the two have the same count of bound places; the order is a different order of the same conjunction,
+                with the same safety rule, and so the same rows.
+  (7) "keep"  TAKES the pieces and the questions. RETURNS: the working memory of a question kept between questions where it was made at each: the lists a clause makes, the terms of a compound built again, and the state that a question returns
+                built in the vector of a former one. Any place that makes and frees memory in a question where the profile shows it is named in the commit with its share before and then.
+  A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside. The harness of 79.38 holds each of them to the plain module (tile numbers are an inside of the module: rows are compared as text).
 """
 from __future__ import annotations
 
@@ -101,7 +131,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta")
+PASSES = ("dense", "demand", "copy", "delta")   # (79.40 adds "bits", "order", "keep": the bodies follow the interface text above)
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
