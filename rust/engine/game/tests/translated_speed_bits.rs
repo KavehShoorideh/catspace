@@ -44,11 +44,13 @@ include!("generated/scratch/chess_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_bits_base.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_prev_orient.rs");
+include!("generated/scratch/chess_prev41_orient.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_prev_ends.rs");
+include!("generated/scratch/chess_prev41_ends.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_prev_start.rs");
+include!("generated/scratch/chess_prev41_start.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_prev_asked.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev.rs");
 #[cfg(singles)]
@@ -62,11 +64,13 @@ include!("generated/scratch/atomic_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_bits_base.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_prev_orient.rs");
+include!("generated/scratch/atomic_prev41_orient.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_prev_ends.rs");
+include!("generated/scratch/atomic_prev41_ends.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_prev_start.rs");
+include!("generated/scratch/atomic_prev41_start.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_asked.rs");
 impl_tr!(chess);
 impl_tr!(chess_fast, passes);
 impl_tr!(atomic);
@@ -84,11 +88,13 @@ impl_tr!(chess_bits_shift, passes);
 #[cfg(singles)]
 impl_tr!(chess_bits_base, passes);
 #[cfg(singles)]
-impl_tr!(chess_prev_orient, passes);
+impl_tr!(chess_prev41_orient, passes);
 #[cfg(singles)]
-impl_tr!(chess_prev_ends, passes);
+impl_tr!(chess_prev41_ends, passes);
 #[cfg(singles)]
-impl_tr!(chess_prev_start, passes);
+impl_tr!(chess_prev41_start, passes);
+#[cfg(singles)]
+impl_tr!(chess_prev_asked, passes);
 #[cfg(singles)]
 impl_tr!(atomic_prev, passes);
 #[cfg(singles)]
@@ -102,11 +108,13 @@ impl_tr!(atomic_bits_shift, passes);
 #[cfg(singles)]
 impl_tr!(atomic_bits_base, passes);
 #[cfg(singles)]
-impl_tr!(atomic_prev_orient, passes);
+impl_tr!(atomic_prev41_orient, passes);
 #[cfg(singles)]
-impl_tr!(atomic_prev_ends, passes);
+impl_tr!(atomic_prev41_ends, passes);
 #[cfg(singles)]
-impl_tr!(atomic_prev_start, passes);
+impl_tr!(atomic_prev41_start, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_asked, passes);
 
 const SEED: u64 = 77;
 
@@ -266,11 +274,11 @@ fn pieces<F: Tr + 'static>(game: &str, label: &str) {
 
 
 #[cfg(singles)]
-fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev_start::Game), ("p+ends", chess_prev_ends::Game), ("p+orient", chess_prev_orient::Game), ("fast", chess_fast::Game)] }
+fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev41_start::Game), ("p+ends", chess_prev41_ends::Game), ("p+orient", chess_prev41_orient::Game), ("p+asked", chess_prev_asked::Game), ("fast", chess_fast::Game)] }
 #[cfg(not(singles))]
 fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("fast", chess_fast::Game)] }
 #[cfg(singles)]
-fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev_start::Game), ("p+ends", atomic_prev_ends::Game), ("p+orient", atomic_prev_orient::Game), ("fast", atomic_fast::Game)] }
+fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev41_start::Game), ("p+ends", atomic_prev41_ends::Game), ("p+orient", atomic_prev41_orient::Game), ("p+asked", atomic_prev_asked::Game), ("fast", atomic_fast::Game)] }
 #[cfg(not(singles))]
 fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("fast", atomic_fast::Game)] }
 
@@ -292,9 +300,9 @@ fn chess_the_time_by_piece_of_each_module() { pieces::<chess::Game>("chess", "pl
 fn atomic_the_time_by_piece_of_each_module() { pieces::<atomic::Game>("atomic", "plain"); pieces::<atomic_fast::Game>("atomic", "fast"); }
 
 #[cfg(singles)]
-fn chess_combos() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev_start::Game), ("p+ends", chess_prev_ends::Game), ("p+orient", chess_prev_orient::Game), ("fast", chess_fast::Game)] }
+fn chess_combos() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("b+scan", chess_bits_scan::Game), ("b+cut", chess_bits_cut::Game), ("b+shift", chess_bits_shift::Game), ("b+base", chess_bits_base::Game), ("p+start", chess_prev41_start::Game), ("p+ends", chess_prev41_ends::Game), ("p+orient", chess_prev41_orient::Game), ("p+asked", chess_prev_asked::Game), ("fast", chess_fast::Game)] }
 #[cfg(singles)]
-fn atomic_combos() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev_start::Game), ("p+ends", atomic_prev_ends::Game), ("p+orient", atomic_prev_orient::Game), ("fast", atomic_fast::Game)] }
+fn atomic_combos() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("b+scan", atomic_bits_scan::Game), ("b+cut", atomic_bits_cut::Game), ("b+shift", atomic_bits_shift::Game), ("b+base", atomic_bits_base::Game), ("p+start", atomic_prev41_start::Game), ("p+ends", atomic_prev41_ends::Game), ("p+orient", atomic_prev41_orient::Game), ("p+asked", atomic_prev_asked::Game), ("fast", atomic_fast::Game)] }
 #[cfg(singles)]
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
