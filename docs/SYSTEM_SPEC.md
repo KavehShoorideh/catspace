@@ -1102,6 +1102,15 @@ variants"): the question answers a role among the game's roles, however many; it
 new assumption of two sides. READING, mine: in a game where several roles may act at once (two boards) the question answers what the
 mover answers today, one role; a question that answers several roles is not built here and is named under ledger row 42.
 
+**Several boards and several players are owed, later** (Kaveh 2026-11-23: "We just want to not add a two-player assumption ... maybe we
+need a node for every player ... every person who can believe things. But that might get too complicated. So let's just keep going the
+way we are ... But remember that we need to come back and fix this. So add it to the list of things to do later to add support for
+multiple boards for multiple players."). Decided now: nothing new assumes two players; layer 1 is not touched for this now. Owed later:
+one game whose state holds several boards linked by the rules, more than two roles, sides that are teams, several roles on the move at
+once, and waiting as a move. Kaveh's idea, not decided: a node in the graph for every player who holds a strategy and can believe
+things. READING, mine: a game with one board, two roles and units held in hand is the natural first step, since it tests places off the
+board alone.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1523,4 +1532,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The crux of layer 2: one translator from the description to Rust, each piece pinned by tests, then made faster piece by piece against an outside mark | 2026-11-23 | 11 (last block) |
 | Layers 0 to 3 may be mended; layer 0 takes fixes and small support, no significant new function | 2026-11-23 | 11 (last block) |
 | Layer 2 answers the side to move without reading the end; every asker above uses it, the shared search included | 2026-11-23 | 11 (last block) |
+| Several boards and several players are owed later; nothing new assumes two players | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
