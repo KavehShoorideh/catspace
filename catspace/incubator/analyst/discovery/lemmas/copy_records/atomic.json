@@ -1,0 +1,85 @@
+{
+ "binding": "the kernel of atomic held to its translated module",
+ "ingests": "the rules of the game as the kernel answers them: the mover, the allowed moves, the next state after every allowed move, whether ended, the result (plan 79.46)",
+ "oracle": "the translated module of the description (every pass), itself held to the evaluator of the description (translated_agree.rs) and to the plain translation piece by piece (translated_pieces.rs)",
+ "game": "atomic",
+ "module": "rust/engine/game/tests/generated/atomic_fast.rs",
+ "module_header": {
+  "description-sha256": "e5da560d23dcaa36d019af03cc4258dce4e015a79c88c2f174eed45398673aa9",
+  "translator-sha256": "c3e921948f3034d00e8126ab24820b6240371d53f8767463001ba9891459ea60",
+  "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth"
+ },
+ "small": {
+  "game": "atomic",
+  "kind": "small",
+  "games": 132,
+  "plies": 7817,
+  "states": 7949,
+  "moves": 137503,
+  "nexts": 137503,
+  "ended": 132,
+  "results": 132,
+  "left_out": {},
+  "causes": {},
+  "examples": [],
+  "seconds": 1.3,
+  "cores": 1,
+  "seeds": 1,
+  "seed0": 1000,
+  "games_a_seed": 20,
+  "test_returned": 0,
+  "certificate_positions": 7949,
+  "equals_certificate": true
+ },
+ "large": {
+  "game": "atomic",
+  "kind": "large",
+  "games": 42240,
+  "plies": 4997954,
+  "states": 5040194,
+  "moves": 107669235,
+  "nexts": 107669235,
+  "ended": 42240,
+  "results": 42240,
+  "left_out": {},
+  "causes": {},
+  "examples": [],
+  "seconds": 427.4,
+  "cores": 10,
+  "seeds": 128,
+  "seed0": 1000,
+  "games_a_seed": 330,
+  "test_returned": 0,
+  "states_a_second": 11793
+ },
+ "chain": {
+  "held_to_the_evaluator": {
+   "coplay_states": 1908,
+   "coplay_allowed_moves": 45246,
+   "coplay_next_states": 4203,
+   "coplay_relation_by_state": 86296,
+   "fixture_positions": 114,
+   "fixture_allowed_moves": 1933,
+   "fixture_nexts": 382,
+   "counts_positions": 348016
+  },
+  "held_to_the_plain_module": {
+   "tests": 3,
+   "piece_by_piece_comparisons": 161862
+  }
+ },
+ "disagreements": 0,
+ "examples": [],
+ "hashes": {
+  "description": "6bdf10efeb7a4477",
+  "translator": "01d05ca221d1fa94",
+  "module": "b57776f8c56c9b3e",
+  "kernel": "487238bab26ede14",
+  "bridge": "0f9cc545e0f0a4ac",
+  "test": "ee382ea0b354afe9",
+  "lock": "91fd9fd42c1ba92b"
+ },
+ "key": "81f179df12039a95",
+ "date": "2026-11-24",
+ "seconds": 546.6
+}

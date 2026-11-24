@@ -29,7 +29,7 @@ INTERFACE (who calls it: the tests; `python -m catspace.incubator.analyst.discov
   `status(game, record=None) -> str`            as above
   `small_counts(game) -> dict`                  run the small test of the game and return the counts file it wrote (the gate's own small run)
   `chain(game) -> dict`                         run the tests that hold the module to the evaluator and to the plain module and read their OBS lines
-  `run(game, small_only=False, with_chain=True) -> dict`   make the record: the small test, the large (the ignored test, all cores, a few minutes), the chain, the hashes, the date; written; the OBS lines printed
+  `run(game, small_only=False, with_chain=True, games_a_seed=None) -> dict`   make the record: the small test, the large (the ignored test, all cores, a few minutes), the chain, the hashes, the date; written; the OBS lines printed
 Nothing here is on the engine's path: the Rust test only reads kernel.rs and the module.
 """
 from __future__ import annotations
@@ -208,7 +208,7 @@ def chain(game: str) -> dict:
     return out
 
 
-def run(game: str, small_only: bool = False, with_chain: bool = True) -> dict:
+def run(game: str, small_only: bool = False, with_chain: bool = True, games_a_seed: "int | None" = None) -> dict:
     t0 = time.time()
     if game not in games():
         raise ValueError(f"{game} has no kept translated module: {games()}")
@@ -216,7 +216,7 @@ def run(game: str, small_only: bool = False, with_chain: bool = True) -> dict:
     cp = certificate_positions(game)
     small["certificate_positions"], small["equals_certificate"] = cp, small["states"] == cp
     print(f"OBS 79.46 B small {game}: {small['states']} states, the certificate's {cp}, equal {small['equals_certificate']}, disagreements {sum(small['causes'].values())}", flush=True)
-    large = {} if small_only else large_counts(game)
+    large = {} if small_only else large_counts(game, {} if games_a_seed is None else {"CS_KT_GAMES": str(games_a_seed)})
     if large:
         large["states_a_second"] = round(large["states"] / max(large["seconds"], 1e-9))
     ch = chain(game) if (with_chain and not small_only) else {}
@@ -250,7 +250,8 @@ def main(argv: list) -> int:
         return 1 if bad else 0
     if cmd == "run":
         for g in names:
-            run(g, "--small-only" in argv, "--no-chain" not in argv)
+            gs = next((int(a.split("=", 1)[1]) for a in argv if a.startswith("--games-a-seed=")), None)
+            run(g, "--small-only" in argv, "--no-chain" not in argv, gs)
         return 0
     if cmd == "chain":
         for g in names:
