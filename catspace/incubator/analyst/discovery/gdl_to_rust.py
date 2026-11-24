@@ -528,6 +528,7 @@ class Description:
             names[i] = r
             self.rid[r] = i
         self.strata = p.strata
+        self.flags: set = set()                                  # the relations of no places that a lemma's rewrite made (plan 79.45): made in full, never answered on demand
         for comp, rules in self.strata:
             for r in rules:
                 for st in r.steps:
@@ -1214,7 +1215,7 @@ class Plan:
             if len(comp) != 1:
                 continue
             r = next(iter(comp))
-            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules) or r in self.pre_bits or r in self.unfolded:
+            if d.static[r] or r in roots or r in INPUT_RELS or r.startswith("true.") or not rules or any(x.rec_steps for x in rules) or r in self.pre_bits or r in self.unfolded or r in d.flags:
                 continue
             cand.add(r)
         demanded = set(cand)
@@ -3190,9 +3191,154 @@ def w_dw(w, d, plan):
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ the document
 
-def translate(text: str, module: str, passes=()) -> str:
-    """The Rust source of the description `text` (composed) as `pub mod <module>`, with the passes named (see the module text for the interface); with none, the plain translation."""
+# ------------------------------------------------------------------------------------------------------------------------------------------ a lemma as a rewrite (plan 79.45 part A)
+
+LEMMA_FORM = "SAME"                                     # the one form that is a rewrite: under the condition the left relation has the rows of the right one
+LEMMA_STANDINGS = ("CERTIFIED", "PROVED")               # the standings a lemma may be given to the translator with (the make script computes them; the translator refuses the others)
+NO_ROWS = "differ"                                      # the one literal of a condition that is no row: two terms that differ (the form of rule_lemma.py)
+
+
+def lemma_atom(prog, rel: str, args: list):
+    """The s-expression of a literal over `rel` (a relation of the text, or the fluent of that name) with `args`, and the relation's name in the text."""
+    if rel in prog.nodes:
+        name = rel
+    elif ("true." + rel) in prog.nodes:
+        name = "true." + rel
+    else:
+        raise Untranslatable(f"the relation {rel} is not in the text")
+    sig = prog.signature(name)
+    if sig is not None and len(sig) != len(args):
+        raise Untranslatable(f"{rel} takes {len(sig)} places and the literal gives {len(args)}")
+    if name.startswith("true."):
+        return ["true", ([name[len("true."):]] + list(args)) if args else name[len("true."):]], name
+    return (([name] + list(args)) if args else name), name
+
+
+def lemma_problems(lem: dict) -> list:
+    """What is wrong with the form of a lemma given as data (the keys, the form, the standing); the relations are read against the text by `rewrite_lemmas`."""
+    keys = ("name", "form", "left", "right", "condition", "standing")
+    miss = [k for k in keys if k not in lem]
+    if miss:
+        return [f"the lemma has no {miss}"]
+    bad = []
+    nm = lem["name"]
+    if lem["form"] != LEMMA_FORM:
+        bad.append(f"lemma {nm}: the form is {lem['form']}; only {LEMMA_FORM} is a rewrite (a lemma of inclusion changes no relation)")
+    st = lem["standing"]
+    if not isinstance(st, dict) or st.get("is") not in LEMMA_STANDINGS:
+        bad.append(f"lemma {nm}: the standing is {st}; only {' and '.join(LEMMA_STANDINGS)} lemmas are given to the translator")
+    elif (st["is"] == "CERTIFIED" and not st.get("key")) or (st["is"] == "PROVED" and not st.get("theorem")):
+        bad.append(f"lemma {nm}: a {st['is']} lemma names its evidence ({'key' if st['is'] == 'CERTIFIED' else 'theorem'})")
+    for side in ("left", "right"):
+        r = lem[side]
+        if not isinstance(r, dict) or not isinstance(r.get("relation"), str) or not isinstance(r.get("places"), int):
+            bad.append(f"lemma {nm}: {side} is {{relation, places}}")
+    for i, c in enumerate(lem["condition"]):
+        if not (isinstance(c, dict) and isinstance(c.get("relation"), str) and isinstance(c.get("args"), list) and all(isinstance(a, str) for a in c["args"])):
+            bad.append(f"lemma {nm}: the condition's literal {i} is not {{relation, args, neg}}")
+    return bad
+
+
+def swap_atom(x, old: str, new: str):
+    """A body literal of a clause with the atoms over `old` read over `new` (through `not` and `or`; the terms of an atom are not entered)."""
+    if isinstance(x, list) and x and x[0] in ("not", "or"):
+        return [x[0]] + [swap_atom(y, old, new) for y in x[1:]]
+    if isinstance(x, list) and x and x[0] == "distinct":
+        return x
+    if isinstance(x, list) and x and x[0] == old:
+        return [new] + x[1:]
+    if x == old:
+        return new
+    return x
+
+
+def rewrite_lemmas(text: str, lemmas) -> tuple:
+    """Plan 79.45 part A (the module text states the rewrite and its argument): -> (the text with each SAME lemma read as a rewrite, [the facts of each lemma for the document]). Untranslatable, naming the lemma and the reason, where the argument's needs (i) to (iii) are not met."""
+    cur = text
+    infos = []
+    for n, lem in enumerate(lemmas, 1):
+        bad = lemma_problems(lem)
+        if bad:
+            raise Untranslatable("; ".join(bad))
+        nm = lem["name"]
+        try:
+            prog = GDL.Program(cur)
+        except GDL.GDLError as e:
+            raise Untranslatable(f"lemma {nm}: the text does not read: {e}")
+        left, right = lem["left"]["relation"], lem["right"]["relation"]
+        for rel in (left, right):
+            if rel not in prog.nodes:
+                raise Untranslatable(f"lemma {nm}: the relation {rel} is not in the text (the composed text holds the lemma's delta)")
+        arity = lem["left"]["places"]
+        for rel, places in ((left, arity), (right, lem["right"]["places"])):
+            sig = prog.signature(rel)
+            if sig is not None and len(sig) != places:
+                raise Untranslatable(f"lemma {nm}: {rel} has {len(sig)} places in the text and the document says {places}")
+        if lem["right"]["places"] != arity:
+            raise Untranslatable(f"lemma {nm}: the two relations have different places")
+        if left in QUESTION_RELS or left in INPUT_RELS or left.startswith(("true.", "next.", "init.")):
+            raise Untranslatable(f"lemma {nm}: {left} is read by a question or is a state, an input or a next: its rows are not for a rewrite")
+        taken = set(prog.nodes) | set(prog.signatures)
+        flag, rep = f"lemma{n}_flag", f"lemma{n}_rep"
+        while flag in taken or rep in taken:
+            flag, rep = flag + "_", rep + "_"
+        cond, resolved = [], []
+        for c in lem["condition"]:
+            neg = bool(c.get("neg", False))
+            if c["relation"] == NO_ROWS:
+                if len(c["args"]) != 2 or neg:
+                    raise Untranslatable(f"lemma {nm}: a {NO_ROWS} literal takes two terms and is positive")
+                cond.append(["distinct", c["args"][0], c["args"][1]])
+                resolved.append((NO_ROWS, list(c["args"]), False))
+                continue
+            atom, name = lemma_atom(prog, c["relation"], c["args"])
+            cond.append(["not", atom] if neg else atom)
+            resolved.append((name, list(c["args"]), neg))
+        xs = [f"?x{i}" for i in range(1, arity + 1)]
+        atom_of = lambda rel: ([rel] + xs) if xs else rel
+        out = []
+        for x in GDL.parse(cur):
+            if isinstance(x, list) and x and x[0] == "<=" and GDL.to_atom(x[1])[0] != left:
+                x = [x[0], x[1]] + [swap_atom(y, left, rep) for y in x[2:]]
+            out.append(x)
+        sig = prog.signature(left)
+        if sig is not None:
+            out.append(["signature", rep] + list(sig))
+            out.append(["signature", flag])
+        out.append(["<=", flag] + cond)
+        out.append(["<=", atom_of(rep), flag, atom_of(right)])
+        out.append(["<=", atom_of(rep), ["not", flag], atom_of(left)])
+        new = "\n".join(GDL._unparse(x) for x in out) + "\n"
+        try:
+            d2 = Description(new)
+        except GDL.GDLError as e:
+            raise Untranslatable(f"lemma {nm}: the text with the rewrite is not a program: {e}")
+        if len(next(comp for comp, _r in d2.strata if left in comp)) > 1 or any(r.rec_steps for comp, rules in d2.strata if left in comp for r in rules):
+            raise Untranslatable(f"lemma {nm}: {left} is in a recursive set: its replacement would read itself")
+        for who, rel in (("the right relation", right), ("the flag", flag)):
+            if left in d2.cone([rel]):
+                raise Untranslatable(f"lemma {nm}: {who} reads {left}: the rewrite would read itself")
+        turn = sorted(set(INPUT_RELS) & d2.cone([left, right, flag]))
+        if turn:
+            raise Untranslatable(f"lemma {nm}: {left}, {right} or the condition reads the turn ({turn}): the lemma is about states")
+        ev = lem["standing"]
+        infos.append({"name": nm, "form": lem["form"], "left": left, "right": right, "rep": rep, "flag": flag, "evidence": f"{ev['is']} {ev.get('key') or ev.get('theorem')}", "condition": resolved})
+        cur = new
+    return cur, infos
+
+
+def rs_str(s: str) -> str:
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def translate(text: str, module: str, passes=(), lemmas=()) -> str:
+    """The Rust source of the description `text` (composed) as `pub mod <module>`, with the passes named and the lemmas read as rewrites (see the module text for the interface); with none, the plain translation."""
+    src_text = text
+    infos: list = []
+    if lemmas:
+        text, infos = rewrite_lemmas(text, lemmas)
     d = Description(text)
+    d.flags = {i["flag"] for i in infos}
     p = d.prog
     for needed in ("role",):
         if needed not in p.nodes:
@@ -3207,10 +3353,12 @@ def translate(text: str, module: str, passes=()) -> str:
     out: list = []
     w = out.append
     w(f"// GENERATED by catspace/incubator/analyst/discovery/gdl_to_rust.py (plan 79.37). Do not edit: make it again.")
-    w(f"// description-sha256: {sha(text.encode())}")
+    w(f"// description-sha256: {sha(src_text.encode())}")
     w(f"// translator-sha256: {translator_hash()}")
     if plan:
         w(f"// passes: {','.join(plan.passes)}")
+    for i in infos:
+        w(f"// lemma: {i['name']} {i['form']} {i['left']} -> {i['rep']}, flag {i['flag']}, {i['evidence']}")
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
     w(f"pub mod {module} {{")
     w(RUNTIME_KEEP if keep else RUNTIME)
@@ -3292,6 +3440,11 @@ def translate(text: str, module: str, passes=()) -> str:
         w(f"pub const UNFOLDED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.unfolded)}];")
         w(f"pub const ENDS: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.ends))}];")
         w(f"pub const ASKED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.asked))}];")
+    if infos:
+        w("pub struct Lm { pub name: &'static str, pub form: &'static str, pub left: &'static str, pub right: &'static str, pub replacement: &'static str, pub flag: &'static str, pub evidence: &'static str, pub condition: &'static [(&'static str, &'static [&'static str], bool)] }")
+        w("pub const LEMMAS: &[Lm] = &[" + ", ".join(
+            f"Lm {{ name: {rs_str(i['name'])}, form: {rs_str(i['form'])}, left: {rs_str(i['left'])}, right: {rs_str(i['right'])}, replacement: {rs_str(i['rep'])}, flag: {rs_str(i['flag'])}, evidence: {rs_str(i['evidence'])}, condition: &[" + ", ".join(
+                f"({rs_str(r)}, &[{', '.join(rs_str(a) for a in args)}], {'true' if ng else 'false'})" for r, args, ng in i["condition"]) + "] }" for i in infos) + "];")
     dyn_all = [k for k, s, c in stratum_fns if not s and not (c & demanded)]
     coned = plan.cone if (plan and (plan.unfolded or plan.asked or plan.projected)) else d.cone
     legal_cone = [k for k in d.dynamic_meeting(coned([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
