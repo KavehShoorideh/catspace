@@ -303,7 +303,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -791,6 +791,9 @@ class Plan:
         self.asked_refused: dict = {}                           # relation of a walk -> why pass (17) does not restrict its keys, the reader or the clause named
         self.projected: list = []                               # [(clause text, [(the relation a literal read, the projection it reads now)])]   (pass "project")
         self.project_refused: dict = {}                         # clause text -> why a literal that could be a projection remains as written
+        self.gated: dict = {}                                   # stratum -> the Rust test that its piece is not run in this question (a function of the rows of flags alone)   (pass "gated")
+        self.gated_flags: dict = {}                             # stratum -> the flags (relations) its test reads, those of the strata it calls included
+        self.gated_refused: dict = {}                           # stratum -> why pass (20) does not gate it: the reader that no flag literal shuts
         self.worth_taken: dict = {}                             # (clause text, order) -> the orientations of relations that do not read the state that pass (19) made for the order   (pass "worth")
         self.start_off: bool = False                            # pass (13): while the orientations the reader's orders ask are being found, no other order is written
         self.start_base: dict | None = None                     # relation -> the orientations asked by the clauses in the reader's orders, all of them (an order is admitted when it asks no other: the same whatever the order the clauses are written in)
@@ -824,6 +827,98 @@ class Plan:
             self.find_bits()
         if "dense" in self.passes:
             self.find_dense()
+        if "gated" in self.passes:
+            self.find_gated()
+
+    # ---------------------------------------------------------------------------------------------- pass (20): a piece not run where every reader is shut off
+
+    def find_gated(self):
+        """Pass (20) (module text): the strata whose readers are all shut by a flag literal that is false in the state, or are heads of such strata; `gated[k]` is the Rust test that the piece of k is not to be run. The strata that fail are named in `gated_refused` with the reader."""
+        d = self.d
+        sidx = {h: k for k, (comp, _r) in enumerate(d.strata) for h in comp}
+        flags = {}
+        for k, (comp, _r) in enumerate(d.strata):
+            if len(comp) != 1:
+                continue
+            r = next(iter(comp))
+            if d.arity.get(r, 0) == 0 and not d.static[r] and r not in QUESTION_RELS and r not in INPUT_RELS and not r.startswith(("true.", "next.", "init.")) and not (comp & self.demanded) and self.rules[k] and not any(x.rec_steps for x in self.rules[k]):
+                flags[r] = k
+        reads: dict = {}
+        for k2 in range(len(d.strata)):
+            for rule in self.rules[k2]:
+                met: set = set()
+                for st in rule.steps:
+                    k = sidx.get(st[1]) if st[0] != "distinct" else None
+                    if k is not None and k != k2 and k not in met:
+                        met.add(k)
+                        reads.setdefault(k, []).append((k2, rule))
+
+        def flag_lits(rule):
+            return [(st[1], st[0] == "pos") for st in rule.steps if st[0] in ("pos", "neg") and st[1] in flags]
+        cand: set = set()
+        for k, (comp, _r) in enumerate(d.strata):
+            if d.static[sorted(comp)[0]] or (comp & self.demanded) or not self.rules[k] or k not in reads:
+                continue
+            if any(h in QUESTION_RELS or h in INPUT_RELS or h.startswith(("true.", "next.", "init.")) or h in flags for h in comp):
+                continue
+            cand.add(k)
+        while True:
+            changed = False
+            for k in sorted(cand):
+                for k2, rule in reads[k]:
+                    if not flag_lits(rule) and k2 not in cand:
+                        cand.discard(k)
+                        self.gated_refused[k] = f"{'+'.join(sorted(d.strata[k][0]))}: read by {rule.clause.text.replace(chr(10), ' ')}, which no flag literal shuts and whose head is not gated"
+                        changed = True
+                        break
+            used = {f for k in cand for _k2, rule in reads[k] for f, _pos in flag_lits(rule)}
+            need = self.cone(sorted(used)) if used else set()
+            for k in sorted(cand):
+                if d.strata[k][0] & need:
+                    cand.discard(k)
+                    self.gated_refused[k] = f"{'+'.join(sorted(d.strata[k][0]))}: it is made for a flag that shuts a reader"
+                    changed = True
+            if not changed:
+                break
+        for k in sorted(cand):
+            parts = []
+            fl: set = set()
+            for k2, rule in reads[k]:
+                alts = []
+                for f, pos in flag_lits(rule):
+                    alts.append(f"d.{d.rid[f]}.order.is_empty()" if pos else f"!d.{d.rid[f]}.order.is_empty()")
+                    fl.add(f)
+                if k2 in cand:
+                    alts.append(f"off(d, {k2})")
+                text = "(" + " || ".join(alts) + ")"
+                if text not in parts:
+                    parts.append(text)
+            self.gated[k] = " && ".join(parts)
+            self.gated_flags[k] = fl
+        for k in sorted(cand):                                   # the flags of the strata a test calls are read too
+            met, todo = set(self.gated_flags[k]), [k]
+            while todo:
+                x = todo.pop()
+                for k2, rule in reads[x]:
+                    if k2 in cand and k2 not in todo:
+                        todo.append(k2)
+                        met |= self.gated_flags[k2]
+            self.gated_flags[k] = met
+        self.flag_strata = flags
+
+    def gate_order(self, ks: list) -> list:
+        """The pieces `ks` (in the order of the strata) with, for each gated piece, the cone of every flag its test reads moved before it where that cone came later it (the cone does not read the piece: no flag reads a gated stratum)."""
+        out = list(ks)
+        for k in ks:
+            if k not in self.gated:
+                continue
+            for f in sorted(self.gated_flags[k]):
+                cone = {j for j, (comp, _r) in enumerate(self.d.strata) if comp & self.cone([f])}
+                at = out.index(k)
+                later = [x for x in out[at + 1:] if x in cone]
+                if later:
+                    out = [x for x in out[:at] if x not in later] + later + [k] + [x for x in out[at + 1:] if x not in later]
+        return out
 
     # ---------------------------------------------------------------------------------------------- pass (8): a view unfolded into its readers
 
@@ -2684,6 +2779,8 @@ def w_api(w, d: Description, plan: Plan, pooled: bool):
     w("    /// For each query (a demanded relation, a key with FREE at the places not bound): the rows by the way of asking that key, and, where that exact key has a mode that asks existence, whether a row exists.")
     w("    pub fn ask_many(&mut self, s: &State, does: &[(u32, u32)], queries: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)> {")
     w("        let mut d = self.load(s, does);")
+    if plan.gated:
+        w("        d.whole = true;")
     if plan.ends or plan.asked:
         w("        self.dw.full = true;")
     w("        self.run(&mut d, ALL_DYNAMIC);")
@@ -3229,10 +3326,10 @@ def lemma_problems(lem: dict) -> list:
         bad.append(f"lemma {nm}: the standing is {st}; only {' and '.join(LEMMA_STANDINGS)} lemmas are given to the translator")
     elif (st["is"] == "CERTIFIED" and not st.get("key")) or (st["is"] == "PROVED" and not st.get("theorem")):
         bad.append(f"lemma {nm}: a {st['is']} lemma names its evidence ({'key' if st['is'] == 'CERTIFIED' else 'theorem'})")
-    for side in ("left", "right"):
-        r = lem[side]
+    for end_of in ("left", "right"):
+        r = lem[end_of]
         if not isinstance(r, dict) or not isinstance(r.get("relation"), str) or not isinstance(r.get("places"), int):
-            bad.append(f"lemma {nm}: {side} is {{relation, places}}")
+            bad.append(f"lemma {nm}: {end_of} is {{relation, places}}")
     for i, c in enumerate(lem["condition"]):
         if not (isinstance(c, dict) and isinstance(c.get("relation"), str) and isinstance(c.get("args"), list) and all(isinstance(a, str) for a in c["args"])):
             bad.append(f"lemma {nm}: the condition's literal {i} is not {{relation, args, neg}}")
@@ -3348,6 +3445,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     dense = plan.dense if plan else {}
     bits = plan.bits if plan else {}
     keep = bool(plan and plan.keep)
+    gated = plan.gated if plan else {}
     has_dw = bool(bits) or keep
     pooled = bool(dense) or bool(bits) or keep
     out: list = []
@@ -3401,9 +3499,12 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w(f"pub struct {name} {{")
         for r in rels:
             w(f"    pub {d.rid[r]}: {('B' + d.rid[r][1:]) if r in bits else ('Dense<%d>' % d.arity.get(r, 0) if r in dense else 'Rel<%d>' % d.arity.get(r, 0))},")
+        if gated and not holder:
+            w("    /// Set by the questions that ask for every relation in full (`all_relations`, `ask_many`): no piece is left out.")
+            w("    pub whole: bool,")
         w("}")
         new = lambda r: f"B{d.rid[r][1:]}::new()" if r in bits else (f"Dense::new(DS{d.rid[r][1:]}, RX{d.rid[r][1:]}, KP{d.rid[r][1:]})" if r in dense else f"Rel::new(KP{d.rid[r][1:]})")
-        w(f"impl {name} {{ pub fn new() -> {name} {{ {name} {{ " + ", ".join(f"{d.rid[r]}: {new(r)}" for r in rels) + " } } }")
+        w(f"impl {name} {{ pub fn new() -> {name} {{ {name} {{ " + ", ".join([f"{d.rid[r]}: {new(r)}" for r in rels] + (["whole: false"] if gated and not holder else [])) + " } } }")
         if pooled and not holder:
             w(f"impl {name} {{ pub fn clear(&mut self) {{ " + " ".join(f"self.{d.rid[r]}.clear();" for r in rels) + " } }")
     # the rows new in a round, for the relations of a recursive set
@@ -3440,6 +3541,8 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w(f"pub const UNFOLDED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in plan.unfolded)}];")
         w(f"pub const ENDS: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.ends))}];")
         w(f"pub const ASKED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted(plan.asked))}];")
+        if "gated" in plan.passes:
+            w(f"pub const GATED: &[&str] = &[{', '.join(chr(34) + x + chr(34) for x in sorted('+'.join(sorted(d.strata[k][0])) for k in gated))}];")
     if infos:
         w("pub struct Lm { pub name: &'static str, pub form: &'static str, pub left: &'static str, pub right: &'static str, pub replacement: &'static str, pub flag: &'static str, pub evidence: &'static str, pub condition: &'static [(&'static str, &'static [&'static str], bool)] }")
         w("pub const LEMMAS: &[Lm] = &[" + ", ".join(
@@ -3450,10 +3553,23 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     legal_cone = [k for k in d.dynamic_meeting(coned([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
     next_pairs = [f for f in d.fluents if f"next.{f}" in d.prog.nodes]
     next_cone = [k for k in d.dynamic_meeting(coned([f"next.{f}" for f in next_pairs])) if not (d.strata[k][0] & demanded)]
+    if gated:
+        legal_cone, next_cone = plan.gate_order(legal_cone), plan.gate_order(next_cone)
+        w("/// Whether the piece of stratum k is left out of a question: every clause that reads it is shut by a flag literal that is false, or has its head in a piece that is left out.")
+        w("fn off(d: &Dy, k: usize) -> bool {")
+        w("    match k {")
+        for k in sorted(gated):
+            w(f"        {k} => {gated[k]},")
+        w("        _ => false,")
+        w("    }")
+        w("}")
     w(f"fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms{dwp}, k: usize) -> (u64, u64, u64) {{")
     w("    match k {")
     for k in dyn_all:
-        w(f"        {k} => st{k}(s, d, tm{dwa}),")
+        if k in gated:
+            w(f"        {k} => {{ if !d.whole && off(d, {k}) {{ return (0, 0, 0); }} st{k}(s, d, tm{dwa}) }}")
+        else:
+            w(f"        {k} => st{k}(s, d, tm{dwa}),")
     w("        _ => panic!(\"not a piece of the state\"),")
     w("    }")
     w("}")
@@ -3489,6 +3605,8 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     if pooled:
         w("    fn load(&mut self, s: &State, does: &[(u32, u32)]) -> Dy {")
         w("        let mut d = match self.pool.take() { Some(d) => d, None => Dy::new() };")
+        if gated:
+            w("        d.whole = false;")
     else:
         w("    fn load(&self, s: &State, does: &[(u32, u32)]) -> Dy {")
         w("        let mut d = Dy::new();")
@@ -3657,6 +3775,8 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w("    /// Every relation that reads the state, evaluated in full on a state and a joint turn (the turn's rows void when `does` is void).")
     w("    pub fn all_relations(&mut self, s: &State, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)> {")
     w("        let mut d = self.load(s, does);")
+    if gated:
+        w("        d.whole = true;")
     if plan and (plan.ends or plan.asked):
         w("        self.dw.full = true;")
     w("        self.run(&mut d, ALL_DYNAMIC);")

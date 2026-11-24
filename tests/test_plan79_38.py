@@ -25,7 +25,7 @@ GEN = ENGINE / "game" / "tests" / "generated"
 TRANSLATOR = ROOT / "catspace" / "incubator" / "analyst" / "discovery" / "gdl_to_rust.py"
 BEFORE = "12f17e26"                      # the commit before this plan's code (the plan block's own commit: documents only)
 KEPT = ("fast",)                         # plan 79.40 part F: of the files with passes only `fast` (every pass) is kept in the repository; the others are made here, in the test run
-VARIANTS = {"dense": ["dense"], "demand": ["demand"], "copy": ["copy"], "delta": ["delta"], "bits": ["bits"], "order": ["order"], "keep": ["keep"], "fast": ["dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth"]}           # plan 79.43: `fast` is every pass, the new ones too
+VARIANTS = {"dense": ["dense"], "demand": ["demand"], "copy": ["copy"], "delta": ["delta"], "bits": ["bits"], "order": ["order"], "keep": ["keep"], "fast": ["dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated"]}           # plan 79.43: `fast` is every pass, the new ones too; 2026-11-24 (plan 79.45): and the pass gated
 GAMES = ("chess", "atomic")
 
 
@@ -145,7 +145,7 @@ def test_a_file_with_passes_carries_the_hashes_and_the_passes_and_a_fresh_transl
 
 
 def test_the_files_of_the_generated_folder_are_the_plain_ones_and_those_with_every_pass():
-    want = {f"{g}.rs" for g in GAMES} | {f"{g}_{v}.rs" for g in GAMES for v in KEPT}
+    want = {f"{g}.rs" for g in GAMES} | {f"{g}_{v}.rs" for g in GAMES for v in KEPT} | {"chess_lemma.rs"}              # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
     assert {p.name for p in GEN.iterdir() if p.is_file()} == want
 
 
