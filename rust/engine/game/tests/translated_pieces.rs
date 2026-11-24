@@ -65,6 +65,8 @@ include!("generated/scratch/chess_prev41_ends.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_prev41_start.rs");
 #[cfg(singles)]
+include!("generated/scratch/chess_prev_worth.rs");
+#[cfg(singles)]
 include!("generated/scratch/chess_prev_42.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_prev_project.rs");
@@ -102,6 +104,8 @@ include!("generated/scratch/atomic_prev41_orient.rs");
 include!("generated/scratch/atomic_prev41_ends.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev41_start.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_worth.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev_42.rs");
 #[cfg(singles)]
@@ -147,6 +151,8 @@ impl_tr!(chess_prev41_ends, passes);
 #[cfg(singles)]
 impl_tr!(chess_prev41_start, passes);
 #[cfg(singles)]
+impl_tr!(chess_prev_worth, passes);
+#[cfg(singles)]
 impl_tr!(chess_prev_42, passes);
 #[cfg(singles)]
 impl_tr!(chess_prev_project, passes);
@@ -160,6 +166,8 @@ impl_tr!(atomic_prev41_orient, passes);
 impl_tr!(atomic_prev41_ends, passes);
 #[cfg(singles)]
 impl_tr!(atomic_prev41_start, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_worth, passes);
 #[cfg(singles)]
 impl_tr!(atomic_prev_42, passes);
 #[cfg(singles)]
@@ -280,6 +288,8 @@ pieces_tests!("atomic", atomic, "bits_base", atomic_bits_base, atomic_bits_base_
 #[cfg(singles)]
 pieces_tests!("chess", chess, "prev41_start", chess_prev41_start, chess_prev41_start_static_relations_are_the_plain_ones, chess_prev41_start_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev41_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
+pieces_tests!("chess", chess, "prev_worth", chess_prev_worth, chess_prev_worth_static_relations_are_the_plain_ones, chess_prev_worth_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_worth_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
 pieces_tests!("chess", chess, "prev_42", chess_prev_42, chess_prev_42_static_relations_are_the_plain_ones, chess_prev_42_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_42_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
 pieces_tests!("chess", chess, "prev_project", chess_prev_project, chess_prev_project_static_relations_are_the_plain_ones, chess_prev_project_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_project_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
@@ -287,6 +297,8 @@ pieces_tests!("chess", chess, "prev_project", chess_prev_project, chess_prev_pro
 pieces_tests!("chess", chess, "prev_asked", chess_prev_asked, chess_prev_asked_static_relations_are_the_plain_ones, chess_prev_asked_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_asked_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
 pieces_tests!("atomic", atomic, "prev41_start", atomic_prev41_start, atomic_prev41_start_static_relations_are_the_plain_ones, atomic_prev41_start_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev41_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev_worth", atomic_prev_worth, atomic_prev_worth_static_relations_are_the_plain_ones, atomic_prev_worth_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_worth_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
 pieces_tests!("atomic", atomic, "prev_42", atomic_prev_42, atomic_prev_42_static_relations_are_the_plain_ones, atomic_prev_42_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_42_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]

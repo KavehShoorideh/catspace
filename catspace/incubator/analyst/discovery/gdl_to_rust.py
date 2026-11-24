@@ -259,6 +259,9 @@ for dropped, would do; the orders the pass start refuses for want of an orientat
          it would put the words of P inside the struct of R and send every reader of P through R, a change of every place that names a relation's words, and the pass here takes the reads that cost (the loops over R's words that the dropped tiles forced) and not the making of P, which is one loop over the words R holds. A clause of a pass asked keeps its place in the sets of the clauses run when everything is asked for, or only what is. The entailment of the pass ends (15) is shown on the clauses of the stop relation before this pass has read a projection in place of a relation (`Plan.rules_unread`): a literal of a relation entails the one of its projection, which the homomorphism does not see (found by the test of the renamed description: a walk was no longer made as its ends).
     (13) MENDED by the pass project: the estimate of the order of a clause counted the bits of a word read by a key as 2 whatever the word held and a word that is or-ed into the head whole as a loop over its bits; the first made the chooser take an order that looped over the one word of a relation with no key (the places held) with a loop inside it over the candidates, the second made it count a word
          that costs one operation as two. A literal read as a word that is or-ed into the head counts 1, and a literal that reads the one word of a relation with no key counts the bits that word holds (`count_ones` at the time of the question); every other literal counts as before.
+    (19) is written as the text says in the one case where the cost of an orientation is nothing by the sizes: the orientation of a relation that does not read the state is set once, with the relation, in `Game::new`, and a question pays nothing for it, so an order that asks only such new orientations is admitted by the chooser of (13) (`Plan.worth_taken`).
+         An order that asks the new orientation of a relation that reads the state is still refused, the refusal naming the orientation and "a relation that reads the state: each row set would set it too" (`Plan.start_refused`). A version that admitted those too was written and timed as a trial (every such order admitted, the orientation set with every row): the module with it was not faster than the one without it, so the estimate by sizes of the plan's text
+         (the saving against the cost, in bit sets) was not built; the orientation made only when the chooser picks the order that reads it (kept for the question, made from the words of the relation) is the form that would be tried next, and is not built here. `Plan.worth_taken` lists, for each order the pass admitted, the orientations it made.
 """
 from __future__ import annotations
 
@@ -272,7 +275,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -727,7 +730,9 @@ class Plan:
             passes = tuple(passes) + ("scan",)                 # the clauses pass (8) makes ask words with their key tiles unbound, which only pass (10) answers by the words held (on top of bits alone it made the module half as fast: diagnosed, 79.41 part A)
         if "ends" in passes:
             passes = tuple(passes) + tuple(p for p in ("bits", "shift") if p not in passes)     # the pass ends is a form of a walk made by the pass shift, over relations held as bits
-        if ("asked" in passes or "project" in passes) and "bits" not in passes:
+        if "worth" in passes and "start" not in passes:
+            passes = tuple(passes) + ("start",)                 # the pass worth admits orders the pass start would refuse
+        if ("asked" in passes or "project" in passes or "worth" in passes) and "bits" not in passes:
             passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
         self.passes = tuple(p for p in PASSES if p in passes)
         self.copy: dict = {}
@@ -757,6 +762,7 @@ class Plan:
         self.asked_refused: dict = {}                           # relation of a walk -> why pass (17) does not restrict its keys, the reader or the clause named
         self.projected: list = []                               # [(clause text, [(the relation a literal read, the projection it reads now)])]   (pass "project")
         self.project_refused: dict = {}                         # clause text -> why a literal that could be a projection remains as written
+        self.worth_taken: dict = {}                             # (clause text, order) -> the orientations of relations that do not read the state that pass (19) made for the order   (pass "worth")
         self.start_off: bool = False                            # pass (13): while the orientations the reader's orders ask are being found, no other order is written
         self.start_base: dict | None = None                     # relation -> the orientations asked by the clauses in the reader's orders, all of them (an order is admitted when it asks no other: the same whatever the order the clauses are written in)
         self.start_written: dict = {}                           # clause key -> (the number of orders written, the number of orders found)
@@ -2756,11 +2762,15 @@ def emit_full_clause(w, d, plan, places, name, rule, comp, recursive, refusals, 
             plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = e.why if isinstance(e, BitRefuse) else f"it reads a relation not held as bits by places no clause before it reads it by: {orders[j].clause.text}".replace("\n", " ")
             continue
         new = sorted((r, f) for r, i in plan.bits.items() for f in i.orients if f not in plan.start_base.get(r, ()))
-        if new:
+        dear = [x for x in new if not (d.static[x[0]] and "worth" in plan.passes)]       # pass (19): an orientation of a relation that does not read the state is made once, with the relation, and costs a question nothing
+        if dear:
             for r, i in plan.bits.items():
                 i.orients = saved[r]
-            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = f"it asks the orientation {new[0][1]} of {new[0][0]}, which no clause in the reader's order asks: {orders[j].clause.text.replace(chr(10), ' ')}"
+            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = f"it asks the orientation {dear[0][1]} of {dear[0][0]}, which no clause in the reader's order asks" + (" (a relation that reads the state: each row set would set it too)" if "worth" in plan.passes else "") + f": {orders[j].clause.text.replace(chr(10), ' ')}"
             continue
+        here = sorted((r, f) for r, i in plan.bits.items() for f in i.orients if f not in saved[r] and f not in plan.start_base.get(r, ()))
+        if here:
+            plan.worth_taken[(rule.clause.text.replace("\n", " "), j)] = here
         others.append((j, txt, wr.prof))
     if memo is None:
         others.sort(key=lambda x: (sum(1 for p in x[2] if "nz.len()" in p), x[0]))
