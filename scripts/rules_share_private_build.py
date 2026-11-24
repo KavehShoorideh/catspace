@@ -15,10 +15,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NAMES = {"mover": 0, "moves": 1, "apply": 2, "outcome": 3, "move_name": 4, "key": 5, "captured": 6, "taken_at": 7, "changed": 8, "pass": 9, "base_facts": 10, "units": 11}
+NAMES = {"mover": 0, "moves": 1, "apply": 2, "outcome": 3, "move_name": 4, "key": 5, "captured": 6, "taken_at": 7, "changed": 8, "pass": 9, "base_facts": 10, "units": 11, "turn": 12}
 COUNTERS = """/// PRIVATE COUNTING BUILD (plan 79.37 part A; never in the repository): how often each question of the `Game` trait is asked of the kernel.
-pub static COUNTS: [std::sync::atomic::AtomicU64; 12] = [const { std::sync::atomic::AtomicU64::new(0) }; 12];
-pub const COUNT_NAMES: [&str; 12] = ["mover", "moves", "apply", "outcome", "move_name", "key", "captured", "taken_at", "changed", "pass", "base_facts", "units"];
+pub static COUNTS: [std::sync::atomic::AtomicU64; 13] = [const { std::sync::atomic::AtomicU64::new(0) }; 13];
+pub const COUNT_NAMES: [&str; 13] = ["mover", "moves", "apply", "outcome", "move_name", "key", "captured", "taken_at", "changed", "pass", "base_facts", "units", "turn"];
 #[inline]
 pub fn bump(i: usize) { COUNTS[i].fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
 impl Game for KernelGame {"""
