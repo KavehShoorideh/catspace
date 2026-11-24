@@ -1088,6 +1088,16 @@ same holds for layers 1, 2 and 3. The three protected files of the rules (the de
 the old player's solver stay protected until Kaveh says otherwise: READING, mine, since their certificates and the yardstick rest
 on them.
 
+**Layer 2 answers whose turn it is without asking whether the game has ended** (Kaveh 2026-11-23: "Yes. You go ahead and add this to the
+game interface and modify everywhere that uses it, including ledger.rs."). Measured in plan 79.37: more than half of a decision at 0.2 s
+is the question whose turn it is, asked about a million times a decision and answered through the end of the game, which makes every
+move. The game interface of layer 2 gets one more question, the side to move as the state says it, cheap, with no reading of the end; at
+an ended state its answer is the side that would have moved. The old question (the mover, none at an end) stays for whoever needs the
+end. Every asker in the layers above that only wants the side uses the new question, the shared search (tactics/src/ledger.rs) included:
+this is the one change the old player's search takes, at Kaveh's word, and the wake and the old player get it alike. READING, mine: the
+kernel's own answer to the new question is written in kernel.rs, since an interface question needs its answer there; no rule changes.
+What must hold: every answer at a fixed count of nodes is identical to before; only the time changes.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1508,4 +1518,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | The description is the source of the rules; fast code is only a certified copy, and the tests fail without the certificate | 2026-11-23 | 11 (last block) |
 | The crux of layer 2: one translator from the description to Rust, each piece pinned by tests, then made faster piece by piece against an outside mark | 2026-11-23 | 11 (last block) |
 | Layers 0 to 3 may be mended; layer 0 takes fixes and small support, no significant new function | 2026-11-23 | 11 (last block) |
+| Layer 2 answers the side to move without reading the end; every asker above uses it, the shared search included | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
