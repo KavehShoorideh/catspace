@@ -296,16 +296,27 @@ This text is the interface of the change, written and committed before its body.
 WHY (79.45 READ): the lemma of 79.45 reads the line walk twice in one clause; the pass asked refused a walk read twice, so with the lemma the walk was made for every key again and the gain of the lemma went into it.
 
   (17, widened) "asked"  TAKES what (17) takes. THE READS OF A READER. A reader clause R may now hold more than one positive literal over W (a negated one is still refused, naming the clause). Each read is taken by itself: its key is the places of W's key, distinct variables, as before; the GUARD of a read is the
-               positive literals of R, in R's written order, that stand BEFORE that read, over relations made before W (the prefix of (17): relations that do not read the state, the state's own, the inputs, and those W reads, closed), and the guard that a relation made AFTER W gives (below); a read that stands after
+               positive literals of R, in R's written order, that stand BEFORE that read, over relations made before W (the prefix of (17): relations that do not read the state, the state's own, the inputs, and those W reads, closed), and the guard that a relation made LATER THAN W gives (below); a read that stands later than
                another read of W in R takes the earlier read's literal out of its guard (W's own rows are not made yet when W's base clauses run), the earlier read binds nothing a guard may use. CONDITION on each read, as before: its guard binds at least one variable of its key ("asks it unbound": a read whose key is bound only by an earlier read of W has no guard and the pass refuses W, naming the reader).
-               THE GUARD THAT A RELATION MADE AFTER W GIVES. Let a positive literal Q(t_1 .. t_n) of R stand before the read, Q not W, not made before W (it reads W, directly or through others), not in a recursive set, and let a variable v of the read's key stand at the place p of the literal as t_p. Every row of Q is made by a clause C of Q whose head has at p a variable h
-               (a clause with a constant or a compound at p gives no guard); a row of Q whose place p holds a was made under a valuation of C's body with h = a, so the positive literals of C's body that are over relations made before W (and, through the same rule, those that Q' gives, to a depth of three), and that are joined to h by variables, all hold at a valuation with h = a. The guard of Q is the union over the clauses C of Q of those literals (the head variable h replaced by t_p, every other variable of
+               THE GUARD THAT A RELATION MADE LATER THAN W GIVES. Let a positive literal Q(t_1 .. t_n) of R stand before the read, Q not W, not made before W (it reads W, directly or through others), not in a recursive set, and let a variable v of the read's key stand at the place p of the literal as t_p. Every row of Q is made by a clause C of Q whose head has at p a variable h
+               (a clause with a constant or a compound at p gives no guard); a row of Q whose place p holds a was made under a valuation of C's body with h = a, so the positive literals of C's body that are over relations made before W (and, through the same rule, those that Q' gives, to a depth of 3), and that are joined to h by variables, all hold at a valuation with h = a. The guard of Q is the union over the clauses C of Q of those literals (the head variable h replaced by t_p, every other variable of
                C named anew): one alternative for each clause. A clause of Q that gives no literal makes Q give no guard (the union would be every value).
   RETURNS: as (17): W's base clauses replaced by one clause for each base clause B, for each read of each reader, and for each alternative of the guards of that read: B with the guard added, the key variables of the read taken as B's head variables at the same places, every other variable named anew. The recursive clauses are not changed; `Dw.full` runs the base clauses as written, as before.
-  SOUNDNESS, the argument of (17) with one more step. Let K_j be the keys for which some valuation satisfies the guards of the j-th read of R, and K the union over all reads of all readers. (i) A row that R accepts is accepted under a valuation of all its literals; under it the guard of each read holds (the literals of the guard are among R's, or follow from R's literals by the clauses of the Q that R reads: a row of Q at that valuation was
+  SOUNDNESS, the argument of (17) with one more addition. Let K_j be the keys for which some valuation satisfies the guards of the j-th read of R, and K the union over all reads of all readers. (i) A row that R accepts is accepted under a valuation of all its literals; under it the guard of each read holds (the literals of the guard are among R's, or follow from R's literals by the clauses of the Q that R reads: a row of Q at that valuation was
   made by a clause C whose body held, so C's guard literals hold at the head value), so the key of each read of W in R is in K_j. R reads from W only rows whose key is in K. (ii) and (iii) as in (17): the rows of W of a key are those derived from the base rows of that key (the recursive clauses keep the key); the new base clauses give the base rows of every key in K and no other; so the rows of W then made are the rows of W whose key is in K,
   and no reader sees the difference. A guard may be wider than the keys a read needs (it is a part of what must hold, never more); it is never narrower, so no key a read asks for is missing. A relation Q whose clause gives no guard, a literal at a place that holds no variable of the key, a Q in a recursive set: the guard of that literal is left out (the read may still be guarded by the other literals before it); a read with no guard refuses W.
   A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside. The harness of 79.38 holds each of them to the plain module (the tiles are an inside of the module: rows are compared as text).
+  AS BUILT 79.47 A, where the body differs from the text above (said here because the text was committed first):
+    (a) THE FIRST BODY of the text (an earlier read of W standing out of its guard) was built and clocked: with the lemma of 79.45 the walk was made for the keys of the second read of a clause as every place the key's guard admitted (the squares that hold a unit, in every way), 625,285 rows a 1,920
+        positions against 91,215 for the module with no lemma, and the module with the lemma was about 0.6 times as fast as the module without (OBS 79.47 A, first body). The guard was valid and far too wide: it dropped what the earlier read says of the key (the second read's key lies on a line that the first read walked).
+    (b) THE STATIC OVER-APPROXIMATION (`over_approximations`, a rewrite of the text before the reader sees it, as the lemma's rewrite is; made only for a walk that a clause outside it reads more than once). For a walk W the relation S, named `<W>_over`, has W's clauses with every literal over a relation that reads the state taken out
+        and W's own literal read over S. ARGUMENT: every row of W is made by clauses whose bodies hold, and the clauses of S are those clauses with some literals left out and W's literal read over S; by induction on the rounds of W's closure every row of W is a row of S (a conjunction with fewer literals holds wherever the whole holds, and a positive recursion is monotone), so S has every row of W and the text with S added gives
+        every other relation the rows it gave. S reads no state: it is made once, with the static relations. A walk with a negated literal of itself, an `or` in a clause, no declared sorts, or a clause that is unsafe once the literals are out, has none (`over_approximations` then leaves the text as it is) and its earlier reads give no guard.
+        THE GUARD OF A READ then holds, for each earlier read of W in the reader (in its written order) a literal over S at the same terms, besides the literals of (17): the key of the second read lies on the rows of the first (W at the first's key), these are rows of S, so the guard holds at the second's key. It is still never narrower than the keys the read asks for (S has every row of W), and
+        it is a part of what must hold, as before. The soundness argument of (17, widened) stands with this addition: the literal over S is among the literals that hold at every valuation under which the reader accepts a row.
+    (c) A READER THAT ASKS THE WALK UNBOUND IN ITS ORDER (module text above, "asks it unbound") is joined again with the walk taken last (`JoinRule` with the walk in `avoid`), once, and the pass goes on with that order, where a relation that reads the walk binds the key and gives a guard (the guard of a relation made later than the walk): a conjunction does not depend on the order of its literals. The reader is
+        written in that order when the pass is taken (`Plan.asked_reorder`); where the pass refuses, nothing is changed.
+    The module with `<W>_over` has one relation more that the plain module has not, a static one; the harness of the lemma (translated_lemma.rs, `View`) keeps it back as it keeps back the relations the rewrite and the delta add.
 """
 from __future__ import annotations
 
@@ -1058,6 +1069,8 @@ class Plan:
                 continue
             self.asked[w] = {"k": k, "plain": plain, "guarded": guarded}
             self.rules[k] = new
+            for (k2, ident_x), x2 in self.asked_reorder.items():
+                self.rules[k2] = [x2 if id(x) == ident_x else x for x in self.rules[k2]]
 
     def asked_rules(self, k: int, w: str, comp: set, rules: list):
         """The clauses of the walk `w` (stratum k) with the prefix of each reader added to each base clause (module text, (17)): -> (the rules, the ids of the clauses run when everything is asked for, the ids of the clauses with a prefix); AskedRefuse, naming the clause or the reader, where a condition fails."""
@@ -1087,25 +1100,27 @@ class Plan:
                 lits = [lit for lit in x.clause.body if lit[0] in ("pos", "neg") and lit[1] == w]
                 if lits:
                     text = x.clause.text.replace("\n", " ")
-                    if len(lits) > 1 or lits[0][0] == "neg":
-                        raise AskedRefuse(f"the relation is read negated, or twice: {text}")
-                    readers.append((x if hasattr(x, "order") else JoinRule(x.clause, c2, (), None, self.est), lits[0], text))
+                    if any(lit[0] == "neg" for lit in lits):
+                        raise AskedRefuse(f"the relation is read negated: {text}")
+                    readers.append((x if hasattr(x, "order") else JoinRule(x.clause, c2, (), None, self.est), lits, text, k2, c2))
         if not readers:
             raise AskedRefuse("no clause reads it")
+        admitted = lambda rel: rel != w and (rel in before or d.static.get(rel, False) or rel.startswith("true.") or rel in INPUT_RELS)
+        ws = getattr(d, "over", {}).get(w)
+        over = lambda lit: ("pos", ws, lit[2]) if (lit[1] == w and ws) else None            # a read of the walk, in a guard, stands as its static over-approximation (module text, (17, widened))
         prefixes = []
-        for x, wl, text in readers:
-            kv = [wl[2][p] for p in keyp]
-            if any(not GDL.is_var(a) for a in kv) or len(set(kv)) != len(kv):
-                raise AskedRefuse(f"a reader asks the relation with a key place that is no variable, or one variable twice: {text}")
-            j = next(i for i, lit in enumerate(x.order) if lit is wl)
-            pre = [lit for lit in x.order[:j] if lit[0] == "pos" and lit[1] != w and (lit[1] in before or d.static.get(lit[1], False) or lit[1].startswith("true.") or lit[1] in INPUT_RELS)]
-            covered: set = set()
-            for lit in pre:
-                for a in lit[2]:
-                    GDL.term_vars(a, covered)
-            if not set(kv) & covered:
-                raise AskedRefuse(f"a reader asks the relation with no key variable bound by a literal before it (it asks it unbound): {text}")
-            prefixes.append((kv, pre, text))
+        self.asked_reorder = {}
+        for x, wls, text, k2, c2 in readers:
+            try:
+                got = self.asked_reads(x, wls, text, keyp, admitted, over)
+            except AskedRefuse as e:
+                if "asks it unbound" not in str(e):
+                    raise
+                x2 = JoinRule(x.clause, c2, (w,), None, self.est)       # the reader joined with the walk taken last where no variable reaches it: a relation that reads the walk may bind its key (module text, (17, widened))
+                got = self.asked_reads(x2, [lit for lit in x2.clause.body if lit[0] == "pos" and lit[1] == w], text, keyp, admitted, over)
+                self.asked_reorder[(k2, id(x))] = x2
+            prefixes += got
+        nothing_for = ""
         out, plain, guarded = [], set(), set()
         for x in rules:
             if x.rec_steps:
@@ -1119,24 +1134,28 @@ class Plan:
                     for a in lit[2]:
                         GDL.term_vars(a, held)
             made = []
-            for kv, pre, text in prefixes:
-                m = {v: h for v, h in zip(kv, hv)}
-                self.ub += 1
-                lits = []
-                for lit in pre:
-                    for a in lit[2]:
-                        for v in GDL.term_vars(a, set()):
-                            m.setdefault(v, f"?_a{self.ub}_{v[1:]}")
-                    lits.append((lit[0], lit[1], tuple(subst_term(a, m) for a in lit[2])))
-                bound: set = set()                              # the key variables the prefix binds through a relation that reads the state
-                for lit in lits:
-                    if not d.static.get(lit[1], False):
+            for kv, alts, text in prefixes:
+                for pre in alts:
+                    m = {v: h for v, h in zip(kv, hv)}
+                    self.ub += 1
+                    lits = []
+                    for lit in pre:
                         for a in lit[2]:
-                            GDL.term_vars(a, bound)
-                if not ((bound & set(hv)) - held) or entail_body(lits, 0, {h: h for h in hv}, list(c.body)):
-                    made = None                                 # this reader's keys are those the base clause itself makes (it binds them through the state already): nothing is gained for it
+                            for v in GDL.term_vars(a, set()):
+                                m.setdefault(v, f"?_a{self.ub}_{v[1:]}")
+                        lits.append((lit[0], lit[1], tuple(subst_term(a, m) for a in lit[2])))
+                    bound: set = set()                          # the key variables the prefix binds through a relation that reads the state
+                    for lit in lits:
+                        if not d.static.get(lit[1], False):
+                            for a in lit[2]:
+                                GDL.term_vars(a, bound)
+                    if not ((bound & set(hv)) - held) or entail_body(lits, 0, {h: h for h in hv}, list(c.body)):
+                        made = None                             # this reader's keys are those the base clause itself makes (it binds them through the state already): nothing is gained for it
+                        nothing_for = nothing_for or text
+                        break
+                    made.append(GDL.Clause(c.head, list(c.body) + lits, c.text.replace("\n", " ") + f" (asked by: {text})"))
+                if made is None:
                     break
-                made.append(GDL.Clause(c.head, list(c.body) + lits, c.text.replace("\n", " ") + f" (asked by: {text})"))
             out.append(x)
             if made is None:
                 continue
@@ -1145,8 +1164,85 @@ class Plan:
                 out.append(JoinRule(nc, comp, (), None, self.est))
                 guarded.add(id(nc))
         if not guarded:
-            raise AskedRefuse("every base clause already holds the prefix of a reader, so the keys are those it makes: " + "; ".join(t for _kv, _p, t in prefixes[:2]))
+            raise AskedRefuse("every base clause already holds the prefix of a reader, or no literal that reads the state binds a key variable of a read (a read whose key an earlier read of the walk alone binds is one), so the keys are those it makes: " + (nothing_for or "; ".join(t for _kv, _p, t in prefixes[:2])))
         return out, plain, guarded
+
+    def asked_reads(self, x, wls: list, text: str, keyp: list, admitted, over) -> list:
+        """The reads of the walk in the reader `x` (joined as it is), each with its key variables and the alternatives of its guard (module text, (17, widened)): -> [(key variables, [alternative: literals], reader's text)]; AskedRefuse naming the reader."""
+        out = []
+        for wl in wls:
+            kv = [wl[2][p] for p in keyp]
+            if any(not GDL.is_var(a) for a in kv) or len(set(kv)) != len(kv):
+                raise AskedRefuse(f"a reader asks the relation with a key place that is no variable, or one variable twice: {text}")
+            j = next(i for i, lit in enumerate(x.order) if lit is wl)
+            pre = [g for lit in x.order[:j] if lit[0] == "pos" for g in [lit if admitted(lit[1]) else over(lit)] if g is not None]      # an earlier read of the walk stands as its static over-approximation (its own rows are not made when the base clauses run)
+            alts = [pre]
+            for lit in x.order[:j]:                             # the guard that a relation made later than the walk gives
+                if lit[0] == "pos" and wl[1] != lit[1] and not admitted(lit[1]) and over(lit) is None and len(alts) <= 8:
+                    got = self.asked_guards(lit[1], lit[2], set(kv), admitted, over, 0)
+                    if got:
+                        alts = [a + g for a in alts for g in got]
+            covered: set = set()
+            for lit in pre:
+                for a in lit[2]:
+                    GDL.term_vars(a, covered)
+            alts = [a for a in alts if set(kv) & (covered | {v for lit in a for t in lit[2] for v in GDL.term_vars(t, set())})]
+            if not alts:
+                raise AskedRefuse(f"a reader asks the relation with no key variable bound by a literal before it (it asks it unbound): {text}")
+            out.append((kv, alts, text))
+        return out
+
+    def asked_guards(self, rel: str, args, need: set, admitted, over, depth: int):
+        """The guard that the relation `rel` (made later than the walk, not in a recursive set) gives to a read whose key variables `need` stand at some places of its literal `args` (module text, (17, widened)): -> a list of alternatives, one for each clause of `rel`, each a list of positive
+        literals over relations made before the walk (the head variable at a place that holds a key variable taken as the literal's term there, every other variable named anew), or None where a clause gives none, where the relation is recursive, or beyond a depth of 3."""
+        d = self.d
+        if depth > 3 or rel in INPUT_RELS or rel in QUESTION_RELS or rel.startswith(("true.", "next.", "init.")):
+            return None
+        mine = [x for k2, (c2, _r) in enumerate(d.strata) if rel in c2 and len(c2) == 1 for x in self.rules[k2]]
+        if not mine or any(x.rec_steps or x.head_rel != rel for x in mine):
+            return None
+        out: list = []
+        for x in mine:
+            c = x.clause
+            hm: dict = {}
+            for i, a in enumerate(args):
+                h = c.head[1][i]
+                if GDL.is_var(a) and a in need and GDL.is_var(h):
+                    hm.setdefault(h, a)
+            if not hm:
+                return None
+            self.ub += 1
+            ren: dict = dict(hm)
+            def rn(t):
+                return subst_term(t, {v: ren.setdefault(v, f"?_g{self.ub}_{v[1:]}") for v in GDL.term_vars(t, set())})
+            body = [(lit[0], lit[1], tuple(rn(a) for a in lit[2])) for lit in c.body if lit[0] == "pos"]
+            reached: set = set(hm.values())
+            taken: list = []
+            grew = True
+            while grew:
+                grew = False
+                for lit in body:
+                    if lit in taken:
+                        continue
+                    lv = {v for a in lit[2] for v in GDL.term_vars(a, set())}
+                    if lv & reached:
+                        taken.append(lit)
+                        reached |= lv
+                        grew = True
+            direct = [g for lit in taken for g in [lit if admitted(lit[1]) else over(lit)] if g is not None]
+            subs = [[]]
+            for lit in taken:
+                if not admitted(lit[1]) and over(lit) is None and lit[1] != rel:
+                    got = self.asked_guards(lit[1], lit[2], {v for a in lit[2] for v in GDL.term_vars(a, set())} & reached, admitted, over, depth + 1)
+                    if got:
+                        subs = [a + g for a in subs for g in got]
+            alts = [direct + extra for extra in subs]
+            if not any(alts):
+                return None
+            out += alts
+            if len(out) > 8:
+                return None
+        return out
 
     # ---------------------------------------------------------------------------------------------- pass (18): a literal read from a word with tiles dropped
 
@@ -3440,6 +3536,70 @@ def rewrite_lemmas(text: str, lemmas) -> tuple:
     return cur, infos
 
 
+def over_approximations(text: str) -> tuple:
+    """Plan 79.47 part A (module text, (17, widened)): -> (the text, and for each walk that a clause outside it reads more than once, a relation that is its STATIC OVER-APPROXIMATION added to the text, {walk: its over-approximation}). The over-approximation `S` of a
+    walk `W` has W's clauses with every literal over a relation that reads the state taken out and W's own literal read over S: S holds every row of W (a clause with fewer literals gives at least the rows of the clause, and a positive program is monotone), and S reads no state, so it
+    is made once and a guard of the pass asked may read it in place of an earlier read of W. A walk for which the clauses cannot be so written (a literal of the walk negated, an `or` in a clause, no declared sorts, an unsafe clause) has none: its earlier reads give no guard."""
+    d = Description(text)
+    sidx = {h: k for k, (comp, _r) in enumerate(d.strata) for h in comp}
+    twice: set = set()
+    for k, (comp, rules) in enumerate(d.strata):
+        for x in rules:
+            count: dict = {}
+            for lit in x.clause.body:
+                if lit[0] == "pos" and lit[1] not in comp:
+                    count[lit[1]] = count.get(lit[1], 0) + 1
+            twice |= {r for r, n in count.items() if n > 1}
+    taken = set(d.prog.nodes) | set(d.prog.signatures)
+    sexprs = GDL.parse(text)
+    added: list = []
+    over: dict = {}
+    for w in sorted(twice):
+        k = sidx.get(w)
+        if k is None:
+            continue
+        comp, rules = d.strata[k]
+        sig = d.prog.signature(w)
+        if len(comp) != 1 or d.static[w] or w in QUESTION_RELS or w in INPUT_RELS or w.startswith(("true.", "next.", "init.")) or not any(x.rec_steps for x in rules) or sig is None:
+            continue
+        ws = f"{w}_over"
+        while ws in taken:
+            ws += "_"
+        new: list = []
+        ok = True
+        for x in sexprs:
+            if not (isinstance(x, list) and x and x[0] == "<=" and not isinstance(x[1], str) and GDL.to_atom(x[1])[0] == w):
+                continue
+            body = []
+            for item in x[2:]:
+                alts = GDL._literals(item)
+                if len(alts) != 1 or len(alts[0]) != 1:
+                    ok = False
+                    break
+                sign, rel = alts[0][0][0], alts[0][0][1]
+                if rel == w and sign == "neg":
+                    ok = False
+                    break
+                if sign == "distinct" or rel == w or d.static.get(rel, False):
+                    body.append(swap_atom(item, w, ws))
+            if not ok:
+                break
+            new.append(["<=", [ws] + x[1][1:]] + body)
+        if not ok or not new:
+            continue
+        new.append(["signature", ws] + list(sig))
+        try:
+            Description(text + "\n" + "\n".join(GDL._unparse(c) for c in added + new) + "\n")
+        except GDL.GDLError:
+            continue
+        added += new
+        taken.add(ws)
+        over[w] = ws
+    if not added:
+        return text, {}
+    return text + "\n" + "\n".join(GDL._unparse(c) for c in added) + "\n", over
+
+
 def rs_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -3450,8 +3610,12 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     infos: list = []
     if lemmas:
         text, infos = rewrite_lemmas(text, lemmas)
+    over: dict = {}
+    if "asked" in passes:
+        text, over = over_approximations(text)
     d = Description(text)
     d.flags = {i["flag"] for i in infos}
+    d.over = over
     p = d.prog
     for needed in ("role",):
         if needed not in p.nodes:
@@ -3471,6 +3635,8 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w(f"// translator-sha256: {translator_hash()}")
     if plan:
         w(f"// passes: {','.join(plan.passes)}")
+    for walk, ow in sorted(over.items()):
+        w(f"// over-approximation: {ow} of {walk}")
     for i in infos:
         w(f"// lemma: {i['name']} {i['form']} {i['left']} -> {i['rep']}, flag {i['flag']}, {i['evidence']}")
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
