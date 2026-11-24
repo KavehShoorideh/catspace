@@ -59,11 +59,21 @@ include!("generated/scratch/chess_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/chess_bits_base.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_prev_orient.rs");
+include!("generated/scratch/chess_prev41_orient.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_prev_ends.rs");
+include!("generated/scratch/chess_prev41_ends.rs");
 #[cfg(singles)]
-include!("generated/scratch/chess_prev_start.rs");
+include!("generated/scratch/chess_prev41_start.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_prev_noworth.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_prev_worth.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_prev_42.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_prev_project.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_prev_asked.rs");
 impl_tr!(chess);
 impl_tr!(chess_fast, passes);
 #[cfg(singles)]
@@ -91,11 +101,21 @@ include!("generated/scratch/atomic_bits_shift.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_bits_base.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_prev_orient.rs");
+include!("generated/scratch/atomic_prev41_orient.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_prev_ends.rs");
+include!("generated/scratch/atomic_prev41_ends.rs");
 #[cfg(singles)]
-include!("generated/scratch/atomic_prev_start.rs");
+include!("generated/scratch/atomic_prev41_start.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_noworth.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_worth.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_42.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_project.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev_asked.rs");
 impl_tr!(atomic);
 impl_tr!(atomic_fast, passes);
 #[cfg(singles)]
@@ -129,19 +149,39 @@ impl_tr!(atomic_bits_shift, passes);
 #[cfg(singles)]
 impl_tr!(chess_bits_base, passes);
 #[cfg(singles)]
-impl_tr!(chess_prev_orient, passes);
+impl_tr!(chess_prev41_orient, passes);
 #[cfg(singles)]
-impl_tr!(chess_prev_ends, passes);
+impl_tr!(chess_prev41_ends, passes);
 #[cfg(singles)]
-impl_tr!(chess_prev_start, passes);
+impl_tr!(chess_prev41_start, passes);
+#[cfg(singles)]
+impl_tr!(chess_prev_noworth, passes);
+#[cfg(singles)]
+impl_tr!(chess_prev_worth, passes);
+#[cfg(singles)]
+impl_tr!(chess_prev_42, passes);
+#[cfg(singles)]
+impl_tr!(chess_prev_project, passes);
+#[cfg(singles)]
+impl_tr!(chess_prev_asked, passes);
 #[cfg(singles)]
 impl_tr!(atomic_bits_base, passes);
 #[cfg(singles)]
-impl_tr!(atomic_prev_orient, passes);
+impl_tr!(atomic_prev41_orient, passes);
 #[cfg(singles)]
-impl_tr!(atomic_prev_ends, passes);
+impl_tr!(atomic_prev41_ends, passes);
 #[cfg(singles)]
-impl_tr!(atomic_prev_start, passes);
+impl_tr!(atomic_prev41_start, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_noworth, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_worth, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_42, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_project, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev_asked, passes);
 
 const SEED: u64 = 77; // the certificate's (discovery/certify.py)
 
@@ -254,14 +294,34 @@ pieces_tests!("chess", chess, "bits_base", chess_bits_base, chess_bits_base_stat
 #[cfg(singles)]
 pieces_tests!("atomic", atomic, "bits_base", atomic_bits_base, atomic_bits_base_static_relations_are_the_plain_ones, atomic_bits_base_every_piece_at_every_fixture_position_is_the_plain_one, atomic_bits_base_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
-pieces_tests!("chess", chess, "prev_start", chess_prev_start, chess_prev_start_static_relations_are_the_plain_ones, chess_prev_start_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("chess", chess, "prev41_start", chess_prev41_start, chess_prev41_start_static_relations_are_the_plain_ones, chess_prev41_start_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev41_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
-pieces_tests!("atomic", atomic, "prev_start", atomic_prev_start, atomic_prev_start_static_relations_are_the_plain_ones, atomic_prev_start_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("chess", chess, "prev_noworth", chess_prev_noworth, chess_prev_noworth_static_relations_are_the_plain_ones, chess_prev_noworth_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_noworth_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
-pieces_tests!("chess", chess, "prev_ends", chess_prev_ends, chess_prev_ends_static_relations_are_the_plain_ones, chess_prev_ends_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_ends_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("chess", chess, "prev_worth", chess_prev_worth, chess_prev_worth_static_relations_are_the_plain_ones, chess_prev_worth_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_worth_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
-pieces_tests!("atomic", atomic, "prev_ends", atomic_prev_ends, atomic_prev_ends_static_relations_are_the_plain_ones, atomic_prev_ends_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_ends_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("chess", chess, "prev_42", chess_prev_42, chess_prev_42_static_relations_are_the_plain_ones, chess_prev_42_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_42_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
-pieces_tests!("chess", chess, "prev_orient", chess_prev_orient, chess_prev_orient_static_relations_are_the_plain_ones, chess_prev_orient_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_orient_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("chess", chess, "prev_project", chess_prev_project, chess_prev_project_static_relations_are_the_plain_ones, chess_prev_project_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_project_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
-pieces_tests!("atomic", atomic, "prev_orient", atomic_prev_orient, atomic_prev_orient_static_relations_are_the_plain_ones, atomic_prev_orient_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_orient_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("chess", chess, "prev_asked", chess_prev_asked, chess_prev_asked_static_relations_are_the_plain_ones, chess_prev_asked_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev_asked_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev41_start", atomic_prev41_start, atomic_prev41_start_static_relations_are_the_plain_ones, atomic_prev41_start_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev41_start_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev_noworth", atomic_prev_noworth, atomic_prev_noworth_static_relations_are_the_plain_ones, atomic_prev_noworth_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_noworth_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev_worth", atomic_prev_worth, atomic_prev_worth_static_relations_are_the_plain_ones, atomic_prev_worth_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_worth_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev_42", atomic_prev_42, atomic_prev_42_static_relations_are_the_plain_ones, atomic_prev_42_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_42_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev_project", atomic_prev_project, atomic_prev_project_static_relations_are_the_plain_ones, atomic_prev_project_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_project_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev_asked", atomic_prev_asked, atomic_prev_asked_static_relations_are_the_plain_ones, atomic_prev_asked_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev_asked_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("chess", chess, "prev41_ends", chess_prev41_ends, chess_prev41_ends_static_relations_are_the_plain_ones, chess_prev41_ends_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev41_ends_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev41_ends", atomic_prev41_ends, atomic_prev41_ends_static_relations_are_the_plain_ones, atomic_prev41_ends_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev41_ends_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("chess", chess, "prev41_orient", chess_prev41_orient, chess_prev41_orient_static_relations_are_the_plain_ones, chess_prev41_orient_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev41_orient_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+#[cfg(singles)]
+pieces_tests!("atomic", atomic, "prev41_orient", atomic_prev41_orient, atomic_prev41_orient_static_relations_are_the_plain_ones, atomic_prev41_orient_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev41_orient_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
