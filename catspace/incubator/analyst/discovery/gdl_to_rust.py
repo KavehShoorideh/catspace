@@ -45,6 +45,39 @@ The five questions are the evaluator's (rust/engine/game/src/gdl_game.rs, `GdlGa
 
 WHAT IT DOES NOT DO (plan 79.37 is a measurement): no pass for speed. The only things that are free and done: symbols are numbers, the relations that do not read the state are
 computed once, an index is built where a join asks by bound places. A clause or a form the plain translation cannot handle is an error that names it, never a clause left out.
+
+PLAN 79.38 PART A/B: THE PASSES (SYSTEM_SPEC 11, "The crux of layer 2 is a translator from the description to Rust, made fast piece by piece under tests"; piece: rules; ledger row 45).
+This text is the interface of the passes, written and committed before any body. `translate` grows one argument and nothing else changes for the callers that do not give it.
+
+  translate(text, module, passes=()) -> str
+  PASSES = ("dense", "demand", "copy")      # the names a caller may give; the passes are applied in this order whatever the order given; a name not in PASSES is an error
+
+WITH NO PASS the document is today's, byte for byte, but for the translator hash in its head (a change of this source changes that hash; the files of generated/ are made again by scripts/gdl_to_rust_make.py, and
+tests/test_plan79_38.py holds the plain files to differ from those of the commit before the plan (12f17e26) in the line of that hash only). WITH PASSES the head holds one more line, `// passes: <names>`, and the
+document has these public items besides the plain ones: `PASSES: &[&str]`, `Game::demanded() -> Vec<(&'static str, Vec<usize>, bool)>` (a relation answered on demand, the places its key binds, and whether the mode only asks
+whether a row exists), `Game::ask(&mut self, &State, does, rel, key) -> Vec<Vec<u32>>` and `Game::ask_exists(..) -> Option<bool>` (the rows of a demanded relation for a key, FREE at the places not bound; the existence mode of exactly
+that key), so that a test may hold every piece to the plain module. `all_relations` of a module with passes lists the relations made in full; a relation a pass removes or merges is compared by the harness at the first relation
+that survives it, and the module says which they are (`Game::demanded`, `COPIED`).
+
+A PASS reads only the shape of the clauses, the sorts, the signatures and the dependency graph of the description (the reader's `Program`: strata, each rule's join order, `signature`, `sorts`); it names no relation, sort member
+or constant of any description (tests/test_plan79_37.py's scan and tests/test_plan79_38.py's hold for the whole source); it returns a change of the document only, never of the description; and it is applied only where its CONDITION
+holds for the relation or clause, everywhere else the plain translation stands for that piece.
+
+  (1) "dense"   TAKES the signature of each relation and the declared sorts. CONDITION: every place of the relation is of a declared sort whose members are all constants, the product of the sizes of the sorts is at most
+                2^22, and the product over the places of each index the joins ask by (read from the clauses that are written) is at most 2^16. RETURNS: that relation held as a bit table over the tuples of its sorts (membership by position,
+                no hash) with each index a bucket array by the places' ordinals (no hash), and cleared by its own rows, so that the evaluation of a state is kept and reused instead of made again (`Game` keeps one `Dy`).
+                A relation that fails the condition stays a hash relation.
+  (2) "demand"  TAKES the dependency graph, the strata and every written clause with its join order. CONDITION: the relation reads the state, is not recursive, is not read by a question (legal, terminal, goal, next) and is
+                not an input, and every use of it in a written clause is a literal that binds at least one place of it or only asks that a row exist (a negated literal, an all-bound test, a literal whose unbound variables are
+                used nowhere after it); a use that would read the relation whole with no place bound (not an existence test) makes the relation stay in full. RETURNS: the relation is not made; each use is answered for its key by the
+                relation's own clauses joined again from the key (the join order of the reader with the key's variables taken as bound), stopping at the first row where only existence is asked; the modes (relation, places bound, exists or
+                rows) are found by closing the uses over the clauses of the demanded relations. Where the answer is rows, rows may repeat; the consumers keep a set.
+  (3) "copy"    TAKES the clauses of each next-state relation of a fluent. CONDITION (general, on the clause): a clause whose head arguments are distinct variables, whose body has exactly one positive literal, of the fluent's
+                own `true` relation, with the same variables in the same places, and every other literal a `distinct` or a negated literal whose arguments are variables of that row or constants. Such a clause says: the next
+                rows are the old rows that no negated relation names. SOUNDNESS: its rows are a function of one old row alone, so the filter of the old rows by those literals equals the clause's rows; any other clause of the same
+                fluent is unaffected and made as before; a clause not of this shape is made as before. RETURNS: the old rows are kept and the filter applied to them in `next` (the removals are the rows the negated relations name),
+                the changes (the other clauses) are added; the clause is not run as a join and the next relation is not written again by it.
+  A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside.
 """
 from __future__ import annotations
 
