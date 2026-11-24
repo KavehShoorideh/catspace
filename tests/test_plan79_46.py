@@ -148,7 +148,8 @@ def test_no_source_of_the_engine_no_cargo_file_no_description_and_no_reader_diff
         pytest.skip(f"{BEFORE} not in this clone")
     changed = git("diff", "--name-only", BEFORE, "--", "rust/engine").stdout.split()
     # 2026-11-24 (plan 79.47 part E): the one source of an engine crate that plan 79.47 changed is the bridge `state_facts` of rust/engine/game/src/outside.rs (the checks of three-check; tests/test_plan79_47.py holds that it is one place and nothing else under a src)
-    assert not [c for c in changed if (re.match(r"rust/engine/[^/]+/src/", c) and c != "rust/engine/game/src/outside.rs") or c.endswith("Cargo.toml") or c.endswith("Cargo.lock")], changed
+    # 2026-11-24 (plans 79.50, 79.51): this test holds the crates of the rules and what is under them, which is what its plan owned; a later plan's sources in the crates above (the future channel of 79.51 in cs_decision and the binding) are held by that plan's own gate
+    assert not [c for c in changed if (re.match(r"rust/engine/(game|gdl|base|rep)/src/", c) and c != "rust/engine/game/src/outside.rs") or c.endswith("Cargo.toml") or c.endswith("Cargo.lock")], changed
     # 2026-11-24 (plan 79.48): rules/placed/ holds the additive texts of the placed questions and their lists (documents, no description): excluded as rules/lemmas is.
     assert git("diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", ":(exclude)rules/placed", "catspace/incubator/analyst/discovery/gdl.py").returncode == 0
     print(f"OBS 79.46 E: files under rust/engine that differ from {BEFORE}: {changed}")
