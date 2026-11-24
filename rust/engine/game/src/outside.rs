@@ -81,7 +81,17 @@ impl Placed for KernelGame {
         let mut reach = if role == shakmaty::Role::Pawn { bits & foes } else { bits & (empty | foes) };
         if role == shakmaty::Role::Pawn {
             if let Some(ahead) = sq.offset(if colour == Color::White { 8 } else { -8 }) {
-                if empty.contains(ahead) { reach = reach.with(ahead); }
+                if empty.contains(ahead) {
+                    reach = reach.with(ahead);
+                    // PLAN 79.50: the move of two places the description gives (`move_by`) from a unit's start row (a game with a horde adds the first row for the side that has it), over two empty places
+                    let start_row = if colour == Color::White { shakmaty::Rank::Second } else { shakmaty::Rank::Seventh };
+                    let first_row = self.variant == Variant::Horde && colour == Color::White && sq.rank() == shakmaty::Rank::First;
+                    if sq.rank() == start_row || first_row {
+                        if let Some(beyond) = ahead.offset(if colour == Color::White { 8 } else { -8 }) {
+                            if empty.contains(beyond) { reach = reach.with(beyond); }
+                        }
+                    }
+                }
             }
         }
         places_of(reach)
