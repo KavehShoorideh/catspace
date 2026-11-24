@@ -15994,3 +15994,32 @@ PART E, BOTH GAMES by the same translator; the times as in 79.38 (kernel beside 
 PART F, THE GATE tests/test_plan79_40.py as that of 79.38. The generated files of single passes are NOT committed any more: only the plain file and the file with all passes for each game are kept in the repository; the others are made in the test run (the builder moves the tests of 79.38 to that, and says what it changed).
 LIMITS THAT STAND as plan 79.38. One commit for each pass. A pass that makes anything slower or different is diagnosed and mended, not set aside.
 NOT IN THIS PLAN: the engine's path; certificates; the placed questions; hand-written pieces for one game.
+
+### 79.39 BUILT and READ (main agent, 2026-11-23; the builder was told not to write here, so its report and its printed lines under artifacts/experiments/gain_79_39 stand for the BUILT block; the tests, the comparisons and the measure were made again on main; one machine, shared with the builder of 79.40 during the measure, few runs, directions only)
+
+MERGED on main. Rust tests of the nine crates: 889 passed, 0 failed. The inventory of 79.36: 658 of 658 public items of layers 0, 1, 2 called by a test. Gates: test_plan79_39 6, 79_38 26, 79_37 9, 79_36 9, 79_35 7, 79_34 8, 79_33 7, 79_32 7, 79_31 8, 79_30 6, 79_29 5, 79_28 6, 79_27 5, 79_26 4, 79_25 6, 79_20 7, 79_19 14, 79_18 6, test_plan78 19. Certificates: 12 fresh (the seven of the kernel were made again by the builder, kernel.rs being hashed). The comparisons of 79.32 (4320, 640, 2400) and 79.33 (1602, 1716, 594, 120000, 77): all identical, so no answer of layers 1 to 3 on those questions moved. The Lean library builds.
+MENDED AT THE MERGE BY THE MAIN AGENT. One test of the gate of 79.38 said no engine source differs from the commit before that plan; it failed on main because this plan changes engine sources at Kaveh's word. It now checks only what 79.38 owned, as the builder had already done for 79.35, 79.36 and 79.37; kernel.rs and ledger.rs are held by the gate of this plan instead (kernel.rs: only added lines of the one method; ledger.rs: asks the new question and never `mover`).
+WHAT IS BUILT. One new question on the game interface, `turn(state) -> Role`: the role whose turn it is, read from the state alone, for any number of roles. Its default asks the old question, so every game answers it; the kernel answers it from the state without making a move. The wrapper of rules forwards it. Of 121 places that asked `mover`, 21 that only wanted the side now ask `turn` (the shared search 13, reach 4, three more of layer 3's tactics, the planner 1); 100 keep `mover` with a cause each, because they also need to know the game has ended. Tests: the seven games and one four-role game give the same role by both questions at every state that has not ended.
+THE GAIN (the builder's printed lines, before and after on the same machine, not alone).
+| | before | after |
+|---|---|---|
+| shared search, nodes a second, median of three | 595,442 | 1,916,145 |
+| calls a decision at 0.2 s, mean: whose turn by the old question | 591,961 | 680 |
+| calls a decision: the new question | 0 | 3,355,408 |
+| calls a decision: the end of the game | 697,873 | 599,429 |
+| calls a decision: positions made | 58,747 | 315,629 |
+Direction: the search makes about three times the nodes in a second and a decision makes about five times the positions. The walk of layer 1 on fixed questions shows no gain in these runs; the machine was busy and its times scatter by a factor of two.
+THE MEASURE OF THE WHOLE (row 39; tag m7939; config abcd, 0.2 s; this is also the measure owed for 79.38, which changed no engine source).
+| | 79.37 (before) | 79.39 |
+|---|---|---|
+| scale of equal wall | 1.7312 | 1.7673 |
+| set A score | 0.5050, 200 games | 0.4286 [0.3929, 0.4643], stopped early at 140 games |
+| set B score | 0.5000 | 0.4975 [0.4699, 0.5275], 200 games |
+| mean depth of search, set A: wake, old | 6.46, 7.23 | 7.68, 8.92 |
+| mean depth of search, set B: wake, old | 6.52, 7.27 | 7.85, 8.71 |
+| unfinished games, set A, set B | 26.0, 24.5 in a hundred | 32.1, 32.5 in a hundred |
+| puzzles of 300 at 0.2 s: wake, old at equal wall | 270, 270 | 275, 275 |
+| puzzles of 300 at 2.0 s: wake, old at equal wall | 284, 282 | 281, 287 |
+WHAT THE NUMBERS SAY, mine. (a) Both players search more than a ply deeper in the same time and both solve more puzzles at 0.2 s. That is the gain the plan was for. (b) The old player gained more depth than the wake: the gap between them went from about 0.8 ply to 1.2 in set A and 0.9 in set B. The swap speeds the search only, and the search is all of the old player's decision but about two thirds of the wake's: the frame read, the threat list, the choice and the claims' lines take about 0.06 s of the wake's 0.2 s as before and gained nothing. (c) Set A fell to 0.4286, below every earlier run with no source change (0.4725 to 0.5125), and set B is at the bottom of its spread. This is a WORSE result against the old player and it is not set aside. Two causes are open and not separated: the wider depth gap of (b), and the machine, which was shared with a builder all through the games (load average 13 to 15 before each quiet wait). A repeat of set A alone on the machine is owed before the fall is read as real; if it stands, the mend is in the wake's fixed costs a decision, not in the swap. (d) More games reach the ply cap unfinished; deeper play by both sides draws more.
+WHAT IS NOT RIGHT YET. `own_turn` of layer 1 still asks the old question, for want of a proof that the game has not ended where it is asked. A node still asks the end twice, once by `outcome` and once inside `moves`; the end is still about 600 thousand calls a decision. 100 askers keep the old question. The four places of layer 3 and the 13 of the shared search that compare the side with role 0 or 1 are two-role places and are listed for row 47. Nothing translated is on the engine's path.
+LEDGER. Row 46 NOT to PART. Row 42 gets the list of two-role places. Row 39: the measure and the owed repeat. Row 38: the calls after the swap.
