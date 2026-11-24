@@ -203,6 +203,10 @@ bit by bit and make rows that no reader looks at. Each cause is machinery, none 
               are equal. So a line of a walk that passes through no member of C is the base line, word for word, and a line through a member of C is walked again by the walk as it stands. WHAT IS NOT YET AN ARGUMENT. That the key K's live word and start word are "the base's with a bounded change" is a fact of the clauses of the relations they are made from, and a rule that reads it from the clauses (which literal is the state's relation, which negated literals are the key's removals,
               which clauses add) with a proof that the words differ only inside C, and the place where the base's closures are kept for the question and the test that the key's start word is the base's, are not written here; they are the pieces of work this plan builds only if the profile once the pass ends has run still shows the walks (the number is printed) and the rule is proved here first; otherwise the pass is not built and the module text of the commit says which piece is missing.
   A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside. The harness of 79.38 holds each of them to the plain module (the tiles and the displacements are an inside of the module: rows are compared as text).
+  AS BUILT 79.42, where the body differs from the text above (said here because the text was committed first); PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start"):
+    (13) is written as the text says, with these choices: the orders are those of `JoinRule` with each positive literal over a relation held as bits first (`start_orders`), written to the same function text as the reader's order (`emit_full_clause`); the factors of the estimate are noted by the writer
+         as it writes each literal (`BitWriter.prof`), a literal read by a loop over words counting the words its relation holds in the orientation read, 2 times that when it binds a variable; a clause of a static relation is made once and has one order; an order is also not admitted when it reads a relation
+         that is not held as bits by places that no clause asks it by (its indexes are fixed: a ValueError of the writer, named in `Plan.start_refused`); the decision is made in the dry run of the last round of `find_bits` and kept (`Plan.start_choice`) so the final writing is the same text.
 """
 from __future__ import annotations
 
@@ -216,11 +220,12 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
 SMALL_SCAN = 8                                          # a loop over a whole fluent is cheap when its sorts allow no more rows than this
+START_MAX = 4                                           # pass (13): at most this many orders of one clause are written (the reader's and the best others)
 BOUND = "\0"                                            # the mark of a constant that stands for a variable bound by the key of a demanded relation
 
 
@@ -667,6 +672,9 @@ class Plan:
         self.shift_tables: dict = {}                            # (onward relation, tile read at, next tile) -> (number, displacements by key, keys, tiles that are keys)   (pass "shift")
         self.shift_used: set = set()                            # the tables the last writing of the clauses used
         self.shift_refused: dict = {}                           # relation of a recursive set -> why pass (9) does not compile it by shifts
+        self.start_refused: dict = {}                           # (clause text, order) -> why pass (13) does not write that order of the clause
+        self.start_choice: dict = {}                            # clause key -> the orders (indexes) admitted, decided in the dry run of the last round of find_bits and kept for the final writing
+        self.start_written: dict = {}                           # clause key -> (the number of orders written, the number of orders found)
         self.units: dict = {}                                   # the products of two sorts found (pass bits), with their weights
         self.refused: dict = {}                                # relation -> why pass (2) keeps it in full: the (relation, places) chain and the clause that defeats it
         self.est = Sizes(d) if "order" in self.passes else None                              # pass (6): what is known of the size of a relation, for the order of joining
@@ -1106,6 +1114,8 @@ class Plan:
                     for h in inside:
                         bad.setdefault(h, "it is in a recursive set with a relation that is not held as bits: " + "; ".join(sorted(comp)))
             if not bad:
+                self.start_choice = {}
+                self.start_refused = {}
                 for i in self.bits.values():
                     i.orients = {i.canon: "the membership test"}
                 self.bit_rec = self.recursive_bits()
@@ -1451,6 +1461,7 @@ class BitWriter(ClauseWriter):
         self.cut = "cut" in plan.passes and self.head_bit            # pass (11): a block left at the first row once the head is complete
         self.cut_label = None
         self.cut_loops = 0
+        self.prof: list = []                                           # pass (13): for each literal read by a loop, the Rust text of how many iterations the loop is estimated to make (the number of words held, the combinations, or 1)
         self.head_vars: set = set()
         for h in rule.head:
             self.head_vars |= comp_vars(h)
@@ -1758,8 +1769,10 @@ class BitWriter(ClauseWriter):
         all_unbound = bool(kt) and all(unb(args[p]) for i in kt for p in info.tiles[i].places)
         slots = [(i, c, p) for i in kt for c, p in enumerate(info.tiles[i].places) if unb(args[p])]
         scan_ok = "scan" in self.plan.passes and bool(kt) and not delta and not all_unbound and bool(slots) and len({args[p][1] for _i, _c, p in slots}) == len(slots)
+        factor = "1"
         if delta or all_unbound:
             src = f"dw.dl_{rid}" if delta else f"{h}.{rid}.o{f}"
+            factor = f"{src}.nz.len()"
             self.open(f"for ti{u} in 0..{src}.nz.len() {{")
             opened += 1
             self.out(f"let ix{u} = {src}.nz[ti{u}] as usize;")
@@ -1781,6 +1794,7 @@ class BitWriter(ClauseWriter):
                         row.append(None)
                 vals[i] = row
             nc = " * ".join(str(info.tiles[i].sizes[c]) for i, c, _p in slots)
+            factor = f"({h}.{rid}.o{f}.nz.len()).min({nc})"
             self.out(f"let nc{u}: usize = {nc};")
             self.out(f"let sc{u} = {h}.{rid}.o{f}.nz.len() < nc{u};")
             self.open(f"for ti{u} in 0..(if sc{u} {{ {h}.{rid}.o{f}.nz.len() }} else {{ nc{u} }}) {{")
@@ -1819,6 +1833,7 @@ class BitWriter(ClauseWriter):
                         comps.append(self.var_ord(a[1], t.sorts[c]))
                     else:
                         n = a[1]
+                        factor = f"{t.sizes[c]}" if factor == "1" else f"{factor} * {t.sizes[c]}"
                         if self.is_ord(n, t.sorts[c]):
                             self.open(f"for v{n} in 0..{t.sizes[c]}usize {{")
                             comps.append(f"v{n}")
@@ -1848,6 +1863,7 @@ class BitWriter(ClauseWriter):
                     raise BitRefuse(rel, f"one variable at two places of one tile: {self.text}")
                 vlist.append((c, a[1]))
         vvars = {n for _, n in vlist}
+        self.prof.append(f"({factor}) * 2" if vlist else f"({factor})")
         folded = self.fold(k, ft, args, vvars, w) if vlist else False
         if masked or folded or delta or opened:
             self.out(f"if {w} == 0 {{ {self.fail()} }}")
@@ -2263,6 +2279,90 @@ def clause_writer(d, places, name, rule, comp, plan, mode="full", record=False):
     return ClauseWriter(d, places, name, rule, comp, plan, mode)
 
 
+def start_orders(plan, rule, comp) -> list:
+    """Pass (13): the distinct orders a clause is joined in when each of its positive literals over a relation held as bits is taken first (the reader's order first)."""
+    have = {repr(rule.steps)}
+    out = [rule]
+    for lit in rule.clause.body:
+        if lit[0] != "pos" or lit[1] not in plan.bits:
+            continue
+        jr = JoinRule(rule.clause, comp, plan.demanded, lit, est=plan.est)
+        if repr(jr.steps) not in have:
+            have.add(repr(jr.steps))
+            out.append(jr)
+    return out
+
+
+def emit_full_clause(w, d, plan, places, name, rule, comp, recursive, refusals) -> str:
+    """A clause whose head is held as bits, made once from the words held (mode bfull). With the pass start and two or more admitted orders (module text, (13)): one function for each order, `{name}v<j>`, and a chooser `{name}` that runs the order of the least
+    estimate; otherwise `{name}` is the clause in the reader's order, as before. -> the name to call."""
+    def one(order, fname):
+        return BitWriter(d, places, fname, order, comp, plan, "bfull", None, (), recursive)
+    if "start" not in plan.passes or d.static[rule.head_rel]:
+        write_clause(w, one(rule, name), refusals)
+        return name
+    orders = start_orders(plan, rule, comp)
+    if len(orders) < 2:
+        write_clause(w, one(rule, name), refusals)
+        return name
+    key = (name, rule.clause.text)
+    base = one(orders[0], f"{name}v0")
+    try:
+        text0 = base.write()
+    except BitRefuse as e:
+        if refusals is None:
+            raise
+        refusals.setdefault(e.rel, e.why)
+        return name
+    memo = plan.start_choice.get(key)
+    admitted = [(0, text0, base.prof)]
+    others: list = []
+    for j in (range(1, len(orders)) if memo is None else [x for x in memo if x]):
+        saved = {r: dict(i.orients) for r, i in plan.bits.items()}
+        wr = one(orders[j], f"{name}v{len(admitted) + len(others)}")
+        try:
+            txt = wr.write()
+        except (BitRefuse, ValueError) as e:                  # (a ValueError: the order asks a relation not held as bits by places no clause asks it by, and its indexes are fixed)
+            for r, i in plan.bits.items():
+                i.orients = saved[r]
+            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = e.why if isinstance(e, BitRefuse) else f"it reads a relation not held as bits by places no clause before it reads it by: {orders[j].clause.text}".replace("\n", " ")
+            continue
+        new = sorted((r, f) for r, i in plan.bits.items() for f in i.orients if f not in saved[r])
+        if new:
+            for r, i in plan.bits.items():
+                i.orients = saved[r]
+            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = f"it asks the orientation {new[0][1]} of {new[0][0]}, which no clause before it asks: {orders[j].clause.text.replace(chr(10), ' ')}"
+            continue
+        others.append((j, txt, wr.prof))
+    if memo is None:
+        others.sort(key=lambda x: (sum(1 for p in x[2] if "nz.len()" in p), x[0]))
+        others = others[:START_MAX - 1]
+    admitted += others
+    plan.start_choice[key] = [x[0] for x in admitted]
+    plan.start_written[key] = (len(admitted), len(orders))
+    if len(admitted) == 1:
+        w(text0.replace(f"fn {name}v0(", f"fn {name}(", 1))
+        return name
+    # the functions are named by their place among those admitted
+    for n, (j, txt, prof) in enumerate(admitted):
+        m = re.match(r"(?s).*?\nfn (" + re.escape(name) + r"v\d+)\(", "\n" + txt)
+        w(txt.replace(f"fn {m.group(1)}(", f"fn {name}v{n}(", 1) if m else txt)
+    lines = [f"fn {name}(s: &St, d: &mut Dy, tm: &mut Terms, dw: &mut Dw) -> u64 {{", "    let mut best = 0usize; let mut best_e = u64::MAX;"]
+    for n, (j, txt, prof) in enumerate(admitted):
+        lines.append("    { let mut p = 1u64; let mut e = 0u64;")
+        for fct in prof:
+            lines.append(f"      p = p.saturating_mul((({fct}) as u64).max(1)); e = e.saturating_add(p);")
+        lines.append(f"      if e < best_e {{ best_e = e; best = {n}; }} }}")
+    lines.append("    match best {")
+    for n in range(len(admitted) - 1):
+        lines.append(f"        {n} => {name}v{n}(s, d, tm, dw),")
+    lines.append(f"        _ => {name}v{len(admitted) - 1}(s, d, tm, dw),")
+    lines.append("    }")
+    lines.append("}")
+    w("\n".join(lines))
+    return name
+
+
 def emit_shift_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
     """Pass (9): a recursive set held as bits that is a walk, as one function that closes each key's frontier by shifts (once the base clauses have run); None (and the reason in `Plan.shift_refused`) where it is not that shape, the set then being made as above."""
     recs = [x for x in rules if x.rec_steps]
@@ -2283,7 +2383,7 @@ def emit_shift_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
     names = []
     for rule in bases:
         name = f"c{cid}"
-        write_clause(w, BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), False), refusals)
+        emit_full_clause(w, d, plan, places, name, rule, comp, False, refusals)
         names.append(name)
         cid += 1
     for t in buf:
@@ -2316,7 +2416,7 @@ def emit_bit_stratum(w, d, plan, places, k, comp, rules, cid, refusals):
                 rec.append(name)
         else:
             name = f"c{cid}"
-            write_clause(w, BitWriter(d, places, name, rule, comp, plan, "bfull", None, (), recursive), refusals)
+            emit_full_clause(w, d, plan, places, name, rule, comp, recursive, refusals)
             base.append(name)
         cid += 1
     if static:

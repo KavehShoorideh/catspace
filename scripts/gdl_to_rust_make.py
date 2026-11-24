@@ -17,9 +17,12 @@ KEPT = {"": [], "_fast": list(T.PASSES)}
 COMBOS = {"bits_keep": ["bits", "keep"], "bits_order": ["bits", "order"], "bits_order_keep": ["bits", "order", "keep"], "bits_demand": ["bits", "demand"], "bits_dense": ["bits", "dense"], "bits_copy": ["bits", "copy"], "bits_delta": ["bits", "delta"]}
 # plan 79.41: each new pass alone on top of bits (the clocks), and `prev`, the module of every pass of 79.40 (the one the new passes are clocked against); `prev38` is the four passes of 79.38
 PASSES_7940 = ["dense", "demand", "copy", "delta", "bits", "order", "keep"]
-NEW = [p for p in T.PASSES if p not in PASSES_7940]
+PASSES_7941 = PASSES_7940 + ["scan", "cut", "shift", "base"]
+NEW = [p for p in T.PASSES if p in PASSES_7941 and p not in PASSES_7940]
 COMBOS.update({f"bits_{p}": ["bits", p] for p in NEW})
-SCRATCH = {"_prev": PASSES_7940, "_prev38": ["dense", "demand", "copy", "delta"], **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
+# plan 79.42: `prev` is every pass of 79.41 (the module the new passes are clocked against), each new pass alone on top of it is `prev_<pass>`; `prev40` is every pass of 79.40
+NEW42 = [p for p in T.PASSES if p not in PASSES_7941]
+SCRATCH = {"_prev": PASSES_7941, "_prev40": PASSES_7940, "_prev38": ["dense", "demand", "copy", "delta"], **{f"_prev_{p}": PASSES_7941 + [p] for p in NEW42}, **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
 OUT = ROOT / "rust" / "engine" / "game" / "tests" / "generated"
 OUT_SCRATCH = OUT / "scratch"
 
