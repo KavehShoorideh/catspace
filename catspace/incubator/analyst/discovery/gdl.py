@@ -374,7 +374,7 @@ def _sccs(nodes, edges) -> list:
         counter[0] += 1
         stack.append(v)
         on.add(v)
-        for w in edges.get(v, ()):
+        for w in sorted(edges.get(v, ())):          # (in the order of the names: the strata are the same in every process, whatever the hash seed; mended 2026-11-23, plan 79.37)
             if w not in index:
                 visit(w)
                 low[v] = min(low[v], low[w])

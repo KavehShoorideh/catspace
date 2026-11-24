@@ -382,37 +382,55 @@ pub struct Dl {
     pub r_slide: Vec<[u32; 5]>,
     pub r_king_ray: Vec<[u32; 7]>,
 }
-// (castling_path kingside g f h)
-fn c0(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    o.rows.push([117, 113, 111, 114]);
+// (castling_empty kingside f)
+fn c0(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([117, 111]);
 }
-// (castling_path queenside c d a)
-fn c1(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    o.rows.push([128, 105, 107, 101]);
+// (castling_empty kingside g)
+fn c1(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([117, 113]);
+}
+// (castling_empty queenside b)
+fn c2(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([128, 102]);
+}
+// (castling_empty queenside c)
+fn c3(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([128, 105]);
+}
+// (castling_empty queenside d)
+fn c4(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([128, 107]);
 }
 fn st0(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<4>::new(); c0(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_path.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c1(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_path.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c0(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c1(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c2(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c3(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c4(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (home_rank white 1)
-fn c2(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c5(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([135, 1]);
 }
 // (home_rank black 8)
-fn c3(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c6(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([104, 79]);
 }
 fn st1(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c2(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<2>::new(); c5(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_home_rank.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c3(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<2>::new(); c6(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_home_rank.add(row) { made += 1; } } }
     (made, visits, probes)
 }
@@ -421,48 +439,8 @@ fn st2(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let mut dl = Dl::default();
     (made, visits, probes)
 }
-// (castling_empty kingside f)
-fn c4(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([117, 111]);
-}
-// (castling_empty kingside g)
-fn c5(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([117, 113]);
-}
-// (castling_empty queenside b)
-fn c6(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([128, 102]);
-}
-// (castling_empty queenside c)
-fn c7(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([128, 105]);
-}
-// (castling_empty queenside d)
-fn c8(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([128, 107]);
-}
-fn st3(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c4(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c5(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c6(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c7(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c8(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_empty.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-fn st4(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    (made, visits, probes)
-}
 // (<= (occupied ?f ?r) (true (cell ?f ?r ?c ?k)))
-fn c9(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c7(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
     let rows0: &[[u32; 4]] = &d.r_true_cell.order;
@@ -475,15 +453,15 @@ fn c9(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
         o.rows.push([v0, v1]);
     }
 }
-fn st5(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st3(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c9(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<2>::new(); c7(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_occupied.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (castle_blocked ?c ?side) (home_rank ?c ?r) (castling_empty ?side ?f) (occupied ?f ?r))
-fn c10(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c8(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_home_rank.order;
@@ -510,40 +488,44 @@ fn c10(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
         }
     }
 }
-fn st6(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st4(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c10(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<2>::new(); c8(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_castle_blocked.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (castling_safe kingside e)
-fn c11(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c9(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([117, 108]);
 }
 // (castling_safe kingside f)
-fn c12(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c10(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([117, 111]);
 }
 // (castling_safe kingside g)
-fn c13(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c11(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([117, 113]);
 }
 // (castling_safe queenside e)
-fn c14(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c12(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([128, 108]);
 }
 // (castling_safe queenside d)
-fn c15(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c13(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([128, 107]);
 }
 // (castling_safe queenside c)
-fn c16(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c14(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([128, 105]);
 }
-fn st7(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st5(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c9(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_safe.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c10(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_safe.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c11(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_castling_safe.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c12(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
@@ -552,93 +534,109 @@ fn st7(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
       for row in o.rows { if s.r_castling_safe.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c14(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_castling_safe.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c15(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_safe.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c16(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_castling_safe.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (opponent white black)
-fn c17(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c15(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([135, 104]);
 }
 // (opponent black white)
-fn c18(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c16(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     o.rows.push([104, 135]);
+}
+fn st6(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c15(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_opponent.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c16(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_opponent.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (file a)
+fn c17(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([101]);
+}
+// (file b)
+fn c18(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([102]);
+}
+// (file c)
+fn c19(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([105]);
+}
+// (file d)
+fn c20(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([107]);
+}
+// (file e)
+fn c21(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([108]);
+}
+// (file f)
+fn c22(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([111]);
+}
+// (file g)
+fn c23(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([113]);
+}
+// (file h)
+fn c24(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([114]);
+}
+fn st7(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<1>::new(); c17(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c18(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c19(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c20(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c21(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c22(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c23(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c24(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (file_succ a b)
+fn c25(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([101, 102]);
+}
+// (file_succ b c)
+fn c26(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([102, 105]);
+}
+// (file_succ c d)
+fn c27(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([105, 107]);
+}
+// (file_succ d e)
+fn c28(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([107, 108]);
+}
+// (file_succ e f)
+fn c29(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([108, 111]);
+}
+// (file_succ f g)
+fn c30(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([111, 113]);
+}
+// (file_succ g h)
+fn c31(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([113, 114]);
 }
 fn st8(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c17(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_opponent.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c18(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_opponent.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (pawn_diagonal white northeast)
-fn c19(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([135, 122]);
-}
-// (pawn_diagonal white northwest)
-fn c20(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([135, 123]);
-}
-// (pawn_diagonal black southeast)
-fn c21(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([104, 132]);
-}
-// (pawn_diagonal black southwest)
-fn c22(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([104, 133]);
-}
-fn st9(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c19(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c20(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c21(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c22(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (file_succ a b)
-fn c23(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([101, 102]);
-}
-// (file_succ b c)
-fn c24(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([102, 105]);
-}
-// (file_succ c d)
-fn c25(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([105, 107]);
-}
-// (file_succ d e)
-fn c26(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([107, 108]);
-}
-// (file_succ e f)
-fn c27(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([108, 111]);
-}
-// (file_succ f g)
-fn c28(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([111, 113]);
-}
-// (file_succ g h)
-fn c29(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([113, 114]);
-}
-fn st10(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c23(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_succ.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c24(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_succ.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c25(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_file_succ.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c26(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
@@ -649,163 +647,114 @@ fn st10(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
       for row in o.rows { if s.r_file_succ.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c29(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_file_succ.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (rank_succ 1 2)
-fn c30(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([1, 13]);
-}
-// (rank_succ 2 3)
-fn c31(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([13, 24]);
-}
-// (rank_succ 3 4)
-fn c32(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([24, 35]);
-}
-// (rank_succ 4 5)
-fn c33(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([35, 46]);
-}
-// (rank_succ 5 6)
-fn c34(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([46, 57]);
-}
-// (rank_succ 6 7)
-fn c35(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([57, 68]);
-}
-// (rank_succ 7 8)
-fn c36(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([68, 79]);
-}
-fn st11(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
     { let mut o = Out::<2>::new(); c30(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_succ.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c31(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c32(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c33(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c34(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c35(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c36(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_succ.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (rank 1)
-fn c37(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c32(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([1]);
 }
 // (rank 2)
-fn c38(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c33(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([13]);
 }
 // (rank 3)
-fn c39(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c34(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([24]);
 }
 // (rank 4)
-fn c40(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c35(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([35]);
 }
 // (rank 5)
-fn c41(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c36(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([46]);
 }
 // (rank 6)
-fn c42(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c37(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([57]);
 }
 // (rank 7)
-fn c43(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c38(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([68]);
 }
 // (rank 8)
-fn c44(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c39(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([79]);
 }
-fn st12(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st9(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
+    { let mut o = Out::<1>::new(); c32(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c33(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c34(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c35(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c36(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
     { let mut o = Out::<1>::new(); c37(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
     { let mut o = Out::<1>::new(); c38(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
     { let mut o = Out::<1>::new(); c39(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c40(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c41(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c42(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c43(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c44(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (file a)
-fn c45(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([101]);
+// (rank_succ 1 2)
+fn c40(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([1, 13]);
 }
-// (file b)
-fn c46(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([102]);
+// (rank_succ 2 3)
+fn c41(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([13, 24]);
 }
-// (file c)
-fn c47(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([105]);
+// (rank_succ 3 4)
+fn c42(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([24, 35]);
 }
-// (file d)
-fn c48(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([107]);
+// (rank_succ 4 5)
+fn c43(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([35, 46]);
 }
-// (file e)
-fn c49(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([108]);
+// (rank_succ 5 6)
+fn c44(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([46, 57]);
 }
-// (file f)
-fn c50(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([111]);
+// (rank_succ 6 7)
+fn c45(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([57, 68]);
 }
-// (file g)
-fn c51(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([113]);
+// (rank_succ 7 8)
+fn c46(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([68, 79]);
 }
-// (file h)
-fn c52(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([114]);
-}
-fn st13(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st10(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<1>::new(); c45(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c46(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c47(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c48(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c49(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c50(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c51(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c52(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c40(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c41(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c42(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c43(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c44(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c45(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c46(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_rank_succ.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (step north ?f ?r1 ?f ?r2) (file ?f) (rank_succ ?r1 ?r2))
-fn c53(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c47(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 1] = [FREE; 1];
     o.probes += 1;
     let rows0: &[[u32; 1]] = &s.r_file.order;
@@ -824,7 +773,7 @@ fn c53(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (step south ?f ?r1 ?f ?r2) (file ?f) (rank_succ ?r2 ?r1))
-fn c54(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c48(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 1] = [FREE; 1];
     o.probes += 1;
     let rows0: &[[u32; 1]] = &s.r_file.order;
@@ -843,7 +792,7 @@ fn c54(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (step east ?f1 ?r ?f2 ?r) (rank ?r) (file_succ ?f1 ?f2))
-fn c55(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c49(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 1] = [FREE; 1];
     o.probes += 1;
     let rows0: &[[u32; 1]] = &s.r_rank.order;
@@ -862,7 +811,7 @@ fn c55(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (step west ?f1 ?r ?f2 ?r) (rank ?r) (file_succ ?f2 ?f1))
-fn c56(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c50(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 1] = [FREE; 1];
     o.probes += 1;
     let rows0: &[[u32; 1]] = &s.r_rank.order;
@@ -881,7 +830,7 @@ fn c56(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (step northeast ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r1 ?r2))
-fn c57(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c51(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_file_succ.order;
@@ -901,7 +850,7 @@ fn c57(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (step northwest ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r1 ?r2))
-fn c58(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c52(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_file_succ.order;
@@ -921,7 +870,7 @@ fn c58(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (step southeast ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r2 ?r1))
-fn c59(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c53(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_file_succ.order;
@@ -941,7 +890,7 @@ fn c59(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (step southwest ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r2 ?r1))
-fn c60(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c54(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_file_succ.order;
@@ -960,29 +909,440 @@ fn c60(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
         }
     }
 }
-fn st14(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st11(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
+    { let mut o = Out::<5>::new(); c47(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
+    { let mut o = Out::<5>::new(); c48(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
+    { let mut o = Out::<5>::new(); c49(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
+    { let mut o = Out::<5>::new(); c50(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
+    { let mut o = Out::<5>::new(); c51(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
+    { let mut o = Out::<5>::new(); c52(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
     { let mut o = Out::<5>::new(); c53(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_step.add(row) { made += 1; } } }
     { let mut o = Out::<5>::new(); c54(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_step.add(row) { made += 1; } } }
-    { let mut o = Out::<5>::new(); c55(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
-    { let mut o = Out::<5>::new(); c56(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
-    { let mut o = Out::<5>::new(); c57(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
-    { let mut o = Out::<5>::new(); c58(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
-    { let mut o = Out::<5>::new(); c59(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
-    { let mut o = Out::<5>::new(); c60(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_step.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (king_step ?f1 ?r1 ?f2 ?r2) (step ?d ?f1 ?r1 ?f2 ?r2))
+fn c55(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 5] = [FREE; 5];
+    o.probes += 1;
+    let rows0: &[[u32; 5]] = &s.r_step.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        let v3 = row0[3];
+        let v4 = row0[4];
+        o.rows.push([v1, v2, v3, v4]);
+    }
+}
+fn st12(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<4>::new(); c55(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_king_step.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r1 ?x) (rank_succ ?x ?r2))
+fn c56(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [FREE; 2];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            let v2 = row1[0];
+            let v3 = row1[1];
+            let key2: [u32; 2] = [v3, FREE];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                if row2[0] != v3 { continue; }
+                let v4 = row2[1];
+                o.rows.push([v0, v2, v1, v4]);
+            }
+        }
+    }
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r1 ?x) (rank_succ ?x ?r2))
+fn c57(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [FREE; 2];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            let v2 = row1[0];
+            let v3 = row1[1];
+            let key2: [u32; 2] = [v3, FREE];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                if row2[0] != v3 { continue; }
+                let v4 = row2[1];
+                o.rows.push([v1, v2, v0, v4]);
+            }
+        }
+    }
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r2 ?x) (rank_succ ?x ?r1))
+fn c58(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [FREE; 2];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            let v2 = row1[0];
+            let v3 = row1[1];
+            let key2: [u32; 2] = [v3, FREE];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                if row2[0] != v3 { continue; }
+                let v4 = row2[1];
+                o.rows.push([v0, v4, v1, v2]);
+            }
+        }
+    }
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r2 ?x) (rank_succ ?x ?r1))
+fn c59(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [FREE; 2];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            let v2 = row1[0];
+            let v3 = row1[1];
+            let key2: [u32; 2] = [v3, FREE];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                if row2[0] != v3 { continue; }
+                let v4 = row2[1];
+                o.rows.push([v1, v4, v0, v2]);
+            }
+        }
+    }
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?x) (file_succ ?x ?f2) (rank_succ ?r1 ?r2))
+fn c60(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [v1, FREE];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            if row1[0] != v1 { continue; }
+            let v2 = row1[1];
+            let key2: [u32; 2] = [FREE; 2];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                let v3 = row2[0];
+                let v4 = row2[1];
+                o.rows.push([v0, v3, v2, v4]);
+            }
+        }
+    }
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?x) (file_succ ?x ?f1) (rank_succ ?r1 ?r2))
+fn c61(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [v1, FREE];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            if row1[0] != v1 { continue; }
+            let v2 = row1[1];
+            let key2: [u32; 2] = [FREE; 2];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                let v3 = row2[0];
+                let v4 = row2[1];
+                o.rows.push([v2, v3, v0, v4]);
+            }
+        }
+    }
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?x) (file_succ ?x ?f2) (rank_succ ?r2 ?r1))
+fn c62(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [v1, FREE];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            if row1[0] != v1 { continue; }
+            let v2 = row1[1];
+            let key2: [u32; 2] = [FREE; 2];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                let v3 = row2[0];
+                let v4 = row2[1];
+                o.rows.push([v0, v4, v2, v3]);
+            }
+        }
+    }
+}
+// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?x) (file_succ ?x ?f1) (rank_succ ?r2 ?r1))
+fn c63(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 2] = [v1, FREE];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            if row1[0] != v1 { continue; }
+            let v2 = row1[1];
+            let key2: [u32; 2] = [FREE; 2];
+            o.probes += 1;
+            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                let v3 = row2[0];
+                let v4 = row2[1];
+                o.rows.push([v2, v4, v0, v3]);
+            }
+        }
+    }
+}
+fn st13(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<4>::new(); c56(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c57(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c58(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c59(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c60(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c61(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c62(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c63(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (diagonal northeast)
+fn c64(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([122]);
+}
+// (diagonal northwest)
+fn c65(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([123]);
+}
+// (diagonal southeast)
+fn c66(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([132]);
+}
+// (diagonal southwest)
+fn c67(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([133]);
+}
+fn st14(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<1>::new(); c64(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c65(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c66(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c67(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (orthogonal north)
+fn c68(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([121]);
+}
+// (orthogonal south)
+fn c69(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([131]);
+}
+// (orthogonal east)
+fn c70(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([109]);
+}
+// (orthogonal west)
+fn c71(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([134]);
+}
+fn st15(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<1>::new(); c68(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c69(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c70(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c71(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (line_of rook ?d) (orthogonal ?d))
+fn c72(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    let key0: [u32; 1] = [FREE; 1];
+    o.probes += 1;
+    let rows0: &[[u32; 1]] = &s.r_orthogonal.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        o.rows.push([130, v0]);
+    }
+}
+// (<= (line_of bishop ?d) (diagonal ?d))
+fn c73(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    let key0: [u32; 1] = [FREE; 1];
+    o.probes += 1;
+    let rows0: &[[u32; 1]] = &s.r_diagonal.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        o.rows.push([103, v0]);
+    }
+}
+// (<= (line_of queen ?d) (orthogonal ?d))
+fn c74(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    let key0: [u32; 1] = [FREE; 1];
+    o.probes += 1;
+    let rows0: &[[u32; 1]] = &s.r_orthogonal.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        o.rows.push([127, v0]);
+    }
+}
+// (<= (line_of queen ?d) (diagonal ?d))
+fn c75(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    let key0: [u32; 1] = [FREE; 1];
+    o.probes += 1;
+    let rows0: &[[u32; 1]] = &s.r_diagonal.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        o.rows.push([127, v0]);
+    }
+}
+fn st16(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c72(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c73(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c74(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c75(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (pawn_diagonal white northeast)
+fn c76(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([135, 122]);
+}
+// (pawn_diagonal white northwest)
+fn c77(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([135, 123]);
+}
+// (pawn_diagonal black southeast)
+fn c78(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([104, 132]);
+}
+// (pawn_diagonal black southwest)
+fn c79(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([104, 133]);
+}
+fn st17(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c76(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c77(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c78(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c79(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_pawn_diagonal.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (square ?f ?r) (file ?f) (rank ?r))
-fn c61(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c80(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     let key0: [u32; 1] = [FREE; 1];
     o.probes += 1;
     let rows0: &[[u32; 1]] = &s.r_file.order;
@@ -999,15 +1359,15 @@ fn c61(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
         }
     }
 }
-fn st15(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st18(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c61(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<2>::new(); c80(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_square.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (empty ?f ?r) (square ?f ?r) (not (occupied ?f ?r)))
-fn c62(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c81(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_square.order;
@@ -1019,15 +1379,15 @@ fn c62(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
         o.rows.push([v0, v1]);
     }
 }
-fn st16(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st19(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c62(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<2>::new(); c81(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_empty.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (slide ?d ?f1 ?r1 ?f2 ?r2) (step ?d ?f1 ?r1 ?f2 ?r2))
-fn c63(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c82(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 5] = [FREE; 5];
     o.probes += 1;
     let rows0: &[[u32; 5]] = &s.r_step.order;
@@ -1042,7 +1402,7 @@ fn c63(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (slide ?d ?f1 ?r1 ?f3 ?r3) (slide ?d ?f1 ?r1 ?f2 ?r2) (empty ?f2 ?r2) (step ?d ?f2 ?r2 ?f3 ?r3))
-fn c64(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c83(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &d.r_empty.order;
@@ -1076,407 +1436,25 @@ fn c64(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
         }
     }
 }
-fn st17(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st20(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<5>::new(); c63(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<5>::new(); c82(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_slide.add(row) { made += 1; dl.r_slide.push(row); } } }
-    { let mut o = Out::<5>::new(); c64(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<5>::new(); c83(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_slide.add(row) { made += 1; dl.r_slide.push(row); } } }
     loop {
         if dl.r_slide.is_empty() { break; }
         let mut nwr_slide: Vec<[u32; 5]> = vec![]; let mut snr_slide: HashSet<[u32; 5], B> = HashSet::default();
-        if !dl.r_slide.is_empty() { let mut o = Out::<5>::new(); c64(s, &*d, tm, 1, &dl, &mut o); visits += o.visits; probes += o.probes;
+        if !dl.r_slide.is_empty() { let mut o = Out::<5>::new(); c83(s, &*d, tm, 1, &dl, &mut o); visits += o.visits; probes += o.probes;
             for row in o.rows { if !d.r_slide.has(&row) && snr_slide.insert(row) { nwr_slide.push(row); } } }
         for row in &nwr_slide { d.r_slide.add(*row); made += 1; }
         dl.r_slide = nwr_slide;
     }
     (made, visits, probes)
 }
-// (diagonal northeast)
-fn c65(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([122]);
-}
-// (diagonal northwest)
-fn c66(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([123]);
-}
-// (diagonal southeast)
-fn c67(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([132]);
-}
-// (diagonal southwest)
-fn c68(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([133]);
-}
-fn st18(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<1>::new(); c65(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c66(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c67(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c68(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_diagonal.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (orthogonal north)
-fn c69(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([121]);
-}
-// (orthogonal south)
-fn c70(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([131]);
-}
-// (orthogonal east)
-fn c71(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([109]);
-}
-// (orthogonal west)
-fn c72(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([134]);
-}
-fn st19(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<1>::new(); c69(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c70(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c71(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c72(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_orthogonal.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= (line_of rook ?d) (orthogonal ?d))
-fn c73(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    let key0: [u32; 1] = [FREE; 1];
-    o.probes += 1;
-    let rows0: &[[u32; 1]] = &s.r_orthogonal.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        o.rows.push([130, v0]);
-    }
-}
-// (<= (line_of bishop ?d) (diagonal ?d))
-fn c74(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    let key0: [u32; 1] = [FREE; 1];
-    o.probes += 1;
-    let rows0: &[[u32; 1]] = &s.r_diagonal.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        o.rows.push([103, v0]);
-    }
-}
-// (<= (line_of queen ?d) (orthogonal ?d))
-fn c75(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    let key0: [u32; 1] = [FREE; 1];
-    o.probes += 1;
-    let rows0: &[[u32; 1]] = &s.r_orthogonal.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        o.rows.push([127, v0]);
-    }
-}
-// (<= (line_of queen ?d) (diagonal ?d))
-fn c76(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    let key0: [u32; 1] = [FREE; 1];
-    o.probes += 1;
-    let rows0: &[[u32; 1]] = &s.r_diagonal.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        o.rows.push([127, v0]);
-    }
-}
-fn st20(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c73(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c74(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c75(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c76(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_line_of.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= (king_step ?f1 ?r1 ?f2 ?r2) (step ?d ?f1 ?r1 ?f2 ?r2))
-fn c77(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 5] = [FREE; 5];
-    o.probes += 1;
-    let rows0: &[[u32; 5]] = &s.r_step.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        let v3 = row0[3];
-        let v4 = row0[4];
-        o.rows.push([v1, v2, v3, v4]);
-    }
-}
-fn st21(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<4>::new(); c77(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_king_step.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r1 ?x) (rank_succ ?x ?r2))
-fn c78(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [FREE; 2];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            let v2 = row1[0];
-            let v3 = row1[1];
-            let key2: [u32; 2] = [v3, FREE];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                if row2[0] != v3 { continue; }
-                let v4 = row2[1];
-                o.rows.push([v0, v2, v1, v4]);
-            }
-        }
-    }
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r1 ?x) (rank_succ ?x ?r2))
-fn c79(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [FREE; 2];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            let v2 = row1[0];
-            let v3 = row1[1];
-            let key2: [u32; 2] = [v3, FREE];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                if row2[0] != v3 { continue; }
-                let v4 = row2[1];
-                o.rows.push([v1, v2, v0, v4]);
-            }
-        }
-    }
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r2 ?x) (rank_succ ?x ?r1))
-fn c80(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [FREE; 2];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            let v2 = row1[0];
-            let v3 = row1[1];
-            let key2: [u32; 2] = [v3, FREE];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                if row2[0] != v3 { continue; }
-                let v4 = row2[1];
-                o.rows.push([v0, v4, v1, v2]);
-            }
-        }
-    }
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r2 ?x) (rank_succ ?x ?r1))
-fn c81(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [FREE; 2];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = &s.r_rank_succ.order;
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            let v2 = row1[0];
-            let v3 = row1[1];
-            let key2: [u32; 2] = [v3, FREE];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = s.r_rank_succ.get(0, &key2);
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                if row2[0] != v3 { continue; }
-                let v4 = row2[1];
-                o.rows.push([v1, v4, v0, v2]);
-            }
-        }
-    }
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?x) (file_succ ?x ?f2) (rank_succ ?r1 ?r2))
-fn c82(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [v1, FREE];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            if row1[0] != v1 { continue; }
-            let v2 = row1[1];
-            let key2: [u32; 2] = [FREE; 2];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                let v3 = row2[0];
-                let v4 = row2[1];
-                o.rows.push([v0, v3, v2, v4]);
-            }
-        }
-    }
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?x) (file_succ ?x ?f1) (rank_succ ?r1 ?r2))
-fn c83(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [v1, FREE];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            if row1[0] != v1 { continue; }
-            let v2 = row1[1];
-            let key2: [u32; 2] = [FREE; 2];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                let v3 = row2[0];
-                let v4 = row2[1];
-                o.rows.push([v2, v3, v0, v4]);
-            }
-        }
-    }
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?x) (file_succ ?x ?f2) (rank_succ ?r2 ?r1))
-fn c84(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [v1, FREE];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            if row1[0] != v1 { continue; }
-            let v2 = row1[1];
-            let key2: [u32; 2] = [FREE; 2];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                let v3 = row2[0];
-                let v4 = row2[1];
-                o.rows.push([v0, v4, v2, v3]);
-            }
-        }
-    }
-}
-// (<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?x) (file_succ ?x ?f1) (rank_succ ?r2 ?r1))
-fn c85(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_file_succ.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 2] = [v1, FREE];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = s.r_file_succ.get(0, &key1);
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            if row1[0] != v1 { continue; }
-            let v2 = row1[1];
-            let key2: [u32; 2] = [FREE; 2];
-            o.probes += 1;
-            let rows2: &[[u32; 2]] = &s.r_rank_succ.order;
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                let v3 = row2[0];
-                let v4 = row2[1];
-                o.rows.push([v2, v4, v0, v3]);
-            }
-        }
-    }
-}
-fn st22(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<4>::new(); c78(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c79(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c80(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c81(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c82(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c83(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c84(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c85(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_knight_jump.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
 // (<= (attack_by ?k ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c ?k)) (line_of ?k ?d) (slide ?d ?f1 ?r1 ?f2 ?r2))
-fn c86(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c84(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_line_of.order;
@@ -1509,7 +1487,7 @@ fn c86(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     }
 }
 // (<= (attack_by knight ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c knight)) (knight_jump ?f1 ?r1 ?f2 ?r2))
-fn c87(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c85(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 4] = [FREE, FREE, FREE, 118];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
@@ -1533,7 +1511,7 @@ fn c87(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     }
 }
 // (<= (attack_by king ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c king)) (king_step ?f1 ?r1 ?f2 ?r2))
-fn c88(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c86(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 4] = [FREE, FREE, FREE, 116];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
@@ -1557,7 +1535,7 @@ fn c88(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     }
 }
 // (<= (attack_by pawn ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c pawn)) (pawn_diagonal ?c ?d) (step ?d ?f1 ?r1 ?f2 ?r2))
-fn c89(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c87(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 4] = [FREE, FREE, FREE, 125];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
@@ -1589,21 +1567,21 @@ fn c89(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
         }
     }
 }
-fn st23(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st21(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
+    { let mut o = Out::<6>::new(); c84(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_attack_by.add(row) { made += 1; } } }
+    { let mut o = Out::<6>::new(); c85(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_attack_by.add(row) { made += 1; } } }
     { let mut o = Out::<6>::new(); c86(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_attack_by.add(row) { made += 1; } } }
     { let mut o = Out::<6>::new(); c87(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_attack_by.add(row) { made += 1; } } }
-    { let mut o = Out::<6>::new(); c88(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_attack_by.add(row) { made += 1; } } }
-    { let mut o = Out::<6>::new(); c89(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_attack_by.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (attack ?c ?f1 ?r1 ?f2 ?r2) (attack_by ?k ?c ?f1 ?r1 ?f2 ?r2))
-fn c90(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c88(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 6] = [FREE; 6];
     o.probes += 1;
     let rows0: &[[u32; 6]] = &d.r_attack_by.order;
@@ -1618,15 +1596,15 @@ fn c90(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
         o.rows.push([v1, v2, v3, v4, v5]);
     }
 }
-fn st24(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st22(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<5>::new(); c90(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<5>::new(); c88(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_attack.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (attacked ?c ?f ?r) (attack ?c ?f1 ?r1 ?f ?r))
-fn c91(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
+fn c89(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
     let key0: [u32; 5] = [FREE; 5];
     o.probes += 1;
     let rows0: &[[u32; 5]] = &d.r_attack.order;
@@ -1640,15 +1618,15 @@ fn c91(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
         o.rows.push([v0, v3, v4]);
     }
 }
-fn st25(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st23(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<3>::new(); c91(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<3>::new(); c89(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_attacked.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (touches_king ?o ?f ?r) (true (cell ?f2 ?r2 ?o king)) (king_step ?f ?r ?f2 ?r2))
-fn c92(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
+fn c90(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
     let key0: [u32; 4] = [FREE, FREE, FREE, 116];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
@@ -1671,15 +1649,15 @@ fn c92(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
         }
     }
 }
-fn st26(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st24(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<3>::new(); c92(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<3>::new(); c90(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_touches_king.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (struck ?o ?f ?r) (attacked ?o ?f ?r) (not (touches_king ?o ?f ?r)))
-fn c93(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
+fn c91(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
     let key0: [u32; 3] = [FREE; 3];
     o.probes += 1;
     let rows0: &[[u32; 3]] = &d.r_attacked.order;
@@ -1692,15 +1670,15 @@ fn c93(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
         o.rows.push([v0, v1, v2]);
     }
 }
-fn st27(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st25(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<3>::new(); c93(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<3>::new(); c91(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_struck.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (castle_unsafe ?c ?side) (home_rank ?c ?r) (castling_safe ?side ?f) (opponent ?c ?o) (struck ?o ?f ?r))
-fn c94(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+fn c92(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_home_rank.order;
@@ -1736,11 +1714,33 @@ fn c94(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
         }
     }
 }
+fn st26(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c92(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_castle_unsafe.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (castling_path kingside g f h)
+fn c93(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    o.rows.push([117, 113, 111, 114]);
+}
+// (castling_path queenside c d a)
+fn c94(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    o.rows.push([128, 105, 107, 101]);
+}
+fn st27(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<4>::new(); c93(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_path.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c94(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_castling_path.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
 fn st28(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c94(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_castle_unsafe.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 fn st29(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
@@ -1851,114 +1851,8 @@ fn st31(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_castling_move.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (forward white north)
-fn c97(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([135, 121]);
-}
-// (forward black south)
-fn c98(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([104, 131]);
-}
-fn st32(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c97(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_forward.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c98(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_forward.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (role white)
-fn c99(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([135]);
-}
-// (role black)
-fn c100(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    o.rows.push([104]);
-}
-fn st33(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<1>::new(); c99(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_role.add(row) { made += 1; } } }
-    { let mut o = Out::<1>::new(); c100(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_role.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= (may_land ?c ?f ?r) (role ?c) (empty ?f ?r))
-fn c101(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
-    let key0: [u32; 1] = [FREE; 1];
-    o.probes += 1;
-    let rows0: &[[u32; 1]] = &s.r_role.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let key1: [u32; 2] = [FREE; 2];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = &d.r_empty.order;
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            let v1 = row1[0];
-            let v2 = row1[1];
-            o.rows.push([v0, v1, v2]);
-        }
-    }
-}
-// (<= (may_land ?c ?f ?r) (true (cell ?f ?r ?o ?j)) (opponent ?c ?o))
-fn c102(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &s.r_opponent.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let key1: [u32; 4] = [FREE, FREE, v1, FREE];
-        o.probes += 1;
-        let rows1: &[[u32; 4]] = d.r_true_cell.get(4, &key1);
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            let v2 = row1[0];
-            let v3 = row1[1];
-            if row1[2] != v1 { continue; }
-            let v4 = row1[3];
-            o.rows.push([v0, v2, v3]);
-        }
-    }
-}
-fn st34(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<3>::new(); c101(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_may_land.add(row) { made += 1; } } }
-    { let mut o = Out::<3>::new(); c102(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_may_land.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (pawn_start white 2)
-fn c103(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([135, 13]);
-}
-// (pawn_start black 7)
-fn c104(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([104, 68]);
-}
-fn st35(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c103(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_pawn_start.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c104(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_pawn_start.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-fn st36(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    (made, visits, probes)
-}
 // (<= (ep_victim white ?f ?r2 ?f ?r1) (file ?f) (rank_succ ?r1 ?r2))
-fn c105(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c97(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 1] = [FREE; 1];
     o.probes += 1;
     let rows0: &[[u32; 1]] = &s.r_file.order;
@@ -1977,7 +1871,7 @@ fn c105(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     }
 }
 // (<= (ep_victim black ?f ?r1 ?f ?r2) (file ?f) (rank_succ ?r1 ?r2))
-fn c106(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c98(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 1] = [FREE; 1];
     o.probes += 1;
     let rows0: &[[u32; 1]] = &s.r_file.order;
@@ -1995,17 +1889,22 @@ fn c106(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
         }
     }
 }
-fn st37(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st32(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<5>::new(); c105(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<5>::new(); c97(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_ep_victim.add(row) { made += 1; } } }
-    { let mut o = Out::<5>::new(); c106(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<5>::new(); c98(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_ep_victim.add(row) { made += 1; } } }
     (made, visits, probes)
 }
+fn st33(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    (made, visits, probes)
+}
 // (<= (en_passant ?c ?f1 ?r1 ?f2 ?r2) (true (control ?c)) (attack_by pawn ?c ?f1 ?r1 ?f2 ?r2) (true (ep_square ?f2 ?r2)) (empty ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?f3 ?r3) (true (cell ?f3 ?r3 ?o pawn)) (opponent ?c ?o))
-fn c107(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
+fn c99(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
     let key0: [u32; 4] = [FREE, FREE, FREE, 125];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
@@ -2072,11 +1971,112 @@ fn c107(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<5>) {
         }
     }
 }
-fn st38(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st34(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<5>::new(); c107(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<5>::new(); c99(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_en_passant.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (forward white north)
+fn c100(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([135, 121]);
+}
+// (forward black south)
+fn c101(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([104, 131]);
+}
+fn st35(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c100(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_forward.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c101(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_forward.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (role white)
+fn c102(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([135]);
+}
+// (role black)
+fn c103(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    o.rows.push([104]);
+}
+fn st36(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<1>::new(); c102(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_role.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c103(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_role.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (may_land ?c ?f ?r) (role ?c) (empty ?f ?r))
+fn c104(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
+    let key0: [u32; 1] = [FREE; 1];
+    o.probes += 1;
+    let rows0: &[[u32; 1]] = &s.r_role.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let key1: [u32; 2] = [FREE; 2];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = &d.r_empty.order;
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            let v1 = row1[0];
+            let v2 = row1[1];
+            o.rows.push([v0, v1, v2]);
+        }
+    }
+}
+// (<= (may_land ?c ?f ?r) (true (cell ?f ?r ?o ?j)) (opponent ?c ?o))
+fn c105(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<3>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &s.r_opponent.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let key1: [u32; 4] = [FREE, FREE, v1, FREE];
+        o.probes += 1;
+        let rows1: &[[u32; 4]] = d.r_true_cell.get(4, &key1);
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            let v2 = row1[0];
+            let v3 = row1[1];
+            if row1[2] != v1 { continue; }
+            let v4 = row1[3];
+            o.rows.push([v0, v2, v3]);
+        }
+    }
+}
+fn st37(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<3>::new(); c104(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_may_land.add(row) { made += 1; } } }
+    { let mut o = Out::<3>::new(); c105(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_may_land.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (pawn_start white 2)
+fn c106(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([135, 13]);
+}
+// (pawn_start black 7)
+fn c107(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    o.rows.push([104, 68]);
+}
+fn st38(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c106(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_pawn_start.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c107(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_pawn_start.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (move_by pawn ?c ?f ?r1 ?f ?r2) (true (control ?c)) (true (cell ?f ?r1 ?c pawn)) (forward ?c ?d) (step ?d ?f ?r1 ?f ?r2) (empty ?f ?r2))
@@ -2523,8 +2523,33 @@ fn st43(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_fills.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= (blasted ?f1 ?r1 ?f2 ?r2 ?f2 ?r2) (taking ?f1 ?r1 ?f2 ?r2) (occupied ?f2 ?r2))
+// (<= (filled ?f1 ?r1 ?f2 ?r2 ?f ?r) (fills ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k))
 fn c121(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+    let key0: [u32; 8] = [FREE; 8];
+    o.probes += 1;
+    let rows0: &[[u32; 8]] = &d.r_fills.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        let v3 = row0[3];
+        let v4 = row0[4];
+        let v5 = row0[5];
+        let v6 = row0[6];
+        let v7 = row0[7];
+        o.rows.push([v0, v1, v2, v3, v4, v5]);
+    }
+}
+fn st44(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<6>::new(); c121(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_filled.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (blasted ?f1 ?r1 ?f2 ?r2 ?f2 ?r2) (taking ?f1 ?r1 ?f2 ?r2) (occupied ?f2 ?r2))
+fn c122(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &d.r_occupied.order;
@@ -2546,7 +2571,7 @@ fn c121(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     }
 }
 // (<= (blasted ?f1 ?r1 ?f2 ?r2 ?f ?r) (taking ?f1 ?r1 ?f2 ?r2) (true (cell ?f ?r ?c ?k)) (distinct ?k pawn) (king_step ?f2 ?r2 ?f ?r))
-fn c122(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c123(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
     let rows0: &[[u32; 4]] = &d.r_taking.order;
@@ -2580,17 +2605,17 @@ fn c122(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
         }
     }
 }
-fn st44(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st45(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<6>::new(); c121(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_blasted.add(row) { made += 1; } } }
     { let mut o = Out::<6>::new(); c122(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_blasted.add(row) { made += 1; } } }
+    { let mut o = Out::<6>::new(); c123(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_blasted.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (vacates ?f1 ?r1 ?f2 ?r2 ?f1 ?r1) (candidate ?c ?f1 ?r1 ?f2 ?r2))
-fn c123(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c124(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 5] = [FREE; 5];
     o.probes += 1;
     let rows0: &[[u32; 5]] = &d.r_candidate.order;
@@ -2605,7 +2630,7 @@ fn c123(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     }
 }
 // (<= (vacates ?f1 ?r1 ?f2 ?r2 ?f3 ?r3) (en_passant ?c ?f1 ?r1 ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?f3 ?r3))
-fn c124(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c125(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 5] = [FREE; 5];
     o.probes += 1;
     let rows0: &[[u32; 5]] = &d.r_en_passant.order;
@@ -2631,7 +2656,7 @@ fn c124(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     }
 }
 // (<= (vacates e ?r ?kt ?r ?rf ?r) (castling_move ?c ?side e ?r ?kt ?r) (castling_path ?side ?kt ?rt ?rf))
-fn c125(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c126(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 6] = [FREE, FREE, 108, FREE, FREE, FREE];
     o.probes += 1;
     let rows0: &[[u32; 6]] = d.r_castling_move.get(0, &key0);
@@ -2657,7 +2682,7 @@ fn c125(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     }
 }
 // (<= (vacates ?f1 ?r1 ?f2 ?r2 ?f ?r) (blasted ?f1 ?r1 ?f2 ?r2 ?f ?r))
-fn c126(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
+fn c127(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
     let key0: [u32; 6] = [FREE; 6];
     o.probes += 1;
     let rows0: &[[u32; 6]] = &d.r_blasted.order;
@@ -2672,42 +2697,17 @@ fn c126(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
         o.rows.push([v0, v1, v2, v3, v4, v5]);
     }
 }
-fn st45(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st46(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<6>::new(); c123(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_vacates.add(row) { made += 1; } } }
     { let mut o = Out::<6>::new(); c124(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_vacates.add(row) { made += 1; } } }
     { let mut o = Out::<6>::new(); c125(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_vacates.add(row) { made += 1; } } }
     { let mut o = Out::<6>::new(); c126(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_vacates.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= (filled ?f1 ?r1 ?f2 ?r2 ?f ?r) (fills ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k))
-fn c127(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<6>) {
-    let key0: [u32; 8] = [FREE; 8];
-    o.probes += 1;
-    let rows0: &[[u32; 8]] = &d.r_fills.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        let v3 = row0[3];
-        let v4 = row0[4];
-        let v5 = row0[5];
-        let v6 = row0[6];
-        let v7 = row0[7];
-        o.rows.push([v0, v1, v2, v3, v4, v5]);
-    }
-}
-fn st46(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
     { let mut o = Out::<6>::new(); c127(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_filled.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_vacates.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (stays ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k) (candidate ?m ?f1 ?r1 ?f2 ?r2) (true (cell ?f ?r ?c ?k)) (not (vacates ?f1 ?r1 ?f2 ?r2 ?f ?r)) (not (filled ?f1 ?r1 ?f2 ?r2 ?f ?r)))
@@ -2877,110 +2877,110 @@ fn st52(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_any_pawn.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (rank_parity 1 even)
+// (file_parity a even)
 fn c135(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([1, 110]);
+    o.rows.push([101, 110]);
 }
-// (rank_parity 2 odd)
+// (file_parity b odd)
 fn c136(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([13, 124]);
+    o.rows.push([102, 124]);
 }
-// (rank_parity 3 even)
+// (file_parity c even)
 fn c137(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([24, 110]);
+    o.rows.push([105, 110]);
 }
-// (rank_parity 4 odd)
+// (file_parity d odd)
 fn c138(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([35, 124]);
+    o.rows.push([107, 124]);
 }
-// (rank_parity 5 even)
+// (file_parity e even)
 fn c139(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([46, 110]);
+    o.rows.push([108, 110]);
 }
-// (rank_parity 6 odd)
+// (file_parity f odd)
 fn c140(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([57, 124]);
+    o.rows.push([111, 124]);
 }
-// (rank_parity 7 even)
+// (file_parity g even)
 fn c141(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([68, 110]);
+    o.rows.push([113, 110]);
 }
-// (rank_parity 8 odd)
+// (file_parity h odd)
 fn c142(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([79, 124]);
+    o.rows.push([114, 124]);
 }
 fn st53(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<2>::new(); c135(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c136(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c137(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c138(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c139(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c140(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c141(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c142(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (file_parity a even)
+// (rank_parity 1 even)
 fn c143(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([101, 110]);
+    o.rows.push([1, 110]);
 }
-// (file_parity b odd)
+// (rank_parity 2 odd)
 fn c144(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([102, 124]);
+    o.rows.push([13, 124]);
 }
-// (file_parity c even)
+// (rank_parity 3 even)
 fn c145(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([105, 110]);
+    o.rows.push([24, 110]);
 }
-// (file_parity d odd)
+// (rank_parity 4 odd)
 fn c146(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([107, 124]);
+    o.rows.push([35, 124]);
 }
-// (file_parity e even)
+// (rank_parity 5 even)
 fn c147(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([108, 110]);
+    o.rows.push([46, 110]);
 }
-// (file_parity f odd)
+// (rank_parity 6 odd)
 fn c148(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([111, 124]);
+    o.rows.push([57, 124]);
 }
-// (file_parity g even)
+// (rank_parity 7 even)
 fn c149(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([113, 110]);
+    o.rows.push([68, 110]);
 }
-// (file_parity h odd)
+// (rank_parity 8 odd)
 fn c150(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    o.rows.push([114, 124]);
+    o.rows.push([79, 124]);
 }
 fn st54(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<2>::new(); c143(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c144(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c145(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c146(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c147(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c148(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c149(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     { let mut o = Out::<2>::new(); c150(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_file_parity.add(row) { made += 1; } } }
+      for row in o.rows { if s.r_rank_parity.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (dark ?f ?r) (file_parity ?f ?p) (rank_parity ?r ?p))
@@ -3096,37 +3096,8 @@ fn st58(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_bl_bishop.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= wl_bishop (true (cell ?f ?r white bishop)) (light ?f ?r))
-fn c155(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    let key0: [u32; 4] = [FREE, FREE, 135, 103];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = d.r_true_cell.get(5, &key0);
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        if row0[2] != 135 { continue; }
-        if row0[3] != 103 { continue; }
-        let key1: [u32; 2] = [v0, v1];
-        o.probes += 1;
-        let rows1: &[[u32; 2]] = s.r_light.get(0, &key1);
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            if row1[0] != v0 { continue; }
-            if row1[1] != v1 { continue; }
-            o.rows.push([]);
-        }
-    }
-}
-fn st59(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<0>::new(); c155(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_wl_bishop.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
 // (<= wd_bishop (true (cell ?f ?r white bishop)) (dark ?f ?r))
-fn c156(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+fn c155(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
     let key0: [u32; 4] = [FREE, FREE, 135, 103];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(5, &key0);
@@ -3147,11 +3118,40 @@ fn c156(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
         }
     }
 }
+fn st59(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<0>::new(); c155(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_wd_bishop.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= wl_bishop (true (cell ?f ?r white bishop)) (light ?f ?r))
+fn c156(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+    let key0: [u32; 4] = [FREE, FREE, 135, 103];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = d.r_true_cell.get(5, &key0);
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        if row0[2] != 135 { continue; }
+        if row0[3] != 103 { continue; }
+        let key1: [u32; 2] = [v0, v1];
+        o.probes += 1;
+        let rows1: &[[u32; 2]] = s.r_light.get(0, &key1);
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            if row1[0] != v0 { continue; }
+            if row1[1] != v1 { continue; }
+            o.rows.push([]);
+        }
+    }
+}
 fn st60(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<0>::new(); c156(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_wd_bishop.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_wl_bishop.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= bishop_dead (not wd_bishop) (not bl_bishop))
@@ -4178,31 +4178,19 @@ fn st70(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
       for row in o.rows { if s.r_count_succ.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= queen_or_pawn (true (cell ?f ?r ?c queen)))
+// (<= non_knight_unit (true (cell ?f ?r ?c ?k)) (distinct ?k king) (distinct ?k knight))
 fn c271(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    let key0: [u32; 4] = [FREE, FREE, FREE, 127];
+    let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
-    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
+    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
     for row0 in rows0.iter() {
         o.visits += 1;
         let v0 = row0[0];
         let v1 = row0[1];
         let v2 = row0[2];
-        if row0[3] != 127 { continue; }
-        o.rows.push([]);
-    }
-}
-// (<= queen_or_pawn (true (cell ?f ?r ?c pawn)))
-fn c272(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    let key0: [u32; 4] = [FREE, FREE, FREE, 125];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        if row0[3] != 125 { continue; }
+        let v3 = row0[3];
+        if v3 == 116 { continue; }
+        if v3 == 118 { continue; }
         o.rows.push([]);
     }
 }
@@ -4210,9 +4198,29 @@ fn st71(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<0>::new(); c271(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_queen_or_pawn.add(row) { made += 1; } } }
-    { let mut o = Out::<0>::new(); c272(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_queen_or_pawn.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_non_knight_unit.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (nonking ?c) (true (cell ?f ?r ?c ?k)) (distinct ?k king))
+fn c272(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    let key0: [u32; 4] = [FREE; 4];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        let v3 = row0[3];
+        if v3 == 116 { continue; }
+        o.rows.push([v2]);
+    }
+}
+fn st72(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<1>::new(); c272(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_nonking.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (diff_sq ?f1 ?r1 ?f2 ?r2) (square ?f1 ?r1) (square ?f2 ?r2) (distinct ?f1 ?f2))
@@ -4257,7 +4265,7 @@ fn c274(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
         }
     }
 }
-fn st72(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st73(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<4>::new(); c273(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
@@ -4266,8 +4274,142 @@ fn st72(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
       for row in o.rows { if s.r_diff_sq.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= three_nonking (true (cell ?f1 ?r1 ?c1 ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c2 ?k2)) (distinct ?k2 king) (true (cell ?f3 ?r3 ?c3 ?k3)) (distinct ?k3 king) (diff_sq ?f1 ?r1 ?f2 ?r2) (diff_sq ?f1 ?r1 ?f3 ?r3) (diff_sq ?f2 ?r2 ?f3 ?r3))
+// (<= two_nonking (true (cell ?f1 ?r1 ?c1 ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c2 ?k2)) (distinct ?k2 king) (diff_sq ?f1 ?r1 ?f2 ?r2))
 fn c275(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+    let key0: [u32; 4] = [FREE; 4];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        let v3 = row0[3];
+        if v3 == 116 { continue; }
+        let key2: [u32; 4] = [v0, v1, FREE, FREE];
+        o.probes += 1;
+        let rows2: &[[u32; 4]] = s.r_diff_sq.get(0, &key2);
+        for row2 in rows2.iter() {
+            o.visits += 1;
+            if row2[0] != v0 { continue; }
+            if row2[1] != v1 { continue; }
+            let v4 = row2[2];
+            let v5 = row2[3];
+            let key3: [u32; 4] = [v4, v5, FREE, FREE];
+            o.probes += 1;
+            let rows3: &[[u32; 4]] = d.r_true_cell.get(0, &key3);
+            for row3 in rows3.iter() {
+                o.visits += 1;
+                if row3[0] != v4 { continue; }
+                if row3[1] != v5 { continue; }
+                let v6 = row3[2];
+                let v7 = row3[3];
+                if v7 == 116 { continue; }
+                o.rows.push([]);
+            }
+        }
+    }
+}
+fn st74(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<0>::new(); c275(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_two_nonking.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= one_nonking (nonking ?c) (not two_nonking))
+fn c276(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+    if d.r_two_nonking.has(&[]) { return; }
+    let key1: [u32; 1] = [FREE; 1];
+    o.probes += 1;
+    let rows1: &[[u32; 1]] = &d.r_nonking.order;
+    for row1 in rows1.iter() {
+        o.visits += 1;
+        let v0 = row1[0];
+        o.rows.push([]);
+    }
+}
+fn st75(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<0>::new(); c276(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_one_nonking.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= other_than_bishop (true (cell ?f ?r ?c ?k)) (distinct ?k king) (distinct ?k bishop))
+fn c277(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+    let key0: [u32; 4] = [FREE; 4];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        let v3 = row0[3];
+        if v3 == 116 { continue; }
+        if v3 == 103 { continue; }
+        o.rows.push([]);
+    }
+}
+fn st76(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<0>::new(); c277(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_other_than_bishop.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= only_kings_bishops (not other_than_bishop))
+fn c278(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+    if d.r_other_than_bishop.has(&[]) { return; }
+    o.rows.push([]);
+}
+fn st77(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<0>::new(); c278(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_only_kings_bishops.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= queen_or_pawn (true (cell ?f ?r ?c queen)))
+fn c279(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+    let key0: [u32; 4] = [FREE, FREE, FREE, 127];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        if row0[3] != 127 { continue; }
+        o.rows.push([]);
+    }
+}
+// (<= queen_or_pawn (true (cell ?f ?r ?c pawn)))
+fn c280(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+    let key0: [u32; 4] = [FREE, FREE, FREE, 125];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        if row0[3] != 125 { continue; }
+        o.rows.push([]);
+    }
+}
+fn st78(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<0>::new(); c279(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_queen_or_pawn.add(row) { made += 1; } } }
+    { let mut o = Out::<0>::new(); c280(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_queen_or_pawn.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= three_nonking (true (cell ?f1 ?r1 ?c1 ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c2 ?k2)) (distinct ?k2 king) (true (cell ?f3 ?r3 ?c3 ?k3)) (distinct ?k3 king) (diff_sq ?f1 ?r1 ?f2 ?r2) (diff_sq ?f1 ?r1 ?f3 ?r3) (diff_sq ?f2 ?r2 ?f3 ?r3))
+fn c281(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
     let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
     let rows0: &[[u32; 4]] = &d.r_true_cell.order;
@@ -4333,153 +4475,11 @@ fn c275(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
         }
     }
 }
-fn st73(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<0>::new(); c275(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_three_nonking.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= non_knight_unit (true (cell ?f ?r ?c ?k)) (distinct ?k king) (distinct ?k knight))
-fn c276(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    let key0: [u32; 4] = [FREE; 4];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        let v3 = row0[3];
-        if v3 == 116 { continue; }
-        if v3 == 118 { continue; }
-        o.rows.push([]);
-    }
-}
-fn st74(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<0>::new(); c276(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_non_knight_unit.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= other_than_bishop (true (cell ?f ?r ?c ?k)) (distinct ?k king) (distinct ?k bishop))
-fn c277(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    let key0: [u32; 4] = [FREE; 4];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        let v3 = row0[3];
-        if v3 == 116 { continue; }
-        if v3 == 103 { continue; }
-        o.rows.push([]);
-    }
-}
-fn st75(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<0>::new(); c277(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_other_than_bishop.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= only_kings_bishops (not other_than_bishop))
-fn c278(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    if d.r_other_than_bishop.has(&[]) { return; }
-    o.rows.push([]);
-}
-fn st76(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<0>::new(); c278(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_only_kings_bishops.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= (nonking ?c) (true (cell ?f ?r ?c ?k)) (distinct ?k king))
-fn c279(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    let key0: [u32; 4] = [FREE; 4];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        let v3 = row0[3];
-        if v3 == 116 { continue; }
-        o.rows.push([v2]);
-    }
-}
-fn st77(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<1>::new(); c279(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_nonking.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= two_nonking (true (cell ?f1 ?r1 ?c1 ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c2 ?k2)) (distinct ?k2 king) (diff_sq ?f1 ?r1 ?f2 ?r2))
-fn c280(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    let key0: [u32; 4] = [FREE; 4];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        let v3 = row0[3];
-        if v3 == 116 { continue; }
-        let key2: [u32; 4] = [v0, v1, FREE, FREE];
-        o.probes += 1;
-        let rows2: &[[u32; 4]] = s.r_diff_sq.get(0, &key2);
-        for row2 in rows2.iter() {
-            o.visits += 1;
-            if row2[0] != v0 { continue; }
-            if row2[1] != v1 { continue; }
-            let v4 = row2[2];
-            let v5 = row2[3];
-            let key3: [u32; 4] = [v4, v5, FREE, FREE];
-            o.probes += 1;
-            let rows3: &[[u32; 4]] = d.r_true_cell.get(0, &key3);
-            for row3 in rows3.iter() {
-                o.visits += 1;
-                if row3[0] != v4 { continue; }
-                if row3[1] != v5 { continue; }
-                let v6 = row3[2];
-                let v7 = row3[3];
-                if v7 == 116 { continue; }
-                o.rows.push([]);
-            }
-        }
-    }
-}
-fn st78(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<0>::new(); c280(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_two_nonking.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-// (<= one_nonking (nonking ?c) (not two_nonking))
-fn c281(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
-    if d.r_two_nonking.has(&[]) { return; }
-    let key1: [u32; 1] = [FREE; 1];
-    o.probes += 1;
-    let rows1: &[[u32; 1]] = &d.r_nonking.order;
-    for row1 in rows1.iter() {
-        o.visits += 1;
-        let v0 = row1[0];
-        o.rows.push([]);
-    }
-}
 fn st79(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<0>::new(); c281(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_one_nonking.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_three_nonking.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (dead ?c) (opponent ?c ?o) (ak ?o) (role ?c) (not (nonking ?c)))
@@ -4748,52 +4748,8 @@ fn st84(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_promotes.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= (king_lost ?f1 ?r1 ?f2 ?r2) (candidate ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f ?r ?c king)) (blasted ?f1 ?r1 ?f2 ?r2 ?f ?r))
-fn c294(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
-    let key0: [u32; 4] = [FREE, FREE, FREE, 116];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        if row0[3] != 116 { continue; }
-        let key1: [u32; 6] = [FREE, FREE, FREE, FREE, v0, v1];
-        o.probes += 1;
-        let rows1: &[[u32; 6]] = d.r_blasted.get(1, &key1);
-        for row1 in rows1.iter() {
-            o.visits += 1;
-            let v3 = row1[0];
-            let v4 = row1[1];
-            let v5 = row1[2];
-            let v6 = row1[3];
-            if row1[4] != v0 { continue; }
-            if row1[5] != v1 { continue; }
-            let key2: [u32; 5] = [v2, v3, v4, v5, v6];
-            o.probes += 1;
-            let rows2: &[[u32; 5]] = d.r_candidate.get(1, &key2);
-            for row2 in rows2.iter() {
-                o.visits += 1;
-                if row2[0] != v2 { continue; }
-                if row2[1] != v3 { continue; }
-                if row2[2] != v4 { continue; }
-                if row2[3] != v5 { continue; }
-                if row2[4] != v6 { continue; }
-                o.rows.push([v3, v4, v5, v6]);
-            }
-        }
-    }
-}
-fn st85(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<4>::new(); c294(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_king_lost.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
 // (<= (enemy_king_gone ?f1 ?r1 ?f2 ?r2) (candidate ?c ?f1 ?r1 ?f2 ?r2) (opponent ?c ?o) (true (cell ?f ?r ?o king)) (blasted ?f1 ?r1 ?f2 ?r2 ?f ?r))
-fn c295(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c294(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     let key0: [u32; 4] = [FREE, FREE, FREE, 116];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
@@ -4837,15 +4793,15 @@ fn c295(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
         }
     }
 }
-fn st86(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st85(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<4>::new(); c295(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<4>::new(); c294(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_enemy_king_gone.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (king_after ?c ?f1 ?r1 ?f2 ?r2 ?f ?r) (candidate ?c ?f1 ?r1 ?f2 ?r2) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?c king))
-fn c296(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
+fn c295(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
     let key0: [u32; 8] = [FREE, FREE, FREE, FREE, FREE, FREE, FREE, 116];
     o.probes += 1;
     let rows0: &[[u32; 8]] = d.r_after.get(1, &key0);
@@ -4873,15 +4829,15 @@ fn c296(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
         }
     }
 }
-fn st87(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st86(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<7>::new(); c296(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<7>::new(); c295(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_king_after.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f ?r) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (step ?d ?kf ?kr ?f ?r))
-fn c297(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
+fn c296(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
     let key0: [u32; 5] = [FREE; 5];
     o.probes += 1;
     let rows0: &[[u32; 5]] = &s.r_step.order;
@@ -4909,7 +4865,7 @@ fn c297(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
     }
 }
 // (<= (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f3 ?r3) (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f ?r) (not (after_occupied ?f1 ?r1 ?f2 ?r2 ?f ?r)) (step ?d ?f ?r ?f3 ?r3))
-fn c298(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
+fn c297(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
     let key0: [u32; 5] = [FREE; 5];
     o.probes += 1;
     let rows0: &[[u32; 5]] = &s.r_step.order;
@@ -4938,17 +4894,17 @@ fn c298(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<7>) {
         }
     }
 }
-fn st88(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st87(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<7>::new(); c297(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<7>::new(); c296(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_king_ray.add(row) { made += 1; dl.r_king_ray.push(row); } } }
-    { let mut o = Out::<7>::new(); c298(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<7>::new(); c297(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_king_ray.add(row) { made += 1; dl.r_king_ray.push(row); } } }
     loop {
         if dl.r_king_ray.is_empty() { break; }
         let mut nwr_king_ray: Vec<[u32; 7]> = vec![]; let mut snr_king_ray: HashSet<[u32; 7], B> = HashSet::default();
-        if !dl.r_king_ray.is_empty() { let mut o = Out::<7>::new(); c298(s, &*d, tm, 1, &dl, &mut o); visits += o.visits; probes += o.probes;
+        if !dl.r_king_ray.is_empty() { let mut o = Out::<7>::new(); c297(s, &*d, tm, 1, &dl, &mut o); visits += o.visits; probes += o.probes;
             for row in o.rows { if !d.r_king_ray.has(&row) && snr_king_ray.insert(row) { nwr_king_ray.push(row); } } }
         for row in &nwr_king_ray { d.r_king_ray.add(*row); made += 1; }
         dl.r_king_ray = nwr_king_ray;
@@ -4956,7 +4912,7 @@ fn st88(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     (made, visits, probes)
 }
 // (<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f ?r) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o ?k) (opponent ?c ?o) (line_of ?k ?d))
-fn c299(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c298(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     let key0: [u32; 2] = [FREE; 2];
     o.probes += 1;
     let rows0: &[[u32; 2]] = &s.r_opponent.order;
@@ -5016,7 +4972,7 @@ fn c299(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     }
 }
 // (<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (knight_jump ?kf ?kr ?f ?r) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o knight) (opponent ?c ?o))
-fn c300(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c299(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     let key0: [u32; 8] = [FREE, FREE, FREE, FREE, FREE, FREE, FREE, 118];
     o.probes += 1;
     let rows0: &[[u32; 8]] = d.r_after.get(1, &key0);
@@ -5065,7 +5021,7 @@ fn c300(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     }
 }
 // (<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (king_step ?kf ?kr ?f ?r) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o king) (opponent ?c ?o))
-fn c301(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c300(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     let key0: [u32; 8] = [FREE, FREE, FREE, FREE, FREE, FREE, FREE, 116];
     o.probes += 1;
     let rows0: &[[u32; 8]] = d.r_after.get(1, &key0);
@@ -5114,7 +5070,7 @@ fn c301(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     }
 }
 // (<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (opponent ?c ?o) (pawn_diagonal ?o ?d) (step ?d ?f ?r ?kf ?kr) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o pawn))
-fn c302(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c301(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     let key0: [u32; 8] = [FREE, FREE, FREE, FREE, FREE, FREE, FREE, 125];
     o.probes += 1;
     let rows0: &[[u32; 8]] = d.r_after.get(1, &key0);
@@ -5171,21 +5127,21 @@ fn c302(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
         }
     }
 }
-fn st89(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st88(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
+    { let mut o = Out::<4>::new(); c298(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_exposed.add(row) { made += 1; } } }
     { let mut o = Out::<4>::new(); c299(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_exposed.add(row) { made += 1; } } }
     { let mut o = Out::<4>::new(); c300(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_exposed.add(row) { made += 1; } } }
     { let mut o = Out::<4>::new(); c301(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_exposed.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c302(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_exposed.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (touch_after ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (opponent ?c ?o) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o king) (king_step ?kf ?kr ?f ?r))
-fn c303(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c302(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     let key0: [u32; 8] = [FREE, FREE, FREE, FREE, FREE, FREE, FREE, 116];
     o.probes += 1;
     let rows0: &[[u32; 8]] = d.r_after.get(1, &key0);
@@ -5233,15 +5189,15 @@ fn c303(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
         }
     }
 }
-fn st90(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+fn st89(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<4>::new(); c303(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<4>::new(); c302(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_touch_after.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (exposed_atomic ?f1 ?r1 ?f2 ?r2) (exposed ?f1 ?r1 ?f2 ?r2) (not (touch_after ?f1 ?r1 ?f2 ?r2)))
-fn c304(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c303(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
     let rows0: &[[u32; 4]] = &d.r_exposed.order;
@@ -5255,11 +5211,55 @@ fn c304(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
         o.rows.push([v0, v1, v2, v3]);
     }
 }
+fn st90(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<4>::new(); c303(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_exposed_atomic.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (king_lost ?f1 ?r1 ?f2 ?r2) (candidate ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f ?r ?c king)) (blasted ?f1 ?r1 ?f2 ?r2 ?f ?r))
+fn c304(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+    let key0: [u32; 4] = [FREE, FREE, FREE, 116];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        if row0[3] != 116 { continue; }
+        let key1: [u32; 6] = [FREE, FREE, FREE, FREE, v0, v1];
+        o.probes += 1;
+        let rows1: &[[u32; 6]] = d.r_blasted.get(1, &key1);
+        for row1 in rows1.iter() {
+            o.visits += 1;
+            let v3 = row1[0];
+            let v4 = row1[1];
+            let v5 = row1[2];
+            let v6 = row1[3];
+            if row1[4] != v0 { continue; }
+            if row1[5] != v1 { continue; }
+            let key2: [u32; 5] = [v2, v3, v4, v5, v6];
+            o.probes += 1;
+            let rows2: &[[u32; 5]] = d.r_candidate.get(1, &key2);
+            for row2 in rows2.iter() {
+                o.visits += 1;
+                if row2[0] != v2 { continue; }
+                if row2[1] != v3 { continue; }
+                if row2[2] != v4 { continue; }
+                if row2[3] != v5 { continue; }
+                if row2[4] != v6 { continue; }
+                o.rows.push([v3, v4, v5, v6]);
+            }
+        }
+    }
+}
 fn st91(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<4>::new(); c304(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_exposed_atomic.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_king_lost.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (sound ?f1 ?r1 ?f2 ?r2) (candidate ?c ?f1 ?r1 ?f2 ?r2) (not (king_lost ?f1 ?r1 ?f2 ?r2)) (enemy_king_gone ?f1 ?r1 ?f2 ?r2))
@@ -5466,20 +5466,20 @@ fn st96(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_draw_by_fifty_moves.add(row) { made += 1; } } }
     (made, visits, probes)
 }
+fn st97(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    (made, visits, probes)
+}
 // (repetition_limit 2)
 fn c312(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     o.rows.push([13]);
 }
-fn st97(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st98(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<1>::new(); c312(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_repetition_limit.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
-fn st98(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
     (made, visits, probes)
 }
 // (<= draw_by_repetition (repetition_limit ?n) (record ?n))
@@ -6011,71 +6011,61 @@ fn st110(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
       for row in o.rows { if s.r_init_halfmove.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= (two_units ?c) (true (cell ?f1 ?r1 ?c ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c ?k2)) (distinct ?k2 king) (distinct ?f1 ?f2))
+// (<= (mating_material ?c) (true (cell ?f ?r ?c pawn)))
 fn c366(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    let key0: [u32; 4] = [FREE; 4];
+    let key0: [u32; 4] = [FREE, FREE, FREE, 125];
     o.probes += 1;
-    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
+    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
     for row0 in rows0.iter() {
         o.visits += 1;
         let v0 = row0[0];
         let v1 = row0[1];
         let v2 = row0[2];
-        let v3 = row0[3];
-        if v3 == 116 { continue; }
-        let key2: [u32; 4] = [FREE, FREE, v2, FREE];
-        o.probes += 1;
-        let rows2: &[[u32; 4]] = d.r_true_cell.get(4, &key2);
-        for row2 in rows2.iter() {
-            o.visits += 1;
-            let v4 = row2[0];
-            let v5 = row2[1];
-            if row2[2] != v2 { continue; }
-            let v6 = row2[3];
-            if v6 == 116 { continue; }
-            if v0 == v4 { continue; }
-            o.rows.push([v2]);
-        }
+        if row0[3] != 125 { continue; }
+        o.rows.push([v2]);
     }
 }
-// (<= (two_units ?c) (true (cell ?f1 ?r1 ?c ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c ?k2)) (distinct ?k2 king) (distinct ?r1 ?r2))
+// (<= (mating_material ?c) (true (cell ?f ?r ?c rook)))
 fn c367(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    let key0: [u32; 4] = [FREE; 4];
+    let key0: [u32; 4] = [FREE, FREE, FREE, 130];
     o.probes += 1;
-    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
+    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
     for row0 in rows0.iter() {
         o.visits += 1;
         let v0 = row0[0];
         let v1 = row0[1];
         let v2 = row0[2];
-        let v3 = row0[3];
-        if v3 == 116 { continue; }
-        let key2: [u32; 4] = [FREE, FREE, v2, FREE];
-        o.probes += 1;
-        let rows2: &[[u32; 4]] = d.r_true_cell.get(4, &key2);
-        for row2 in rows2.iter() {
-            o.visits += 1;
-            let v4 = row2[0];
-            let v5 = row2[1];
-            if row2[2] != v2 { continue; }
-            let v6 = row2[3];
-            if v6 == 116 { continue; }
-            if v1 == v5 { continue; }
-            o.rows.push([v2]);
-        }
+        if row0[3] != 130 { continue; }
+        o.rows.push([v2]);
+    }
+}
+// (<= (mating_material ?c) (true (cell ?f ?r ?c queen)))
+fn c368(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+    let key0: [u32; 4] = [FREE, FREE, FREE, 127];
+    o.probes += 1;
+    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        let v2 = row0[2];
+        if row0[3] != 127 { continue; }
+        o.rows.push([v2]);
     }
 }
 fn st111(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
     { let mut o = Out::<1>::new(); c366(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_two_units.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_mating_material.add(row) { made += 1; } } }
     { let mut o = Out::<1>::new(); c367(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_two_units.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_mating_material.add(row) { made += 1; } } }
+    { let mut o = Out::<1>::new(); c368(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_mating_material.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= mixed_bishops (true (cell ?f1 ?r1 ?c1 bishop)) (dark ?f1 ?r1) (true (cell ?f2 ?r2 ?c2 bishop)) (light ?f2 ?r2))
-fn c368(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
+fn c369(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
     let key0: [u32; 4] = [FREE, FREE, FREE, 103];
     o.probes += 1;
     let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
@@ -6117,12 +6107,12 @@ fn c368(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<0>) {
 fn st112(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<0>::new(); c368(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<0>::new(); c369(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_mixed_bishops.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (selfmate_material ?c) (true (cell ?f ?r ?c ?k)) (distinct ?k king) (distinct ?k queen))
-fn c369(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
+fn c370(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
     let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
     let rows0: &[[u32; 4]] = &d.r_true_cell.order;
@@ -6140,61 +6130,71 @@ fn c369(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
 fn st113(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<1>::new(); c369(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+    { let mut o = Out::<1>::new(); c370(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if d.r_selfmate_material.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= (mating_material ?c) (true (cell ?f ?r ?c pawn)))
-fn c370(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    let key0: [u32; 4] = [FREE, FREE, FREE, 125];
-    o.probes += 1;
-    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        let v2 = row0[2];
-        if row0[3] != 125 { continue; }
-        o.rows.push([v2]);
-    }
-}
-// (<= (mating_material ?c) (true (cell ?f ?r ?c rook)))
+// (<= (two_units ?c) (true (cell ?f1 ?r1 ?c ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c ?k2)) (distinct ?k2 king) (distinct ?f1 ?f2))
 fn c371(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    let key0: [u32; 4] = [FREE, FREE, FREE, 130];
+    let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
-    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
+    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
     for row0 in rows0.iter() {
         o.visits += 1;
         let v0 = row0[0];
         let v1 = row0[1];
         let v2 = row0[2];
-        if row0[3] != 130 { continue; }
-        o.rows.push([v2]);
+        let v3 = row0[3];
+        if v3 == 116 { continue; }
+        let key2: [u32; 4] = [FREE, FREE, v2, FREE];
+        o.probes += 1;
+        let rows2: &[[u32; 4]] = d.r_true_cell.get(4, &key2);
+        for row2 in rows2.iter() {
+            o.visits += 1;
+            let v4 = row2[0];
+            let v5 = row2[1];
+            if row2[2] != v2 { continue; }
+            let v6 = row2[3];
+            if v6 == 116 { continue; }
+            if v0 == v4 { continue; }
+            o.rows.push([v2]);
+        }
     }
 }
-// (<= (mating_material ?c) (true (cell ?f ?r ?c queen)))
+// (<= (two_units ?c) (true (cell ?f1 ?r1 ?c ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c ?k2)) (distinct ?k2 king) (distinct ?r1 ?r2))
 fn c372(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<1>) {
-    let key0: [u32; 4] = [FREE, FREE, FREE, 127];
+    let key0: [u32; 4] = [FREE; 4];
     o.probes += 1;
-    let rows0: &[[u32; 4]] = d.r_true_cell.get(6, &key0);
+    let rows0: &[[u32; 4]] = &d.r_true_cell.order;
     for row0 in rows0.iter() {
         o.visits += 1;
         let v0 = row0[0];
         let v1 = row0[1];
         let v2 = row0[2];
-        if row0[3] != 127 { continue; }
-        o.rows.push([v2]);
+        let v3 = row0[3];
+        if v3 == 116 { continue; }
+        let key2: [u32; 4] = [FREE, FREE, v2, FREE];
+        o.probes += 1;
+        let rows2: &[[u32; 4]] = d.r_true_cell.get(4, &key2);
+        for row2 in rows2.iter() {
+            o.visits += 1;
+            let v4 = row2[0];
+            let v5 = row2[1];
+            if row2[2] != v2 { continue; }
+            let v6 = row2[3];
+            if v6 == 116 { continue; }
+            if v1 == v5 { continue; }
+            o.rows.push([v2]);
+        }
     }
 }
 fn st114(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
-    { let mut o = Out::<1>::new(); c370(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_mating_material.add(row) { made += 1; } } }
     { let mut o = Out::<1>::new(); c371(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_mating_material.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_two_units.add(row) { made += 1; } } }
     { let mut o = Out::<1>::new(); c372(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_mating_material.add(row) { made += 1; } } }
+      for row in o.rows { if d.r_two_units.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (insufficient ?c) (role ?c) (not (mating_material ?c)) (has_kind ?c knight) (not (two_units ?c)) (opponent ?c ?o) (not (selfmate_material ?o)))
@@ -6501,74 +6501,45 @@ fn st118(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_lifted.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-// (<= (touched ?f ?r) (lifted ?f ?r))
-fn c385(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &d.r_lifted.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        o.rows.push([v0, v1]);
-    }
-}
-// (<= (touched ?f ?r) (landed ?f ?r))
-fn c386(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
-    let key0: [u32; 2] = [FREE; 2];
-    o.probes += 1;
-    let rows0: &[[u32; 2]] = &d.r_landed.order;
-    for row0 in rows0.iter() {
-        o.visits += 1;
-        let v0 = row0[0];
-        let v1 = row0[1];
-        o.rows.push([v0, v1]);
-    }
-}
-fn st119(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
-    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
-    let mut dl = Dl::default();
-    { let mut o = Out::<2>::new(); c385(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_touched.add(row) { made += 1; } } }
-    { let mut o = Out::<2>::new(); c386(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if d.r_touched.add(row) { made += 1; } } }
-    (made, visits, probes)
-}
 // (right_square white kingside e 1)
-fn c387(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c385(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([135, 117, 108, 1]);
 }
 // (right_square white kingside h 1)
-fn c388(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c386(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([135, 117, 114, 1]);
 }
 // (right_square white queenside e 1)
-fn c389(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c387(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([135, 128, 108, 1]);
 }
 // (right_square white queenside a 1)
-fn c390(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c388(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([135, 128, 101, 1]);
 }
 // (right_square black kingside e 8)
-fn c391(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c389(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([104, 117, 108, 79]);
 }
 // (right_square black kingside h 8)
-fn c392(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c390(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([104, 117, 114, 79]);
 }
 // (right_square black queenside e 8)
-fn c393(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c391(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([104, 128, 108, 79]);
 }
 // (right_square black queenside a 8)
-fn c394(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
+fn c392(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<4>) {
     o.rows.push([104, 128, 101, 79]);
 }
-fn st120(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
+fn st119(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
     let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
     let mut dl = Dl::default();
+    { let mut o = Out::<4>::new(); c385(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_right_square.add(row) { made += 1; } } }
+    { let mut o = Out::<4>::new(); c386(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if s.r_right_square.add(row) { made += 1; } } }
     { let mut o = Out::<4>::new(); c387(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_right_square.add(row) { made += 1; } } }
     { let mut o = Out::<4>::new(); c388(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
@@ -6581,10 +6552,39 @@ fn st120(s: &mut St, tm: &mut Terms, dy: &Dy) -> (u64, u64, u64) {
       for row in o.rows { if s.r_right_square.add(row) { made += 1; } } }
     { let mut o = Out::<4>::new(); c392(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
       for row in o.rows { if s.r_right_square.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c393(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_right_square.add(row) { made += 1; } } }
-    { let mut o = Out::<4>::new(); c394(&*s, dy, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
-      for row in o.rows { if s.r_right_square.add(row) { made += 1; } } }
+    (made, visits, probes)
+}
+// (<= (touched ?f ?r) (lifted ?f ?r))
+fn c393(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &d.r_lifted.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        o.rows.push([v0, v1]);
+    }
+}
+// (<= (touched ?f ?r) (landed ?f ?r))
+fn c394(s: &St, d: &Dy, tm: &mut Terms, di: usize, dl: &Dl, o: &mut Out<2>) {
+    let key0: [u32; 2] = [FREE; 2];
+    o.probes += 1;
+    let rows0: &[[u32; 2]] = &d.r_landed.order;
+    for row0 in rows0.iter() {
+        o.visits += 1;
+        let v0 = row0[0];
+        let v1 = row0[1];
+        o.rows.push([v0, v1]);
+    }
+}
+fn st120(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
+    let (mut made, mut visits, mut probes) = (0u64, 0u64, 0u64);
+    let mut dl = Dl::default();
+    { let mut o = Out::<2>::new(); c393(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_touched.add(row) { made += 1; } } }
+    { let mut o = Out::<2>::new(); c394(s, &*d, tm, usize::MAX, &dl, &mut o); visits += o.visits; probes += o.probes;
+      for row in o.rows { if d.r_touched.add(row) { made += 1; } } }
     (made, visits, probes)
 }
 // (<= (right_lost ?c ?side) (right_square ?c ?side ?f ?r) (touched ?f ?r))
@@ -7047,27 +7047,27 @@ fn st128(s: &St, d: &mut Dy, tm: &mut Terms) -> (u64, u64, u64) {
       for row in o.rows { if d.r_terminal.add(row) { made += 1; } } }
     (made, visits, probes)
 }
-pub const PIECES: [(&str, bool); 129] = [("castling_path", true), ("home_rank", true), ("true.castling_right", false), ("castling_empty", true), ("true.cell", false), ("occupied", false), ("castle_blocked", false), ("castling_safe", true), ("opponent", true), ("pawn_diagonal", true), ("file_succ", true), ("rank_succ", true), ("rank", true), ("file", true), ("step", true), ("square", true), ("empty", false), ("slide", false), ("diagonal", true), ("orthogonal", true), ("line_of", true), ("king_step", true), ("knight_jump", true), ("attack_by", false), ("attack", false), ("attacked", false), ("touches_king", false), ("struck", false), ("castle_unsafe", false), ("true.control", false), ("castle", false), ("castling_move", false), ("forward", true), ("role", true), ("may_land", false), ("pawn_start", true), ("true.ep_square", false), ("ep_victim", true), ("en_passant", false), ("move_by", false), ("candidate", false), ("capture", false), ("taking", false), ("fills", false), ("blasted", false), ("vacates", false), ("filled", false), ("stays", false), ("after", false), ("after_occupied", false), ("ak", false), ("any_knight", false), ("any_pawn", false), ("rank_parity", true), ("file_parity", true), ("dark", true), ("bd_bishop", false), ("light", true), ("bl_bishop", false), ("wl_bishop", false), ("wd_bishop", false), ("bishop_dead", false), ("does", false), ("blasted_now", false), ("castled", false), ("check", false), ("passant_taken", false), ("clock_event", false), ("clock_limit", true), ("clock_reset", false), ("count_succ", true), ("queen_or_pawn", false), ("diff_sq", true), ("three_nonking", false), ("non_knight_unit", false), ("other_than_bishop", false), ("only_kings_bishops", false), ("nonking", false), ("two_nonking", false), ("one_nonking", false), ("dead", false), ("draw", false), ("promotable", true), ("last_rank", true), ("promotes", false), ("king_lost", false), ("enemy_king_gone", false), ("king_after", false), ("king_ray", false), ("exposed", false), ("touch_after", false), ("exposed_atomic", false), ("sound", false), ("legal", false), ("has_move", false), ("true.halfmove", false), ("draw_by_fifty_moves", false), ("repetition_limit", true), ("record", false), ("draw_by_repetition", false), ("stalemate", false), ("drawn", false), ("king_gone", false), ("exploded", false), ("mate", false), ("goal", false), ("has_kind", false), ("init.castling_right", true), ("init.cell", true), ("init.control", true), ("init.halfmove", true), ("two_units", false), ("mixed_bishops", false), ("selfmate_material", false), ("mating_material", false), ("insufficient", false), ("kings_touch", false), ("landed", false), ("lifted", false), ("touched", false), ("right_square", true), ("right_lost", false), ("next.castling_right", false), ("taking_now", false), ("next.cell", false), ("next.control", false), ("next.ep_square", false), ("next.halfmove", false), ("terminal", false)];
+pub const PIECES: [(&str, bool); 129] = [("castling_empty", true), ("home_rank", true), ("true.cell", false), ("occupied", false), ("castle_blocked", false), ("castling_safe", true), ("opponent", true), ("file", true), ("file_succ", true), ("rank", true), ("rank_succ", true), ("step", true), ("king_step", true), ("knight_jump", true), ("diagonal", true), ("orthogonal", true), ("line_of", true), ("pawn_diagonal", true), ("square", true), ("empty", false), ("slide", false), ("attack_by", false), ("attack", false), ("attacked", false), ("touches_king", false), ("struck", false), ("castle_unsafe", false), ("castling_path", true), ("true.castling_right", false), ("true.control", false), ("castle", false), ("castling_move", false), ("ep_victim", true), ("true.ep_square", false), ("en_passant", false), ("forward", true), ("role", true), ("may_land", false), ("pawn_start", true), ("move_by", false), ("candidate", false), ("capture", false), ("taking", false), ("fills", false), ("filled", false), ("blasted", false), ("vacates", false), ("stays", false), ("after", false), ("after_occupied", false), ("ak", false), ("any_knight", false), ("any_pawn", false), ("file_parity", true), ("rank_parity", true), ("dark", true), ("bd_bishop", false), ("light", true), ("bl_bishop", false), ("wd_bishop", false), ("wl_bishop", false), ("bishop_dead", false), ("does", false), ("blasted_now", false), ("castled", false), ("check", false), ("passant_taken", false), ("clock_event", false), ("clock_limit", true), ("clock_reset", false), ("count_succ", true), ("non_knight_unit", false), ("nonking", false), ("diff_sq", true), ("two_nonking", false), ("one_nonking", false), ("other_than_bishop", false), ("only_kings_bishops", false), ("queen_or_pawn", false), ("three_nonking", false), ("dead", false), ("draw", false), ("promotable", true), ("last_rank", true), ("promotes", false), ("enemy_king_gone", false), ("king_after", false), ("king_ray", false), ("exposed", false), ("touch_after", false), ("exposed_atomic", false), ("king_lost", false), ("sound", false), ("legal", false), ("has_move", false), ("true.halfmove", false), ("draw_by_fifty_moves", false), ("record", false), ("repetition_limit", true), ("draw_by_repetition", false), ("stalemate", false), ("drawn", false), ("king_gone", false), ("exploded", false), ("mate", false), ("goal", false), ("has_kind", false), ("init.castling_right", true), ("init.cell", true), ("init.control", true), ("init.halfmove", true), ("mating_material", false), ("mixed_bishops", false), ("selfmate_material", false), ("two_units", false), ("insufficient", false), ("kings_touch", false), ("landed", false), ("lifted", false), ("right_square", true), ("touched", false), ("right_lost", false), ("next.castling_right", false), ("taking_now", false), ("next.cell", false), ("next.control", false), ("next.ep_square", false), ("next.halfmove", false), ("terminal", false)];
 fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms, k: usize) -> (u64, u64, u64) {
     match k {
         2 => st2(s, d, tm),
+        3 => st3(s, d, tm),
         4 => st4(s, d, tm),
-        5 => st5(s, d, tm),
-        6 => st6(s, d, tm),
-        16 => st16(s, d, tm),
-        17 => st17(s, d, tm),
+        19 => st19(s, d, tm),
+        20 => st20(s, d, tm),
+        21 => st21(s, d, tm),
+        22 => st22(s, d, tm),
         23 => st23(s, d, tm),
         24 => st24(s, d, tm),
         25 => st25(s, d, tm),
         26 => st26(s, d, tm),
-        27 => st27(s, d, tm),
         28 => st28(s, d, tm),
         29 => st29(s, d, tm),
         30 => st30(s, d, tm),
         31 => st31(s, d, tm),
+        33 => st33(s, d, tm),
         34 => st34(s, d, tm),
-        36 => st36(s, d, tm),
-        38 => st38(s, d, tm),
+        37 => st37(s, d, tm),
         39 => st39(s, d, tm),
         40 => st40(s, d, tm),
         41 => st41(s, d, tm),
@@ -7095,7 +7095,7 @@ fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms, k: usize) -> (u64, u64, u64) {
         67 => st67(s, d, tm),
         69 => st69(s, d, tm),
         71 => st71(s, d, tm),
-        73 => st73(s, d, tm),
+        72 => st72(s, d, tm),
         74 => st74(s, d, tm),
         75 => st75(s, d, tm),
         76 => st76(s, d, tm),
@@ -7117,7 +7117,7 @@ fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms, k: usize) -> (u64, u64, u64) {
         94 => st94(s, d, tm),
         95 => st95(s, d, tm),
         96 => st96(s, d, tm),
-        98 => st98(s, d, tm),
+        97 => st97(s, d, tm),
         99 => st99(s, d, tm),
         100 => st100(s, d, tm),
         101 => st101(s, d, tm),
@@ -7134,7 +7134,7 @@ fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms, k: usize) -> (u64, u64, u64) {
         116 => st116(s, d, tm),
         117 => st117(s, d, tm),
         118 => st118(s, d, tm),
-        119 => st119(s, d, tm),
+        120 => st120(s, d, tm),
         121 => st121(s, d, tm),
         122 => st122(s, d, tm),
         123 => st123(s, d, tm),
@@ -7146,9 +7146,9 @@ fn run_piece(s: &St, d: &mut Dy, tm: &mut Terms, k: usize) -> (u64, u64, u64) {
         _ => panic!("not a piece of the state"),
     }
 }
-const ALL_DYNAMIC: &[usize] = &[2, 4, 5, 6, 16, 17, 23, 24, 25, 26, 27, 28, 29, 30, 31, 34, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 56, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 69, 71, 73, 74, 75, 76, 77, 78, 79, 80, 81, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 98, 99, 100, 101, 102, 103, 104, 105, 106, 111, 112, 113, 114, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 128];
-const READ_CONE: &[usize] = &[2, 4, 5, 6, 16, 17, 23, 24, 25, 26, 27, 28, 29, 30, 31, 34, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 56, 58, 59, 60, 61, 65, 71, 73, 74, 75, 76, 77, 78, 79, 80, 81, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 98, 99, 100, 101, 102, 103, 104, 105, 128];
-const NEXT_CONE: &[usize] = &[2, 4, 5, 16, 17, 23, 29, 34, 36, 38, 39, 41, 42, 44, 62, 63, 64, 66, 67, 69, 95, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127];
+const ALL_DYNAMIC: &[usize] = &[2, 3, 4, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 33, 34, 37, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 56, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 69, 71, 72, 74, 75, 76, 77, 78, 79, 80, 81, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 99, 100, 101, 102, 103, 104, 105, 106, 111, 112, 113, 114, 115, 116, 117, 118, 120, 121, 122, 123, 124, 125, 126, 127, 128];
+const READ_CONE: &[usize] = &[2, 3, 4, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 33, 34, 37, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 56, 58, 59, 60, 61, 65, 71, 72, 74, 75, 76, 77, 78, 79, 80, 81, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 99, 100, 101, 102, 103, 104, 105, 128];
+const NEXT_CONE: &[usize] = &[2, 3, 19, 20, 21, 28, 29, 33, 34, 37, 39, 41, 42, 45, 62, 63, 64, 66, 67, 69, 95, 117, 118, 120, 121, 122, 123, 124, 125, 126, 127];
 pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool }
 impl Game {
     pub fn new() -> Game {
@@ -7157,7 +7157,8 @@ impl Game {
         let dy = Dy::new();
         st0(&mut st, &mut tm, &dy);
         st1(&mut st, &mut tm, &dy);
-        st3(&mut st, &mut tm, &dy);
+        st5(&mut st, &mut tm, &dy);
+        st6(&mut st, &mut tm, &dy);
         st7(&mut st, &mut tm, &dy);
         st8(&mut st, &mut tm, &dy);
         st9(&mut st, &mut tm, &dy);
@@ -7167,30 +7168,29 @@ impl Game {
         st13(&mut st, &mut tm, &dy);
         st14(&mut st, &mut tm, &dy);
         st15(&mut st, &mut tm, &dy);
+        st16(&mut st, &mut tm, &dy);
+        st17(&mut st, &mut tm, &dy);
         st18(&mut st, &mut tm, &dy);
-        st19(&mut st, &mut tm, &dy);
-        st20(&mut st, &mut tm, &dy);
-        st21(&mut st, &mut tm, &dy);
-        st22(&mut st, &mut tm, &dy);
+        st27(&mut st, &mut tm, &dy);
         st32(&mut st, &mut tm, &dy);
-        st33(&mut st, &mut tm, &dy);
         st35(&mut st, &mut tm, &dy);
-        st37(&mut st, &mut tm, &dy);
+        st36(&mut st, &mut tm, &dy);
+        st38(&mut st, &mut tm, &dy);
         st53(&mut st, &mut tm, &dy);
         st54(&mut st, &mut tm, &dy);
         st55(&mut st, &mut tm, &dy);
         st57(&mut st, &mut tm, &dy);
         st68(&mut st, &mut tm, &dy);
         st70(&mut st, &mut tm, &dy);
-        st72(&mut st, &mut tm, &dy);
+        st73(&mut st, &mut tm, &dy);
         st82(&mut st, &mut tm, &dy);
         st83(&mut st, &mut tm, &dy);
-        st97(&mut st, &mut tm, &dy);
+        st98(&mut st, &mut tm, &dy);
         st107(&mut st, &mut tm, &dy);
         st108(&mut st, &mut tm, &dy);
         st109(&mut st, &mut tm, &dy);
         st110(&mut st, &mut tm, &dy);
-        st120(&mut st, &mut tm, &dy);
+        st119(&mut st, &mut tm, &dy);
         let roles: Vec<u32> = st.r_role.order.iter().map(|r| r[0]).collect();
         Game { st, tm, roles, noop: 120, last: None, prof: vec![Stat::default(); 129], profiling: false }
     }

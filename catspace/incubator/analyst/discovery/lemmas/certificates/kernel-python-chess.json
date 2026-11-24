@@ -7,13 +7,13 @@
  "invalid_left_out": 2,
  "disagreements": 0,
  "examples": [],
- "key": "e5f037f830e79235",
+ "key": "d12243214dc94ef0",
  "sources": [
   "rules/chess.gdl",
   "catspace/incubator/analyst/discovery/gdl.py",
   "catspace/incubator/analyst/discovery/gdl_chess.py",
   "python-chess 1.11.2"
  ],
- "date": "2026-11-22",
- "seconds": 56.0
+ "date": "2026-11-23",
+ "seconds": 56.3
 }

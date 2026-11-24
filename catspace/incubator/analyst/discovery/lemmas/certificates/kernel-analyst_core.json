@@ -7,7 +7,7 @@
  "invalid_left_out": 2,
  "disagreements": 0,
  "examples": [],
- "key": "3bac3a73171812ff",
+ "key": "7fc8a26c8d4a92f9",
  "sources": [
   "rules/chess.gdl",
   "catspace/incubator/analyst/discovery/gdl.py",
@@ -17,6 +17,6 @@
   "rust/analyst_core/src/rules.rs",
   "rust/analyst_core/Cargo.lock"
  ],
- "date": "2026-11-22",
- "seconds": 120.8
+ "date": "2026-11-23",
+ "seconds": 121.6
 }

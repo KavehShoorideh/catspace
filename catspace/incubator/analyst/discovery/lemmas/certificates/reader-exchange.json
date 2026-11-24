@@ -7,7 +7,7 @@
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "10105d40636afb36",
+ "key": "b0037e633e94e2f2",
  "sources": [
   "rules/chess.gdl",
   "catspace/incubator/analyst/discovery/gdl.py",
@@ -23,6 +23,6 @@
   "catspace/incubator/analyst/discovery/lemmas/win.json",
   "catspace/incubator/analyst/discovery/lemmas/material.json"
  ],
- "date": "2026-11-22",
- "seconds": 0.7
+ "date": "2026-11-23",
+ "seconds": 0.9
 }
