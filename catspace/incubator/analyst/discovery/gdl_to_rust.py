@@ -118,6 +118,14 @@ document is still the plain one byte for byte but for the translator hash. The n
   (7) "keep"  TAKES the pieces and the questions. RETURNS: the working memory of a question kept between questions where it was made at each: the lists a clause makes, the terms of a compound built again, and the state that a question returns
                 built in the vector of a former one. Any place that makes and frees memory in a question where the profile shows it is named in the commit with its share before and then.
   A pass that makes a piece slower or gives a different row is a fault of the pass: it is mended, never set aside. The harness of 79.38 holds each of them to the plain module (tile numbers are an inside of the module: rows are compared as text).
+  AS BUILT, where the body differs from the text above (said here because the text was committed first):
+    (5) BIT_KEYS is 2^20 words for an orientation (the text had 2^16). A way of asking that would need an orientation outside the limits is answered by the last tile's orientation, the tiles not bound looped over and the last tile tested (the relation is
+        dropped only when that orientation itself is outside the limits). The state of a game remains a list of rows (`State` is as in the plain module); a question loads its rows into the words and clears them through their lists when it is done, so no row is
+        made or hashed for a relation held as bits, but the state is not itself a fixed array of words (the plan's part A (2) asked for that; not built). A relation is held as bits only when a written clause reads it (a relation only the questions read would
+        be made as words to be turned back into rows). The pass bits is decided before the pass demand and the pass dense: what it holds is neither answered on demand nor dense. Recursive sets held as bits are evaluated by their own rounds
+        (the pass delta has nothing to do for them). Every refusal and its reason is in `Plan.bits_refused`.
+    (6) a literal of the set the clause belongs to counts as half a row (the first version did not, and made the plain translation slower: the semi-naive rule read the rows new in a round only behind a loop over a table).
+    (7) the lookup of a compound builds its key on the stack; `Game` keeps the reading of a state, the joint turn and, in a `Dw`, the rows a clause gives and the rows new in a round of a set not held as bits.
 """
 from __future__ import annotations
 
