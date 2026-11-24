@@ -487,7 +487,7 @@ def test_no_description_no_reader_and_no_source_of_the_engine_s_crates_differs_f
     changed = git("diff", "--name-only", BEFORE, "--", "rust/engine/rep", "rust/engine/base", "rust/engine/gdl", "rust/engine/memory", "rust/engine/Cargo.lock").stdout.split()
     print(f"OBS 79.44 G: files of those crates that differ from {BEFORE}: {changed}")
     assert changed == ["rust/engine/rep/tests/rule_lemma_statements.rs"], changed
-    assert not [c for c in git("diff", "--name-only", BEFORE, "--", "rules").stdout.split() if not c.startswith("rules/lemmas/")]
+    assert not [c for c in git("diff", "--name-only", BEFORE, "--", "rules").stdout.split() if not c.startswith(("rules/lemmas/", "rules/placed/"))]  # 2026-11-24 (plan 79.48): the definitions of the placed questions are another plan's own files, as the lemmas are
 
 
 def test_the_test_is_in_the_gate_after_the_one_of_79_42():
