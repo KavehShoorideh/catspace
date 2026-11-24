@@ -175,6 +175,17 @@ impl KernelGame {
         }
         if let Some(sq) = s.ep_square(EnPassantMode::Always) { out.push(Fact { relation: "ep_square".into(), args: vec![sq.file().char().to_string(), sq.rank().char().to_string()] }); }
         out.push(Fact { relation: "halfmove".into(), args: vec![s.halfmoves().min(crate::kernel::CLOCK_LIMIT).to_string()] });
+        if self.variant == Variant::ThreeCheck {
+            // 2026-11-24 (plan 79.47 part E): the checks each side has given, the fluent the description of three-check holds (as `base_facts` of kernel.rs gives them for the games it knows): the description counts a check one state late, so while
+            // the checked side is to move the check just given is not yet in the count. Without it a state of that game could not be given to the description's module.
+            if let Some(rc) = s.clone().into_setup(EnPassantMode::Always).remaining_checks {
+                for (c, r) in [(Color::White, rc.white), (Color::Black, rc.black)] {
+                    let left: u32 = r.into();
+                    let pending = s.is_check() && s.turn() == !c;
+                    out.push(Fact { relation: "checks".into(), args: vec![side(c).into(), 3u32.saturating_sub(left + pending as u32).to_string()] });
+                }
+            }
+        }
         out.sort();
         out
     }

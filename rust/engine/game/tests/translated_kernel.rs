@@ -129,6 +129,8 @@ pub fn walk<T: Tr>(t: &mut T, text: &str, kernel: &KernelGame, listed: bool, gam
         let mut ks = kernel.initial();
         let mut kf: BTreeSet<Fact> = kernel.state_facts(&ks).into_iter().collect();
         let mut ts = if listed {
+            // 2026-11-24 (plan 79.47): the module is begun at the listed position's facts as the evaluator is by `rules::restart_delta` (a game whose rules read its start has rules that depend on it)
+            if let Err(e) = t.restart_t(&facts_pairs(&kf)) { *counts.left_out.entry(format!("a listed start the module cannot restart at: {e}")).or_insert(0) += 1; continue; }
             match t.state_of_facts_t(&facts_pairs(&kf)) { Ok(s) => s, Err(_) => { *counts.left_out.entry("a listed start the module cannot read".into()).or_insert(0) += 1; continue; } }
         } else { t.initial_t() };
         let mut line: Vec<String> = vec![];
@@ -340,3 +342,41 @@ fn a_kernel_of_other_rules_is_caught_and_the_evaluator_sides_with_the_module() {
     println!("FINDING 79.46 control [{}] evaluator: {}", f.cause, f.evaluator);
     assert!(f.evaluator.contains("TRANSLATED"), "{}", f.evaluator);
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ PLAN 79.47 PART C: the kernels of the five more games held to their modules (the small run is the certificate's corpus, the large run the fixed seed list)
+// 2026-11-24 (plan 79.47): the five more games of the seven certified kernels (3check, kingofthehill, antichess, chess960, horde), each a delta on the first game's description, the modules made by the same translator.
+include!("generated/3check_fast.rs");
+impl_tr!(threecheck_fast, passes);
+include!("generated/kingofthehill_fast.rs");
+impl_tr!(kingofthehill_fast, passes);
+include!("generated/antichess_fast.rs");
+impl_tr!(antichess_fast, passes);
+include!("generated/chess960_fast.rs");
+impl_tr!(chess960_fast, passes);
+include!("generated/horde_fast.rs");
+impl_tr!(horde_fast, passes);
+#[test]
+fn threecheck_the_kernel_and_the_translated_module_agree_on_the_certificates_games() { small::<threecheck_fast::Game>("3check", &description(Some("variants/3check.gdl"))); }
+#[test]
+#[ignore = "the large run: all cores, about three minutes, run by hand (discovery/kernel_translated.py run 3check); the machine is shared"]
+fn threecheck_large_the_kernel_and_the_translated_module_on_the_fixed_seed_list() { large::<threecheck_fast::Game>("3check", &description(Some("variants/3check.gdl"))); }
+#[test]
+fn kingofthehill_the_kernel_and_the_translated_module_agree_on_the_certificates_games() { small::<kingofthehill_fast::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl"))); }
+#[test]
+#[ignore = "the large run: all cores, about three minutes, run by hand (discovery/kernel_translated.py run kingofthehill); the machine is shared"]
+fn kingofthehill_large_the_kernel_and_the_translated_module_on_the_fixed_seed_list() { large::<kingofthehill_fast::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl"))); }
+#[test]
+fn antichess_the_kernel_and_the_translated_module_agree_on_the_certificates_games() { small::<antichess_fast::Game>("antichess", &description(Some("variants/antichess.gdl"))); }
+#[test]
+#[ignore = "the large run: all cores, about three minutes, run by hand (discovery/kernel_translated.py run antichess); the machine is shared"]
+fn antichess_large_the_kernel_and_the_translated_module_on_the_fixed_seed_list() { large::<antichess_fast::Game>("antichess", &description(Some("variants/antichess.gdl"))); }
+#[test]
+fn chess960_the_kernel_and_the_translated_module_agree_on_the_certificates_games() { small::<chess960_fast::Game>("chess960", &description(Some("variants/chess960.gdl"))); }
+#[test]
+#[ignore = "the large run: all cores, about three minutes, run by hand (discovery/kernel_translated.py run chess960); the machine is shared"]
+fn chess960_large_the_kernel_and_the_translated_module_on_the_fixed_seed_list() { large::<chess960_fast::Game>("chess960", &description(Some("variants/chess960.gdl"))); }
+#[test]
+fn horde_the_kernel_and_the_translated_module_agree_on_the_certificates_games() { small::<horde_fast::Game>("horde", &description(Some("variants/horde.gdl"))); }
+#[test]
+#[ignore = "the large run: all cores, about three minutes, run by hand (discovery/kernel_translated.py run horde); the machine is shared"]
+fn horde_large_the_kernel_and_the_translated_module_on_the_fixed_seed_list() { large::<horde_fast::Game>("horde", &description(Some("variants/horde.gdl"))); }

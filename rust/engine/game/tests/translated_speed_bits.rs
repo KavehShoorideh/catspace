@@ -374,3 +374,51 @@ fn chess_the_time_by_piece_of_the_lemma_modules() { pieces::<chess_p43::Game>("c
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
 fn chess_the_time_by_piece_of_the_lemma_modules() { pieces::<chess_fast::Game>("chess", "fast"); pieces::<chess_lemma::Game>("chess", "lemma+gated"); }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ PLAN 79.47 PART B: the clocks of the five more games (the kernel, the plain translation, every pass)
+// 2026-11-24 (plan 79.47): the five more games of the seven certified kernels (3check, kingofthehill, antichess, chess960, horde), each a delta on the first game's description, the modules made by the same translator.
+include!("generated/3check.rs");
+include!("generated/3check_fast.rs");
+impl_tr!(threecheck);
+impl_tr!(threecheck_fast, passes);
+include!("generated/kingofthehill.rs");
+include!("generated/kingofthehill_fast.rs");
+impl_tr!(kingofthehill);
+impl_tr!(kingofthehill_fast, passes);
+include!("generated/antichess.rs");
+include!("generated/antichess_fast.rs");
+impl_tr!(antichess);
+impl_tr!(antichess_fast, passes);
+include!("generated/chess960.rs");
+include!("generated/chess960_fast.rs");
+impl_tr!(chess960);
+impl_tr!(chess960_fast, passes);
+include!("generated/horde.rs");
+include!("generated/horde_fast.rs");
+impl_tr!(horde);
+impl_tr!(horde_fast, passes);
+#[test]
+fn threecheck_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_moves() { run_game::<threecheck::Game>("3check", false, makers![("plain", threecheck::Game), ("fast", threecheck_fast::Game)], 0); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn threecheck_the_times_of_the_passes() { run_game::<threecheck::Game>("3check", true, makers![("plain", threecheck::Game), ("fast", threecheck_fast::Game)], 3); }
+#[test]
+fn kingofthehill_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_moves() { run_game::<kingofthehill::Game>("kingofthehill", false, makers![("plain", kingofthehill::Game), ("fast", kingofthehill_fast::Game)], 0); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn kingofthehill_the_times_of_the_passes() { run_game::<kingofthehill::Game>("kingofthehill", true, makers![("plain", kingofthehill::Game), ("fast", kingofthehill_fast::Game)], 3); }
+#[test]
+fn antichess_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_moves() { run_game::<antichess::Game>("antichess", false, makers![("plain", antichess::Game), ("fast", antichess_fast::Game)], 0); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn antichess_the_times_of_the_passes() { run_game::<antichess::Game>("antichess", true, makers![("plain", antichess::Game), ("fast", antichess_fast::Game)], 3); }
+#[test]
+fn chess960_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_moves() { run_game::<chess960::Game>("chess960", false, makers![("plain", chess960::Game), ("fast", chess960_fast::Game)], 0); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess960_the_times_of_the_passes() { run_game::<chess960::Game>("chess960", true, makers![("plain", chess960::Game), ("fast", chess960_fast::Game)], 3); }
+#[test]
+fn horde_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_moves() { run_game::<horde::Game>("horde", false, makers![("plain", horde::Game), ("fast", horde_fast::Game)], 0); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn horde_the_times_of_the_passes() { run_game::<horde::Game>("horde", true, makers![("plain", horde::Game), ("fast", horde_fast::Game)], 3); }

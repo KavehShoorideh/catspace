@@ -205,6 +205,8 @@ fn fixtures<A: Tr, B: Tr>(game: &str, variant: &str) {
     let mut c = PieceCounts::default();
     for p in &fx.pos {
         let facts = facts_pairs(&p.facts);
+        a.restart_t(&facts).unwrap();                                 // 2026-11-24 (plan 79.47): both modules begun at the position's facts, as the evaluator is by `evaluator_at`
+        b.restart_t(&facts).unwrap();
         let label = format!("{game} {variant} fixture {} ({})", p.label, p.text);
         pieces_at(&mut a, &mut b, &facts, &None, &label, true, &mut c).unwrap_or_else(|e| panic!("{e}"));
         for st in fx.steps.iter().filter(|st| st.parent == p.label) {
@@ -325,3 +327,31 @@ pieces_tests!("atomic", atomic, "prev41_ends", atomic_prev41_ends, atomic_prev41
 pieces_tests!("chess", chess, "prev41_orient", chess_prev41_orient, chess_prev41_orient_static_relations_are_the_plain_ones, chess_prev41_orient_every_piece_at_every_fixture_position_is_the_plain_one, chess_prev41_orient_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
 #[cfg(singles)]
 pieces_tests!("atomic", atomic, "prev41_orient", atomic_prev41_orient, atomic_prev41_orient_static_relations_are_the_plain_ones, atomic_prev41_orient_every_piece_at_every_fixture_position_is_the_plain_one, atomic_prev41_orient_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ PLAN 79.47 PART B: the five more games, the module with every pass held to the plain module piece by piece
+// 2026-11-24 (plan 79.47): the five more games of the seven certified kernels (3check, kingofthehill, antichess, chess960, horde), each a delta on the first game's description, the modules made by the same translator.
+include!("generated/3check.rs");
+include!("generated/3check_fast.rs");
+impl_tr!(threecheck);
+impl_tr!(threecheck_fast, passes);
+include!("generated/kingofthehill.rs");
+include!("generated/kingofthehill_fast.rs");
+impl_tr!(kingofthehill);
+impl_tr!(kingofthehill_fast, passes);
+include!("generated/antichess.rs");
+include!("generated/antichess_fast.rs");
+impl_tr!(antichess);
+impl_tr!(antichess_fast, passes);
+include!("generated/chess960.rs");
+include!("generated/chess960_fast.rs");
+impl_tr!(chess960);
+impl_tr!(chess960_fast, passes);
+include!("generated/horde.rs");
+include!("generated/horde_fast.rs");
+impl_tr!(horde);
+impl_tr!(horde_fast, passes);
+pieces_tests!("3check", threecheck, "fast", threecheck_fast, threecheck_fast_static_relations_are_the_plain_ones, threecheck_fast_every_piece_at_every_fixture_position_is_the_plain_one, threecheck_fast_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("kingofthehill", kingofthehill, "fast", kingofthehill_fast, kingofthehill_fast_static_relations_are_the_plain_ones, kingofthehill_fast_every_piece_at_every_fixture_position_is_the_plain_one, kingofthehill_fast_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("antichess", antichess, "fast", antichess_fast, antichess_fast_static_relations_are_the_plain_ones, antichess_fast_every_piece_at_every_fixture_position_is_the_plain_one, antichess_fast_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("chess960", chess960, "fast", chess960_fast, chess960_fast_static_relations_are_the_plain_ones, chess960_fast_every_piece_at_every_fixture_position_is_the_plain_one, chess960_fast_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);
+pieces_tests!("horde", horde, "fast", horde_fast, horde_fast_static_relations_are_the_plain_ones, horde_fast_every_piece_at_every_fixture_position_is_the_plain_one, horde_fast_every_piece_at_every_state_of_the_seeded_games_is_the_plain_one);

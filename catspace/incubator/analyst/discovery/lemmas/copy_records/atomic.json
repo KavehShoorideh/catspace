@@ -6,7 +6,7 @@
  "module": "rust/engine/game/tests/generated/atomic_fast.rs",
  "module_header": {
   "description-sha256": "e5da560d23dcaa36d019af03cc4258dce4e015a79c88c2f174eed45398673aa9",
-  "translator-sha256": "99c1ffcb36708e09b8f87eb6ec3b50a645e719cf829816dfcf4a0e0c2a5bbc53",
+  "translator-sha256": "4987593f6483729b73d2a8491e0b47a26f9164c3d37ac4ef7cac95d4b352ee4b",
   "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated"
  },
  "small": {
@@ -44,13 +44,13 @@
   "left_out": {},
   "causes": {},
   "examples": [],
-  "seconds": 167.7,
+  "seconds": 167.5,
   "cores": 11,
   "seeds": 128,
   "seed0": 1000,
   "games_a_seed": 330,
   "test_returned": 0,
-  "states_a_second": 30055
+  "states_a_second": 30091
  },
  "chain": {
   "held_to_the_evaluator": {
@@ -66,20 +66,36 @@
   "held_to_the_plain_module": {
    "tests": 3,
    "piece_by_piece_comparisons": 161862
+  },
+  "lower_link": {
+   "game": "atomic",
+   "seeds": 100,
+   "seed0": 5000,
+   "games_a_seed": 20,
+   "games": 2000,
+   "states": 243060,
+   "moves": 5167364,
+   "nexts": 241060,
+   "ended": 2000,
+   "disagreements": 0,
+   "first": [],
+   "seconds": 414.3,
+   "cores": 11,
+   "test_returned": 0
   }
  },
  "disagreements": 0,
  "examples": [],
  "hashes": {
   "description": "6bdf10efeb7a4477",
-  "translator": "8e4a1534237539f0",
-  "module": "e478dd13945be540",
+  "translator": "1c51c994e27cab95",
+  "module": "5193bf41f8924c09",
   "kernel": "487238bab26ede14",
-  "bridge": "0f9cc545e0f0a4ac",
-  "test": "ee382ea0b354afe9",
+  "bridge": "431291fff21dbcaa",
+  "test": "d00dd42da271a1ae",
   "lock": "91fd9fd42c1ba92b"
  },
- "key": "7c2055c38c812fc3",
+ "key": "8db6265797bbdd65",
  "date": "2026-11-24",
- "seconds": 256.2
+ "seconds": 670.6
 }

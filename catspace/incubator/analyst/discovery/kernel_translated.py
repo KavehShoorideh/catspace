@@ -12,7 +12,8 @@ THE RECORD (JSON, one object per game):
   small                         the run on the existing certificate's corpus: {games, plies, states, moves, nexts, ended, results, left_out{class: n}, causes{cause: n}, examples[...], seconds}
                                 and `certificate_positions` (the positions of the kernel certificate of the game) and `equals_certificate` (states == certificate_positions)
   large                         the run on the fixed seed list: the same counts and {seeds, seed0, games_a_seed, cores, seconds, states_a_second}
-  chain                         the numbers of the chain: the states the module was held to the evaluator on (translated_agree.rs) and the comparisons it was held to the plain module by (translated_pieces.rs),
+  chain                         (plan 79.47: and `lower_link`, the module held to the evaluator on seeded games, all cores: seeds, games, states, allowed moves, next states, ended, disagreements, seconds, cores)
+                                the numbers of the chain: the states the module was held to the evaluator on (translated_agree.rs) and the comparisons it was held to the plain module by (translated_pieces.rs),
                                 beside the states the kernel is now held to the module on
   disagreements                 the total of both runs (an integer); `examples` keeps the first few of each cause WHOLE: {cause, seed, game, line, state, kernel, translated, evaluator}
   hashes                        sha256 (16 hex) of: the description text (the file, its delta and its list of starts), the translator (gdl_to_rust.py), the module file, kernel.rs, outside.rs (the bridge `state_facts`), the
@@ -29,7 +30,9 @@ INTERFACE (who calls it: the tests; `python -m catspace.incubator.analyst.discov
   `status(game, record=None) -> str`            as above
   `small_counts(game) -> dict`                  run the small test of the game and return the counts file it wrote (the gate's own small run)
   `chain(game) -> dict`                         run the tests that hold the module to the evaluator and to the plain module and read their OBS lines
-  `run(game, small_only=False, with_chain=True, games_a_seed=None) -> dict`   make the record: the small test, the large (the ignored test, all cores, a few minutes), the chain, the hashes, the date; written; the OBS lines printed
+  `run(game, small_only=False, with_chain=True, games_a_seed=None, lower_seeds=None) -> dict`   make the record: the small test, the large (the ignored test, all cores, a few minutes), the chain (and, plan 79.47, the lower link), the hashes, the date; written; the OBS lines printed
+  `lower(game, seeds=None) -> dict`              (plan 79.47) the lower link: the module of the game held to the evaluator on seeded games (translated_lower.rs, ignored, all cores); the counts
+  `rust_name(game) -> str`                       the name of the game's Rust module and of its tests: a digit the name begins with is spelled (a Rust name does not begin with one)
 Nothing here is on the engine's path: the Rust test only reads kernel.rs and the module.
 """
 from __future__ import annotations
@@ -60,6 +63,11 @@ EXAMPLES = 5
 
 def games() -> list:
     return sorted(p.name[: -len("_fast.rs")] for p in GEN.glob("*_fast.rs"))
+
+
+def rust_name(game: str) -> str:
+    digits = "zero one two three four five six seven eight nine".split()
+    return digits[int(game[0])] + game[1:] if game[:1].isdigit() else game
 
 
 def module_path(game: str) -> Path:
@@ -100,7 +108,7 @@ def header_of(game: str) -> dict:
 
 def hashes_of(game: str) -> dict:
     return {"description": _h(*description_files(game)), "translator": _h(TRANSLATOR), "module": _h(module_path(game)), "kernel": _h(ENGINE / "game" / "src" / "kernel.rs"),
-            "bridge": _h(ENGINE / "game" / "src" / "outside.rs"), "test": _h(TESTS / "translated_kernel.rs", TESTS / "translated_common" / "mod.rs"), "lock": _h(ENGINE / "Cargo.lock")}
+            "bridge": _h(ENGINE / "game" / "src" / "outside.rs"), "test": _h(TESTS / "translated_kernel.rs", TESTS / "translated_common" / "mod.rs", TESTS / "translated_lower.rs"), "lock": _h(ENGINE / "Cargo.lock")}
 
 
 def key_of(game: str) -> str:
@@ -138,7 +146,8 @@ def status(game: str, record: "dict | None" = None) -> str:
     if r.get("key") != key_of(game):
         return "stale"
     zero = any(not r.get(k, {}).get(f) for k in ("small", "large") for f in ("games", "states", "moves", "nexts", "ended", "results"))
-    if zero or r["small"]["states"] != certificate_positions(game):
+    low = r.get("chain", {}).get("lower_link") or {}
+    if zero or r["small"]["states"] != certificate_positions(game) or not all(low.get(f) for f in ("games", "states", "moves", "nexts")) or low.get("disagreements"):
         return "short"
     return "fresh"
 
@@ -153,7 +162,7 @@ def cargo(args: list, env_extra: dict, stream: bool = False) -> tuple:
     out = []
     for ln in p.stdout:
         out.append(ln)
-        if stream and (ln.startswith("OBS 79.46") or ln.startswith("FINDING")):
+        if stream and (ln.startswith("OBS 79.46") or ln.startswith("OBS 79.47") or ln.startswith("FINDING")):
             print(ln.rstrip()[:600], flush=True)
     p.wait()
     return p.returncode, "".join(out)
@@ -171,11 +180,11 @@ def _counts_file(game: str, kind: str, tests: list, extra: list, env_extra: dict
 
 
 def small_counts(game: str) -> dict:
-    return _counts_file(game, "small", [f"{game}_the_kernel"], [], {}, False)
+    return _counts_file(game, "small", [f"{rust_name(game)}_the_kernel_and_the_translated_module_agree_on_the_certificates_games"], ["--exact"], {}, False)
 
 
 def large_counts(game: str, env_extra: "dict | None" = None) -> dict:
-    return _counts_file(game, "large", [f"{game}_large"], ["--ignored"], env_extra or {}, True)
+    return _counts_file(game, "large", [f"{rust_name(game)}_large_the_kernel_and_the_translated_module_on_the_fixed_seed_list"], ["--exact", "--ignored"], env_extra or {}, True)
 
 
 CHAIN_PATTERNS = {
@@ -188,7 +197,10 @@ CHAIN_PATTERNS = {
 
 def chain(game: str) -> dict:
     """The numbers of the chain below the kernel: what the module (every pass) was held to the evaluator on (translated_agree.rs, the tests named `with_the_passes`) and to the plain module (translated_pieces.rs)."""
-    rc, text = cargo(["--test", "translated_agree", f"{game}_with_the_passes", "--", "--nocapture"], {})
+    p = rust_name(game)
+    names = [f"{p}_with_the_passes_{x}" for x in ("every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain", "every_fixture_position_and_every_move_of_the_file_and_every_relation_agree",
+                                                 "the_certificates_random_games_agree_at_every_state", "the_counts_of_positions_after_a_few_plies_equal_the_fixtures")]
+    rc, text = cargo(["--test", "translated_agree", "--", *names, "--exact", "--nocapture"], {})              # (exact names: the name of one game can be a part of another's)
     if rc:
         raise RuntimeError("translated_agree failed:\n" + text[-2000:])
     g = re.escape(game)
@@ -200,7 +212,8 @@ def chain(game: str) -> dict:
         "coplay_relation_by_state": int(m["relations"].group(2)),
         "fixture_positions": int(m["fixture"].group(1)), "fixture_allowed_moves": int(m["fixture"].group(3)), "fixture_nexts": int(m["fixture"].group(5)),
         "counts_positions": int(m["counts"].group(1))}}
-    rc, text = cargo(["--test", "translated_pieces", f"{game}_fast_", "--", "--nocapture"], {})
+    names = [f"{p}_fast_{x}" for x in ("static_relations_are_the_plain_ones", "every_piece_at_every_fixture_position_is_the_plain_one", "every_piece_at_every_state_of_the_seeded_games_is_the_plain_one")]
+    rc, text = cargo(["--test", "translated_pieces", "--", *names, "--exact", "--nocapture"], {})
     if rc:
         raise RuntimeError("translated_pieces failed:\n" + text[-2000:])
     tot = [int(x) for x in re.findall(rf"OBS 79\.38 A pieces {g} fast [^:]*: (\d+) piece-by-piece comparisons", text)]
@@ -208,7 +221,22 @@ def chain(game: str) -> dict:
     return out
 
 
-def run(game: str, small_only: bool = False, with_chain: bool = True, games_a_seed: "int | None" = None) -> dict:
+def lower(game: str, seeds: "int | None" = None) -> dict:
+    """The lower link (plan 79.47 part D): the module of the game (every pass) held to the evaluator on seeded games by translated_lower.rs (ignored: all cores, a few minutes). -> the counts the test wrote."""
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "lower.json"
+        env = {"CS_LOW_OUT": str(out)}
+        if seeds is not None:
+            env["CS_LOW_SEEDS"] = str(seeds)
+        rc, text = cargo(["--test", "translated_lower", f"{rust_name(game)}_the_lower_link_the_module_and_the_evaluator_on_seeded_games", "--", "--exact", "--ignored", "--nocapture"], env, True)
+        if not out.exists():
+            raise RuntimeError(f"the lower link of {game} wrote no counts (cargo returned {rc}):\n" + text[-3000:])
+        c = json.loads(out.read_text())
+        c["test_returned"] = rc
+        return c
+
+
+def run(game: str, small_only: bool = False, with_chain: bool = True, games_a_seed: "int | None" = None, lower_seeds: "int | None" = None) -> dict:
     t0 = time.time()
     if game not in games():
         raise ValueError(f"{game} has no kept translated module: {games()}")
@@ -220,6 +248,9 @@ def run(game: str, small_only: bool = False, with_chain: bool = True, games_a_se
     if large:
         large["states_a_second"] = round(large["states"] / max(large["seconds"], 1e-9))
     ch = chain(game) if (with_chain and not small_only) else {}
+    if with_chain and not small_only:
+        ch["lower_link"] = low = lower(game, lower_seeds)
+        print(f"OBS 79.47 D lower {game}: {low['games']} games, {low['states']} states, {low['moves']} allowed moves and {low['nexts']} next states compared with the evaluator's, disagreements {low['disagreements']} ({low['seconds']} s, {low['cores']} cores)", flush=True)
     for r in (small, large):
         r["examples"] = r.get("examples", [])[:EXAMPLES * 4]
     total = sum(small["causes"].values()) + sum(large.get("causes", {}).values())
@@ -251,7 +282,13 @@ def main(argv: list) -> int:
     if cmd == "run":
         for g in names:
             gs = next((int(a.split("=", 1)[1]) for a in argv if a.startswith("--games-a-seed=")), None)
-            run(g, "--small-only" in argv, "--no-chain" not in argv, gs)
+            ls = next((int(a.split("=", 1)[1]) for a in argv if a.startswith("--lower-seeds=")), None)
+            run(g, "--small-only" in argv, "--no-chain" not in argv, gs, ls)
+        return 0
+    if cmd == "lower":
+        ls = next((int(a.split("=", 1)[1]) for a in argv if a.startswith("--seeds=")), None)
+        for g in names:
+            print(json.dumps(lower(g, ls), indent=1))
         return 0
     if cmd == "chain":
         for g in names:

@@ -102,14 +102,16 @@ pub fn cond_holds(rows: &Rows, cond: &[(String, Vec<String>, bool)]) -> bool {
 // ------------------------------------------------------------------------------------------------------------------------------------------ the view the piece-by-piece harness is given
 
 /// A module with lemmas as the harness of the plain module sees it: the relations of the plain module, the left relation of a lemma read from its replacement, nothing the rewrite or the delta added.
-pub struct View<T: Tr + LemmaTr> { pub m: T, pub lemmas: Vec<LemmaData>, pub plain_names: BTreeSet<String> }
+// 2026-11-24 (plan 79.47): `plain_statics`, the names of the plain module's static relations: the module with the lemma may hold more (the static over-approximation of a walk read twice, `<walk>_over`), which the view keeps back as it keeps back the relations the delta and the rewrite added.
+pub struct View<T: Tr + LemmaTr> { pub m: T, pub lemmas: Vec<LemmaData>, pub plain_names: BTreeSet<String>, pub plain_statics: BTreeSet<String> }
 
 impl<T: Tr + LemmaTr> View<T> {
     pub fn new(m: T, plain: &mut chess::Game) -> View<T> {
         let st = plain.initial_t();
         let plain_names = plain.all_t(&st, &[]).iter().map(|(n, _)| n.to_string()).collect();
         let lemmas = m.lemmas_t();
-        View { m, lemmas, plain_names }
+        let plain_statics = plain.statics_t().iter().map(|(n, _)| n.to_string()).collect();
+        View { m, lemmas, plain_names, plain_statics }
     }
 }
 
@@ -126,8 +128,9 @@ impl<T: Tr + LemmaTr> Tr for View<T> {
     fn render_t(&self, t: u32) -> String { self.m.render_t(t) }
     fn term_t(&mut self, text: &str) -> Result<u32, String> { self.m.term_t(text) }
     fn state_of_facts_t(&mut self, f: &[(String, Vec<String>)]) -> Result<Self::S, String> { self.m.state_of_facts_t(f) }
+    fn restart_t(&mut self, f: &[(String, Vec<String>)]) -> Result<(), String> { self.m.restart_t(f) }
     fn facts_of_t(&self, s: &Self::S) -> Vec<(String, Vec<String>)> { self.m.facts_of_t(s) }
-    fn statics_t(&self) -> Vec<(&'static str, Vec<Vec<u32>>)> { self.m.statics_t() }
+    fn statics_t(&self) -> Vec<(&'static str, Vec<Vec<u32>>)> { self.m.statics_t().into_iter().filter(|(n, _)| self.plain_statics.contains(*n)).collect() }
     fn all_t(&mut self, s: &Self::S, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)> {
         let rows = self.m.all_t(s, does);
         let mut out = vec![];
@@ -203,10 +206,10 @@ fn fail(c: &LemmaCounts) { if !c.bad.is_empty() { panic!("{} disagreements, the 
 
 fn statics<B: Tr + LemmaTr>(variant: &str) {
     let plain = chess::Game::make();
-    let b = B::make();
+    let b = View::new(B::make(), &mut chess::Game::make());                    // 2026-11-24 (plan 79.47): the view keeps back the static over-approximation of a walk, which the plain module has not
     let mut c = PieceCounts::default();
     statics_equal(&plain, &b, &mut c).unwrap_or_else(|e| panic!("chess {variant}: {e}"));
-    println!("OBS 79.45 C chess {variant} static: {} static relations whole equal the plain ones, 0 disagreements; passes {:?}, lemmas {:?}", c.statics, b.passes_t(), b.lemmas_t().iter().map(|l| (l.name.clone(), l.evidence.clone())).collect::<Vec<_>>());
+    println!("OBS 79.45 C chess {variant} static: {} static relations whole equal the plain ones, 0 disagreements; passes {:?}, lemmas {:?}", c.statics, b.passes_t(), b.m.lemmas_t().iter().map(|l| (l.name.clone(), l.evidence.clone())).collect::<Vec<_>>());
     assert!(c.statics > 20);
 }
 
