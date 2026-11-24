@@ -58,3 +58,6 @@ assets/lichess/
 data/external/lichess/
 rust/maia-chess/target
 rust/engine/target
+
+# generated Rust of the single passes (plan 79.40 part F): made by scripts/gdl_to_rust_make.py --scratch, never kept
+rust/engine/game/tests/generated/scratch/

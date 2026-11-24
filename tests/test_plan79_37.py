@@ -132,7 +132,7 @@ def test_nothing_under_the_sources_of_the_engine_names_the_generated_files_the_t
                         bad.append(f"{f.relative_to(ROOT)}: {w}")
     assert not bad, bad
     assert not list(ENGINE.glob("*/src/generated")) and not list(ENGINE.glob("*/src/**/generated"))
-    names = sorted(p.name for p in GEN.iterdir())
+    names = sorted(p.name for p in GEN.iterdir() if p.is_file())                  # (plan 79.40 part F: the single-pass files are made under generated/scratch, a folder that is not kept)
     assert {"atomic.rs", "chess.rs"} <= set(names)
     assert all(re.fullmatch(r"(chess|atomic)(_(dense|demand|copy|delta|fast))?\.rs", n) for n in names), names     # (plan 79.38 puts the files with passes beside the plain ones; tests/test_plan79_38.py lists them)
 

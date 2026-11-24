@@ -1,8 +1,7 @@
-//! PLAN 79.38 PART D (SYSTEM_SPEC 11, "The crux of layer 2 is a translator from the description to Rust, made fast piece by piece under tests"; ledger row 45; piece: rules): HOW FAST ARE THE PASSES. One thread; the same list of positions as
-//! translated_speed.rs (every 4th state of the first 80 plies of the certificate's 20 random games, seed 77, the kernel's walk, the ends left out); for each game the same two questions about a position (its allowed moves; the state after one
-//! of them, the smallest by its text) asked of the kernel over the outside library, the plain translation, each pass alone (dense, demand, copy) and all three together (fast). Three runs of each after a short run, the machine's load printed beside
-//! each; then the time by piece of the module with every pass. This is a clock, not a law: the numbers are OBS lines, read as directions. The full run is ignored by default
-//! (`cargo test --release --offline -p cs_game --test translated_speed_passes -- --ignored --nocapture --test-threads=1`); a short run is always made and checks that every module answers as many moves as the kernel.
+//! PLAN 79.40 PART E (SYSTEM_SPEC 11, "The crux of layer 2 is a translator ..."; ledger row 45; piece: rules): THE TIMES OF THE PASSES OF 79.40. The same two questions at the same list of positions as translated_speed_passes.rs, for each game: the kernel, the plain translation,
+//! the module of the four passes of 79.38 (`prev`), each new pass alone, and every pass together (`fast`). The modules of the single passes are not in the repository: tests/test_plan79_40.py makes them under generated/scratch and this file is compiled with `--cfg singles`
+//! (see that test); without the flag only the plain module and `fast` are compared. Ignored by default (`-- --ignored --nocapture --test-threads=1`); a short run is always made.
+#![allow(unexpected_cfgs)]
 mod variants_common;
 #[macro_use]
 mod translated_common;
@@ -14,29 +13,45 @@ use std::time::Instant;
 use translated_common::*;
 
 include!("generated/chess.rs");
-include!("generated/chess_dense.rs");
-include!("generated/chess_demand.rs");
-include!("generated/chess_copy.rs");
-include!("generated/chess_delta.rs");
 include!("generated/chess_fast.rs");
 include!("generated/atomic.rs");
-include!("generated/atomic_dense.rs");
-include!("generated/atomic_demand.rs");
-include!("generated/atomic_copy.rs");
-include!("generated/atomic_delta.rs");
 include!("generated/atomic_fast.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_prev.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_bits.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_order.rs");
+#[cfg(singles)]
+include!("generated/scratch/chess_keep.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_prev.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_bits.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_order.rs");
+#[cfg(singles)]
+include!("generated/scratch/atomic_keep.rs");
 impl_tr!(chess);
-impl_tr!(chess_dense, passes);
-impl_tr!(chess_demand, passes);
-impl_tr!(chess_copy, passes);
-impl_tr!(chess_delta, passes);
 impl_tr!(chess_fast, passes);
 impl_tr!(atomic);
-impl_tr!(atomic_dense, passes);
-impl_tr!(atomic_demand, passes);
-impl_tr!(atomic_copy, passes);
-impl_tr!(atomic_delta, passes);
 impl_tr!(atomic_fast, passes);
+#[cfg(singles)]
+impl_tr!(chess_prev, passes);
+#[cfg(singles)]
+impl_tr!(chess_bits, passes);
+#[cfg(singles)]
+impl_tr!(chess_order, passes);
+#[cfg(singles)]
+impl_tr!(chess_keep, passes);
+#[cfg(singles)]
+impl_tr!(atomic_prev, passes);
+#[cfg(singles)]
+impl_tr!(atomic_bits, passes);
+#[cfg(singles)]
+impl_tr!(atomic_order, passes);
+#[cfg(singles)]
+impl_tr!(atomic_keep, passes);
 
 const SEED: u64 = 77;
 
@@ -113,6 +128,8 @@ fn rate(min_secs: f64, n: usize, mut one: impl FnMut() -> usize) -> (f64, usize)
 
 struct Row { name: &'static str, rate: Box<dyn FnMut(f64, usize, Work) -> (f64, usize)> }
 
+type Maker = Box<dyn Fn(&KernelGame) -> (Row, usize, usize)>;
+
 fn module_row<T: Tr + 'static>(name: &'static str, kernel: &KernelGame) -> (Row, usize, usize) {
     let mut t = T::make();
     let p = positions(kernel, &mut t, 20, 80, 4);
@@ -120,14 +137,18 @@ fn module_row<T: Tr + 'static>(name: &'static str, kernel: &KernelGame) -> (Row,
     (Row { name, rate: Box::new(move |secs, n, w| rate(secs, n, || pass_trans(&mut t, &p, n, w))) }, n, moves)
 }
 
-fn run_game<P, D, M, C, L, F>(game: &str, full: bool) where P: Tr + 'static, D: Tr + 'static, M: Tr + 'static, C: Tr + 'static, L: Tr + 'static, F: Tr + 'static {
+macro_rules! makers { ($( ($name:literal, $m:ty) ),* $(,)?) => {{ let mut v: Vec<Maker> = vec![]; $( v.push(Box::new(|k: &KernelGame| module_row::<$m>($name, k))); )* v }} }
+
+/// `runs` full runs of one second each (three in the table), after a short run; every module must answer as many moves as the kernel.
+fn run_game<P: Tr + 'static>(game: &str, full: bool, makers: Vec<Maker>, runs: usize) {
     let kernel = KernelGame::new(game, 518).unwrap();
     let kp = positions(&kernel, &mut P::make(), 20, 80, 4);
     let n = kp.trans.len();
-    println!("OBS 79.38 D list {game}: {n} positions (every 4th state of the first 80 plies of the certificate's 20 random games, seed {SEED}), {:.1} allowed moves a position on average", kp.moves as f64 / n as f64);
+    println!("OBS 79.40 E list {game}: {n} positions (every 4th state of the first 80 plies of the certificate's 20 random games, seed {SEED}), {:.1} allowed moves a position on average", kp.moves as f64 / n as f64);
     let mut rows: Vec<Row> = vec![];
     let mut kern = Row { name: "kernel", rate: Box::new({ let k = KernelGame::new(game, 518).unwrap(); let pos = kp.kernel.clone(); move |secs, n, w| rate(secs, n, || pass_kernel(&k, &pos, n, w)) }) };
-    for (r, nn, mv) in [module_row::<P>("plain", &kernel), module_row::<D>("dense", &kernel), module_row::<M>("demand", &kernel), module_row::<C>("copy", &kernel), module_row::<L>("delta", &kernel), module_row::<F>("fast", &kernel)] {
+    for mk in makers.iter() {
+        let (r, nn, mv) = mk(&kernel);
         assert_eq!((nn, mv), (n, kp.moves), "{}: the module's positions are the kernel's", r.name);
         rows.push(r);
     }
@@ -136,13 +157,26 @@ fn run_game<P, D, M, C, L, F>(game: &str, full: bool) where P: Tr + 'static, D: 
         let load = load_average();
         let mut line = format!("kernel {:.0}", (kern.rate)(0.0, short, w).0);
         for r in rows.iter_mut() { line += &format!(" {} {:.0}", r.name, (r.rate)(0.0, short, w).0); }
-        println!("OBS 79.38 D {game} short ({short} positions, {wn}) load {load}: {line} positions a second");
+        println!("OBS 79.40 E {game} short ({short} positions, {wn}) load {load}: {line} positions a second");
         if !full { continue; }
-        for run in 1..=3 {
+        for run in 1..=runs {
+            // a run is five rounds in which every module is clocked for a fifth of a second in turn, so that a load that comes and goes falls on all of them alike; the rate is positions over seconds of the five slices
             let load = load_average();
-            let mut line = format!("kernel {:.0}", (kern.rate)(1.0, n, w).0);
-            for r in rows.iter_mut() { line += &format!(" {} {:.0}", r.name, (r.rate)(1.0, n, w).0); }
-            println!("OBS 79.38 D {game} run {run} ({wn}) load before {load}, after {}: {line} positions a second", load_average());
+            let mut tot = vec![(0.0f64, 0.0f64); rows.len() + 1];
+            for _round in 0..5 {
+                let t0 = Instant::now();
+                let r0 = (kern.rate)(0.2, n, w).0;
+                tot[0].0 += r0 * t0.elapsed().as_secs_f64(); tot[0].1 += t0.elapsed().as_secs_f64();
+                for (i, r) in rows.iter_mut().enumerate() {
+                    let t0 = Instant::now();
+                    let x = (r.rate)(0.2, n, w).0;
+                    let dt = t0.elapsed().as_secs_f64();
+                    tot[i + 1].0 += x * dt; tot[i + 1].1 += dt;
+                }
+            }
+            let mut line = format!("kernel {:.0}", tot[0].0 / tot[0].1);
+            for (i, r) in rows.iter().enumerate() { line += &format!(" {} {:.0}", r.name, tot[i + 1].0 / tot[i + 1].1); }
+            println!("OBS 79.40 E {game} run {run} ({wn}) load before {load}, after {}: {line} positions a second", load_average());
         }
     }
 }
@@ -162,35 +196,39 @@ fn pieces<F: Tr + 'static>(game: &str, label: &str) {
     t.profiling_t(false);
     let pcs = t.pieces_t();
     let total: u64 = pcs.iter().map(|x| x.3).sum();
-    println!("OBS 79.38 D pieces {game} {label}: {} positions answered (moves and one next each, profile on, load {}), wall {wall:.2} s, the pieces together {:.2} s ({:.0} per cent of the wall), checksum {sink}", 5 * n, load_average(), total as f64 / 1e9, 100.0 * total as f64 / 1e9 / wall);
+    println!("OBS 79.40 E pieces {game} {label}: {} positions answered (moves and one next each, profile on, load {}), wall {wall:.2} s, the pieces together {:.2} s ({:.0} per cent of the wall), checksum {sink}", 5 * n, load_average(), total as f64 / 1e9, 100.0 * total as f64 / 1e9 / wall);
     let mut order: Vec<usize> = (0..pcs.len()).collect();
     order.sort_by_key(|&i| std::cmp::Reverse(pcs[i].3));
     for (rank, &i) in order.iter().take(10).enumerate() {
         let (name, st, calls, nanos, rows, visits, probes) = pcs[i];
-        println!("OBS 79.38 D piece {game} {label} #{}: {name}{} share {:.1}% time {:.3} s calls {calls} rows made {rows} rows visited {visits} indexes asked {probes}", rank + 1, if st { " (static)" } else { "" }, 100.0 * nanos as f64 / total as f64, nanos as f64 / 1e9);
+        println!("OBS 79.40 E piece {game} {label} #{}: {name}{} share {:.1}% time {:.3} s calls {calls} rows made {rows} rows visited {visits} indexes asked {probes}", rank + 1, if st { " (static)" } else { "" }, 100.0 * nanos as f64 / total as f64, nanos as f64 / 1e9);
     }
-    println!("OBS 79.38 D pieces {game} {label}: {} of {} pieces ran; the ten above hold {:.1}% of the pieces' time", pcs.iter().filter(|x| x.2 > 0).count(), pcs.len(), 100.0 * order.iter().take(10).map(|&i| pcs[i].3).sum::<u64>() as f64 / total as f64);
+    println!("OBS 79.40 E pieces {game} {label}: {} of {} pieces ran; the ten above hold {:.1}% of the pieces' time", pcs.iter().filter(|x| x.2 > 0).count(), pcs.len(), 100.0 * order.iter().take(10).map(|&i| pcs[i].3).sum::<u64>() as f64 / total as f64);
 }
 
-#[test]
-fn chess_a_short_run_of_the_kernel_the_plain_translation_and_every_pass_gives_the_same_number_of_moves() { run_game::<chess::Game, chess_dense::Game, chess_demand::Game, chess_copy::Game, chess_delta::Game, chess_fast::Game>("chess", false); }
-#[test]
-fn atomic_a_short_run_of_the_kernel_the_plain_translation_and_every_pass_gives_the_same_number_of_moves() { run_game::<atomic::Game, atomic_dense::Game, atomic_demand::Game, atomic_copy::Game, atomic_delta::Game, atomic_fast::Game>("atomic", false); }
+
+#[cfg(singles)]
+fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("prev", chess_prev::Game), ("bits", chess_bits::Game), ("order", chess_order::Game), ("keep", chess_keep::Game), ("fast", chess_fast::Game)] }
+#[cfg(not(singles))]
+fn chess_makers() -> Vec<Maker> { makers![("plain", chess::Game), ("fast", chess_fast::Game)] }
+#[cfg(singles)]
+fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("prev", atomic_prev::Game), ("bits", atomic_bits::Game), ("order", atomic_order::Game), ("keep", atomic_keep::Game), ("fast", atomic_fast::Game)] }
+#[cfg(not(singles))]
+fn atomic_makers() -> Vec<Maker> { makers![("plain", atomic::Game), ("fast", atomic_fast::Game)] }
 
 #[test]
-#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
-fn chess_the_times_of_the_passes() { run_game::<chess::Game, chess_dense::Game, chess_demand::Game, chess_copy::Game, chess_delta::Game, chess_fast::Game>("chess", true); }
+fn chess_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_moves() { run_game::<chess::Game>("chess", false, chess_makers(), 0); }
+#[test]
+fn atomic_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_moves() { run_game::<atomic::Game>("atomic", false, atomic_makers(), 0); }
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
-fn atomic_the_times_of_the_passes() { run_game::<atomic::Game, atomic_dense::Game, atomic_demand::Game, atomic_copy::Game, atomic_delta::Game, atomic_fast::Game>("atomic", true); }
-
+fn chess_the_times_of_the_passes() { run_game::<chess::Game>("chess", true, chess_makers(), 3); }
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
-fn chess_the_time_by_piece_of_each_module() {
-    pieces::<chess::Game>("chess", "plain"); pieces::<chess_dense::Game>("chess", "dense"); pieces::<chess_demand::Game>("chess", "demand"); pieces::<chess_copy::Game>("chess", "copy"); pieces::<chess_delta::Game>("chess", "delta"); pieces::<chess_fast::Game>("chess", "fast");
-}
+fn atomic_the_times_of_the_passes() { run_game::<atomic::Game>("atomic", true, atomic_makers(), 3); }
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
-fn atomic_the_time_by_piece_of_each_module() {
-    pieces::<atomic::Game>("atomic", "plain"); pieces::<atomic_dense::Game>("atomic", "dense"); pieces::<atomic_demand::Game>("atomic", "demand"); pieces::<atomic_copy::Game>("atomic", "copy"); pieces::<atomic_delta::Game>("atomic", "delta"); pieces::<atomic_fast::Game>("atomic", "fast");
-}
+fn chess_the_time_by_piece_of_each_module() { pieces::<chess::Game>("chess", "plain"); pieces::<chess_fast::Game>("chess", "fast"); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn atomic_the_time_by_piece_of_each_module() { pieces::<atomic::Game>("atomic", "plain"); pieces::<atomic_fast::Game>("atomic", "fast"); }
