@@ -44,7 +44,6 @@ def KT():
 # THE CAUSES NAMED FOR A GAME (the record holds exactly these, each a finding with its whole state in the record's examples); the explanation of each is in the BUILT block of docs/ANALYST_PLAN.md and in KNOWN of placed_translated.py
 TWO_PLACES = {"reach_from: only module, pawn, a two-place step along a file", "reach_from (given): only module, pawn, a two-place step along a file"}
 KNOWN = {g: set(TWO_PLACES) for g in SEVEN}
-KNOWN["atomic"].add("strikes_place: only kernel, the owner's own king beside the place")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ (1) part A: the list
@@ -84,7 +83,7 @@ def test_the_documents_compose_on_every_description_and_the_reader_accepts_the_t
         text = pq.composed_text(g)
         prog = GDL.Program(text, f"placed/{g}")                      # the reader's own tests: stratified, safe, well sorted
         assert prog is not None
-        base = {d["relation"] for doc in pq.question_documents() for d in doc["questions"]}
+        base = {d["relation"] for p in pq.documents(g) for d in json.loads(p.read_text())["questions"]}
         for rel in base:
             assert f"(<= ({rel} " in text, (g, rel)                   # each relation a document names is defined by a clause
     print(f"OBS 79.48 B: the documents of rules/placed/ compose on the descriptions of {len(SEVEN)} games and the reader accepts each text")
@@ -115,7 +114,7 @@ def test_no_document_redefines_a_relation_of_the_description_and_the_game_docume
 def test_the_definitions_are_aliases_of_relations_the_description_has_and_each_question_names_the_methods_it_answers():
     pq = PQ()
     docs = pq.question_documents()
-    asks = {m.strip() for doc in docs for q in doc["questions"] for m in q["asks"].split(",")}
+    asks = {m.strip() for doc in docs for q in doc["questions"] for m in q["asks"].split(",") if m.strip()}
     assert asks <= set(TRAIT), asks - set(TRAIT)
     held = {q["name"] for q in pq.questions()}
     for m in pq.HELD_BY_PLACED:
@@ -300,8 +299,8 @@ def test_the_python_modules_of_the_plan_name_no_object_of_a_game(name):
 
 def test_the_known_states_of_the_causes_are_ignored_tests_with_the_cause_in_their_text():
     text = RUST_KNOWN.read_text()
-    named = re.findall(r'#\[ignore = "([^"]+)"\]\nfn (\w+_known_cause_\w+)', text)
-    assert named and all("known cause" in why and "79.48" in why for why, _n in named), named
+    named = re.findall(r'#\[ignore = "([^"]+)"\]\nfn (\w+_known_(?:cause|difference)_\w+)', text)
+    assert len(named) == 2 and all("known cause" in why and "79.48" in why for why, _n in named), named
 
 
 @needs_cargo
@@ -310,7 +309,7 @@ def test_the_known_states_are_run_and_show_their_causes():
     pt = PT()
     rc, text = pt.cargo(["--test", "translated_placed_known", "--", "--ignored", "--nocapture"], {})
     assert rc == 0, text[-2000:]
-    lines = [ln for ln in text.splitlines() if ln.startswith("OBS 79.48 E known cause")]
+    lines = [ln for ln in text.splitlines() if ln.startswith("OBS 79.48 E known")]
     assert len(lines) == 2, lines
     for ln in lines:
         print(ln[:300])

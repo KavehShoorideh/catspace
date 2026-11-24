@@ -1,7 +1,7 @@
 //! PLAN 79.48 PART E (SYSTEM_SPEC 11 "The description is the source of the rules; fast code is only a certified copy"; piece: rules; ledger rows 44, 42): THE KNOWN CAUSES OF THE DISAGREEMENTS OF THE PLACED RECORDS, HELD AS STATES.
 //! The records (translated_placed.rs, discovery/placed_translated.py) name the causes they met; each is held here as one state in an ignored test: run by hand it asks the kernel and the module of the definitions at that one state, prints both answers
 //! and the evaluator's, and asserts that the two differ as the cause says, so the comparison is shown to SEE the cause. A mending is not this file's: the first cause is a choice of what the question `reach_from` means (one step, as the kernel and the
-//! hand tests of plan 79.36 read it, or one move, as the description's `move_by` says it), the second is the fault of plan 79.36 (atomic: what a side strikes) and waits for the decision on rules from the description only.
+//! hand tests of plan 79.36 read it, or one move, as the description's `move_by` says it), the second (atomic) is NOT a cause of the record any more: the kernel answers `bears on`, equal to the description's `attacked`; the fault of 79.36 is a difference between two meanings, held here as a state.
 //! This file names the games on purpose (a test file may). It is not part of the hashes of a record (it makes no count).
 mod translated_common;
 use cs_game::gdl_game::{parse_term, render_term, row_args};
@@ -82,17 +82,18 @@ fn chess_known_cause_the_smallest_kind_on_its_start_row_reaches_two_places_by_th
 }
 
 #[test]
-#[ignore = "known cause (plan 79.36 fault 2, plan 79.48, strikes_place): in atomic the kernel's strikes_place answers with the attack tables of chess while the description's `struck` leaves out a place beside the owner's own leader (a leader beside the other leader strikes the place it stands on, by the kernel); run by hand to see the comparison find it; awaits the decision on rules from the description only"]
-fn atomic_known_cause_a_leader_beside_the_other_leader_strikes_its_place_by_the_kernel_and_not_by_the_description() {
+#[ignore = "known cause (plan 79.36 fault 2, plan 79.48 addendum, two meanings of a strike in atomic): the kernel's strikes_place BEARS ON (the description's `attacked`, which the record holds it to and finds equal); the description's `struck` (the check notion) leaves out a place beside the owner's own leader, which is what the hand test of 79.36 asked for; the callers above decide which they need (ledger row 42); run by hand to see the two differ"]
+fn atomic_known_difference_a_leader_beside_the_other_leader_bears_on_its_place_but_does_not_strike_it_in_the_check_sense() {
     let text = text_of(Some("variants/atomic.gdl"), "atomic");
     let k = KernelGame::new("atomic", 518).unwrap();
     let (kk, pairs) = pairs_of(&k, "8/8/8/3kK3/8/8/8/8 w - - 0 1", None);
     let mut t = placed_atomic::Game::make();
-    let (module, ev) = rows_both(&mut t, &text, &pairs, "placed_strikes", 3);
+    let (m_bears, e_bears) = rows_both(&mut t, &text, &pairs, "placed_strikes", 3);
+    let (m_end, e_end) = rows_both(&mut t, &text, &pairs, "placed_strikes_end", 3);
     let d5 = 3 * 8 + 4;                                                                      // file d, rank 5: the black leader's place
     let kernel = kk.strikes_place(&kk.initial(), 0, d5);
     let has = |s: &BTreeSet<Vec<String>>| s.contains(&vec!["white".to_string(), "d".to_string(), "5".to_string()]);
-    println!("OBS 79.48 E known cause atomic (8/8/8/3kK3/8/8/8/8 w): the kernel says white strikes d5: {kernel}; the module: {}; the evaluator: {}", has(&module), has(&ev));
-    assert_eq!(has(&module), has(&ev), "the module is the description's");
-    assert!(kernel && !has(&module), "the kernel and the module agree here: the cause is gone");
+    println!("OBS 79.48 E known difference atomic (8/8/8/3kK3/8/8/8/8 w): the kernel says white strikes d5: {kernel}; placed_strikes (bears on) module {} evaluator {}; placed_strikes_end (check notion) module {} evaluator {}", has(&m_bears), has(&e_bears), has(&m_end), has(&e_end));
+    assert!(has(&m_bears) == has(&e_bears) && has(&m_end) == has(&e_end), "the module is the description's");
+    assert!(kernel && has(&m_bears) && !has(&m_end), "the two meanings agree here: the difference is gone");
 }
