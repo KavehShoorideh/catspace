@@ -1097,6 +1097,10 @@ end. Every asker in the layers above that only wants the side uses the new quest
 this is the one change the old player's search takes, at Kaveh's word, and the wake and the old player get it alike. READING, mine: the
 kernel's own answer to the new question is written in kernel.rs, since an interface question needs its answer there; no rule changes.
 What must hold: every answer at a fixed count of nodes is identical to before; only the time changes.
+MANY ROLES (Kaveh 2026-11-23: "be sure to do this in a way that is compatible with 4-player chess, like Bughouse chess or these other
+variants"): the question answers a role among the game's roles, however many; its default assumes no count of roles; the swap adds no
+new assumption of two sides. READING, mine: in a game where several roles may act at once (two boards) the question answers what the
+mover answers today, one role; a question that answers several roles is not built here and is named under ledger row 42.
 
 ## 12. What exists
 
