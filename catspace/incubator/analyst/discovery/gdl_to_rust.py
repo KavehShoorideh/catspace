@@ -207,6 +207,8 @@ bit by bit and make rows that no reader looks at. Each cause is machinery, none 
     (13) is written as the text says, with these choices: the orders are those of `JoinRule` with each positive literal over a relation held as bits first (`start_orders`), written to the same function text as the reader's order (`emit_full_clause`); the factors of the estimate are noted by the writer
          as it writes each literal (`BitWriter.prof`), a literal read by a loop over words counting the words its relation holds in the orientation read, 2 times that when it binds a variable; a clause of a static relation is made once and has one order; an order is also not admitted when it reads a relation
          that is not held as bits by places that no clause asks it by (its indexes are fixed: a ValueError of the writer, named in `Plan.start_refused`); the decision is made in the dry run of the last round of `find_bits` and kept (`Plan.start_choice`) so the final writing is the same text.
+         An order is admitted when it asks no orientation that the clauses in the reader's order ask altogether (`Plan.start_base`, found by a first writing of every clause in the reader's order, `Plan.start_off`), and not only none that the clauses written before it ask:
+         the first writing of this part decided by the clauses written before, which depend on the order the strata are written in, which depends on the names, and the description with every name replaced gave other refusals (found by tests/test_plan79_42.py; mended).
     (15) is written as the text says, with these choices: the readers are the clauses of every stratum as written (`Plan.rules`, once every other pass has run), and the entailment is a homomorphism of the body of a clause of the stop relation into the literals of the reader found by backtracking
          (`entail_body`: positive and negated literals by relation and sign, a distinct test only against a distinct test); the stop literal is a negated literal of the recursive clause whose places are key variables, free tile variables or constants (a walk whose stop literals are all positive, as a walk over
          places that must hold something, is refused: `Plan.ends_refused`); the doubling form is written when every key of the displacement table has at most one displacement, the closure by rounds otherwise (the ends kept in both); and the base clauses of the walk (the start words) are made into words
@@ -214,6 +216,11 @@ bit by bit and make rows that no reader looks at. Each cause is machinery, none 
          them, and they were most of the rows the walk made).
     (14) is written as the text says for the one function it covers, `or_word` of a relation held as bits (the walks and every clause that ors a word into its head): with the pass, the index of each other orientation is made once for the word (`bf`, with the bit at nought, and the tile that is free there, `af`)
          and each new bit moves it by a constant (`p * stride`); a relation with one orientation, or no new bit, is as before. The rows set one by one by `set_t` (a clause that makes a row, not a word) are not changed: the pass does not cover them.
+    (16) NOT BUILT. The lemma and its proof above are complete for the test (a line of a walk whose closure in the base meets no place that differs between the key and the base is the base closure; tests/test_plan79_42.py runs the lemma on random tables, with each condition left out in turn to show it is needed). What is not complete, and so what is missing, is the
+         piece of work that makes the lemma a rule of the translator: (i) a rule that reads from the clauses that the stop relation and the start relation of a walk are, for a key, the relation of the state with the key's removals taken out and the key's additions put in (so that live_0 and S_0 can be named and C bounded by the words of the key's removals and additions): in the first game the clauses of the stop relation are one
+         clause that adds (a relation of the key) and one that copies the state's relation less two relations of the key, under a guard literal of the key, and to name the base the guard must be shown true for every key the walk is made for (it is the literal the start relation's clause holds too); the pass base unfolds a view into its readers and does not give this form, and no pass finds it; (ii) the closures of the base,
+         kept for the question in the working memory and their invalidation by the next state, and the test of the key's start word against the base's, which need (i) for the start relation. The profile once the pass ends has run shows the piece of the walk with the lines of an alternative as a small share of the pieces' time, and a walk that is keyed by no alternative (it is made for every place) is outside the shape of the
+         lemma; so the piece of work above would buy at most that share, and it is left for a plan that first writes the form (i) as a pass of its own with its proof.
 """
 from __future__ import annotations
 
@@ -685,6 +692,8 @@ class Plan:
         self.start_choice: dict = {}                            # clause key -> the orders (indexes) admitted, decided in the dry run of the last round of find_bits and kept for the final writing
         self.ends: dict = {}                                    # relation of a walk made as its ends -> the stop literal its readers entail   (pass "ends")
         self.ends_refused: dict = {}                            # relation of a walk -> why pass (15) does not make it as its ends, the reader clause named
+        self.start_off: bool = False                            # pass (13): while the orientations the reader's orders ask are being found, no other order is written
+        self.start_base: dict | None = None                     # relation -> the orientations asked by the clauses in the reader's orders, all of them (an order is admitted when it asks no other: the same whatever the order the clauses are written in)
         self.start_written: dict = {}                           # clause key -> (the number of orders written, the number of orders found)
         self.units: dict = {}                                   # the products of two sorts found (pass bits), with their weights
         self.refused: dict = {}                                # relation -> why pass (2) keeps it in full: the (relation, places) chain and the clause that defeats it
@@ -1127,9 +1136,15 @@ class Plan:
             if not bad:
                 self.start_choice = {}
                 self.start_refused = {}
+                self.start_base = None
                 for i in self.bits.values():
                     i.orients = {i.canon: "the membership test"}
                 self.bit_rec = self.recursive_bits()
+                if "start" in self.passes:
+                    self.start_off = True
+                    emit_strata(lambda text: None, d, self, self.places, {})
+                    self.start_off = False
+                    self.start_base = {r: set(i.orients) for r, i in self.bits.items()}
                 emit_strata(lambda text: None, d, self, self.places, bad)
                 for i in self.bits.values():
                     for f, text in sorted(i.orients.items()):
@@ -2445,7 +2460,7 @@ def emit_full_clause(w, d, plan, places, name, rule, comp, recursive, refusals, 
     estimate; otherwise `{name}` is the clause in the reader's order, as before. -> the name to call."""
     def one(order, fname):
         return BitWriter(d, places, fname, order, comp, plan, "bfull", None, (), recursive, alias)
-    if "start" not in plan.passes or d.static[rule.head_rel]:
+    if "start" not in plan.passes or d.static[rule.head_rel] or plan.start_off or plan.start_base is None:
         write_clause(w, one(rule, name), refusals)
         return name
     orders = start_orders(plan, rule, comp)
@@ -2474,11 +2489,11 @@ def emit_full_clause(w, d, plan, places, name, rule, comp, recursive, refusals, 
                 i.orients = saved[r]
             plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = e.why if isinstance(e, BitRefuse) else f"it reads a relation not held as bits by places no clause before it reads it by: {orders[j].clause.text}".replace("\n", " ")
             continue
-        new = sorted((r, f) for r, i in plan.bits.items() for f in i.orients if f not in saved[r])
+        new = sorted((r, f) for r, i in plan.bits.items() for f in i.orients if f not in plan.start_base.get(r, ()))
         if new:
             for r, i in plan.bits.items():
                 i.orients = saved[r]
-            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = f"it asks the orientation {new[0][1]} of {new[0][0]}, which no clause before it asks: {orders[j].clause.text.replace(chr(10), ' ')}"
+            plan.start_refused[(rule.clause.text.replace("\n", " "), j)] = f"it asks the orientation {new[0][1]} of {new[0][0]}, which no clause in the reader's order asks: {orders[j].clause.text.replace(chr(10), ' ')}"
             continue
         others.append((j, txt, wr.prof))
     if memo is None:
