@@ -214,8 +214,11 @@ def problems(doc: dict, base_text: str) -> list:
     for k in ("game", "variant", "says"):
         if not isinstance(doc[k], str) or not doc[k]:
             bad.append(f"{at}: {k} is text")
-    if not isinstance(doc["lean"], dict) or set(doc["lean"]) != {"module", "namespace", "position"}:
-        bad.append(f"{at}: lean is {{module, namespace, position}}")
+    ln = doc["lean"]
+    if not isinstance(ln, dict) or not {"module", "namespace", "position"} <= set(ln) or set(ln) - {"module", "namespace", "position", "imports", "proof", "uses"}:
+        bad.append(f"{at}: lean is {{module, namespace, position}} and, when the lemma is proved, {{imports, proof, uses}}")
+    elif any(not isinstance(ln.get(k, [""]), list) or not all(isinstance(x, str) for x in ln.get(k, [])) for k in ("imports", "proof", "uses")):
+        bad.append(f"{at}: lean imports, proof and uses are lists of text")
     if bad:
         return bad
     try:
@@ -376,14 +379,50 @@ def proved_in_index(theorem: str) -> bool:
     return f"- **theorem `{theorem}`**" in text or f"- **lemma `{theorem}`**" in text
 
 
-def standing_of(lemma: Lemma, fresh: bool, key: "str | None" = None) -> tuple:
-    """The standing the lemma HAS -> (word, detail). PROVED only while its theorem is in the index and not OPEN; CERTIFIED only while the certificate beside it is fresh and holds the
-    key the document names (`fresh`, `key`: what the certificate module says); otherwise CONJECTURE, with the cause."""
+def obligation_path(lemma: Lemma) -> Path:
+    """Where the Lean obligation of a lemma is written (rule_lemma_lean.py): the place of the mined statements."""
+    return ROOT / "lean" / "ideas" / "Ideas" / "Mined" / (re.sub(r"[^A-Za-z0-9_]", "_", f"rule_lemma_{lemma.game}_{lemma.name}") + ".lean")
+
+
+def generated_theorem(lemma: Lemma) -> str:
+    """The name of the theorem the obligation states: its namespace, then `<name>_same` or `<name>_implies`."""
+    return f"Ideas.Mined.{obligation_path(lemma).stem}.{lemma.name}_{lemma.form.lower()}"
+
+
+def proof_problems(lemma: Lemma) -> list:
+    """What stands between a PROVED claim and its proof: the obligation is written and holds no `sorry`; it states the theorem the document names; the theorems it rests on (`lean.uses`) are
+    in the index, not OPEN, and named in it; the theorem the document names is in the index and not OPEN (the index is rebuilt once the obligation is written)."""
+    st = lemma.standing
+    bad = []
+    p = obligation_path(lemma)
+    text = p.read_text() if p.is_file() else ""
+    if not text:
+        return [f"the obligation {p.name} is not written"]
+    if "sorry" in re.sub(r"/-.*?-/", "", text, flags=re.S):
+        bad.append(f"the obligation {p.name} still holds `sorry`")
+    if st["theorem"] != generated_theorem(lemma):
+        bad.append(f"the document names {st['theorem']}, the obligation states {generated_theorem(lemma)}")
+    for u in lemma.lean.get("uses", []):
+        if not proved_in_index(u):
+            bad.append(f"the theorem {u}, which the proof rests on, is not in the index as proved")
+        if u.split(".")[-1] not in text:
+            bad.append(f"the obligation does not name {u}")
+    if not lemma.lean.get("proof"):
+        bad.append("the document holds no proof")
+    if not proved_in_index(st["theorem"]):
+        bad.append(f"the theorem {st['theorem']} is not in the index as proved")
+    return bad
+
+
+def standing_of(lemma: Lemma, fresh: bool, key: "str | None" = None, failing: bool = False) -> tuple:
+    """The standing the lemma HAS -> (word, detail). PROVED only while `proof_problems` finds none and the certificate does not contradict it (`failing`); CERTIFIED only while the
+    certificate beside it is fresh and holds the key the document names (`fresh`, `key`: what the certificate module says); otherwise CONJECTURE, with the cause."""
     st = lemma.standing
     if st["is"] == "PROVED":
-        if proved_in_index(st["theorem"]):
-            return "PROVED", st["theorem"]
-        return "CONJECTURE", f"the theorem {st['theorem']} is not in the index as proved"
+        bad = proof_problems(lemma)
+        if failing:
+            bad.append("the certificate found disagreements: the statement or the proof is wrong")
+        return ("CONJECTURE", "; ".join(bad)) if bad else ("PROVED", st["theorem"])
     if st["is"] == "CERTIFIED":
         if not fresh:
             return "CONJECTURE", "the certificate is not fresh"
@@ -393,10 +432,10 @@ def standing_of(lemma: Lemma, fresh: bool, key: "str | None" = None) -> tuple:
     return "CONJECTURE", "no certificate named"
 
 
-def statement_of(lemma: Lemma, fresh: bool = False, key: "str | None" = None) -> dict:
+def statement_of(lemma: Lemma, fresh: bool = False, key: "str | None" = None, failing: bool = False) -> dict:
     """PART D: the lemma as the JSON of rep's `Statement`: id the name, pattern the condition, says Holds, holder ours, `also` the keys it stands on, standing Proved(theorem) or
     Conjecture(the sample). Built with what rep has: a statement of the form `L is M` would be a saying of its own, which rep does not have (reported, not added)."""
-    word, detail = standing_of(lemma, fresh, key)
+    word, detail = standing_of(lemma, fresh, key, failing)
     standing = {"kind": "proved", "theorem": detail} if word == "PROVED" else \
         {"kind": "conjecture", "sample": (f"certificate {detail}" if word == "CERTIFIED" else f"no certificate: {detail}") + f"; origin {lemma.origin}"}
     pattern = [{"relation": l["relation"], "args": list(l["args"]), "neg": bool(l.get("neg"))} for l in lemma.condition]

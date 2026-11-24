@@ -10,7 +10,7 @@ one is not certified.
 THE CORPUS (the fixtures and the seeded games the kernel certificates use, by the description's own moves):
   the FIXTURES  rules/lemmas/<game>/states.txt, one state a line (the format is in rule_lemma.py);
   the GAMES     `GAMES` seeded games, seed `SEED` (the seed of discovery/certify.py), each played from the description's initial state by choosing, with a seeded generator, one
-                legal move of each role at each turn (the description's `legal` and `next`), to the description's `terminal` or to the fuse `PLY_FUSE` (a named fuse: random play
+                legal choice of each role at each turn (the description's `legal` and `next`), to the description's `terminal` or to the fuse `PLY_FUSE` (a named fuse: random play
                 is not promised to end).
 WHAT IS COUNTED AND PRINTED (OBS lines): states read; states where the condition held; rows of each relation on those states; rows compared (SAME: the union; IMPLIES: the left
 rows); disagreements (states, and rows: SAME the rows of one and not the other, IMPLIES the left rows not on the right) with the first `EXAMPLES` states and rows. A lemma whose
@@ -18,7 +18,7 @@ condition never held, or whose left relation never had a row where it held, is V
 THE CERTIFICATE (rules/lemmas/<game>/<name>.certificate.json, the record of discovery/certify.py: binding, ingests, oracle, corpus, positions, disagreements, examples, key, sources,
 date, seconds, and for a lemma the counts above): its KEY is a hash of what the answer depends on: the composed description text, the delta, the condition, the form and the two
 relations, the reader's source (discovery/gdl.py), the fixtures, the corpus parameters, and the sources of this module and of rule_lemma.py. A change to any of them makes the
-certificate STALE until `run` is repeated. The certificates of the old bindings (discovery/certify.py BINDINGS, their twelve) are not touched and not counted here.
+certificate STALE until `run` is repeated. The certificates of the old bindings (discovery/certify.py BINDINGS, their twelve) are left as they are and not counted here.
 INTERFACE (who calls it: `rule_lemma.standing_of` through `status`; the tests; `python -m catspace.incubator.analyst.discovery.rule_lemma_certify run <game> [<name>] [--jobs N]`):
   `key_of(lemma) -> str`                        the 16 hex digits of the key
   `corpus_states(lemma, games=GAMES, seed=SEED) -> iterator of (label, state)`   (for tests; `certify` reads it by chunks)
@@ -80,7 +80,7 @@ def wanted_of(lemma: RL.Lemma, prog: GDL.Program) -> tuple:
 
 
 def play(prog: GDL.Program, wanted: tuple, gi: int, seed: int = SEED, fuse: int = PLY_FUSE):
-    """One seeded game from the description's initial state: yields (label, state, evaluated state) at each turn, one legal move of each role chosen by the seeded generator."""
+    """One seeded game from the description's initial state: yields (label, state, evaluated state) at each turn, one legal choice of each role chosen by the seeded generator."""
     rng = random.Random(seed * 1000 + gi)
     state = prog.init()
     roles = prog.roles()
@@ -237,12 +237,12 @@ def _games_of(cert: dict) -> int:
 
 def standing(lemma: RL.Lemma) -> tuple:
     c = load(lemma)
-    return RL.standing_of(lemma, status(lemma) == "fresh", c["key"] if c else None)
+    return RL.standing_of(lemma, status(lemma) == "fresh", c["key"] if c else None, bool(c and c["disagreements"]))
 
 
 def adopt(lemma: RL.Lemma, cert: dict) -> "Path | None":
     """Write the document with the standing CERTIFIED and the certificate's key -- only for a clean, not vacuous certificate."""
-    if cert["disagreements"] or cert["vacuous"]:
+    if cert["disagreements"] or cert["vacuous"] or lemma.standing["is"] == "PROVED":
         return None
     lemma.standing = {"is": "CERTIFIED", "key": cert["key"]}
     return RL.write(lemma)

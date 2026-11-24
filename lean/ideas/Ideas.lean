@@ -65,3 +65,4 @@ import Ideas.Layer0.Logic
 import Ideas.Layer0.Structure
 import Ideas.Layer0.Chance
 import Ideas.Layer0.Choice
+import Ideas.Mined.rule_lemma_chess_candidate_is_mover_unit
