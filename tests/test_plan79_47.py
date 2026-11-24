@@ -214,3 +214,149 @@ def test_the_translator_names_no_relation_sort_or_constant_of_any_description():
     hit = sorted(words & names)
     print(f"OBS 79.47 scan: {len(names)} relation, sort and constant names of the descriptions under rules/ (the variants included), {len(words)} words in the translator's source, {len(hit)} in both")
     assert len(names) > 250 and not hit, hit
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ (3) part B: a module begun at other initial facts
+
+# the small game with a relation made from its initial facts and a relation that reads it (the second reads the state): the module of this description answers for its own start unless it is restarted, as the evaluator is by a delta
+RS = (t43().WALK3 + "(signature home cell) (signature homeray cell cell)\n(<= (home ?n) (init (piece ?n)))\n(<= (homeray ?h ?b) (home ?h) (ray_up ?h ?b))\n")
+
+RESTART_DRIVER = r"""
+include!("game.rs");
+use game::*;
+fn facts_of_text(t: &str) -> Vec<(String, Vec<String>)> { t.split(';').filter(|x| !x.trim().is_empty()).map(|f| { let mut it = f.split_whitespace(); let r = it.next().unwrap().to_string(); (r, it.map(|x| x.to_string()).collect()) }).collect() }
+fn main() {
+    let mut g = Game::new();
+    let input = std::io::read_to_string(std::io::stdin()).unwrap();
+    for line in input.lines() {
+        let (init, state) = line.split_once('|').unwrap();
+        g.restart(&facts_of_text(init)).unwrap();
+        let initial: Vec<String> = g.facts_of(&g.initial()).iter().map(|(r, a)| format!("{} {}", r, a.join(" "))).collect();
+        println!("INITIAL\t{}", initial.join(";"));
+        let s = g.state_of_facts(&facts_of_text(state)).unwrap();
+        for (name, rows) in g.all_relations(&s, &[]) {
+            println!("REL\t{}", name);
+            let mut out: Vec<String> = rows.iter().map(|r| r.iter().map(|t| g.render(*t)).collect::<Vec<_>>().join(" ")).collect();
+            out.sort(); out.dedup();
+            for o in out { println!("ROW\t{}\t{}", name, o); }
+        }
+        println!("END");
+    }
+}
+"""
+
+
+@pytest.mark.skipif(shutil.which("rustc") is None, reason="no rustc on this machine")
+@pytest.mark.parametrize("passes", [[], ["bits", "shift", "asked"], list(translator().PASSES)], ids=["plain", "bits asked", "every pass"])
+def test_a_module_restarted_at_other_initial_facts_answers_as_the_evaluator_begun_there_does(passes, tmp_path):
+    T = translator()
+    G = t40().reader()
+    (tmp_path / "game.rs").write_text(T.translate(RS, "game", passes))
+    (tmp_path / "main.rs").write_text(RESTART_DRIVER)
+    exe = tmp_path / "restart"
+    r = subprocess.run(["rustc", "--edition", "2021", "-O", "-A", "warnings", "-o", str(exe), str(tmp_path / "main.rs")], capture_output=True, text=True, cwd=tmp_path)
+    assert r.returncode == 0, r.stderr[-3000:]
+    starts = [[("piece", ("n0",)), ("block", ("n4",)), ("control", ("p",)), ("mark", ("n1", "red"))],
+              [("piece", ("n3",)), ("block", ("n5",)), ("control", ("q",)), ("mark", ("n2", "blue"))],
+              [("piece", ("n6",)), ("control", ("p",))],
+              [("piece", ("n0",)), ("block", ("n4",)), ("control", ("p",)), ("mark", ("n1", "red"))]]
+    sts = t43().states(24)
+    lines, wants, inits = [], [], []
+    d0 = T.Description(RS)
+    dynamic = [x for x in d0.nodes if not d0.static[x]]
+    for i, facts in enumerate(sts):
+        init = starts[i % len(starts)]
+        text = re.sub(r"\(init \([a-z_]+(?: [a-z0-9_]+)*\)\)", "", RS) + "\n" + "\n".join(f"(init ({f} {' '.join(a)}))" for f, a in init) + "\n"
+        prog = G.Program(text)
+        db = prog.run([(f"true.{f}", a) for f, a in facts], does=())
+        wants.append({x: sorted(" ".join(G.term_text(t) if not isinstance(t, str) else t for t in row) for row in db.facts(x)) for x in dynamic})
+        inits.append(sorted(f"{f} {' '.join(a)}" for f, a in init))
+        lines.append(";".join(f"{f} {' '.join(a)}" for f, a in init) + "|" + ";".join(f"{f} {' '.join(a)}" for f, a in facts))
+    r = subprocess.run([str(exe)], input="\n".join(lines) + "\n", capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-2000:]
+    blocks = r.stdout.split("END\n")[:-1]
+    assert len(blocks) == len(sts)
+    compared = homes = 0
+    for i, blk in enumerate(blocks):
+        rows: dict = {}
+        for line in blk.splitlines():
+            parts = line.split("\t")
+            if parts[0] == "INITIAL":
+                assert sorted(x for x in parts[1].split(";") if x) == inits[i], (i, parts[1], inits[i])
+            elif parts[0] == "REL":
+                rows.setdefault(parts[1], [])
+            elif parts[0] == "ROW":
+                rows.setdefault(parts[1], []).append(parts[2])
+        for name in rows:
+            assert sorted(set(rows[name])) == wants[i][name], (i, passes, name, sorted(set(rows[name])), wants[i][name])
+            compared += 1
+        homes += len(wants[i]["homeray"])
+    assert homes > 20 and compared > 24 * 10
+    print(f"OBS 79.47 B restart {passes[-1] if passes else 'plain'}: {len(sts)} states each begun at one of {len(starts)} other starts, {compared} relations compared with the evaluator begun there, {homes} rows of the relation that reads the start, 0 disagreements")
+
+
+@pytest.mark.skipif(shutil.which("rustc") is None, reason="no rustc on this machine")
+def test_negative_control_a_module_that_is_not_restarted_answers_for_its_own_start(tmp_path):
+    T = translator()
+    (tmp_path / "game.rs").write_text(T.translate(RS, "game", ["bits", "shift", "asked"]))
+    (tmp_path / "main.rs").write_text(RESTART_DRIVER.replace("g.restart(&facts_of_text(init)).unwrap();", ""))
+    exe = tmp_path / "norestart"
+    r = subprocess.run(["rustc", "--edition", "2021", "-O", "-A", "warnings", "-o", str(exe), str(tmp_path / "main.rs")], capture_output=True, text=True, cwd=tmp_path)
+    assert r.returncode == 0, r.stderr[-3000:]
+    line = "piece n3;control q|piece n3;control q;block n5"
+    r = subprocess.run([str(exe)], input=line + "\n", capture_output=True, text=True)
+    initial = next(ln for ln in r.stdout.splitlines() if ln.startswith("INITIAL")).split("\t")[1]
+    homeray = sorted(ln for ln in r.stdout.splitlines() if ln.startswith("ROW\thomeray"))
+    print(f"OBS 79.47 B control: the module not restarted at (piece n3) holds {initial!r} as its initial facts and {len(homeray)} rows of the relation that reads the start made from its own start")
+    assert "piece n3" not in initial and "piece n0" in initial and all(x.startswith("ROW\thomeray\tn0 ") for x in homeray)
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ (3) part B: the kept modules of the seven games
+
+SEVEN = ("chess", "atomic", "3check", "kingofthehill", "antichess", "chess960", "horde")
+FIVE = SEVEN[2:]
+
+
+def rust_name(game: str) -> str:
+    digits = "zero one two three four five six seven eight nine".split()
+    return digits[int(game[0])] + game[1:] if game[:1].isdigit() else game
+
+
+def description_of(game: str) -> str:
+    return sibling("test_plan79_37").description_of(game)
+
+
+@pytest.mark.parametrize("game", FIVE)
+@pytest.mark.parametrize("variant", ["", "_fast"])
+def test_a_kept_file_of_the_five_more_games_carries_the_hashes_and_the_passes_and_a_fresh_translation_is_the_same_file(game, variant):
+    import hashlib
+    T = translator()
+    path = GEN / f"{game}{variant}.rs"
+    src = path.read_text()
+    text = description_of(game)
+    passes = list(T.PASSES) if variant else []
+    assert t40().head_line(src, "description-sha256") == hashlib.sha256(text.encode()).hexdigest(), f"{game}: the description changed; make the file again"
+    assert t40().head_line(src, "translator-sha256") == T.translator_hash(), f"{game}: the translator changed; make the file again"
+    assert (t40().head_line(src, "passes") == ",".join(passes)) if passes else (t40().head_line(src, "passes") is None)
+    assert f"pub mod {rust_name(game)}{variant} {{" in src
+    assert T.translate(text, rust_name(game) + variant, passes) == src, f"{game}{variant}: a fresh translation differs from the kept file"
+    assert "pub fn restart(" in src and "pub const ASKED" in (src if variant else "pub const ASKED")
+    assert len(src.encode()) < 1_500_000
+    print(f"OBS 79.47 B {game}{variant}: {len(src)} bytes, {src.count(chr(10))} lines, the hashes match and a fresh translation is the same file")
+
+
+def test_every_kept_file_has_its_restart_and_the_files_are_the_seven_games_plain_and_every_pass_and_the_one_with_the_lemma():
+    names = sorted(p.name for p in GEN.iterdir() if p.is_file())
+    want = sorted([f"{g}{v}.rs" for g in SEVEN for v in ("", "_fast")] + ["chess_lemma.rs"])
+    assert names == want, names
+    for n in names:
+        assert "pub fn restart(" in (GEN / n).read_text(), n
+    sizes = {n: (GEN / n).stat().st_size for n in names}
+    print(f"OBS 79.47 B kept files: {len(names)} files, {sum(sizes.values())} bytes in all, the largest {max(sizes.values())} bytes ({max(sizes, key=sizes.get)}); the ten added for the five games hold {sum(v for n, v in sizes.items() if n.split('_')[0].split('.')[0] in FIVE)} bytes")
+
+
+def test_the_make_script_names_the_games_and_makes_the_five_more():
+    text = (ROOT / "scripts" / "gdl_to_rust_make.py").read_text()
+    for g in FIVE:
+        assert f'"{g}"' in text, g
+    assert "SCRATCH_GAMES" in text and "def rust_name" in text

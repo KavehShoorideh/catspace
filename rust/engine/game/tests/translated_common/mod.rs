@@ -26,6 +26,8 @@ pub trait Tr {
     fn render_t(&self, t: u32) -> String;
     fn term_t(&mut self, text: &str) -> Result<u32, String>;
     fn state_of_facts_t(&mut self, f: &[(String, Vec<String>)]) -> Result<Self::S, String>;
+    /// 2026-11-24 (plan 79.47): the module begun again at other initial facts (a position of a fixture or of a game's list of starts), as `evaluator_at` begins the evaluator: the relations that read an `init` relation are made again.
+    fn restart_t(&mut self, f: &[(String, Vec<String>)]) -> Result<(), String>;
     fn facts_of_t(&self, s: &Self::S) -> Vec<(String, Vec<String>)>;
     fn statics_t(&self) -> Vec<(&'static str, Vec<Vec<u32>>)>;
     fn all_t(&mut self, s: &Self::S, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)>;
@@ -59,6 +61,7 @@ macro_rules! impl_tr {
             fn render_t(&self, t: u32) -> String { self.render(t) }
             fn term_t(&mut self, text: &str) -> Result<u32, String> { self.term(text) }
             fn state_of_facts_t(&mut self, f: &[(String, Vec<String>)]) -> Result<Self::S, String> { self.state_of_facts(f) }
+            fn restart_t(&mut self, f: &[(String, Vec<String>)]) -> Result<(), String> { self.restart(f) }
             fn facts_of_t(&self, s: &Self::S) -> Vec<(String, Vec<String>)> { self.facts_of(s) }
             fn statics_t(&self) -> Vec<(&'static str, Vec<Vec<u32>>)> { self.static_relations() }
             fn all_t(&mut self, s: &Self::S, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)> { self.all_relations(s, does) }
@@ -105,6 +108,13 @@ pub fn evaluator_at(text: &str, facts: &BTreeSet<Fact>) -> GdlGame {
     let f: Vec<Fact> = facts.iter().cloned().collect();
     let delta = restart_delta(text, &f).unwrap();
     GdlGame::load("shown", &cs_gdl::compose(text, &delta).unwrap()).unwrap()
+}
+
+/// 2026-11-24 (plan 79.47): the reader's program of a description begun at the facts of a state shown (the same restarted text `evaluator_at` loads), for the comparison of every relation at a position of a game whose rules read its start.
+pub fn program_at(text: &str, facts: &BTreeSet<Fact>) -> Program {
+    let f: Vec<Fact> = facts.iter().cloned().collect();
+    let delta = restart_delta(text, &f).unwrap();
+    Program::load(&cs_gdl::compose(text, &delta).unwrap()).unwrap()
 }
 
 pub fn facts_pairs(f: &BTreeSet<Fact>) -> Vec<(String, Vec<String>)> { f.iter().map(|x| (x.relation.clone(), x.args.clone())).collect() }

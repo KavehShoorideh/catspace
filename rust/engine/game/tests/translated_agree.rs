@@ -40,11 +40,12 @@ fn statics<T: Tr>(game: &str, text: &str) {
 fn fixture_positions<T: Tr>(game: &str, text: &str) {
     let fx = fixture(game);
     let mut t = T::make();
-    let mut prog = Program::load(text).unwrap();
     let mut tally = Tally::default();
     let mut rels = BTreeMap::new();
     let (mut steps, mut ended) = (0usize, 0usize);
     for p in &fx.pos {
+        let mut prog = program_at(text, &p.facts);                          // 2026-11-24 (plan 79.47): the evaluator's program begun at the position, as the module is
+        t.restart_t(&translated_common::facts_pairs(&p.facts)).unwrap();      // 2026-11-24 (plan 79.47): begun at the position's facts as `evaluator_at` begins the evaluator (a game whose rules read its start)
         let ts = t.state_of_facts_t(&translated_common::facts_pairs(&p.facts)).unwrap();
         let ev = evaluator_at(text, &p.facts);
         let es = ev.initial();
@@ -77,7 +78,7 @@ fn fixture_positions<T: Tr>(game: &str, text: &str) {
     }
     println!("OBS 79.37 D fixture {game}: {} positions ({ended} ended), {} allowed moves, {steps} moves made, {} nexts, every one equal to the evaluator and to the file", tally.positions, tally.moves, steps);
     for (r, (s, n)) in &rels { println!("OBS 79.37 D relation {game} fixture {r}: states {s}, rows compared {n}, differing 0"); }
-    assert!(tally.positions > 100);
+    assert!(tally.positions >= 100);                                 // 2026-11-24 (plan 79.47): the file of the game with captures that are forced has exactly 100 positions
 }
 
 fn random_play<T: Tr>(game: &str, text: &str, games: usize, rel_games: usize, all_every: usize) {
@@ -105,6 +106,7 @@ fn counts<T: Tr>(game: &str, depth_start: usize, depth_other: usize) {
         let depth = if label == "start" { depth_start } else { depth_other }.min(counts.len());
         let k = KernelGame::from_fen(game, fen).unwrap();
         let facts: Vec<(String, Vec<String>)> = k.state_facts(&cs_game::Game::initial(&k)).into_iter().map(|f| (f.relation, f.args)).collect();
+        t.restart_t(&facts).unwrap();                                     // 2026-11-24 (plan 79.47): the module begun at the position's facts, as the kernel's `from_fen` begins the kernel
         let s = t.state_of_facts_t(&facts).unwrap();
         for d in 1..=depth {
             let c = perft(&mut t, &s, d);
@@ -164,3 +166,106 @@ fn atomic_with_the_passes_the_certificates_random_games_agree_at_every_state() {
 fn chess_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<chess_fast::Game>("chess_fast"); counts::<chess_fast::Game>("chess", 4, 3); }
 #[test]
 fn atomic_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<atomic_fast::Game>("atomic_fast"); counts::<atomic_fast::Game>("atomic", 4, 3); }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ PLAN 79.47 PART B: the five more games, the plain module and the module with every pass, held to the evaluator as the first two are
+// 2026-11-24 (plan 79.47): the five more games of the seven certified kernels (3check, kingofthehill, antichess, chess960, horde), each a delta on the first game's description, the modules made by the same translator.
+include!("generated/3check.rs");
+include!("generated/3check_fast.rs");
+impl_tr!(threecheck);
+impl_tr!(threecheck_fast, passes);
+include!("generated/kingofthehill.rs");
+include!("generated/kingofthehill_fast.rs");
+impl_tr!(kingofthehill);
+impl_tr!(kingofthehill_fast, passes);
+include!("generated/antichess.rs");
+include!("generated/antichess_fast.rs");
+impl_tr!(antichess);
+impl_tr!(antichess_fast, passes);
+include!("generated/chess960.rs");
+include!("generated/chess960_fast.rs");
+impl_tr!(chess960);
+impl_tr!(chess960_fast, passes);
+include!("generated/horde.rs");
+include!("generated/horde_fast.rs");
+impl_tr!(horde);
+impl_tr!(horde_fast, passes);
+#[test]
+fn threecheck_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { statics::<threecheck::Game>("3check", &description(Some("variants/3check.gdl"))); }
+#[test]
+fn threecheck_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { fixture_positions::<threecheck::Game>("3check", &description(Some("variants/3check.gdl"))); }
+#[test]
+fn threecheck_the_certificates_random_games_agree_at_every_state() { random_play::<threecheck::Game>("3check", &description(Some("variants/3check.gdl")), 20, 4, 10); }
+#[test]
+fn threecheck_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { counts::<threecheck::Game>("3check", 4, 3); }
+#[test]
+fn threecheck_with_the_passes_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { module_line::<threecheck_fast::Game>("threecheck_fast"); statics::<threecheck_fast::Game>("3check", &description(Some("variants/3check.gdl"))); }
+#[test]
+fn threecheck_with_the_passes_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { module_line::<threecheck_fast::Game>("threecheck_fast"); fixture_positions::<threecheck_fast::Game>("3check", &description(Some("variants/3check.gdl"))); }
+#[test]
+fn threecheck_with_the_passes_the_certificates_random_games_agree_at_every_state() { module_line::<threecheck_fast::Game>("threecheck_fast"); random_play::<threecheck_fast::Game>("3check", &description(Some("variants/3check.gdl")), 20, 4, 10); }
+#[test]
+fn threecheck_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<threecheck_fast::Game>("threecheck_fast"); counts::<threecheck_fast::Game>("3check", 4, 3); }
+#[test]
+fn kingofthehill_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { statics::<kingofthehill::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl"))); }
+#[test]
+fn kingofthehill_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { fixture_positions::<kingofthehill::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl"))); }
+#[test]
+fn kingofthehill_the_certificates_random_games_agree_at_every_state() { random_play::<kingofthehill::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl")), 20, 4, 10); }
+#[test]
+fn kingofthehill_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { counts::<kingofthehill::Game>("kingofthehill", 4, 3); }
+#[test]
+fn kingofthehill_with_the_passes_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { module_line::<kingofthehill_fast::Game>("kingofthehill_fast"); statics::<kingofthehill_fast::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl"))); }
+#[test]
+fn kingofthehill_with_the_passes_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { module_line::<kingofthehill_fast::Game>("kingofthehill_fast"); fixture_positions::<kingofthehill_fast::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl"))); }
+#[test]
+fn kingofthehill_with_the_passes_the_certificates_random_games_agree_at_every_state() { module_line::<kingofthehill_fast::Game>("kingofthehill_fast"); random_play::<kingofthehill_fast::Game>("kingofthehill", &description(Some("variants/kingofthehill.gdl")), 20, 4, 10); }
+#[test]
+fn kingofthehill_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<kingofthehill_fast::Game>("kingofthehill_fast"); counts::<kingofthehill_fast::Game>("kingofthehill", 4, 3); }
+#[test]
+fn antichess_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { statics::<antichess::Game>("antichess", &description(Some("variants/antichess.gdl"))); }
+#[test]
+fn antichess_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { fixture_positions::<antichess::Game>("antichess", &description(Some("variants/antichess.gdl"))); }
+#[test]
+fn antichess_the_certificates_random_games_agree_at_every_state() { random_play::<antichess::Game>("antichess", &description(Some("variants/antichess.gdl")), 20, 4, 10); }
+#[test]
+fn antichess_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { counts::<antichess::Game>("antichess", 4, 3); }
+#[test]
+fn antichess_with_the_passes_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { module_line::<antichess_fast::Game>("antichess_fast"); statics::<antichess_fast::Game>("antichess", &description(Some("variants/antichess.gdl"))); }
+#[test]
+fn antichess_with_the_passes_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { module_line::<antichess_fast::Game>("antichess_fast"); fixture_positions::<antichess_fast::Game>("antichess", &description(Some("variants/antichess.gdl"))); }
+#[test]
+fn antichess_with_the_passes_the_certificates_random_games_agree_at_every_state() { module_line::<antichess_fast::Game>("antichess_fast"); random_play::<antichess_fast::Game>("antichess", &description(Some("variants/antichess.gdl")), 20, 4, 10); }
+#[test]
+fn antichess_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<antichess_fast::Game>("antichess_fast"); counts::<antichess_fast::Game>("antichess", 4, 3); }
+#[test]
+fn chess960_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { statics::<chess960::Game>("chess960", &description(Some("variants/chess960.gdl"))); }
+#[test]
+fn chess960_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { fixture_positions::<chess960::Game>("chess960", &description(Some("variants/chess960.gdl"))); }
+#[test]
+fn chess960_the_certificates_random_games_agree_at_every_state() { random_play::<chess960::Game>("chess960", &description(Some("variants/chess960.gdl")), 20, 4, 10); }
+#[test]
+fn chess960_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { counts::<chess960::Game>("chess960", 4, 3); }
+#[test]
+fn chess960_with_the_passes_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { module_line::<chess960_fast::Game>("chess960_fast"); statics::<chess960_fast::Game>("chess960", &description(Some("variants/chess960.gdl"))); }
+#[test]
+fn chess960_with_the_passes_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { module_line::<chess960_fast::Game>("chess960_fast"); fixture_positions::<chess960_fast::Game>("chess960", &description(Some("variants/chess960.gdl"))); }
+#[test]
+fn chess960_with_the_passes_the_certificates_random_games_agree_at_every_state() { module_line::<chess960_fast::Game>("chess960_fast"); random_play::<chess960_fast::Game>("chess960", &description(Some("variants/chess960.gdl")), 20, 4, 10); }
+#[test]
+fn chess960_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<chess960_fast::Game>("chess960_fast"); counts::<chess960_fast::Game>("chess960", 4, 3); }
+#[test]
+fn horde_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { statics::<horde::Game>("horde", &description(Some("variants/horde.gdl"))); }
+#[test]
+fn horde_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { fixture_positions::<horde::Game>("horde", &description(Some("variants/horde.gdl"))); }
+#[test]
+fn horde_the_certificates_random_games_agree_at_every_state() { random_play::<horde::Game>("horde", &description(Some("variants/horde.gdl")), 20, 4, 10); }
+#[test]
+fn horde_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { counts::<horde::Game>("horde", 4, 3); }
+#[test]
+fn horde_with_the_passes_every_relation_that_does_not_read_the_state_equals_the_evaluators_on_its_whole_domain() { module_line::<horde_fast::Game>("horde_fast"); statics::<horde_fast::Game>("horde", &description(Some("variants/horde.gdl"))); }
+#[test]
+fn horde_with_the_passes_every_fixture_position_and_every_move_of_the_file_and_every_relation_agree() { module_line::<horde_fast::Game>("horde_fast"); fixture_positions::<horde_fast::Game>("horde", &description(Some("variants/horde.gdl"))); }
+#[test]
+fn horde_with_the_passes_the_certificates_random_games_agree_at_every_state() { module_line::<horde_fast::Game>("horde_fast"); random_play::<horde_fast::Game>("horde", &description(Some("variants/horde.gdl")), 20, 4, 10); }
+#[test]
+fn horde_with_the_passes_the_counts_of_positions_after_a_few_plies_equal_the_fixtures() { module_line::<horde_fast::Game>("horde_fast"); counts::<horde_fast::Game>("horde", 4, 3); }

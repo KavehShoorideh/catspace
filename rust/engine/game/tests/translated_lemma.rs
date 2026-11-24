@@ -128,6 +128,7 @@ impl<T: Tr + LemmaTr> Tr for View<T> {
     fn render_t(&self, t: u32) -> String { self.m.render_t(t) }
     fn term_t(&mut self, text: &str) -> Result<u32, String> { self.m.term_t(text) }
     fn state_of_facts_t(&mut self, f: &[(String, Vec<String>)]) -> Result<Self::S, String> { self.m.state_of_facts_t(f) }
+    fn restart_t(&mut self, f: &[(String, Vec<String>)]) -> Result<(), String> { self.m.restart_t(f) }
     fn facts_of_t(&self, s: &Self::S) -> Vec<(String, Vec<String>)> { self.m.facts_of_t(s) }
     fn statics_t(&self) -> Vec<(&'static str, Vec<Vec<u32>>)> { self.m.statics_t().into_iter().filter(|(n, _)| self.plain_statics.contains(*n)).collect() }
     fn all_t(&mut self, s: &Self::S, does: &[(u32, u32)]) -> Vec<(&'static str, Vec<Vec<u32>>)> {

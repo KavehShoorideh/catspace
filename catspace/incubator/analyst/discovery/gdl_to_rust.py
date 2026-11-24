@@ -317,6 +317,15 @@ WHY (79.45 READ): the lemma of 79.45 reads the line walk twice in one clause; th
     (c) A READER THAT ASKS THE WALK UNBOUND IN ITS ORDER (module text above, "asks it unbound") is joined again with the walk taken last (`JoinRule` with the walk in `avoid`), once, and the pass goes on with that order, where a relation that reads the walk binds the key and gives a guard (the guard of a relation made later than the walk): a conjunction does not depend on the order of its literals. The reader is
         written in that order when the pass is taken (`Plan.asked_reorder`); where the pass refuses, nothing is changed.
     The module with `<W>_over` has one relation more that the plain module has not, a static one; the harness of the lemma (translated_lemma.rs, `View`) keeps it back as it keeps back the relations the rewrite and the delta add.
+
+PLAN 79.47 PART B: A MODULE BEGUN AT OTHER INITIAL FACTS (SYSTEM_SPEC 11, "The crux of layer 2 is a translator ..."; piece: rules; ledger rows 44, 45). This text is the interface of the one item the module gains, written and committed before its body.
+WHY. A description may read its initial facts in its rules (a relation made from `(init ...)` that other relations read: a variant with a start by number reads where its leader and its corner units begin). Such a relation reads no state, so a module makes it once, in `Game::new`, from the clauses' own initial facts, and answers
+for that start alone; the evaluator is begun at another start by composing a delta that gives the facts as the initial ones (`rules::restart_delta`), and the kernel of that game is compared at such starts. The module has no such way, so a game whose rules read its start was compared from its own start only (found by the first run of the five more games).
+  Game::restart(&mut self, facts: &[(String, Vec<String>)]) -> Result<(), String>        (every module has it; a game whose clauses do not read an `init` relation changes nothing but its initial facts)
+  TAKES the facts of a state as `state_of_facts` takes them (a relation name and its arguments as text). DOES: the rows of each relation `init.<fluent>` become the rows of that fluent among the facts (a fluent with no fact has none, as a delta that retracts the initial clauses and gives the facts says); every relation that does not read the state and
+  that reads an `init` relation, directly or through others (found by the dependency graph, as the static relations are told from the others), is made again from them, in the order of its strata; `roles` is read again and the reading kept by the last question is dropped. RETURNS Err naming the fact where `state_of_facts` does.
+  ARGUMENT. A relation that does not read the state is a function of the clauses' static rows and of the `init` rows alone (that is what makes it static); the rows `init.<fluent>` of a description restarted at facts are exactly those facts (the delta retracts every initial clause and gives them), so making the relations that read them again, from them, in stratum order, gives the rows the evaluator has for the restarted description;
+  the relations that read no `init` relation have the same rows whatever the facts and are not made again. Once `restart` has run, `initial()` is the state of those facts. WHO CALLS IT: the tests of cs_game (a position of a fixture or of a game's list of starts is begun with it, as `evaluator_at` begins the evaluator); `impl_tr!` forwards it as `restart_t`.
 """
 from __future__ import annotations
 
@@ -3644,7 +3653,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w(RUNTIME_KEEP if keep else RUNTIME)
     if dense:
         w(RUNTIME_DENSE)
-    if pooled:
+    if pooled or any(r.startswith("init.") for r in d.nodes):
         w(RUNTIME_REL_CLEAR)
     if bits:
         w(RUNTIME_BITS)
@@ -3782,6 +3791,27 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
             w(f"        s.f_{ident(f)} = {ro('self.st', 'init.' + f)}.clone();")
     w("        s.sort();")
     w("        s")
+    w("    }")
+    inits = [f for f in d.fluents if f"init.{f}" in d.prog.nodes]
+    init_rels = {f"init.{f}" for f in inits}
+    redo = [(k, c) for k, s, c in stratum_fns if s and not (c & init_rels) and (d.cone(sorted(c)) & init_rels)]
+    w("    /// Begin the game again at the facts given as the initial ones (plan 79.47): the `init` relations hold them and the relations that read no state and read an `init` relation are made again.")
+    w("    pub fn restart(&mut self, facts: &[(String, Vec<String>)]) -> Result<(), String> {")
+    w("        let s = self.state_of_facts(facts)?;")
+    for f in inits:
+        rel = f"self.st.{d.rid['init.' + f]}"
+        w(f"        {rel}.clear();")
+        w(f"        for r in &s.f_{ident(f)} {{ {rel}.add(*r); }}")
+    for k, c in redo:
+        for r in sorted(c):
+            w(f"        self.st.{d.rid[r]}.clear();")
+    if redo:
+        w("        let dy = Dy::new();")
+    for k, c in redo:
+        w(f"        st{k}(&mut self.st, &mut self.tm, &dy{', &mut self.dw' if has_dw else ''});")
+    w(f"        self.roles = {ro('self.st', 'role')}.iter().map(|r| r[0]).collect();")
+    w("        self.last = None;")
+    w("        Ok(())")
     w("    }")
     w("    /// The state's rows and the turn's into a fresh evaluation.")
     if pooled:

@@ -15,6 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 from catspace.incubator.analyst.discovery import gdl_to_rust as T
 
 GAMES = {"chess": [ROOT / "rules" / "chess.gdl"], "atomic": [ROOT / "rules" / "chess.gdl", ROOT / "rules" / "variants" / "atomic.gdl"]}
+# 2026-11-24 (plan 79.47): the five more games of the seven certified kernels, each the base text composed with its delta by the same translator (the kept files are generated/<game>.rs and <game>_fast.rs; the Rust module is named by `rust_name`: a name that begins with a digit is spelled)
+for _g in ("3check", "kingofthehill", "antichess", "chess960", "horde"):
+    GAMES[_g] = [ROOT / "rules" / "chess.gdl", ROOT / "rules" / "variants" / f"{_g}.gdl"]
+SCRATCH_GAMES = ("chess", "atomic")                                 # the files of the single passes and the clocks of the passes are made for the first two games only
 KEPT = {"": [], "_fast": list(T.PASSES)}
 KEPT_LEMMA = {"chess": {"_lemma": list(T.PASSES)}}                  # plan 79.45: the game that has a lemma folder, every pass and its lemmas (the one file kept besides the plain and the fast ones)
 COMBOS = {"bits_keep": ["bits", "keep"], "bits_order": ["bits", "order"], "bits_order_keep": ["bits", "order", "keep"], "bits_demand": ["bits", "demand"], "bits_dense": ["bits", "dense"], "bits_copy": ["bits", "copy"], "bits_delta": ["bits", "delta"]}
@@ -52,21 +56,29 @@ def lemma_docs(game: str) -> tuple:
     return text, docs
 
 
-def make(out: Path, variants: dict, lemma_variants: dict | None = None) -> None:
+def rust_name(game: str) -> str:
+    """The name of the Rust module of a game: the game's name, with a digit it begins with spelled (a Rust name does not begin with one)."""
+    digits = "zero one two three four five six seven eight nine".split()
+    return digits[int(game[0])] + game[1:] if game[:1].isdigit() else game
+
+
+def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: tuple | None = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for game, sources in GAMES.items():
+        if games is not None and game not in games:
+            continue
         text = T.compose_text(sources) if len(sources) > 1 else sources[0].read_text()
         for variant, passes in variants.items():
-            module = game + variant
+            module = rust_name(game) + variant
             src = T.translate(text, module, passes)
-            (out / f"{module}.rs").write_text(src)
-            print(f"OBS 79.40 translate {module}: description {len(text)} bytes, passes {','.join(passes) or '-'}, Rust {len(src)} bytes {src.count(chr(10))} lines")
+            (out / f"{game}{variant}.rs").write_text(src)
+            print(f"OBS 79.40 translate {game}{variant} (module {module}): description {len(text)} bytes, passes {','.join(passes) or '-'}, Rust {len(src)} bytes {src.count(chr(10))} lines")
     for game, vs in (lemma_variants or {}).items():
         ltext, docs = lemma_docs(game)
         for variant, passes in vs.items():
-            module = game + variant
+            module = rust_name(game) + variant
             src = T.translate(ltext, module, passes, docs)
-            (out / f"{module}.rs").write_text(src)
+            (out / f"{game}{variant}.rs").write_text(src)
             print(f"OBS 79.45 translate {module}: composed description {len(ltext)} bytes, passes {','.join(passes) or '-'}, lemmas {','.join(x['name'] for x in docs)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
 
 
@@ -74,7 +86,7 @@ def main(argv=None) -> int:
     args = sys.argv[1:] if argv is None else argv
     make(OUT, KEPT, KEPT_LEMMA)
     if "--scratch" in args:
-        make(OUT_SCRATCH, SCRATCH, SCRATCH_LEMMA)
+        make(OUT_SCRATCH, SCRATCH, SCRATCH_LEMMA, SCRATCH_GAMES)
     return 0
 
 
