@@ -1111,6 +1111,19 @@ once, and waiting as a move. Kaveh's idea, not decided: a node in the graph for 
 things. READING, mine: a game with one board, two roles and units held in hand is the natural first step, since it tests places off the
 board alone.
 
+**Two checks at a merge: a lean one off the engine's path, the full one on it** (Kaveh 2026-11-23: "Maybe we want to do this full
+verification at the end after we've done speed improvements, and then keep like a leaner verification for middle steps"; then "Yes, please
+do it. Amend the rules."). This AMENDS the rule of 2026-11-22 that every READ carries one measure of the whole engine. The line is drawn
+by what a plan touches, not by where it stands in a sequence. A source is ON THE ENGINE'S PATH when the engine that plays is built from it
+or reads it at play: the sources of the crates, the manifests, the Python of the wake and the measure, the descriptions under rules/ and
+the reader. A plan that changes NO such source (the translator and its generated files while they are only in tests, documents, test
+files, printing scripts) gets the LEAN CHECK: the tests of the crates it touched, the gates of the plans whose files it touched and its
+own, the scan of names (test_plan78), and the count of fresh certificates. Its READ says "no source on the engine's path changed, no
+measure" and names the last measure that stands. A plan that changes a source on the path gets the FULL CHECK as before: the tests of the
+nine crates, every plan gate, the certificates, the Lean library, the comparisons of 79.32 and 79.33, and the measure of the whole (row
+39), on a quiet machine. The day translated code is put on the engine's path is such a plan. The main agent decides which check from the
+list of changed files and says which it ran in the READ.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1533,4 +1546,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layers 0 to 3 may be mended; layer 0 takes fixes and small support, no significant new function | 2026-11-23 | 11 (last block) |
 | Layer 2 answers the side to move without reading the end; every asker above uses it, the shared search included | 2026-11-23 | 11 (last block) |
 | Several boards and several players are owed later; nothing new assumes two players | 2026-11-23 | 11 (last block) |
+| Two checks at a merge: lean off the engine's path, full on it; the measure of the whole only when a source on the path changed | 2026-11-23 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
