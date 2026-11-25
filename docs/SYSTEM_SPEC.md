@@ -1327,6 +1327,8 @@ compiled module, because the module is slower (section 13).
 
 **Layer 2 unlocked for lemmas (Kaveh, 2026-11-25).** The lock of (viii) is lifted for LAYER 2 only, and only for this work: once a description is in, layer 2 must answer questions against it fast; the translation alone is not fast enough; the further speed comes from LEMMAS added to the translation. CORRECTNESS IS THE GATE (a lemma that loses or adds one allowed move anywhere is out); the METRIC is narrowness first (tests run for each allowed move, the ideal being one) and the wall clock second, as the proof that the narrowing paid for its own bookkeeping. The proposer is NOT a blind search over lemmas: a lemma is read off the description's own derivations (which facts a derived answer rested on; the description's rule rewritten under an assumption by steps proved once), aimed at the piece the profile names as dearest. Nothing in it names a thing of a game. Layers 0 and 1 stay locked. How the loop runs is not decided yet; the reading of 2026-11-25 (systems that compile game descriptions: none found that derives such narrowing lemmas from the rules with a proof; their transformations are structural and tested, not proved) is in the plan file.
 
+**The support filter (plan 79.56, 2026-11-25).** The first lemma of the unlocked layer 2 is one general statement, proved once: an answer made by reading facts is the same in two worlds that agree on every fact read. The translator uses it as a FILTER in pass "support": where a relation is tested once a key on the state changed at the places the key touches, the test of one reference key records the places it consulted, and every key that touches none of them takes the reference's answer; every other key is still tested by the description's own clauses. Only the easy direction is relied on, so no statement about a game is proved. Interface: a pass of `translate`, a kept module `<game>_support.rs`, a counter under the profile switch.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1811,4 +1813,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Layer 2 as a port: description, reference engines and an optional test in; a compiled module held to the references out; lemmas proved in Lean written back in the description language; compared on segments of games | 2026-11-25 | 11 (last block but one before 12) |
 | A rule lemma closed by a solver with a certificate the kernel checks counts as PROVED for layer 2; a lemma about play still asks for readable reasoning | 2026-11-25 | 13 |
 | Layer 2 unlocked for lemmas; correctness the gate, narrowness then clock the metric; no blind search | 2026-11-25 | 11 |
+| The support filter: one general lemma, used as a filter by pass support | 2026-11-25 | 11 |
 | What was replaced | 2026-11-16 | 14 |
