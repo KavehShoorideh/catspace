@@ -6,8 +6,8 @@
  "module": "rust/engine/game/tests/generated/3check_fast.rs",
  "module_header": {
   "description-sha256": "c5409c2c4143fca9d13cf9779f9e97083f023580c8ad39a25dbbd499f0916bfd",
-  "translator-sha256": "4987593f6483729b73d2a8491e0b47a26f9164c3d37ac4ef7cac95d4b352ee4b",
-  "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated"
+  "translator-sha256": "49edb7ce7692f887cddeea9b90c4cbedacd0a0b2442d25e54ffac1eb3dac52d8",
+  "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated,cones,words,tables,topdown"
  },
  "small": {
   "game": "3check",
@@ -22,7 +22,7 @@
   "left_out": {},
   "causes": {},
   "examples": [],
-  "seconds": 0.7,
+  "seconds": 0.8,
   "cores": 1,
   "seeds": 1,
   "seed0": 1000,
@@ -34,23 +34,23 @@
  "large": {
   "game": "3check",
   "kind": "large",
-  "games": 38400,
-  "plies": 3674691,
-  "states": 3713091,
-  "moves": 113600326,
-  "nexts": 113600326,
-  "ended": 38400,
-  "results": 38400,
+  "games": 35840,
+  "plies": 3428046,
+  "states": 3463886,
+  "moves": 105972905,
+  "nexts": 105972905,
+  "ended": 35840,
+  "results": 35840,
   "left_out": {},
   "causes": {},
   "examples": [],
-  "seconds": 218.8,
+  "seconds": 254.2,
   "cores": 11,
   "seeds": 128,
   "seed0": 1000,
-  "games_a_seed": 300,
+  "games_a_seed": 280,
   "test_returned": 0,
-  "states_a_second": 16970
+  "states_a_second": 13627
  },
  "chain": {
   "held_to_the_evaluator": {
@@ -79,7 +79,7 @@
    "ended": 2000,
    "disagreements": 0,
    "first": [],
-   "seconds": 103.3,
+   "seconds": 114.5,
    "cores": 11,
    "test_returned": 0
   }
@@ -88,14 +88,14 @@
  "examples": [],
  "hashes": {
   "description": "aa28153ec66fb494",
-  "translator": "1c51c994e27cab95",
-  "module": "58b5c5f5e372ffcc",
-  "kernel": "487238bab26ede14",
+  "translator": "e9d88c2a6d9c9687",
+  "module": "5ba7ceae9b951e80",
+  "kernel": "fd0e1164ab3eb328",
   "bridge": "21927597ac637677",
-  "test": "d00dd42da271a1ae",
+  "test": "97ee6721d4742c58",
   "lock": "91fd9fd42c1ba92b"
  },
- "key": "70cece6ca0380e33",
- "date": "2026-11-24",
- "seconds": 345.9
+ "key": "20ec12c4f9e7219b",
+ "date": "2026-11-25",
+ "seconds": 392.7
 }

@@ -98,7 +98,7 @@
   },
   "causes": {},
   "examples": [],
-  "seconds": 52.8,
+  "seconds": 58.3,
   "cores": 1,
   "seeds": 1,
   "seed0": 1000,
@@ -111,80 +111,80 @@
  "large": {
   "game": "chess",
   "kind": "large",
-  "games": 7296,
-  "plies": 2498994,
-  "states": 2506290,
-  "probes": 20050320,
-  "ended": 7296,
+  "games": 12800,
+  "plies": 4385293,
+  "states": 4398093,
+  "probes": 35184744,
+  "ended": 12800,
   "compared": {
    "bearing_from": [
-    2506290,
-    157874111
+    4398093,
+    277003708
    ],
    "bearing_from (given)": [
-    20050320,
-    154838464
+    35184744,
+    271747840
    ],
    "cells": [
-    2506290,
-    34233737
+    4398093,
+    60034201
    ],
    "find_step": [
-    4997988,
-    55547501
+    8770586,
+    97481375
    ],
    "kind_at": [
-    2506290,
-    34233737
+    4398093,
+    60034201
    ],
    "kind_names": [
     1,
     6
    ],
    "move_ends": [
-    4997988,
-    55547501
+    8770586,
+    97481375
    ],
    "move_info (kinds played)": [
-    2498994,
-    55547501
+    4385293,
+    97481375
    ],
    "move_info (kinds taken)": [
-    2498994,
-    4789245
+    4385293,
+    8402932
    ],
    "place_names": [
     1,
     64
    ],
    "reach_from": [
-    5012580,
-    124261030
+    8796186,
+    218112134
    ],
    "reach_from (given)": [
-    20050320,
-    135920043
+    35184744,
+    238556357
    ],
    "strikes_place": [
-    2506290,
-    120631278
+    4398093,
+    211703786
    ]
   },
   "lower": {},
   "lower_states": 0,
   "left_out": {
-   "a state the game calls over (move_ends, find_step, move_info)": 7296
+   "a state the game calls over (move_ends, find_step, move_info)": 12800
   },
   "causes": {},
   "examples": [],
-  "seconds": 199.6,
+  "seconds": 327.0,
   "cores": 11,
   "seeds": 128,
   "seed0": 1000,
-  "games_a_seed": 57,
+  "games_a_seed": 100,
   "probes_a_state": 8,
   "test_returned": 0,
-  "states_a_second": 12557
+  "states_a_second": 13450
  },
  "known": {},
  "disagreements": 0,
@@ -192,14 +192,14 @@
  "hashes": {
   "description": "452571cf08d02fa4",
   "definitions": "7c0a4fdc8dde60b5",
-  "translator": "1c51c994e27cab95",
-  "module": "4f83e096238a6267",
-  "kernel": "487238bab26ede14",
+  "translator": "e9d88c2a6d9c9687",
+  "module": "ccca3643218b6eff",
+  "kernel": "fd0e1164ab3eb328",
   "bridge": "21927597ac637677",
-  "test": "970b05e3eeb552a8",
+  "test": "ff4f5cc0fc05a313",
   "lock": "91fd9fd42c1ba92b"
  },
- "key": "6001c3e6d810fc78",
- "date": "2026-11-24",
- "seconds": 252.5
+ "key": "13855f53caf51bfb",
+ "date": "2026-11-25",
+ "seconds": 385.5
 }

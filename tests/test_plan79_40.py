@@ -70,7 +70,7 @@ def git(*args) -> subprocess.CompletedProcess:
 def test_a_kept_file_carries_the_hashes_and_the_passes_and_a_fresh_translation_is_the_same_file(game, variant):
     T = translator()
     module = game + variant
-    passes = list(T.PASSES) if variant else []
+    passes = [p for p in T.PASSES if p != "carry"] if variant else []
     path = GEN / f"{module}.rs"
     text = description_of(game)
     src = path.read_text()
@@ -84,7 +84,7 @@ def test_a_kept_file_carries_the_hashes_and_the_passes_and_a_fresh_translation_i
 def test_only_the_plain_files_and_the_files_with_every_pass_are_kept():
     names = sorted(p.name for p in GEN.iterdir() if p.is_file())
     more = ("3check", "kingofthehill", "antichess", "chess960", "horde")                                                    # 2026-11-24 (plan 79.47): the five more games of the seven certified kernels, plain and every pass
-    assert names == sorted([f"{g}.rs" for g in GAMES + more] + [f"{g}_fast.rs" for g in GAMES + more] + ["chess_lemma.rs"]), names          # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
+    assert names == sorted([f"{g}.rs" for g in GAMES + more] + [f"{g}_fast.rs" for g in GAMES + more] + [f"{g}_carry.rs" for g in GAMES + more] + ["chess_lemma.rs"]), names          # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
     tracked = git("ls-files", "rust/engine/game/tests/generated").stdout.split()
     assert sorted(Path(x).name for x in tracked) == names, tracked
     assert "generated/scratch/" in (ROOT / ".gitignore").read_text()
@@ -111,7 +111,7 @@ def test_the_maker_writes_the_scratch_files_of_the_single_passes_and_nothing_is_
     m.make(tmp_path, {"_bits": ["bits"]}, None, m.SCRATCH_GAMES)                       # 2026-11-24 (plan 79.47): the files of the single passes are made for the first two games only (SCRATCH_GAMES)
     assert sorted(p.name for p in tmp_path.iterdir()) == ["atomic_bits.rs", "chess_bits.rs"]
     assert {f"_{k}" for k in SINGLES} <= set(m.SCRATCH)
-    assert m.KEPT == {"": [], "_fast": list(translator().PASSES)}
+    assert m.KEPT == {"": [], "_fast": [p for p in translator().PASSES if p != "carry"], "_carry": list(translator().PASSES)}          # 2026-11-25 (plan 79.54): the pass carry is kept in its own modules
 
 
 def test_a_fresh_translation_is_the_same_under_two_hash_seeds_of_the_process():
@@ -120,7 +120,7 @@ def test_a_fresh_translation_is_the_same_under_two_hash_seeds_of_the_process():
             "from pathlib import Path\n"
             "from catspace.incubator.analyst.discovery import gdl_to_rust as T\n"
             "text = Path(%r).read_text()\n"
-            "print(hashlib.sha256(T.translate(text, 'm', list(T.PASSES)).encode()).hexdigest())\n"
+            "print(hashlib.sha256(T.translate(text, 'm', [p for p in T.PASSES if p != 'carry']).encode()).hexdigest())\n"
             "print(hashlib.sha256(T.translate(text, 'm', ['bits']).encode()).hexdigest())\n") % (str(ROOT), str(ROOT / "rules" / "chess.gdl"))
     outs = []
     for seed in ("1", "2"):

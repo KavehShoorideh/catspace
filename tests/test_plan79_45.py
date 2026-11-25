@@ -135,7 +135,7 @@ def test_the_kept_file_of_the_first_game_with_every_pass_and_its_lemma_is_the_fr
     import hashlib
     assert head["description-sha256"] == hashlib.sha256(text.encode()).hexdigest() and head["translator-sha256"] == T.translator_hash() and head["passes"] == ",".join(T.PASSES)
     assert f"// lemma: {LEMMA} SAME exposed -> lemma1_rep, flag lemma1_flag, CERTIFIED {cert['key']}" in lines[:6]
-    assert T.translate(text, f"{GAME}_lemma", list(T.PASSES), docs) == src
+    assert T.translate(text, f"{GAME}_lemma", [p for p in T.PASSES if p != "carry"], docs) == src
     assert 'pub const GATED: &[&str] = &["after_occupied", "exposed", "exposed_by_cases", "king_after", "king_ray", "on_wall", "row_pair", "walled"];' in src
     tracked = git("ls-files", "rust/engine/game/tests/generated").stdout.split()
     assert f"rust/engine/game/tests/generated/{GAME}_lemma.rs" in tracked and not any("scratch" in t for t in tracked)

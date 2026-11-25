@@ -45,14 +45,14 @@ def test_the_kernel_differs_only_by_added_lines_of_the_one_new_method_and_the_ev
     d = git("diff", "-U0", BEFORE, "--", "rust/engine/game/src/kernel.rs").stdout
     removed = [ln for ln in d.splitlines() if ln.startswith("-") and not ln.startswith("---")]
     added = [ln[1:] for ln in d.splitlines() if ln.startswith("+") and not ln.startswith("+++")]
-    assert removed == [], removed
+    # 2026-11-25 (plan 79.52 part A, Kaveh's word): kernel.rs was changed after this plan (the list of allowed moves made once a state), so lines were removed and
+    # others added; what is still asked is that the one new method is there and asks no end
     assert added, "the kernel answers the new question"
     assert sum("fn turn(" in ln for ln in added) == 1
-    assert all(ln.strip().startswith("///") or "fn turn(" in ln for ln in added), added
     assert "outcome" not in [ln for ln in added if "fn turn(" in ln][0], "the kernel's answer asks no end"
     for rel in ("rust/engine/game/src/gdl_game.rs", "rust/engine/gdl/src/lib.rs"):
         assert git("diff", "--quiet", BEFORE, "--", rel).returncode == 0, rel
-    print(f"OBS 79.39 kernel: {len(added)} lines added, 0 removed; gdl_game.rs and gdl/src/lib.rs unchanged")
+    print(f"OBS 79.39 kernel: {len(added)} lines added, {len(removed)} removed; gdl_game.rs and gdl/src/lib.rs unchanged")
 
 
 def test_the_shared_search_asks_the_side_by_the_new_question():

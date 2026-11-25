@@ -360,6 +360,21 @@ PLAN 79.53 PART B: THE TOP-DOWN WAY BESIDE THE BOTTOM-UP ONE (SYSTEM_SPEC 11, la
               HOW A NEGATED CONDITION IS ANSWERED. By the call that asks whether a row exists with every place bound (the reader's order takes a negation only when its variables are bound, as the evaluator does); the negation of a relation of the cone is the failure of that walk, which has finished (the relation is below the clause in the strata).
               A place that a clause gives as a compound term is not computed: it holds FREE - 1, permitted where the caller's variable is used nowhere else (else refused). The facts, the rows and the questions of the bottom-up way are unchanged; every old entry point keeps working.
   HELD TO THE BOTTOM-UP WAY: rust/engine/game/tests/translated_topdown.rs (the end and the legal turn at every position of the fixture of each of the seven games and at every state of seeded random games; each relation of the cone asked with no place bound) and tests/test_plan79_53.py (planted cases).
+
+PLAN 79.54 PART B: ANSWERS CARRIED FROM THE LAST STATE (SYSTEM_SPEC 11, last block, (ix); piece: rules; ledger rows 55, 45). Interface written before the body. PASSES = (... "tables", "topdown", "carry"); "carry" brings "cones" (and so "keep").
+  (25) "carry" TAKES the pieces of the cones of the questions (pass 21), the state as `State` (a value that is compared fluent by fluent), and from the dependency graph of the clauses as written, for each piece, the fluents its cone reads (`PIECE_FL[k]`: a bit for each fluent in the order of `FLUENTS`).
+              RETURNS, in the same module and with no change to any entry (`Game::new`, `initial`, `mover`, `moves`, `moves_into`, `legal_moves_into`, `terminal`, `outcome`, `next`, `facts_of`, `state_of_facts`, `restart`, `all_relations`, `ask_many` keep their signatures and their answers): the module keeps, besides its pooled evaluation, the
+              evaluation of the last state it READ for the questions of the cones (`Game::cd`, a `Dy` not cleared between questions) and, for each piece, whether the rows in it are those of that state (`Game::cvalid`).
+              B1, BY PIECE. At a new state the fluents that differ from the kept state (`State::fluent_diff`) are read again into the kept evaluation (the rows of each changed fluent cleared and loaded), each valid piece whose cone reads a changed fluent is cleared (the relations it makes: `clear_piece`) and marked not valid, and the question runs the pieces of its cone that are not valid, in the order of the cone, a piece left out by
+              the gates of pass (20) being left not valid (it made no rows). A piece whose cone reads no changed fluent is carried as it is. SOUNDNESS. The rows of a piece are a function of the rows of the relations it reads, which are rows of its cone; so they are a function of the fluents its cone reads and of the rows that do not read the state; a piece is carried only when none of those fluents differs
+              from the state its rows were made at; a piece is made again whole from the new state otherwise, so a rule with a negation needs no special handling; a piece in the cone of a question that has never run (not valid) is run. THE STATE THAT IS NOT NEAR is read in full: a module with no kept state (`new`, `restart`) starts with every piece not valid.
+              WHAT IT REFUSES: nothing is refused by form (any piece may be carried); the timing decides whether a module has the pass (the make script keeps the modules with it beside the modules without it).
+  B2, BY GROUP (NOT BUILT; the count of rust/engine/game/tests/translated_carry_count.rs decides it; see the note of plan 79.54 in docs/ANALYST_PLAN.md for what B2 would need and why it was not built).
+  AS BUILT, where the body differs from the text above (said here because the text was committed first): (a) the evaluation kept is `cd` and the validity `cvalid` as said; the pooled evaluation of `next` and of `all_relations` is not changed (the next state reads the turn, which the kept evaluation never holds).
+    (b) A piece whose cone reads the turn (`does`, `record`) has every fluent in its mask. (c) The cone of a piece is that of the clauses AS WRITTEN (`Plan.cone`), so a walk made for the keys its readers ask (pass asked) reads, in its mask, what the guards of its readers read.
+    (d) Both modules have `carried_relations` (the rows the questions of the cones made, for the tests); the module with the pass hands out only the relations of valid pieces. (e) `scripts/gdl_to_rust_make.py` keeps the module with the pass as `<game>_carry.rs` beside `<game>_fast.rs` (every pass but `carry`);
+    the lemma module and the placed modules are made without it.
+  HELD TO THE MODULE WITHOUT THE PASS: rust/engine/game/tests/translated_carry.rs at every state of seeded games (each state following the last), across siblings, at jumps to an unrelated state, and every relation of the kept evaluation against the plain module; tests/test_plan79_54.py (planted cases).
 """
 from __future__ import annotations
 
@@ -373,7 +388,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words", "tables", "topdown")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words", "tables", "topdown", "carry")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 TABLE_WORDS = 1 << 13                                   # pass (23): a walk gets a table when its chains are at most this many words
 WORDS_MAX = 1 << 13                                     # pass (22): a fluent is held as the bits of a state when the product of the sizes of its sorts is at most this
@@ -838,11 +853,14 @@ class Plan:
             passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
         if "topdown" in passes:
             passes = tuple(passes) + tuple(p for p in ("words", "cones") if p not in passes)         # the top-down way reads the facts of a state as the bits of words (pass 22) and falls back on the legal rows alone (pass 21)
+        if "carry" in passes and "cones" not in passes:
+            passes = tuple(passes) + ("cones",)                 # the carry keeps the evaluation of a state for the questions of the cones (pass 21)
         if ("cones" in passes or "words" in passes) and "keep" not in passes:
             passes = tuple(passes) + ("keep",)                  # the passes cones and words change the questions of a module that keeps its working memory (pass 7)
         self.passes = tuple(p for p in PASSES if p in passes)
         self.cones: bool = "cones" in self.passes                # pass (21)
         self.topdown: bool = "topdown" in self.passes            # pass (24)
+        self.carry: bool = "carry" in self.passes                # pass (25)
         self.td_refused: str = ""                               # why pass (24) made no top-down way (blank: it was made)
         self.tables: bool = "tables" in self.passes              # pass (23)
         self.tables_found: dict = {}                            # relation of a walk -> (the chains of its table, the words of its table)   (pass "tables")
@@ -4189,6 +4207,7 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
     gated = plan.gated if plan else {}
     wd = plan.words if plan else {}
     cones = bool(plan and plan.cones)
+    carry = bool(plan and plan.carry)
     has_dw = bool(bits) or keep
     pooled = bool(dense) or bool(bits) or keep
     out: list = []
@@ -4383,8 +4402,36 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
             arrs.append(lst(plan.gate_order(ks) if gated else ks))
         w(f"const CONES: [&[usize]; 8] = [{', '.join(arrs)}];")
     w(f"const NEXT_CONE: &[usize] = {lst(next_cone)};")
+    if carry:
+        # pass (25): the fluents each piece's cone reads (a bit for each fluent of FLUENTS) and the relations each piece makes
+        fl_of = []
+        clears = {}
+        for k, (comp, _r) in enumerate(d.strata):
+            if d.static[sorted(comp)[0]] or (comp & demanded):
+                fl_of.append(0)
+                continue
+            reached = coned(sorted(comp))
+            mask = 0
+            for i, f in enumerate(d.fluents):
+                if f"true.{f}" in reached:
+                    mask |= 1 << i
+            if any(r in reached for r in INPUT_RELS):
+                mask = (1 << len(d.fluents)) - 1            # a piece that reads the turn is never carried
+            fl_of.append(mask)
+            clears[k] = [r for r in sorted(comp) if not r.startswith("true.")]
+        w("/// Pass (25): for each piece, the fluents its cone reads (a bit for each fluent of FLUENTS).")
+        w(f"const PIECE_FL: [u32; {nst}] = [{', '.join(str(x) for x in fl_of)}];")
+        w("/// Pass (25): the relations of the piece of stratum k that its question made (the facts loaded from the state are not the piece's).")
+        w("fn clear_piece(d: &mut Dy, k: usize) {")
+        w("    match k {")
+        for k, rs in sorted(clears.items()):
+            if rs:
+                w(f"        {k} => {{ " + " ".join(f"d.{d.rid[r]}.clear();" for r in rs) + " }")
+        w("        _ => {}")
+        w("    }")
+        w("}")
     # the game
-    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + (", td: Td, pub td_over: u64" if td_on else "") + " }")
+    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + (", td: Td, pub td_over: u64" if td_on else "") + (", cd: Option<Dy>, cvalid: Vec<bool>" if carry else "") + " }")
     w("impl Game {")
     w(f"    pub fn new() -> Game {{")
     w("        let mut st = St::new();")
@@ -4397,11 +4444,11 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
             w(f"        st{k}(&mut st, &mut tm, &dy{', &mut dw' if has_dw else ''});")
     w(f"        let roles: Vec<u32> = {ro('st', 'role')}.iter().map(|r| r[0]).collect();")
     if td_on:
-        w(f"        let mut g = Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + ", td: Td::new(), td_over: 0 };")
+        w(f"        let mut g = Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + ", td: Td::new(), td_over: 0" + (f", cd: None, cvalid: vec![false; {nst}]" if carry else "") + " };")
         w("        g.fill_td();")
         w("        g")
     else:
-        w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + " }")
+        w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + (f", cd: None, cvalid: vec![false; {nst}]" if carry else "") + " }")
     w("    }")
     if td_on:
         statics_td = [r for r in sorted(tdg.used) if not r.startswith("true.")]
@@ -4493,6 +4540,8 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
         w(f"        st{k}(&mut self.st, &mut self.tm, &dy{', &mut self.dw' if has_dw else ''});")
     w(f"        self.roles = {ro('self.st', 'role')}.iter().map(|r| r[0]).collect();")
     w("        self.last = None;")
+    if carry:
+        w("        self.cd = None;")
     if td_on:
         w("        self.fill_td();")
     w("        Ok(())")
@@ -4531,9 +4580,32 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
         w("    /// The reading of a state that holds what `need` asks (bit 0 the legal rows, bit 1 whether the end holds, bit 2 the goal rows), kept with the mask it holds: the cone of what is needed and of what the kept reading of the same state holds is run (pass 21).")
         w("    fn ensure(&mut self, s: &State, need: u8) {")
         w("        let mut want = need;")
-        w("        if let Some((k, r)) = &self.last { if k == s { if r.have & need == need { return; } want = r.have | need; } }")
-        w("        let mut d = self.load(s, &[]);")
-        w("        self.run(&mut d, CONES[want as usize]);")
+        if carry:
+            w("        let mut same = false;")
+            w("        if let Some((k, r)) = &self.last { if k == s { if r.have & need == need { return; } want = r.have | need; same = true; } }")
+            w("        let mut d;")
+            w("        if self.cd.is_none() || self.last.is_none() {")
+            w("            d = self.cd.take().unwrap_or_else(Dy::new);")
+            w("            d.clear();")
+            w("            for v in self.cvalid.iter_mut() { *v = false; }")
+            for f in d.fluents:
+                w(f"            for r in {rows_of(f, 's.f_' + ident(f))} {{ d.{d.rid['true.' + f]}.add({deref(f)}r); }}")
+            if gated:
+                w("            d.whole = false;")
+            w("        } else {")
+            w("            d = self.cd.take().unwrap();")
+            w("            if !same {")
+            w("                let diff = self.last.as_ref().unwrap().0.fluent_diff(s);")
+            w("                for k in 0..self.cvalid.len() { if self.cvalid[k] && PIECE_FL[k] & diff != 0 { clear_piece(&mut d, k); self.cvalid[k] = false; } }")
+            for i, f in enumerate(d.fluents):
+                w(f"                if diff & {1 << i} != 0 {{ d.{d.rid['true.' + f]}.clear(); for r in {rows_of(f, 's.f_' + ident(f))} {{ d.{d.rid['true.' + f]}.add({deref(f)}r); }} }}")
+            w("            }")
+            w("        }")
+            w("        self.run_carried(&mut d, CONES[want as usize]);")
+        else:
+            w("        if let Some((k, r)) = &self.last { if k == s { if r.have & need == need { return; } want = r.have | need; } }")
+            w("        let mut d = self.load(s, &[]);")
+            w("        self.run(&mut d, CONES[want as usize]);")
         w("        let (mut ls, mut lr) = match self.last.take() { Some(x) => x, None => (State::default(), Reading { legal: vec![], terminal: false, goals: vec![], have: 0 }) };")
         w("        ls.assign(s);")
         w(f"        if want & 1 != 0 {{ lr.legal.clear(); {lg} }}")
@@ -4541,9 +4613,53 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
         w(f"        if want & 4 != 0 {{ lr.goals.clear(); {gl} }}")
         w("        lr.have = want;")
         w("        self.last = Some((ls, lr));")
-        w("        d.clear();")
-        w("        self.pool = Some(d);")
-        w("    }")
+        if carry:
+            w("        self.cd = Some(d);")
+            w("    }")
+            w("    /// Pass (25): the pieces of the cone that are not valid at the kept state, run in the order of the cone; a piece left out by the gates remains not valid.")
+            w("    fn run_carried(&mut self, d: &mut Dy, which: &[usize]) {")
+            w("        for &k in which {")
+            w("            if self.cvalid[k] { continue; }")
+            if gated:
+                w("            if off(d, k) { continue; }")
+            w("            self.run(d, &[k]);")
+            w("            self.cvalid[k] = true;")
+            w("        }")
+            w("    }")
+            w("    /// The last state read for the questions of the cones, and what the pass keeps of it (for the tests): how many pieces are valid.")
+            w("    pub fn carried_valid(&self) -> usize { self.cvalid.iter().filter(|v| **v).count() }")
+            w("    /// Pass (25), for the tests: the state is read for every question of the cones, and the rows the kept evaluation holds of each relation of a valid piece of those cones are handed out (to be held to `all_relations`).")
+            w("    pub fn carried_relations(&mut self, s: &State) -> Vec<(&'static str, Vec<Vec<u32>>)> {")
+            w("        self.ensure(s, 7);")
+            w("        let d = self.cd.as_ref().unwrap();")
+            w("        let mut out: Vec<(&'static str, Vec<Vec<u32>>)> = vec![];")
+            cone7 = [k for k in d.dynamic_meeting(coned([x for x in QUESTION_RELS if x in d.prog.nodes])) if not (d.strata[k][0] & demanded)]
+            for k in cone7:
+                for r in sorted(d.strata[k][0]):
+                    if r.startswith("true.") or r in demanded or (plan.copy and r in plan.copy):
+                        continue
+                    w(f"        if self.cvalid[{k}] {{ out.push((\"{r}\", {ro('d', r)}.iter().map(|x| x.to_vec()).collect())); }}")
+            w("        out")
+            w("    }")
+        else:
+            w("        d.clear();")
+            w("        self.pool = Some(d);")
+            w("    }")
+            w("    /// For the tests (the same item as the modules with the pass `carry`): the state is read for every question of the cones as a state not read before, and the rows made of each relation of those cones are handed out.")
+            w("    pub fn carried_relations(&mut self, s: &State) -> Vec<(&'static str, Vec<Vec<u32>>)> {")
+            w("        let mut d = self.load(s, &[]);")
+            w("        self.run(&mut d, CONES[7]);")
+            w("        let mut out: Vec<(&'static str, Vec<Vec<u32>>)> = vec![];")
+            for k in [k for k in d.dynamic_meeting(coned([x for x in QUESTION_RELS if x in d.prog.nodes])) if not (d.strata[k][0] & demanded)]:
+                for r in sorted(d.strata[k][0]):
+                    if r.startswith("true.") or r in demanded or (plan.copy and r in plan.copy):
+                        continue
+                    w(f"        out.push((\"{r}\", {ro('d', r)}.iter().map(|x| x.to_vec()).collect()));")
+            w("        d.clear();")
+            w("        self.pool = Some(d);")
+            w("        out")
+            w("    }")
+            w("    pub fn carried_valid(&self) -> usize { 0 }")
         w("    /// The first role that has a turn that is not the one that passes, by the legal rows alone (no test of the end).")
         w("    fn legal_mover(&mut self, s: &State) -> Option<usize> {")
         w("        self.ensure(s, 1);")
@@ -4786,6 +4902,16 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
                 w(f"        self.f_{ident(f)} = o.f_{ident(f)};")
             else:
                 w(f"        self.f_{ident(f)}.clear(); self.f_{ident(f)}.extend_from_slice(&o.f_{ident(f)});")
+        w("    }")
+        w("}")
+    if carry:
+        w("impl State {")
+        w("    /// Pass (25): a bit for each fluent (the order of FLUENTS) whose facts differ between this state and `o`.")
+        w("    pub fn fluent_diff(&self, o: &State) -> u32 {")
+        w("        let mut m = 0u32;")
+        for i, f in enumerate(d.fluents):
+            w(f"        if self.f_{ident(f)} != o.f_{ident(f)} {{ m |= {1 << i}; }}")
+        w("        m")
         w("    }")
         w("}")
     w("impl State {")

@@ -334,7 +334,7 @@ def test_a_kept_file_of_the_five_more_games_carries_the_hashes_and_the_passes_an
     path = GEN / f"{game}{variant}.rs"
     src = path.read_text()
     text = description_of(game)
-    passes = list(T.PASSES) if variant else []
+    passes = [p for p in T.PASSES if p != "carry"] if variant else []
     assert t40().head_line(src, "description-sha256") == hashlib.sha256(text.encode()).hexdigest(), f"{game}: the description changed; make the file again"
     assert t40().head_line(src, "translator-sha256") == T.translator_hash(), f"{game}: the translator changed; make the file again"
     assert (t40().head_line(src, "passes") == ",".join(passes)) if passes else (t40().head_line(src, "passes") is None)
@@ -347,7 +347,7 @@ def test_a_kept_file_of_the_five_more_games_carries_the_hashes_and_the_passes_an
 
 def test_every_kept_file_has_its_restart_and_the_files_are_the_seven_games_plain_and_every_pass_and_the_one_with_the_lemma():
     names = sorted(p.name for p in GEN.iterdir() if p.is_file())
-    want = sorted([f"{g}{v}.rs" for g in SEVEN for v in ("", "_fast")] + ["chess_lemma.rs"])
+    want = sorted([f"{g}{v}.rs" for g in SEVEN for v in ("", "_fast", "_carry")] + ["chess_lemma.rs"])
     assert names == want, names
     for n in names:
         assert "pub fn restart(" in (GEN / n).read_text(), n
