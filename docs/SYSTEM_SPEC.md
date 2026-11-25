@@ -1652,6 +1652,24 @@ description to a hand-written library's speed at chess. Kaveh to choose: (a) tab
 translator; (b) a new back end that walks depth-first and changes the state in place; (c) the outside library kept as the certified fast
 copy where one exists, the translated rules fast enough for games that have none.
 
+BACKLOG, DECIDED 2026-11-25 (Kaveh; section 11, the block on layer 2 as a port). (a) The seven descriptions as they are, held to the one
+outside library, are taken as the base for now. LATER: take each game's description from a reputable outside source where one exists,
+compile from it, and where it disagrees with the references Kaveh and the main agent find the cause together, by hand; this step is not
+automated. The translator is meant to be written once: a game that comes out wrong is first a question about the translator, and the
+cause is to be known before anything is mended. A first look (search excerpts only, 2026-11-25) found no published description in this
+language for the variants: the library the bridge uses and the site whose rules it follows publish code, not descriptions; the
+general game playing repositories hold a few games and are reported to render the first game unplayably slow; another general game
+system (Ludii) holds chess variants in its own language. So "download it" may mean translating from another language or checking by a
+second reference. (b) Tests stay loose while the engine is brought to work end to end; tightening is this list. (c) FINDING AND PROVING
+LEMMAS MAY BE AUTOMATED, and what exists outside is to be used before anything is written here. First reading (search excerpts only):
+Haufe, Schiffel and Thielscher, "Automated verification of state sequence invariants in general game playing" (Artificial Intelligence
+187-188, 2012), prove invariants of a game given in this very language by a base case and an induction step handed to an answer set
+solver; He, Saffidine and Thielscher do it with solvers of quantified Boolean formulas; in Lean, `bv_decide` hands a Boolean or
+bit-word goal to a satisfiability solver and checks its certificate in the kernel, `grind` is the native automation, Duper and
+Lean-auto are the first-order route (not installed here; the 79.49 run was without them). OPEN, Kaveh's: whether a lemma closed by a
+solver with a certificate the kernel checks counts as PROVED (it covers every state and is no sample, yet it is no proof by reasoning
+that a person reads, which the rule of 2026-10-27 asked for).
+
 ## 14. What was replaced, so that no earlier statement misleads
 
 | Earlier | Replaced by | When |
