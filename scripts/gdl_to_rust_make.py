@@ -31,12 +31,22 @@ COMBOS.update({f"bits_{p}": ["bits", p] for p in NEW})
 NEW42 = [p for p in T.PASSES if p not in PASSES_7941 and p in ("start", "ends", "orient")]
 PASSES_7942 = PASSES_7941 + NEW42
 # plan 79.43: `prev` is every pass of 79.42, the module the new passes are clocked against (for the clocks it is made by the translator of the commit before the plan, since the estimate of the pass start was mended in the plan); `prev_42` is the same passes made by this translator; each new pass alone on top of it is `prev_<pass>`
-NEW43 = [p for p in T.PASSES if p not in PASSES_7942]
-SCRATCH = {"_prev": PASSES_7942, "_prev_42": PASSES_7942, "_prev_noworth": [p for p in T.PASSES if p != "worth"], "_prev41": PASSES_7941, "_prev40": PASSES_7940, "_prev38": ["dense", "demand", "copy", "delta"], **{f"_prev41_{p}": PASSES_7941 + [p] for p in NEW42}, **{f"_prev_{p}": PASSES_7942 + [p] for p in NEW43}, **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
+PASSES_7943 = [p for p in T.PASSES if p not in ("cones", "words", "tables", "topdown")]      # plan 79.52: the two passes of that plan, and plan 79.53 the pass tables, come after every pass of 79.43
+PASSES_7952 = [p for p in T.PASSES if p not in ("tables", "topdown")]               # plan 79.53: every pass of 79.52 (the module the tables are clocked against)
+NEW43 = [p for p in PASSES_7943 if p not in PASSES_7942]
+SCRATCH = {"_prev": PASSES_7942, "_prev_42": PASSES_7942, "_prev_noworth": [p for p in PASSES_7943 if p != "worth"], "_prev41": PASSES_7941, "_prev40": PASSES_7940, "_prev38": ["dense", "demand", "copy", "delta"], **{f"_prev41_{p}": PASSES_7941 + [p] for p in NEW42}, **{f"_prev_{p}": PASSES_7942 + [p] for p in NEW43}, **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
 # plan 79.45: the module of every pass of 79.43 (no gated, no lemma) is the one the lemma's clocks are held against; `_lm_plain` the rewrite with no pass; `_lm_nogate` the lemma with every pass but gated
-PASSES_NOGATE = [p for p in T.PASSES if p != "gated"]
+PASSES_NOGATE = [p for p in PASSES_7943 if p != "gated"]
 SCRATCH_LEMMA = {"chess": {"_lm_plain": [], "_lm_nogate": PASSES_NOGATE}}
 SCRATCH.update({"_p43": PASSES_NOGATE})
+# plan 79.52: each of the two new passes alone on top of every pass of 79.43 (`_p52_cones`, `_p52_words`); the module with both is `fast`
+SCRATCH.update({"_p52_cones": PASSES_7943 + ["cones"], "_p52_words": PASSES_7943 + ["words"]})
+# plan 79.53: the tables alone on top of every pass of 79.52 (`_p53_tables`); the module with every pass is `fast`
+SCRATCH.update({"_p53_tables": PASSES_7952 + ["tables"], "_p53_topdown": PASSES_7952 + ["tables", "topdown"]})
+# plan 79.53 (part B3): the way that answers each question of a game, chosen by the clocks of tests/translated_speed_bits.rs (`chess_the_times_of_plan_53`, `atomic_the_times_of_plan_53`) and recorded in scripts/gdl_to_rust_ways.json:
+# {game: {"end": "bottom-up" | "top-down", "legal-turn": ...}}; a game with no entry is answered bottom-up. The script reads the file; it chooses nothing.
+import json as _json
+WAYS = _json.loads((ROOT / "scripts" / "gdl_to_rust_ways.json").read_text()) if (ROOT / "scripts" / "gdl_to_rust_ways.json").exists() else {}
 OUT = ROOT / "rust" / "engine" / "game" / "tests" / "generated"
 OUT_SCRATCH = OUT / "scratch"
 
@@ -70,14 +80,14 @@ def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: t
         text = T.compose_text(sources) if len(sources) > 1 else sources[0].read_text()
         for variant, passes in variants.items():
             module = rust_name(game) + variant
-            src = T.translate(text, module, passes)
+            src = T.translate(text, module, passes, ways=WAYS.get(game))
             (out / f"{game}{variant}.rs").write_text(src)
             print(f"OBS 79.40 translate {game}{variant} (module {module}): description {len(text)} bytes, passes {','.join(passes) or '-'}, Rust {len(src)} bytes {src.count(chr(10))} lines")
     for game, vs in (lemma_variants or {}).items():
         ltext, docs = lemma_docs(game)
         for variant, passes in vs.items():
             module = rust_name(game) + variant
-            src = T.translate(ltext, module, passes, docs)
+            src = T.translate(ltext, module, passes, docs, ways=WAYS.get(game))
             (out / f"{game}{variant}.rs").write_text(src)
             print(f"OBS 79.45 translate {module}: composed description {len(ltext)} bytes, passes {','.join(passes) or '-'}, lemmas {','.join(x['name'] for x in docs)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
 

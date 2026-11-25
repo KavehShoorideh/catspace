@@ -42,6 +42,24 @@ pub trait Tr {
     fn demanded_t(&self) -> Vec<(&'static str, Vec<usize>, bool)>;
     fn copied_t(&self) -> Vec<&'static str>;
     fn ask_t(&mut self, s: &Self::S, does: &[(u32, u32)], queries: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)>;
+    /// PLAN 79.52 PART B (SYSTEM_SPEC 11, last block; ledger rows 55, 45). THE INTERFACE OF THE QUESTIONS THAT MAKE NO MEMORY, written before the bodies. WHO CALLS: the clocks and the tests of the modules made with the passes `cones` and `words`.
+    /// `moves_into_t(s, out)`: TAKES a state and a buffer the caller owns; RETURNS (in the buffer, which is cleared first) the allowed moves of the mover as numbers (none at an end): what `moves_t` returns, with no vector made.
+    /// `legal_into_t(s, out)`: the same without the test of the end and without any work that only the end or the outcome needs: the `legal` rows of the first role that has a turn that is not the turn that passes.
+    /// The defaults answer by `moves_t`, so a module made without the passes has both and the old entry points (`moves_t`, `next_t`, `facts_of_t`, `state_of_facts_t`) are unchanged on top of them.
+    fn moves_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { out.clear(); out.extend(self.moves_t(s)); }
+    fn legal_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { self.moves_into_t(s, out) }
+    /// PLAN 79.53 PART B (SYSTEM_SPEC 11, last block, (vii); ledger rows 55, 45). THE INTERFACE OF THE TOP-DOWN WAY, written before its body. WHO CALLS: the tests and the clocks of the modules made with the pass `topdown`; the engine's bridge later.
+    /// `terminal_td_t(s)`: TAKES a state; RETURNS whether the end of the game holds, answered by a depth-first walk of the rules that stops at the first rule that holds: what `terminal_t` returns, by the other way.
+    /// `has_move_td_t(s)`: TAKES a state; RETURNS whether a turn that is not the turn that passes is legal (the mover exists; the end is not asked), by the walk that stops at the first legal row.
+    /// The defaults answer by the bottom-up way (`terminal_t`, `legal_into_t`), so a module made without the pass has both; the macro kind `topdown` overrides them.
+    fn terminal_td_t(&mut self, s: &Self::S) -> bool { self.terminal_t(s) }
+    fn has_move_td_t(&mut self, s: &Self::S) -> bool { let mut b = vec![]; self.legal_into_t(s, &mut b); !b.is_empty() }
+    /// `ask_td_t(s, relation)`: the rows of a relation of the cone of the questions, no place bound, made by the top-down way (None: not such a relation, or the walk overflowed); the tests hold each to the bottom-up rows.
+    fn ask_td_t(&mut self, _s: &Self::S, _rel: &str) -> Option<Vec<Vec<u32>>> { None }
+    /// The number of questions the top-down way gave to the bottom-up way because a walk kept more rows than its bound (module text, (24)).
+    fn td_overflows_t(&self) -> u64 { 0 }
+    /// Only the load and the clearing of the tables of the top-down way (what they cost before any rule is walked).
+    fn td_load_only_t(&mut self, _s: &Self::S) {}
 }
 
 #[macro_export]
@@ -84,6 +102,19 @@ macro_rules! impl_tr_passes {
         fn demanded_t(&self) -> Vec<(&'static str, Vec<usize>, bool)> { vec![] }
         fn copied_t(&self) -> Vec<&'static str> { vec![] }
         fn ask_t(&mut self, _s: &Self::S, _does: &[(u32, u32)], _q: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)> { panic!("the plain module has no demanded relation") }
+    };
+    ($m:ident, topdown) => {
+        $crate::impl_tr_passes!($m, fresh);
+        fn terminal_td_t(&mut self, s: &Self::S) -> bool { self.terminal_td(s) }
+        fn has_move_td_t(&mut self, s: &Self::S) -> bool { self.has_turn_td(s) }
+        fn ask_td_t(&mut self, s: &Self::S, rel: &str) -> Option<Vec<Vec<u32>>> { self.ask_td(s, rel) }
+        fn td_overflows_t(&self) -> u64 { self.td_over }
+        fn td_load_only_t(&mut self, s: &Self::S) { self.td_load_only(s) }
+    };
+    ($m:ident, fresh) => {
+        $crate::impl_tr_passes!($m, passes);
+        fn moves_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { self.moves_into(s, out) }
+        fn legal_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { self.legal_moves_into(s, out) }
     };
     ($m:ident, passes) => {
         fn passes_t(&self) -> Vec<&'static str> { $m::PASSES.to_vec() }
