@@ -53,6 +53,7 @@ ROOT = RL.ROOT
 MINED = ROOT / "lean" / "ideas" / "Ideas" / "Mined"
 LEAN_ROOT = ROOT / "lean" / "ideas"
 INPUT_RELATIONS = ("does", "record")
+LADDER_FROM = 3                           # a group of more facts than this is written as a running OR, not as every pair
 
 
 class Untranslatable(ValueError):
@@ -167,8 +168,9 @@ def var_name(rel: str, args) -> str:
 class Grounder:
     """A relation at ground places as a Boolean expression over the facts of a state (the module's description)."""
 
-    def __init__(self, prog: GDL.Program):
+    def __init__(self, prog: GDL.Program, assume: "dict | None" = None):
         self.prog = prog
+        self.assume = assume or {}            # variable name -> True / False: facts taken as known (a case of a split), unfolded with their value
         self.dag = Dag()
         self.memo: dict = {}
         self.busy: set = set()
@@ -205,7 +207,7 @@ class Grounder:
             else:
                 name = var_name(rel, args)
                 self.facts[name] = (rel, args)
-                r = self.dag.var(name)
+                r = (TRUE if self.assume[name] else FALSE) if name in self.assume else self.dag.var(name)
         elif rel in INPUT_RELATIONS or rel.startswith(("next.", "init.")):
             raise Untranslatable(f"{rel} reads an input the state does not hold")
         elif self.is_static(rel):
@@ -290,9 +292,9 @@ class Grounder:
         rel, targs = l[1], l[2]
         if self.is_static(rel):
             for row in self.static_rows(rel, targs, env):
-                e2 = self.bind(targs, row, env)
-                if e2 is not None:
-                    self.solve(rest, e2, acc, out)
+                env2 = self.bind(targs, row, env)
+                if env2 is not None:
+                    self.solve(rest, env2, acc, out)
             return
         sig = self.sig_of(rel)
         free = []
@@ -304,15 +306,15 @@ class Grounder:
         once = [(v, s) for v, s in free if v not in elsewhere and sum(a == v for a in targs) == 1]
         multi = [(v, s) for v, s in free if (v, s) not in once]
         for combo in itertools.product(*[self.domain(s) for _, s in multi]):
-            e2 = dict(env)
-            e2.update({v: c for (v, _), c in zip(multi, combo)})
+            env2 = dict(env)
+            env2.update({v: c for (v, _), c in zip(multi, combo)})
             if once:
-                n = self.dag.disj(self.row(rel, tuple(self.val(a, {**e2, **{v: c for (v, _), c in zip(once, inner)}}) for a in targs))
+                n = self.dag.disj(self.row(rel, tuple(self.val(a, {**env2, **{v: c for (v, _), c in zip(once, inner)}}) for a in targs))
                                   for inner in itertools.product(*[self.domain(s) for _, s in once]))
             else:
-                n = self.row(rel, tuple(self.val(a, e2) for a in targs))
+                n = self.row(rel, tuple(self.val(a, env2) for a in targs))
             if n != FALSE:
-                self.solve(rest, e2, acc + [n], out)
+                self.solve(rest, env2, acc + [n], out)
 
     def static_rows(self, rel, targs, env):
         r = self.prog.static.get(rel)
@@ -325,14 +327,14 @@ class Grounder:
         return len(self.static_rows(rel, targs, env))
 
     def bind(self, targs, row, env):
-        e2 = dict(env)
+        env2 = dict(env)
         for a, v in zip(targs, row):
             if GDL.is_var(a):
-                if e2.setdefault(a, v) != v:
+                if env2.setdefault(a, v) != v:
                     return None
             elif a != v:
                 return None
-        return e2
+        return env2
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ one lemma
@@ -362,10 +364,11 @@ def path_of(lemma: RL.Lemma) -> Path:
 class Bits:
     """One lemma over bits."""
 
-    def __init__(self, lemma: RL.Lemma, hyps: "list | None" = None):
+    def __init__(self, lemma: RL.Lemma, hyps: "list | None" = None, assume: "dict | None" = None, prog: "GDL.Program | None" = None):
         self.lemma = lemma
-        self.prog = RL.program(lemma)
-        self.g = Grounder(self.prog)
+        self.prog = prog or RL.program(lemma)
+        self.assume = assume or {}
+        self.g = Grounder(self.prog, self.assume)
         self.hyps = hyps or []
         lf, rg = lemma.left, lemma.right
         self.lsig = self.g.sig_of(lf["relation"])
@@ -485,13 +488,26 @@ class Bits:
             binders.append("(" + " ".join(name_of[n] for n in shared) + " : Bool)")
         for i, n in enumerate(shared):
             binders.append(f"(hq{i} : {name_of[n]} = {self.expr(n, name_of, top=True)})")
+        aux, ladder = [], []
         for i, (_label, names) in enumerate(hyps):
-            for j, (a, b) in enumerate(itertools.combinations(names, 2)):
-                binders.append(f"(hy{i}x{j} : (!({a} && {b})) = true)")
+            if len(names) <= LADDER_FROM:
+                for j, (a, b) in enumerate(itertools.combinations(names, 2)):
+                    ladder.append(f"(hy{i}x{j} : (!({a} && {b})) = true)")
+                continue
+            # at most one of many: a running OR `ld` (defined by its own equations) and the test that no fact comes after one that held
+            prev = names[0]
+            for k, x in enumerate(names[1:], 1):
+                aux.append(f"ld{i}_{k}")
+                ladder.append(f"(hl{i}s{k} : ld{i}_{k} = ({prev} || {x}))")
+                ladder.append(f"(hy{i}x{k} : (!({prev} && {x})) = true)")
+                prev = f"ld{i}_{k}"
+        if aux:
+            binders.append("(" + " ".join(aux) + " : Bool)")
+        binders.extend(ladder)
         binders.append(f"(hcond : {self.expr(st.cond, name_of)} = true)")
         goal = (f"({self.expr(st.left, name_of)} == {self.expr(st.right, name_of)}) = true" if form == "SAME"
                 else f"(!{self.expr(st.left, name_of)} || {self.expr(st.right, name_of)}) = true")
-        return f"-- binding {label}: {len(varnames)} variables, {len(shared)} shared expressions, {sum(len(n) * (len(n) - 1) // 2 for _l, n in hyps)} exclusions\n" \
+        return f"-- binding {label}: {len(varnames)} variables, {len(shared)} shared expressions, {len(hyps)} at-most-one groups\n" \
                f"theorem {ident(self.lemma)}_b{label.split(' ')[0]} {' '.join(binders)} :\n    {goal} := by\n  bv_decide\n"
 
     def header(self, count: int) -> str:
@@ -502,7 +518,7 @@ class Bits:
                 f"   Each variable is one fact of a state. Each theorem says: for any bits that meet the hypotheses named, if the condition holds then the two sides agree.\n"
                 f"   HYPOTHESES (assumptions, not shown to hold at every reached state):\n{hy}\n"
                 f"   TRUST: the statement is made from the description by that program, which is trusted; it is not tied in Lean to the description's relations. -/\n"
-                "import Std.Tactic.BVDecide\n\nset_option maxRecDepth 100000\nset_option linter.unusedVariables false\n\n")
+                "import Std.Tactic.BVDecide\n\nset_option maxRecDepth 100000\nset_option linter.unusedVariables false\nset_option maxHeartbeats 0\n\n")
 
     def text(self, bindings: list) -> str:
         out, count = [], 0
@@ -530,13 +546,18 @@ class Bits:
 # ------------------------------------------------------------------------------------------------------------------------------------------ Lean
 
 def run_lean(path: Path, fuse: int) -> dict:
-    """`lake env lean <path>` in the Lean project under a fuse in seconds."""
+    """`lake env lean <path>` in the Lean project under a fuse in seconds; on the fuse the whole process group (lake, lean, the solver) is killed."""
+    import os
+    import signal
     t0 = time.time()
+    p = subprocess.Popen(["lake", "env", "lean", str(path)], cwd=str(LEAN_ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True)
     try:
-        p = subprocess.run(["lake", "env", "lean", str(path)], cwd=str(LEAN_ROOT), capture_output=True, text=True, timeout=fuse)
-        return {"ok": p.returncode == 0, "secs": time.time() - t0, "timeout": False, "out": (p.stdout + p.stderr)}
-    except subprocess.TimeoutExpired as e:
-        return {"ok": False, "secs": time.time() - t0, "timeout": True, "out": (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")}
+        out, _ = p.communicate(timeout=fuse)
+        return {"ok": p.returncode == 0, "secs": time.time() - t0, "timeout": False, "out": out}
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        out, _ = p.communicate()
+        return {"ok": False, "secs": time.time() - t0, "timeout": True, "out": out or ""}
 
 
 def counterexample(out: str) -> list:
@@ -583,6 +604,39 @@ def agree(bits: Bits, states, bindings: list, limit_states: "int | None" = None)
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ runs
 
+def record_path(lemma: RL.Lemma) -> Path:
+    """Where the record of a lemma closed by the solver is kept: beside the lemma's document, in its `bits` folder (not in the document)."""
+    return RL.lemma_dir(lemma.game) / "bits" / f"{lemma.name}.proof.json"
+
+
+def file_hash(path: Path) -> str:
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()[:16]
+
+
+def standing(lemma: RL.Lemma) -> tuple:
+    """The standing the solver's proof gives a lemma, read from the record beside its document and not from the document: ("SOLVER-PROVED", detail) only while the record names a Lean
+    file that exists, holds no gap, no `native_decide` and no axiom, hashes to the record's hash, and says every binding the solver was given was closed; otherwise ("NONE", the cause).
+    It is no standing of `rule_lemma.standing_of` (extending that function changes a source every lemma certificate is keyed on); it is the record a later extension reads."""
+    rp = record_path(lemma)
+    if not rp.is_file():
+        return "NONE", "no record"
+    rec = json.loads(rp.read_text())
+    f = ROOT / rec["lean_file"]
+    if not f.is_file():
+        return "NONE", f"the file {rec['lean_file']} is missing"
+    code = re.sub(r"/-.*?-/", "", f.read_text(), flags=re.S)
+    if "sorry" in code or "native_decide" in code or re.search(r"^\s*axiom\b", code, re.M):
+        return "NONE", "the file holds a gap, native_decide or an axiom"
+    if file_hash(f) != rec["file_hash"]:
+        return "NONE", "the file is not the one the record names"
+    if code.count("bv_decide") < rec["theorems"]:
+        return "NONE", "fewer proofs than theorems"
+    if rec["closed"] != rec["to_solver"] or rec["failed"] or rec["fuse"]:
+        return "NONE", "not every binding was closed"
+    return "SOLVER-PROVED", f"{rec['closed']} bindings closed by bv_decide, {rec['settled']} settled by the writer, {len(rec['hypotheses'])} hypotheses"
+
+
 def state_text(bits: Bits, names) -> str:
     """The facts a counterexample sets true, as the fixture format writes a state: `(f a b) (g c)`."""
     out = []
@@ -597,7 +651,7 @@ def sample_of(items: list, k: int) -> list:
     if k >= len(items):
         return items
     import random
-    return sorted(random.Random(55).sample(range(len(items)), k)) and [items[i] for i in sorted(random.Random(55).sample(range(len(items)), k))]
+    return [items[i] for i in sorted(random.Random(55).sample(range(len(items)), k))]
 
 
 def run_each(bits: Bits, bindings: list, dest_dir: Path, jobs: int, fuse: int) -> list:
@@ -682,11 +736,21 @@ def main(argv: list) -> int:
         print(f"OBS 79.55 whole {game} {name}: theorems {len(todo)}, ok {r['ok']}, timeout {r['timeout']}, wall {r['secs']:.1f} s, text {p.stat().st_size} bytes")
         if not r["ok"]:
             print(r["out"][:600])
+        if r["ok"] and not sample and not only and "--record" in argv:
+            rec = {"lemma": lemma.name, "game": game, "form": lemma.form, "kind": "bv_decide: a SAT solver's certificate, checked in Lean (the proof rests on the axiom Lean.ofReduceBool, which `#print axioms` lists)",
+                   "lean_file": str(p.relative_to(ROOT)), "file_hash": file_hash(p), "bindings": len(bs), "settled": settled, "to_solver": len(todo), "theorems": len(todo),
+                   "closed": len(todo), "failed": 0, "fuse": 0, "wall_secs": round(r["secs"], 1), "hypotheses": hyps,
+                   "trust": "the statement over bits is made from the description by rule_lemma_bits.py (trusted, not tied in Lean to the description's relations); bindings the writer settles by constants are not checked by Lean"}
+            rp = record_path(lemma)
+            rp.parent.mkdir(parents=True, exist_ok=True)
+            rp.write_text(json.dumps(rec, indent=1, sort_keys=True) + "\n")
+            print(f"record written {rp}: {standing(lemma)}")
         return 0 if r["ok"] else 1
     if verb == "agree":
         from catspace.incubator.analyst.discovery import rule_lemma_certify as RC
         games = int(opt("--games", 2))
-        res = agree(bits, RC.corpus_states(lemma, games=games), todo)
+        every = bs if "--all" in argv else todo
+        res = agree(bits, RC.corpus_states(lemma, games=games), every, int(opt("--states", 0)) or None)
         print(f"OBS 79.55 agree {game} {name}: states {res['states']}, bindings {res['bindings']}, comparisons {res['compared']}, disagreements {res['disagree']}, "
               f"left true {res['left_true']}, hypotheses broken at a state {res['hyp_broken']}, examples {res['examples']}")
         return 0 if res["disagree"] == 0 else 1
