@@ -7,12 +7,14 @@
 //!   T,<label>,<ply>,<asks>,<nanoseconds in all>                        the clock of the question by ply
 //!   P,<label>,<ply>,<piece>,<nanoseconds in all>,<rows made>,<calls>   the same question with the profile on (two walks), by piece
 //!   S,<ply>,<states>,<allowed moves in all>,<units in all>             what stands at that ply
+//!   G,<label>,<game>,<ply>,<1 when the side to move is attacked at its goal unit, else 0>,<allowed moves>,<asks>,<nanoseconds in all>   the clock of every state by itself
 //! WHO CALLS IT: `scripts/ply_profile_print.py`, by hand. `cargo test --release --offline -p cs_game --test translated_ply_profile -- --ignored --nocapture`.
 #[macro_use]
 mod translated_common;
 use cs_game::kernel::KernelGame;
 use cs_game::outside::spec_term;
 use cs_game::Game;
+use shakmaty::Position;
 use std::fmt::Write as _;
 use std::time::Instant;
 use translated_common::*;
@@ -63,18 +65,23 @@ fn module_rows<T: Tr>(label: &str, kstates: &[Vec<KS>], names: &[Vec<String>], r
     let mut t = T::make();
     let games = module_games(&mut t, kstates, names);
     let (mut ns, mut asks, mut legal) = (vec![0u64; max], vec![0u64; max], vec![0u64; max]);
+    let mut each: Vec<Vec<(u64, u64)>> = games.iter().map(|g| vec![(0, 0); g.len()]).collect();
     let mut buf = Vec::with_capacity(256);
     for r in 0..replays {
-        for g in &games {
+        for (gi, g) in games.iter().enumerate() {
             for (ply, s) in g.iter().enumerate() {
                 let t0 = Instant::now();
                 t.moves_into_t(s, &mut buf);
-                ns[ply] += t0.elapsed().as_nanos() as u64;
+                let d = t0.elapsed().as_nanos() as u64;
+                ns[ply] += d;
                 asks[ply] += 1;
+                each[gi][ply].0 += d;
+                each[gi][ply].1 = buf.len() as u64;
                 if r == 0 { legal[ply] += buf.len() as u64; }
             }
         }
     }
+    for (gi, g) in each.iter().enumerate() { for (ply, e) in g.iter().enumerate() { writeln!(out, "G,{label},{gi},{ply},{},{},{replays},{}", kstates[gi][ply].is_check() as u8, e.1, e.0).unwrap(); } }
     for ply in 0..max { if asks[ply] > 0 { writeln!(out, "T,{label},{ply},{},{}", asks[ply], ns[ply]).unwrap(); } }
     // the profile by piece, two walks
     t.profiling_t(true);
@@ -104,18 +111,23 @@ fn run(path: &str, out_path: &str, replays: usize, max: usize) {
     let (kstates, names) = kernel_games(&kernel, &lines, max);
     let mut out = String::new();
     let (mut ns, mut asks, mut units, mut legal) = (vec![0u64; max], vec![0u64; max], vec![0u64; max], vec![0u64; max]);
+    let mut each: Vec<Vec<(u64, u64)>> = kstates.iter().map(|g| vec![(0, 0); g.len()]).collect();
     for r in 0..replays {
-        for g in &kstates {
+        for (gi, g) in kstates.iter().enumerate() {
             for (ply, s) in g.iter().enumerate() {
                 let t0 = Instant::now();
                 let n = kernel.moves(s).len();
-                ns[ply] += t0.elapsed().as_nanos() as u64;
+                let d = t0.elapsed().as_nanos() as u64;
+                ns[ply] += d;
                 asks[ply] += 1;
+                each[gi][ply].0 += d;
+                each[gi][ply].1 = n as u64;
                 if r == 0 { units[ply] += kernel.units(s).len() as u64; legal[ply] += n as u64; }
             }
         }
     }
     for ply in 0..max { if asks[ply] > 0 { writeln!(out, "T,library,{ply},{},{}", asks[ply], ns[ply]).unwrap(); } }
+    for (gi, g) in each.iter().enumerate() { for (ply, e) in g.iter().enumerate() { writeln!(out, "G,library,{gi},{ply},{},{},{replays},{}", kstates[gi][ply].is_check() as u8, e.1, e.0).unwrap(); } }
     println!("OBS ply profile library: {} asks, {:.0} ns an ask on average, load {}", asks.iter().sum::<u64>(), ns.iter().sum::<u64>() as f64 / asks.iter().sum::<u64>().max(1) as f64, load_average());
     let lf = module_rows::<chess_fast::Game>("fast", &kstates, &names, replays, max, &mut out);
     let lc = module_rows::<chess_carry::Game>("carry", &kstates, &names, replays, max, &mut out);

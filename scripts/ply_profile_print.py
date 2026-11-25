@@ -1,5 +1,6 @@
 """A MEASURE ASKED BY KAVEH 2026-11-25 (SYSTEM_SPEC 11, last block, (ix); ledger row 55; piece: rules; LAYER 2): the time of the question "the allowed moves" by ply along human games.
   python scripts/ply_profile_print.py games <records folder name> <out file> [<games>]   the moves of the first <games> (default 300) games of at least 60 plies, a game a line; no name of a player is read or written
+  python scripts/ply_profile_print.py attacked <rows file> <tag>                          the same clock with the states marked where the side to move is attacked at its goal unit
   python scripts/ply_profile_print.py plot <rows file> <tag>                              the figures (through catspace.io.paths) and OBS lines, from the rows of rust/engine/game/tests/translated_ply_profile.rs
 """
 from __future__ import annotations
@@ -90,11 +91,70 @@ def plot(rows: str, tag: str) -> int:
     return 0
 
 
+def plot_attacked(rows: str, tag: str) -> int:
+    """The same clock with the states marked where the side to move is attacked at its goal unit (rows G)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    G = collections.defaultdict(dict)        # label -> (game, ply) -> (attacked, allowed moves, ns an ask)
+    for line in Path(rows).read_text().splitlines():
+        c = line.split(",")
+        if c[0] == "G":
+            G[c[1]][(int(c[2]), int(c[3]))] = (int(c[4]), int(c[5]), int(c[7]) / int(c[6]))
+    labels = ("library", "fast", "lemma")
+    unit = {"library": (1.0, "nanoseconds"), "fast": (1000.0, "microseconds"), "carry": (1000.0, "microseconds"), "lemma": (1000.0, "microseconds")}
+    out = []
+    # figure 4: by ply, the states attacked apart from the others; and three games state by state
+    fig, ax = plt.subplots(2, 3, figsize=(18, 9))
+    for a, label in zip(ax[0], labels):
+        by = collections.defaultdict(lambda: [[], []])
+        for (g, ply), (att, n, ns) in G[label].items():
+            by[ply][att].append(ns / unit[label][0])
+        plies = sorted(q for q in by if len(by[q][0]) >= 30)
+        a.plot(plies, [sum(by[q][0]) / len(by[q][0]) for q in plies], label="not attacked (mean)")
+        pa = [q for q in plies if len(by[q][1]) >= 5]
+        a.scatter(pa, [sum(by[q][1]) / len(by[q][1]) for q in pa], color="red", s=14, zorder=3, label="attacked at its goal unit (mean, 5 states or more)")
+        a.set_xlabel("ply"); a.set_ylabel(f"{unit[label][1]} a question"); a.set_title(f"Time by ply, attacked or not: {label}"); a.legend(fontsize=8); a.grid(alpha=0.3); a.set_ylim(bottom=0)
+    games = collections.defaultdict(int)
+    length = collections.defaultdict(int)
+    for (g, ply), (att, n, ns) in G["fast"].items():
+        games[g] += att; length[g] = max(length[g], ply + 1)
+    pick = sorted((g for g in games if length[g] >= 70), key=lambda g: -games[g])[:3]
+    for a, g in zip(ax[1], pick):
+        plies = list(range(length[g]))
+        for label in ("fast", "lemma"):
+            ys = [G[label][(g, q)][2] / 1000 for q in plies]
+            a.plot(plies, ys, label=label, linewidth=1)
+            att = [q for q in plies if G[label][(g, q)][0]]
+            a.scatter(att, [G[label][(g, q)][2] / 1000 for q in att], color="red", s=22, zorder=3, label="attacked at its goal unit" if label == "fast" else None)
+        a2 = a.twinx(); a2.plot(plies, [G["fast"][(g, q)][1] for q in plies], color="gray", alpha=0.45, linewidth=1); a2.set_ylabel("allowed moves (gray)"); a2.set_ylim(bottom=0)
+        a.set_xlabel("ply"); a.set_ylabel("microseconds a question"); a.set_title(f"One game, state by state (game {g} of the sample, {games[g]} states attacked)"); a.legend(fontsize=8, loc="upper right"); a.grid(alpha=0.3); a.set_ylim(bottom=0)
+    f4 = paths.figure(f"ply_profile_{tag}_attacked.png"); fig.tight_layout(); fig.savefig(f4, dpi=130); plt.close(fig); out.append(f4)
+    # figure 5: every state, time against its allowed moves, attacked states in red
+    fig, ax = plt.subplots(1, 3, figsize=(18, 5))
+    for a, label in zip(ax, labels):
+        v = list(G[label].values())
+        for att, color, name, size in ((0, "tab:blue", "not attacked", 2), (1, "red", "attacked at its goal unit", 5)):
+            pts = [(n, ns / unit[label][0]) for (x, n, ns) in v if x == att]
+            a.scatter([q[0] for q in pts], [q[1] for q in pts], s=size, color=color, alpha=0.35 if att == 0 else 0.7, label=name)
+        top = sorted(q[2] / unit[label][0] for q in v)[int(len(v) * 0.999)]
+        a.set_ylim(0, top * 1.1); a.set_xlim(left=0)
+        a.set_xlabel("allowed moves of the state"); a.set_ylabel(f"{unit[label][1]} a question"); a.set_title(f"Every state: {label}"); a.legend(fontsize=8); a.grid(alpha=0.3)
+        for att in (0, 1):
+            sel = [(n, ns) for (x, n, ns) in v if x == att]
+            print(f"OBS ply profile attacked {label}: {'attacked' if att else 'not attacked'} {len(sel)} states, {sum(q[1] for q in sel) / len(sel):.0f} ns a question, {sum(q[0] for q in sel) / len(sel):.1f} allowed moves on average")
+    f5 = paths.figure(f"ply_profile_{tag}_attacked_states.png"); fig.tight_layout(); fig.savefig(f5, dpi=130); plt.close(fig); out.append(f5)
+    print("OBS ply profile attacked: figures: " + ", ".join(str(q) for q in out))
+    return 0
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if len(a) >= 3 and a[0] == "games":
         sys.exit(games(a[1], a[2], int(a[3]) if len(a) > 3 else 300))
     if len(a) == 3 and a[0] == "plot":
         sys.exit(plot(a[1], a[2]))
+    if len(a) == 3 and a[0] == "attacked":
+        sys.exit(plot_attacked(a[1], a[2]))
     print(__doc__)
     sys.exit(2)
