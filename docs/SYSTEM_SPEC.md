@@ -1252,6 +1252,32 @@ Others' work to read first: demand transformation (magic sets) and incremental v
 (v) THE BRIDGE OVER THE OUTSIDE LIBRARY (kernel.rs, changed at Kaveh's word): the last state read on a thread is kept with its end and
 its list of allowed moves, so the list is made once a state. The answers are unchanged. The library's own equality of two states
 leaves out the move clock, a variant's count and the units in hand, so the bridge compares them as well.
+(vi) FIRST READING OF OTHERS' WORK, 2026-11-24 (a reading agent; numbers are the papers' own, on their machines and in their units,
+not ours; not to be set beside our rates without checking what each counts). Regular Boardgames (Kowalski, Mika, Sutowicz, Szykula,
+AAAI 2019, arXiv 1706.02462; "Efficient Reasoning in Regular Boardgames", arXiv 2006.08295): a language with the board as a labelled
+graph, compiled; its largest single gain is tables that replace a run of board steps by one lookup, and it makes moves by a depth-first
+walk that changes the state in place and undoes it, with nothing written out. Propositional networks for descriptions of our kind
+(Sironi and Winands, 2016): far above a prover, well below the compiled board language at chess, and their own passes gained a few per
+cent each. A compiler of such descriptions to C++ that evaluates bottom-up (Lancucki, arXiv 1401.5813): little gain at chess. No source
+shows a general description reaching a hand-written library at chess; the board language's own authors report their compiled code three
+to thirteen times behind their hand-written code on simpler games. No source applies demand transformation or incremental view
+maintenance to making moves. No source derives blocker-indexed tables from a description; one design note only (H. G. Muller). What the
+reading says to copy: find in the description the relations that are walks along a fixed step, and compile them to tables. OPEN: how
+far to go (section 13).
+(vii) DECIDED 2026-11-24 (Kaveh: "do both tables and the top down alongside bottom up"). TWO WAYS OF ANSWERING, ONE MODULE. The
+translator makes, from the one description and over the one state of facts, (1) the bottom-up way that exists: the rows of a relation
+written out, used where a whole relation is wanted (the graph's edges); and (2) a top-down way: a question is answered by a depth-first
+walk of its rules that reaches only what it needs, stops when the answer is known ("is there one allowed move" stops at the first),
+and changes the state in place and undoes the change where a rule asks about the state after a move. TABLES FOR WALKS serve both: the
+translator finds, by the form of the rules alone, a relation that is a walk along a fixed step held back by a condition on single
+places, and makes its answer one lookup in a table indexed by what stands on the line; the table is filled by running the description's
+own rule, so it is no lemma and has no standing of its own. WHICH WAY ANSWERS A QUESTION is chosen by a clock on the same positions,
+never by a list written by hand; the choice and its numbers are recorded. Both ways are held to the evaluator by the tests that exist,
+and to each other on every question both can answer. The first top-down question is the end of the game, where the engine spends the
+most; the others follow only if it wins. Neither way names a thing of any game.
+(viii) DECIDED 2026-11-24 (Kaveh: "then lock up these lower layers and move up to upper layers, 3 and above"). When plan 79.53 is
+read, merged and its records are fresh, the lower layers are LOCKED: no further speed plan and no tidiness plan below layer 3 without
+Kaveh's word, whatever the gap to the outside library then is; the gap is recorded and left. Work moves to layer 3 and above.
 
 ## 12. What exists
 
@@ -1575,6 +1601,11 @@ list (8); every build checked against the spec (11); the pointing at a weakness 
 
 - OPEN (2026-11-24): the game of preparation (each side guessing what the other prepared) is an aim with no design; energy as a cost is named and not measured; the work of others listed in section 7's last block is to be read before a plan is written.
 
+DECIDED 2026-11-24 (section 11 last block, (vii)): (a) and (b) together, the top-down way beside the bottom-up one; (c) stays true of the engine's path until a translated module is certified fast enough. The item as it stood: the two steps of plan 79.52 part B gained a few per cent; the reading says nobody has brought a general
+description to a hand-written library's speed at chess. Kaveh to choose: (a) tables for walks, found in the description by the
+translator; (b) a new back end that walks depth-first and changes the state in place; (c) the outside library kept as the certified fast
+copy where one exists, the translated rules fast enough for games that have none.
+
 ## 14. What was replaced, so that no earlier statement misleads
 
 | Earlier | Replaced by | When |
@@ -1684,4 +1715,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Future prediction is one channel with a near (concrete) and a far (believed, to be made concrete by evidence) sub-layer; a target is left only when both say nothing; a goal some unmet facts away; frames join through forcing moves | 2026-11-24 | 7 (last block) |
 | Result first, then least cost; a way that wins is taken and locked, safe by a falling measure and a cheap check; narrowness of their good replies and steering toward it; the game of preparation owed later | 2026-11-24 | 7 (last block) |
 | Lower layers as fast as the outside library first; the facts stay, their storage is free; the list of allowed moves made once a state | 2026-11-24 | 11 (last block) |
+| Two ways of answering in one translated module: bottom-up rows and a top-down walk; tables for walks found by the form of the rules; the way chosen by a clock | 2026-11-24 | 11 (last block, vii) |
 | What was replaced | 2026-11-16 | 14 |
