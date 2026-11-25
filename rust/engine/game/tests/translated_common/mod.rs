@@ -60,6 +60,11 @@ pub trait Tr {
     fn td_overflows_t(&self) -> u64 { 0 }
     /// Only the load and the clearing of the tables of the top-down way (what they cost before any rule is walked).
     fn td_load_only_t(&mut self, _s: &Self::S) {}
+    /// PLAN 79.54 PART B (SYSTEM_SPEC 11, last block, (ix); ledger rows 55, 45). THE INTERFACE OF THE ANSWERS CARRIED FROM THE LAST STATE, written before its body. WHO CALLS: the tests and the clocks of the modules made with the pass `carry` (macro kind `carry`).
+    /// `carried_t(s)`: TAKES a state; reads it for every question of the cones (the evaluation kept from the last state is brought to it) and RETURNS the rows the kept evaluation holds of each relation of a valid piece of those cones, to be held to `all_t` (the relations made in full). The default has none.
+    /// `carried_valid_t()`: how many pieces of the kept evaluation hold the rows of the last state read (the others are made again when asked). The default is 0.
+    fn carried_t(&mut self, _s: &Self::S) -> Vec<(&'static str, Vec<Vec<u32>>)> { vec![] }
+    fn carried_valid_t(&self) -> usize { 0 }
 }
 
 #[macro_export]
@@ -110,6 +115,11 @@ macro_rules! impl_tr_passes {
         fn ask_td_t(&mut self, s: &Self::S, rel: &str) -> Option<Vec<Vec<u32>>> { self.ask_td(s, rel) }
         fn td_overflows_t(&self) -> u64 { self.td_over }
         fn td_load_only_t(&mut self, s: &Self::S) { self.td_load_only(s) }
+    };
+    ($m:ident, carry) => {
+        $crate::impl_tr_passes!($m, topdown);
+        fn carried_t(&mut self, s: &Self::S) -> Vec<(&'static str, Vec<Vec<u32>>)> { self.carried_relations(s) }
+        fn carried_valid_t(&self) -> usize { self.carried_valid() }
     };
     ($m:ident, fresh) => {
         $crate::impl_tr_passes!($m, passes);
@@ -358,4 +368,22 @@ pub fn perft<T: Tr>(t: &mut T, s: &T::S, depth: usize) -> u64 {
     let ms = t.moves_t(s);
     if depth == 1 { return ms.len() as u64; }
     ms.iter().map(|m| { let c = t.next_t(s, *m); perft(t, &c, depth - 1) }).sum()
+}
+
+/// PLAN 79.54 (the pass case; Kaveh 2026-11-25): THE PASSED STATE, made here in the harness from the facts and not by any entry of a module: the same state with the next role to move and nothing played (the fact that says whose turn it is is the one fact changed). `control_fluent` names that fluent
+/// (a test file may name it). None when the state has no such fact or the roles are not two.
+pub fn passed<T: Tr>(t: &mut T, s: &T::S, control_fluent: &str) -> Option<T::S> {
+    let roles: Vec<String> = t.roles_t().iter().map(|r| t.render_t(*r)).collect();
+    if roles.len() != 2 { return None; }
+    let mut facts = t.facts_of_t(s);
+    let mut changed = false;
+    for f in facts.iter_mut() {
+        if f.0 == control_fluent && f.1.len() == 1 {
+            let i = roles.iter().position(|r| *r == f.1[0])?;
+            f.1[0] = roles[(i + 1) % 2].clone();
+            changed = true;
+        }
+    }
+    if !changed { return None; }
+    t.state_of_facts_t(&facts).ok()
 }

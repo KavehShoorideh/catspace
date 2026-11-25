@@ -71,7 +71,7 @@ PLANTED = sibling("test_plan79_41").WALK + """
 
 def test_the_two_passes_end_the_list_and_bring_the_pass_keep():
     T = translator()
-    assert T.PASSES[-4:-2] == ("cones", "words")                 # plan 79.53 added two passes after them
+    assert T.PASSES[-5:-3] == ("cones", "words")                 # plan 79.53 added two passes after them, plan 79.54 one more
     assert T.PASSES.index("gated") < T.PASSES.index("cones")
     d = T.Description(PLANTED)
     for p in ("cones", "words"):
