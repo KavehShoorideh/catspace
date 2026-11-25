@@ -493,7 +493,8 @@ def test_part_e_changed_one_function_of_the_bridge_and_nothing_else_under_a_src(
         pytest.skip(f"{BEFORE} not in this clone")
     changed = sp.run(["git", "diff", "--name-only", BEFORE, "--", "rust/engine"], cwd=ROOT, capture_output=True, text=True).stdout.split()
     # 2026-11-24 (plans 79.50, 79.51): this test holds the crates of the rules and what is under them, which is what its plan owned; a later plan's sources in the crates above (the future channel of 79.51 in cs_decision and the binding) are held by that plan's own gate
-    srcs = [c for c in changed if re.match(r"rust/engine/(game|gdl|base|rep)/src/", c)]
+    # 2026-11-24 (plan 79.52, Kaveh's word): kernel.rs was changed after this plan (the list of allowed moves made once a state); that change is held by the full check of 79.52 and the certificates made again
+    srcs = [c for c in changed if re.match(r"rust/engine/(game|gdl|base|rep)/src/", c) and c != "rust/engine/game/src/kernel.rs"]
     assert srcs in ([], ["rust/engine/game/src/outside.rs"]), srcs
     assert not [c for c in changed if c.endswith("Cargo.toml") or c.endswith("Cargo.lock")], changed
     if srcs:
@@ -502,7 +503,7 @@ def test_part_e_changed_one_function_of_the_bridge_and_nothing_else_under_a_src(
         # 2026-11-24 (plan 79.50): the one other place of outside.rs that a plan changed is `reach_from` (tests/test_plan79_50.py holds it is that one place); plan 79.47's own hunk is the one inside `state_facts`
         assert len(hunks) in (1, 2), hunks
         assert "ThreeCheck" in diff and "checks" in diff
-    for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs"):
+    for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/tactics/src/ledger.rs"):  # 2026-11-24 (plan 79.52, Kaveh's word): kernel.rs left this list, changed by 79.52
         assert sp.run(["git", "diff", "--quiet", BEFORE, "--", protected], cwd=ROOT).returncode == 0, protected
     # 2026-11-24 (plan 79.48): rules/placed/ holds the additive texts of the placed questions and their lists (documents, no description): excluded as rules/lemmas is.
     assert sp.run(["git", "diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", ":(exclude)rules/placed", "catspace/incubator/analyst/discovery/gdl.py", "catspace/incubator/analyst/discovery/certify.py"], cwd=ROOT).returncode == 0

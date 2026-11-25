@@ -53,6 +53,37 @@ impl KernelGame {
     }
 }
 
+// 2026-11-24 (Kaveh's word; SYSTEM_SPEC 11, piece: rules): THE LIST OF ALLOWED MOVES IS MADE ONCE A STATE. The end of the game and the allowed moves were each read from a list of their own (the end's, then the moves' end and the
+// moves' list: up to four lists for one state asked by a value, a quiet read and a move loop in a row). `read_once` keeps the last state read on this thread with its end and its list; the same state asked again is answered from
+// it. The answers are the same as before: the library's end (its variant's end, then no allowed move, then too little material), then the clock; no move at an ended state. The library's equality of two states leaves out the
+// clock, the count a variant keeps and the units in hand, so they are compared here too.
+struct Last { state: VariantPosition, end: Option<Outcome>, moves: Vec<Move> }
+thread_local! { static LAST: std::cell::RefCell<Option<Last>> = const { std::cell::RefCell::new(None) }; }
+
+fn same_state(a: &VariantPosition, b: &VariantPosition) -> bool {
+    a.halfmoves() == b.halfmoves() && a == b && a.remaining_checks() == b.remaining_checks() && a.pockets() == b.pockets() && a.promoted() == b.promoted()
+}
+
+fn read_once<R>(s: &VariantPosition, f: impl FnOnce(Option<Outcome>, &[Move]) -> R) -> R {
+    LAST.with(|c| {
+        let mut c = c.borrow_mut();
+        if !matches!(&*c, Some(l) if same_state(&l.state, s)) {
+            let mut moves = match c.take() { Some(l) => l.moves, None => Vec::new() };
+            moves.clear();
+            let end = s.variant_outcome().or_else(|| {
+                let list = s.legal_moves();
+                if list.is_empty() { return Some(if s.is_check() { Outcome::Decisive { winner: !s.turn() } } else { Outcome::Draw }); }
+                if s.is_insufficient_material() || s.halfmoves() >= CLOCK_LIMIT { return Some(Outcome::Draw); }
+                moves.extend(list);
+                None
+            });
+            *c = Some(Last { state: s.clone(), end, moves });
+        }
+        let l = c.as_ref().unwrap();
+        f(l.end, &l.moves)
+    })
+}
+
 impl Game for KernelGame {
     type State = VariantPosition;
     type Move = Move;
@@ -65,17 +96,14 @@ impl Game for KernelGame {
     }
     /// PLAN 79.39: the side to move read off the position; the end is not asked (at an ended state, the side that would have moved).
     fn turn(&self, s: &VariantPosition) -> Role { if s.turn() == Color::White { 0 } else { 1 } }
-    fn moves(&self, s: &VariantPosition) -> Vec<Move> {
-        if self.outcome(s).is_some() { return vec![]; }
-        s.legal_moves().into_iter().collect()
-    }
+    fn moves(&self, s: &VariantPosition) -> Vec<Move> { read_once(s, |_, ms| ms.to_vec()) }
     fn apply(&self, s: &VariantPosition, m: &Move) -> VariantPosition {
         let mut q = s.clone();
         q.play_unchecked(m);
         q
     }
     fn outcome(&self, s: &VariantPosition) -> Option<Vec<i64>> {
-        let o = s.outcome().or_else(|| if s.halfmoves() >= CLOCK_LIMIT { Some(Outcome::Draw) } else { None })?;
+        let o = read_once(s, |o, _| o)?;
         Some(match o {
             Outcome::Decisive { winner: Color::White } => vec![100, 0],
             Outcome::Decisive { winner: Color::Black } => vec![0, 100],

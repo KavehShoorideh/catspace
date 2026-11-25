@@ -46,7 +46,8 @@ def test_only_the_function_reach_from_of_the_bridge_differs_from_the_commit_befo
         pytest.skip(f"{BEFORE} not in this clone")
     changed = git("diff", "--name-only", BEFORE, "--", "rust/engine").stdout.split()
     # 2026-11-24 (plans 79.50, 79.51): this test holds the crates of the rules and what is under them, which is what its plan owned; a later plan's sources in the crates above (the future channel of 79.51 in cs_decision and the binding) are held by that plan's own gate
-    srcs = [c for c in changed if re.match(r"rust/engine/(game|gdl|base|rep)/src/", c)]
+    # 2026-11-24 (plan 79.52, Kaveh's word): kernel.rs was changed after this plan (the list of allowed moves made once a state); that change is held by the full check of 79.52 and the certificates made again
+    srcs = [c for c in changed if re.match(r"rust/engine/(game|gdl|base|rep)/src/", c) and c != "rust/engine/game/src/kernel.rs"]
     assert srcs in ([], ["rust/engine/game/src/outside.rs"]), srcs
     assert not [c for c in changed if c.endswith("Cargo.toml") or c.endswith("Cargo.lock")], changed
     if srcs:
@@ -56,7 +57,7 @@ def test_only_the_function_reach_from_of_the_bridge_differs_from_the_commit_befo
         diff = git("diff", "-U0", BEFORE, "--", "rust/engine/game/src/outside.rs").stdout
         hunks = [(int(a), int(b or 1)) for a, b in re.findall(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", diff, re.M)]
         assert len(hunks) == 1 and all(start <= a and a + b - 1 < end for a, b in hunks), (hunks, start, end)
-    for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/game/src/kernel.rs", "rust/engine/tactics/src/ledger.rs"):
+    for protected in ("rust/engine/gdl/src/lib.rs", "rust/engine/game/src/gdl_game.rs", "rust/engine/tactics/src/ledger.rs"):  # 2026-11-24 (plan 79.52, Kaveh's word): kernel.rs left this list, changed by 79.52
         assert git("diff", "--quiet", BEFORE, "--", protected).returncode == 0, protected
     assert git("diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", ":(exclude)rules/placed", "catspace/incubator/analyst/discovery/gdl.py", "catspace/incubator/analyst/discovery/certify.py").returncode == 0
     print(f"OBS 79.50 B: files under a crate's src that differ from {BEFORE}: {srcs}")

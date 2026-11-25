@@ -474,7 +474,8 @@ def test_nothing_on_the_engine_s_path_no_manifest_no_description_no_reader_no_ce
     # 2026-11-24 (plan 79.47 part E): the one source of an engine crate that plan 79.47 changed is the bridge `state_facts` of rust/engine/game/src/outside.rs (tests/test_plan79_47.py holds that it is one place and nothing else under a src)
     # 2026-11-24 (plan 79.48): rules/placed/ holds the additive texts of the placed questions and their lists (documents, no description): excluded as rules/lemmas is.
     # 2026-11-24 (plans 79.50, 79.51): this test holds the crates of the rules and what is under them, which is what its plan owned; a later plan's sources in the crates above (the future channel of 79.51 in cs_decision and the binding) are held by that plan's own gate
-    bad = [c for c in changed if (re.match(r"rust/engine/(game|gdl|base|rep)/src/", c) and c != "rust/engine/game/src/outside.rs") or c.endswith(("Cargo.toml", "Cargo.lock")) or (c.startswith("rules/") and not c.startswith(("rules/lemmas/", "rules/placed/")))
+    # 2026-11-24 (plan 79.52, Kaveh's word): kernel.rs was changed after this plan (the list of allowed moves made once a state); that change is held by the full check of 79.52 and the certificates made again
+    bad = [c for c in changed if (re.match(r"rust/engine/(game|gdl|base|rep)/src/", c) and c not in ("rust/engine/game/src/outside.rs", "rust/engine/game/src/kernel.rs")) or c.endswith(("Cargo.toml", "Cargo.lock")) or (c.startswith("rules/") and not c.startswith(("rules/lemmas/", "rules/placed/")))
            or c in ("catspace/incubator/analyst/discovery/gdl.py", "catspace/incubator/analyst/discovery/certify.py", "catspace/incubator/analyst/discovery/rule_lemma.py", "catspace/incubator/analyst/discovery/rule_lemma_certify.py")]
     assert not bad, bad
     assert f"rules/lemmas/{GAME}/{LEMMA}.translated.certificate.json" in changed
