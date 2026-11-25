@@ -42,6 +42,12 @@ pub trait Tr {
     fn demanded_t(&self) -> Vec<(&'static str, Vec<usize>, bool)>;
     fn copied_t(&self) -> Vec<&'static str>;
     fn ask_t(&mut self, s: &Self::S, does: &[(u32, u32)], queries: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)>;
+    /// PLAN 79.52 PART B (SYSTEM_SPEC 11, last block; ledger rows 55, 45). THE INTERFACE OF THE QUESTIONS THAT MAKE NO MEMORY, written before the bodies. WHO CALLS: the clocks and the tests of the modules made with the passes `cones` and `words`.
+    /// `moves_into_t(s, out)`: TAKES a state and a buffer the caller owns; RETURNS (in the buffer, which is cleared first) the allowed moves of the mover as numbers (none at an end): what `moves_t` returns, with no vector made.
+    /// `legal_into_t(s, out)`: the same without the test of the end and without any work that only the end or the outcome needs: the `legal` rows of the first role that has a turn that is not the turn that passes.
+    /// The defaults answer by `moves_t`, so a module made without the passes has both and the old entry points (`moves_t`, `next_t`, `facts_of_t`, `state_of_facts_t`) are unchanged on top of them.
+    fn moves_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { out.clear(); out.extend(self.moves_t(s)); }
+    fn legal_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { self.moves_into_t(s, out) }
 }
 
 #[macro_export]
@@ -84,6 +90,11 @@ macro_rules! impl_tr_passes {
         fn demanded_t(&self) -> Vec<(&'static str, Vec<usize>, bool)> { vec![] }
         fn copied_t(&self) -> Vec<&'static str> { vec![] }
         fn ask_t(&mut self, _s: &Self::S, _does: &[(u32, u32)], _q: &[(String, Vec<u32>)]) -> Vec<(Vec<Vec<u32>>, Option<bool>)> { panic!("the plain module has no demanded relation") }
+    };
+    ($m:ident, fresh) => {
+        $crate::impl_tr_passes!($m, passes);
+        fn moves_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { self.moves_into(s, out) }
+        fn legal_into_t(&mut self, s: &Self::S, out: &mut Vec<u32>) { self.legal_moves_into(s, out) }
     };
     ($m:ident, passes) => {
         fn passes_t(&self) -> Vec<&'static str> { $m::PASSES.to_vec() }

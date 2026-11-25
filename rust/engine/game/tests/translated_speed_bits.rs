@@ -94,14 +94,35 @@ include!("generated/scratch/atomic_prev_project.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev_asked.rs");
 impl_tr!(chess);
-impl_tr!(chess_fast, passes);
-impl_tr!(chess_lemma, passes);
+impl_tr!(chess_fast, fresh);
+impl_tr!(chess_lemma, fresh);
+// 2026-11-24 (plan 79.52 part B): the kept modules of the commit before the plan (renamed, under generated/scratch, made by hand from git: the clocks "before"), compiled with `--cfg before52`
+#[cfg(before52)]
+include!("generated/scratch/chess_before.rs");
+#[cfg(before52)]
+include!("generated/scratch/chess_lemma_before.rs");
+#[cfg(before52)]
+include!("generated/scratch/atomic_before.rs");
+#[cfg(before52)]
+include!("generated/scratch/chess_p52_cones.rs");
+#[cfg(before52)]
+include!("generated/scratch/atomic_p52_cones.rs");
+#[cfg(before52)]
+impl_tr!(chess_p52_cones, fresh);
+#[cfg(before52)]
+impl_tr!(atomic_p52_cones, fresh);
+#[cfg(before52)]
+impl_tr!(chess_before, passes);
+#[cfg(before52)]
+impl_tr!(chess_lemma_before, passes);
+#[cfg(before52)]
+impl_tr!(atomic_before, passes);
 #[cfg(singles)]
 impl_tr!(chess_p43, passes);
 #[cfg(singles)]
 impl_tr!(chess_lm_nogate, passes);
 impl_tr!(atomic);
-impl_tr!(atomic_fast, passes);
+impl_tr!(atomic_fast, fresh);
 #[cfg(singles)]
 impl_tr!(chess_prev, passes);
 #[cfg(singles)]
@@ -199,23 +220,38 @@ fn positions<T: Tr>(kernel: &KernelGame, t: &mut T, games: usize, plies: usize, 
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Work { Moves, MovesAndNext }
+enum Work { Moves, MovesAndNext, MovesInto, MovesIntoAndNext, LegalInto, LegalIntoAndNext }
 
 fn pass_kernel(k: &KernelGame, p: &[(<KernelGame as Game>::State, usize)], n: usize, w: Work) -> usize {
     let mut sum = 0;
     for (s, i) in p.iter().take(n) {
         let ms = k.moves(s);
         sum += ms.len();
-        if w == Work::MovesAndNext { let c = k.apply(s, &ms[*i]); std::hint::black_box(&c); sum += 1; }
+        if matches!(w, Work::MovesAndNext | Work::MovesIntoAndNext | Work::LegalIntoAndNext) { let c = k.apply(s, &ms[*i]); std::hint::black_box(&c); sum += 1; }
     }
     sum
 }
 fn pass_trans<T: Tr>(t: &mut T, p: &Positions<T>, n: usize, w: Work) -> usize {
     let mut sum = 0;
+    let mut buf: Vec<u32> = Vec::with_capacity(256);                       // 2026-11-24 (plan 79.52): the buffer of the questions that make no memory (`moves_into_t`, `legal_into_t`)
     for (s, i) in p.trans.iter().take(n) {
-        let ms = t.moves_t(s);
-        sum += ms.len();
-        if w == Work::MovesAndNext { let c = t.next_t(s, ms[*i]); std::hint::black_box(&c); sum += 1; }
+        match w {
+            Work::Moves | Work::MovesAndNext => {
+                let ms = t.moves_t(s);
+                sum += ms.len();
+                if w == Work::MovesAndNext { let c = t.next_t(s, ms[*i]); std::hint::black_box(&c); sum += 1; }
+            }
+            Work::MovesInto | Work::MovesIntoAndNext => {
+                t.moves_into_t(s, &mut buf);
+                sum += buf.len();
+                if w == Work::MovesIntoAndNext { let c = t.next_t(s, buf[*i]); std::hint::black_box(&c); sum += 1; }
+            }
+            Work::LegalInto | Work::LegalIntoAndNext => {
+                t.legal_into_t(s, &mut buf);
+                sum += buf.len();
+                if w == Work::LegalIntoAndNext { let c = t.next_t(s, buf[*i]); std::hint::black_box(&c); sum += 1; }
+            }
+        }
     }
     sum
 }
@@ -247,6 +283,11 @@ macro_rules! makers { ($( ($name:literal, $m:ty) ),* $(,)?) => {{ let mut v: Vec
 
 /// `runs` full runs of one second each (three in the table), after a short run; every module must answer as many moves as the kernel.
 fn run_game<P: Tr + 'static>(game: &str, full: bool, makers: Vec<Maker>, runs: usize) {
+    run_game_works::<P>(game, full, makers, runs, &[(Work::Moves, "allowed moves"), (Work::MovesAndNext, "allowed moves and the next state of one move")]);
+}
+
+/// The same with the questions to clock named (plan 79.52: the questions that make no memory, with the end and without it).
+fn run_game_works<P: Tr + 'static>(game: &str, full: bool, makers: Vec<Maker>, runs: usize, works: &[(Work, &str)]) {
     let kernel = KernelGame::new(game, 518).unwrap();
     let kp = positions(&kernel, &mut P::make(), 20, 80, 4);
     let n = kp.trans.len();
@@ -259,7 +300,7 @@ fn run_game<P: Tr + 'static>(game: &str, full: bool, makers: Vec<Maker>, runs: u
         rows.push(r);
     }
     let short = 20.min(n);
-    for (w, wn) in [(Work::Moves, "allowed moves"), (Work::MovesAndNext, "allowed moves and the next state of one move")] {
+    for &(w, wn) in works {
         let load = load_average();
         let mut line = format!("kernel {:.0}", (kern.rate)(0.0, short, w).0);
         for r in rows.iter_mut() { line += &format!(" {} {:.0}", r.name, (r.rate)(0.0, short, w).0); }
@@ -288,7 +329,9 @@ fn run_game<P: Tr + 'static>(game: &str, full: bool, makers: Vec<Maker>, runs: u
 }
 
 /// The time by piece of the module with every pass (the pieces that run: calls, time, rows made, rows visited, indexes asked), over the list a few times.
-fn pieces<F: Tr + 'static>(game: &str, label: &str) {
+fn pieces<F: Tr + 'static>(game: &str, label: &str) { pieces_work::<F>(game, label, Work::MovesAndNext, "moves and one next each") }
+
+fn pieces_work<F: Tr + 'static>(game: &str, label: &str, work: Work, what: &str) {
     let kernel = KernelGame::new(game, 518).unwrap();
     let mut t = F::make();
     let p = positions(&kernel, &mut t, 20, 80, 4);
@@ -298,10 +341,10 @@ fn pieces<F: Tr + 'static>(game: &str, label: &str) {
     let t0 = Instant::now();
     let (a0, b0) = (ALLOCS.load(Ordering::Relaxed), BYTES.load(Ordering::Relaxed));
     let mut sink = 0;
-    for _ in 0..5 { sink += pass_trans(&mut t, &p, n, Work::MovesAndNext); }
+    for _ in 0..5 { sink += pass_trans(&mut t, &p, n, work); }
     let wall = t0.elapsed().as_secs_f64();
     let (a1, b1) = (ALLOCS.load(Ordering::Relaxed), BYTES.load(Ordering::Relaxed));
-    println!("OBS 79.40 E allocations {game} {label}: {:.1} allocations and {:.0} bytes allocated a position (moves and one next each)", (a1 - a0) as f64 / (5 * n) as f64, (b1 - b0) as f64 / (5 * n) as f64);
+    println!("OBS 79.40 E allocations {game} {label} ({what}): {:.1} allocations and {:.0} bytes allocated a position", (a1 - a0) as f64 / (5 * n) as f64, (b1 - b0) as f64 / (5 * n) as f64);
     t.profiling_t(false);
     let pcs = t.pieces_t();
     let total: u64 = pcs.iter().map(|x| x.3).sum();
@@ -422,3 +465,44 @@ fn horde_a_short_run_of_the_kernel_and_the_modules_gives_the_same_number_of_move
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
 fn horde_the_times_of_the_passes() { run_game::<horde::Game>("horde", true, makers![("plain", horde::Game), ("fast", horde_fast::Game)], 3); }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ PLAN 79.52 PART B: the clocks of the passes `cones` and `words`
+// The kernel, the kept modules of the commit before the plan (`before`, `lemma-before`; only with `--cfg before52`), and the kept modules now (`fast`, `lemma`): the allowed moves with the end and without it, into a buffer the caller owns, with and without the next
+// state of one move, and the way the old entry point (`moves_t`) stands. The allocation count and the profile by piece after each: `chess_the_pieces_after_part_b`.
+const WORKS_52: &[(Work, &str)] = &[(Work::Moves, "allowed moves (moves_t)"), (Work::MovesInto, "allowed moves into a buffer"), (Work::LegalInto, "allowed moves into a buffer, without the end"),
+    (Work::MovesAndNext, "allowed moves (moves_t) and the next state of one move"), (Work::MovesIntoAndNext, "allowed moves into a buffer and the next state of one move"), (Work::LegalIntoAndNext, "allowed moves without the end and the next state of one move")];
+#[cfg(before52)]
+fn chess_52() -> Vec<Maker> { makers![("before", chess_before::Game), ("lemma-before", chess_lemma_before::Game), ("step1", chess_p52_cones::Game), ("fast", chess_fast::Game), ("lemma", chess_lemma::Game)] }
+#[cfg(not(before52))]
+fn chess_52() -> Vec<Maker> { makers![("fast", chess_fast::Game), ("lemma", chess_lemma::Game)] }
+#[cfg(before52)]
+fn atomic_52() -> Vec<Maker> { makers![("before", atomic_before::Game), ("step1", atomic_p52_cones::Game), ("fast", atomic_fast::Game)] }
+#[cfg(not(before52))]
+fn atomic_52() -> Vec<Maker> { makers![("fast", atomic_fast::Game)] }
+#[test]
+fn chess_a_short_run_of_part_b_gives_the_same_number_of_moves() { run_game_works::<chess_fast::Game>("chess", false, chess_52(), 0, WORKS_52); }
+#[test]
+fn atomic_a_short_run_of_part_b_gives_the_same_number_of_moves() { run_game_works::<atomic_fast::Game>("atomic", false, atomic_52(), 0, WORKS_52); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_times_of_part_b() { run_game_works::<chess_fast::Game>("chess", true, chess_52(), 3, WORKS_52); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn atomic_the_times_of_part_b() { run_game_works::<atomic_fast::Game>("atomic", true, atomic_52(), 3, WORKS_52); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_pieces_after_part_b() {
+    for (w, what) in [(Work::MovesAndNext, "moves and one next each"), (Work::MovesIntoAndNext, "moves into a buffer and one next each"), (Work::LegalIntoAndNext, "allowed moves without the end and one next each")] {
+        pieces_work::<chess_fast::Game>("chess", "fast", w, what);
+        pieces_work::<chess_lemma::Game>("chess", "lemma", w, what);
+    }
+}
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn atomic_the_pieces_after_part_b() {
+    for (w, what) in [(Work::MovesAndNext, "moves and one next each"), (Work::LegalIntoAndNext, "allowed moves without the end and one next each")] { pieces_work::<atomic_fast::Game>("atomic", "fast", w, what); }
+}
+#[cfg(before52)]
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_pieces_before_part_b() { pieces::<chess_before::Game>("chess", "fast-before"); pieces::<chess_lemma_before::Game>("chess", "lemma-before"); pieces::<atomic_before::Game>("atomic", "fast-before"); }
