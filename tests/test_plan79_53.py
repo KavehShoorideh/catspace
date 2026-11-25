@@ -52,7 +52,7 @@ WALK = sibling("test_plan79_41").WALK
 
 def test_the_passes_end_the_list_and_bring_what_they_read():
     T = translator()
-    assert T.PASSES[-2:] == ("tables", "topdown") and T.PASSES.index("words") < T.PASSES.index("tables")
+    assert T.PASSES[-3:-1] == ("tables", "topdown") and T.PASSES.index("words") < T.PASSES.index("tables")
     d = T.Description(WALK)
     p = T.Plan(d, ["tables"])
     assert "bits" in p.passes and "shift" in p.passes and p.tables

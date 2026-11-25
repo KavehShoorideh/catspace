@@ -19,8 +19,9 @@ GAMES = {"chess": [ROOT / "rules" / "chess.gdl"], "atomic": [ROOT / "rules" / "c
 for _g in ("3check", "kingofthehill", "antichess", "chess960", "horde"):
     GAMES[_g] = [ROOT / "rules" / "chess.gdl", ROOT / "rules" / "variants" / f"{_g}.gdl"]
 SCRATCH_GAMES = ("chess", "atomic")                                 # the files of the single passes and the clocks of the passes are made for the first two games only
-KEPT = {"": [], "_fast": list(T.PASSES)}
-KEPT_LEMMA = {"chess": {"_lemma": list(T.PASSES)}}                  # plan 79.45: the game that has a lemma folder, every pass and its lemmas (the one file kept besides the plain and the fast ones)
+PASSES_NOCARRY = [p for p in T.PASSES if p != "carry"]              # plan 79.54: the pass carry (answers kept from the last state) is in the modules `_carry`, beside the modules `_fast` of every other pass, until the clocks say which a game uses
+KEPT = {"": [], "_fast": PASSES_NOCARRY, "_carry": list(T.PASSES)}
+KEPT_LEMMA = {"chess": {"_lemma": PASSES_NOCARRY}}                  # plan 79.45: the game that has a lemma folder, every pass and its lemmas (the one file kept besides the plain and the fast ones)
 COMBOS = {"bits_keep": ["bits", "keep"], "bits_order": ["bits", "order"], "bits_order_keep": ["bits", "order", "keep"], "bits_demand": ["bits", "demand"], "bits_dense": ["bits", "dense"], "bits_copy": ["bits", "copy"], "bits_delta": ["bits", "delta"]}
 # plan 79.41: each new pass alone on top of bits (the clocks), and `prev`, the module of every pass of 79.40 (the one the new passes are clocked against); `prev38` is the four passes of 79.38
 PASSES_7940 = ["dense", "demand", "copy", "delta", "bits", "order", "keep"]
@@ -31,8 +32,8 @@ COMBOS.update({f"bits_{p}": ["bits", p] for p in NEW})
 NEW42 = [p for p in T.PASSES if p not in PASSES_7941 and p in ("start", "ends", "orient")]
 PASSES_7942 = PASSES_7941 + NEW42
 # plan 79.43: `prev` is every pass of 79.42, the module the new passes are clocked against (for the clocks it is made by the translator of the commit before the plan, since the estimate of the pass start was mended in the plan); `prev_42` is the same passes made by this translator; each new pass alone on top of it is `prev_<pass>`
-PASSES_7943 = [p for p in T.PASSES if p not in ("cones", "words", "tables", "topdown")]      # plan 79.52: the two passes of that plan, and plan 79.53 the pass tables, come after every pass of 79.43
-PASSES_7952 = [p for p in T.PASSES if p not in ("tables", "topdown")]               # plan 79.53: every pass of 79.52 (the module the tables are clocked against)
+PASSES_7943 = [p for p in T.PASSES if p not in ("cones", "words", "tables", "topdown", "carry")]      # plan 79.52: the two passes of that plan, and plan 79.53 the pass tables, come after every pass of 79.43
+PASSES_7952 = [p for p in T.PASSES if p not in ("tables", "topdown", "carry")]               # plan 79.53: every pass of 79.52 (the module the tables are clocked against)
 NEW43 = [p for p in PASSES_7943 if p not in PASSES_7942]
 SCRATCH = {"_prev": PASSES_7942, "_prev_42": PASSES_7942, "_prev_noworth": [p for p in PASSES_7943 if p != "worth"], "_prev41": PASSES_7941, "_prev40": PASSES_7940, "_prev38": ["dense", "demand", "copy", "delta"], **{f"_prev41_{p}": PASSES_7941 + [p] for p in NEW42}, **{f"_prev_{p}": PASSES_7942 + [p] for p in NEW43}, **{f"_{p}": [p] for p in T.PASSES}, **{f"_{k}": v for k, v in COMBOS.items()}}
 # plan 79.45: the module of every pass of 79.43 (no gated, no lemma) is the one the lemma's clocks are held against; `_lm_plain` the rewrite with no pass; `_lm_nogate` the lemma with every pass but gated
@@ -103,9 +104,9 @@ def make_placed(out: Path = OUT_PLACED) -> None:
     for game in GAMES:
         text = PQ.composed_text(game)
         module = "placed_" + rust_name(game)
-        src = T.translate(text, module, list(T.PASSES))
+        src = T.translate(text, module, PASSES_NOCARRY)
         (out / f"{game}.rs").write_text(src)
-        print(f"OBS 79.48 translate {game} (module {module}): composed description {len(text)} bytes, passes {','.join(T.PASSES)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
+        print(f"OBS 79.48 translate {game} (module {module}): composed description {len(text)} bytes, passes {','.join(PASSES_NOCARRY)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
 
 
 def main(argv=None) -> int:

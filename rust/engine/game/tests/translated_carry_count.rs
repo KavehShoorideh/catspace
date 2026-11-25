@@ -74,13 +74,21 @@ struct Acc { pairs: usize, first: usize, second: usize, same: usize, equal_pairs
 struct Kind {
     rel: BTreeMap<String, Acc>,
     nanos: BTreeMap<String, u64>, nanos_same: BTreeMap<String, u64>,
-    wall: u64, piece_total: u64, piece_same: u64, piece_skippable: u64, piece_rows_same: f64, nonside_total: u64, nonside_rows_same: f64,
+    wall: u64, piece_total: u64, piece_same: u64, piece_skippable: u64, piece_rows_same: f64, nonside_total: u64, nonside_rows_same: f64, piece_groups_same: f64, groups: BTreeMap<String, (usize, usize, usize)>,
     pairs: usize, bits_changed: usize, fluents_changed: BTreeMap<String, usize>,
+}
+
+/// The rows grouped by their value at the first place (a relation of no places is one group).
+fn group_by(v: &BTreeSet<Vec<u32>>) -> BTreeMap<u32, BTreeSet<&Vec<u32>>> {
+    let mut m: BTreeMap<u32, BTreeSet<&Vec<u32>>> = BTreeMap::new();
+    for r in v { m.entry(r.first().copied().unwrap_or(0)).or_default().insert(r); }
+    m
 }
 
 fn measure<T: Tr>(t: &mut T, prog: &Program, a: &T::S, b: &T::S, k: &mut Kind, reads_does: &BTreeSet<String>, side: &BTreeSet<String>) {
     // the question first (the module has not read `b`), then the rows of both
     let mut buf = Vec::with_capacity(256);
+    t.moves_into_t(a, &mut buf);       // the module's last state is the first state of the pair (a no-op when it is already)
     t.reset_profile_t();
     let w = Instant::now();
     t.moves_into_t(b, &mut buf);
@@ -109,6 +117,13 @@ fn measure<T: Tr>(t: &mut T, prog: &Program, a: &T::S, b: &T::S, k: &mut Kind, r
         let (x, y) = (&ra[n], &rb[n]);
         let ratio = if y.is_empty() { if x.is_empty() { 1.0 } else { 0.0 } } else { x.intersection(y).count() as f64 / y.len() as f64 };
         k.piece_rows_same += nanos as f64 * ratio;
+        // the same at the level of a group of rows (the rows with one value at the first place), the group carried only when the whole group is the same: the best any read set of a group could do
+        let (gx, gy) = (group_by(x), group_by(y));
+        let same_rows: usize = gy.iter().filter(|(key, rows)| gx.get(*key) == Some(*rows)).map(|(_, rows)| rows.len()).sum();
+        let gratio = if y.is_empty() { if x.is_empty() { 1.0 } else { 0.0 } } else { same_rows as f64 / y.len() as f64 };
+        k.piece_groups_same += nanos as f64 * gratio;
+        let e = k.groups.entry(n.to_string()).or_insert((0, 0, 0));
+        e.0 += gy.len(); e.1 += 1; e.2 += gy.iter().filter(|(key, rows)| gx.get(*key) != Some(*rows)).count();
         if !side.contains(n) { k.nonside_total += nanos; k.nonside_rows_same += nanos as f64 * ratio; }
     }
 }
@@ -130,6 +145,13 @@ fn report(game: &str, kind: &str, k: &Kind, side: &BTreeSet<String>, reads_does:
     println!("OBS 79.54 A {game} {kind} total: derived rows first {s1} second {s2} same {ss} ({:.1}% of the second); of the relations that do not read the side to move: first {d1} second {d2} same {ds} ({:.1}%)", 100.0 * ss as f64 / s2.max(1) as f64, 100.0 * ds as f64 / d2.max(1) as f64);
     println!("OBS 79.54 A {game} {kind} ceiling: if every row that the first state had cost nothing (a piece's time taken as proportional to its rows) the pieces' time falls by {:.1}% ({:.1}% of the wall); the pieces that do not read the side to move are {:.1}% of the pieces' time and their unchanged rows {:.1}% of it",
         100.0 * k.piece_rows_same / k.piece_total.max(1) as f64, 100.0 * k.piece_rows_same / k.wall.max(1) as f64, 100.0 * k.nonside_total as f64 / k.piece_total.max(1) as f64, 100.0 * k.nonside_rows_same / k.piece_total.max(1) as f64);
+    println!("OBS 79.54 A {game} {kind} group ceiling: if a group of rows (the rows with one value at the first place) were carried whenever the whole group was the same at both states (the best any read set of a group could do), the pieces' time falls by {:.1}% ({:.1}% of the wall) against {:.1}% at the level of a row",
+        100.0 * k.piece_groups_same / k.piece_total.max(1) as f64, 100.0 * k.piece_groups_same / k.wall.max(1) as f64, 100.0 * k.piece_rows_same / k.piece_total.max(1) as f64);
+    for (n, (g, c, ch)) in &k.groups {
+        let per_state = *g as f64 / (*c).max(1) as f64;
+        let ns = *k.nanos.get(n).unwrap_or(&0) as f64 / (*c).max(1) as f64;
+        if k.nanos.get(n).copied().unwrap_or(0) as f64 / k.piece_total.max(1) as f64 > 0.02 { println!("OBS 79.54 A {game} {kind} groups of {n}: {:.1} a state, {:.0} ns of piece time a state, {:.1} ns a group; groups whose rows changed (the groups a read set could not carry) {:.2} a state", per_state, ns, ns / per_state.max(1.0), *ch as f64 / (*c).max(1) as f64); }
+    }
     println!("OBS 79.54 A {game} {kind} time: the pieces whose rows were all the same took {:.1}% of the pieces' time ({:.1}% of the question's wall, the wall {} ns, the pieces {} ns); the pieces whose cone reads no changed fluent took {:.1}% of the pieces' time ({:.1}% of the wall)",
         100.0 * k.piece_same as f64 / k.piece_total.max(1) as f64, 100.0 * k.piece_same as f64 / k.wall.max(1) as f64, k.wall, k.piece_total,
         100.0 * k.piece_skippable as f64 / k.piece_total.max(1) as f64, 100.0 * k.piece_skippable as f64 / k.wall.max(1) as f64);
@@ -142,28 +164,41 @@ fn count<T: Tr>(game: &str, delta: Option<&str>) {
     let reads_does = reaches(&prog, "does");
     let mut t = T::make();
     t.profiling_t(true);
-    let (mut succ, mut sib) = (Kind::default(), Kind::default());
+    let (mut succ, mut sib, mut grand, mut pass) = (Kind::default(), Kind::default(), Kind::default(), Kind::default());
     let mut rng = Rng::new(SEED);
     for _ in 0..games {
         let mut s = t.initial_t();
+        let mut par: Option<T::S> = None;
         for _ply in 0..plies {
             let ms = t.moves_t(&s);
             if ms.is_empty() { break; }
+            if let Some(ps) = passed(&mut t, &s, "control") { measure(&mut t, &prog, &s, &ps, &mut pass, &reads_does, &side); }
             let i = rng.below(ms.len());
             let c = t.next_t(&s, ms[i]);
             measure(&mut t, &prog, &s, &c, &mut succ, &reads_does, &side);
+            if let Some(pp) = &par { measure(&mut t, &prog, pp, &c, &mut grand, &reads_does, &side); }
             if ms.len() > 1 {
                 let mut j = rng.below(ms.len());
                 if j == i { j = (j + 1) % ms.len(); }
                 let c2 = t.next_t(&s, ms[j]);
                 measure(&mut t, &prog, &c, &c2, &mut sib, &reads_does, &side);
             }
+            par = Some(s);
             s = c;
         }
     }
     println!("OBS 79.54 A {game} load {}", load_average());
     report(game, "successor", &succ, &side, &reads_does);
     report(game, "sibling", &sib, &side, &reads_does);
+    report(game, "second successor", &grand, &side, &reads_does);
+    report(game, "pass", &pass, &side, &reads_does);
+    // EXACT: after a pass the only fact that differs is the one that says whose turn it is, so every relation that does not read it is equal as a whole at every pair, and only relations that read it differ
+    let mut differ_side = 0;
+    for (n, a) in &pass.rel {
+        if n.starts_with("true.") || reads_does.contains(n.as_str()) { continue; }
+        if !side.contains(n) { assert_eq!(a.equal_pairs, a.pairs, "{game}: the relation {n} does not read the side to move and differs between a state and its passed state"); } else if a.equal_pairs < a.pairs { differ_side += 1; }
+    }
+    println!("OBS 79.54 A {game} pass exact: {} pairs; every relation that does not read the side to move is equal in every pair; {differ_side} relations that read it differ in some", pass.pairs);
 }
 
 #[test]
