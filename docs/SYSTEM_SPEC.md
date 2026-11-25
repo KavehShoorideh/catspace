@@ -1278,6 +1278,23 @@ most; the others follow only if it wins. Neither way names a thing of any game.
 (viii) DECIDED 2026-11-24 (Kaveh: "then lock up these lower layers and move up to upper layers, 3 and above"). When plan 79.53 is
 read, merged and its records are fresh, the lower layers are LOCKED: no further speed plan and no tidiness plan below layer 3 without
 Kaveh's word, whatever the gap to the outside library then is; the gap is recorded and left. Work moves to layer 3 and above.
+(ix) DECIDED 2026-11-25 (Kaveh: "assuming some sort of continuity in time ... we carry a state forward ... what are the allowed
+moves right now, and what was the last move that was made, and then from these two calculate the next set"; "maybe the first position
+will be slow, but the later positions will be fast"). ANSWERS CARRIED FROM THE LAST STATE. Before the lock of (viii), one more plan
+(79.54). The translated module keeps what it derived at the last state it read; at a new state it makes again only what the change can
+have touched. HOW. The state is words, so the facts that changed are the difference of the words. The rows of a derived relation are
+kept in groups; each group carries its READ SET, the base facts its derivation read (those found true and those found absent). A group
+whose read set does not meet the change is carried as it is; any other group is made again whole from the new state, so a rule with a
+negation needs no special handling. A new state far from the last one (the change larger than a bound the clock sets) is read in full,
+as now. No interface of the module changes: the memory is inside it, as the bridge's memory of one state is. This is the read set of
+section 7 (an answer is carried while nothing it read has changed) used one layer down, and the general form of the lemma of (ii) "a
+test is skipped for a move that touches none of the cells the test reads". KNOWN LIMITS, said before the build. The side to move changes
+every ply, so every relation that reads it is made again every ply; what can be carried is what both sides share. A state reached in a
+search is one move from its parent and a few moves from its sibling, so the change stays small there; a state from elsewhere is read in
+full. Programs written by hand that kept such tables are remembered to have found them no faster than making them again from words
+(from memory, not checked; to be read before part B). SO THE COUNT COMES FIRST: part A counts, between a state and the state after one
+move, the share of the derived rows of each relation that are the same, and the share of the time spent in the pieces that made them;
+part B is built on that count and the note says what the count allows at most. The lock of (viii) then holds after plan 79.54 is read.
 
 ## 12. What exists
 
@@ -1716,4 +1733,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Result first, then least cost; a way that wins is taken and locked, safe by a falling measure and a cheap check; narrowness of their good replies and steering toward it; the game of preparation owed later | 2026-11-24 | 7 (last block) |
 | Lower layers as fast as the outside library first; the facts stay, their storage is free; the list of allowed moves made once a state | 2026-11-24 | 11 (last block) |
 | Two ways of answering in one translated module: bottom-up rows and a top-down walk; tables for walks found by the form of the rules; the way chosen by a clock | 2026-11-24 | 11 (last block, vii) |
+| Answers carried from the last state in the translated module: the change is the difference of the words, a group of rows is carried while its read set does not meet the change; the count first; the lock of the lower layers after it | 2026-11-25 | 11 (last block, ix) |
 | What was replaced | 2026-11-16 | 14 |
