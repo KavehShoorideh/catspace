@@ -184,6 +184,7 @@ def test_no_source_of_the_engine_no_cargo_file_no_description_and_no_reader_diff
     if not have_before():
         pytest.skip(f"{BEFORE} not in this clone")
     changed = git("diff", "--name-only", BEFORE, "--", "rust/engine").stdout.split()
-    assert not [c for c in changed if re.match(r"rust/engine/[a-z_]+/src/", c) or c.endswith("Cargo.toml") or c.endswith("Cargo.lock")], changed
+    # 2026-11-25 (plan 79.52 part A, Kaveh's word): kernel.rs was changed on main beside this plan (the list of allowed moves made once a state); it is left out here
+    assert not [c for c in changed if (re.match(r"rust/engine/[a-z_]+/src/", c) and c != "rust/engine/game/src/kernel.rs") or c.endswith("Cargo.toml") or c.endswith("Cargo.lock")], changed
     assert git("diff", "--quiet", BEFORE, "--", "rules", ":(exclude)rules/lemmas", ":(exclude)rules/placed", "catspace/incubator/analyst/discovery/gdl.py").returncode == 0
     print(f"OBS 79.52 B: files under rust/engine that differ from {BEFORE}: {len(changed)}, none a source of a crate nor a manifest")
