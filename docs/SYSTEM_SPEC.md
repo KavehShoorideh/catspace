@@ -1275,6 +1275,9 @@ own rule, so it is no lemma and has no standing of its own. WHICH WAY ANSWERS A 
 never by a list written by hand; the choice and its numbers are recorded. Both ways are held to the evaluator by the tests that exist,
 and to each other on every question both can answer. The first top-down question is the end of the game, where the engine spends the
 most; the others follow only if it wins. Neither way names a thing of any game.
+(viii) DECIDED 2026-11-24 (Kaveh: "then lock up these lower layers and move up to upper layers, 3 and above"). When plan 79.53 is
+read, merged and its records are fresh, the lower layers are LOCKED: no further speed plan and no tidiness plan below layer 3 without
+Kaveh's word, whatever the gap to the outside library then is; the gap is recorded and left. Work moves to layer 3 and above.
 
 ## 12. What exists
 
