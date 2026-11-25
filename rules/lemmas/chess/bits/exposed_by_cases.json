@@ -1,7 +1,8 @@
 {
- "about": "PLAN 79.55: the conditions on a state that the bit statement of exposed_by_cases is made under (rule_lemma_bits.py). Each is an ASSUMPTION: at most one fact of the group holds. They are well-formedness conditions of a state, not rules of the description; they are not shown here to hold at every state the game reaches (the fixtures and seeded games print whether any is broken).",
+ "about": "PLAN 79.55: the conditions on a state that the bit statement of exposed_by_cases is made under (rule_lemma_bits.py). Each is an ASSUMPTION: at most one fact of the group holds. They are well-formedness conditions of a state, not rules of the description; they are not shown here to hold at every state the game reaches (the fixtures and seeded games print whether any is broken). The third was found by a counterexample of the solver on a case whose moved unit was of the side not to move (with both sides to move at once, the relation `exposed`, which takes no side, reads both).",
  "hypotheses": [
   {"fluent": "cell", "key": [0, 1], "why": "at most one unit on a square"},
-  {"fluent": "cell", "fixed": {"3": "king"}, "key": [2], "why": "at most one king of a side"}
+  {"fluent": "cell", "fixed": {"3": "king"}, "key": [2], "why": "at most one king of a side"},
+  {"fluent": "control", "key": [], "why": "at most one side to move"}
  ]
 }

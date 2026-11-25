@@ -82,7 +82,7 @@ def test_one_binding_is_closed_by_bv_decide(tmp_path):
     bits = B.Bits(lemma)
     p = bits.write(tmp_path / "one.lean", [(LINE, ())])
     text = p.read_text()
-    assert text.count("bv_decide") == 1 and "sorry" not in text and "native_decide" not in text and "axiom" not in text
+    assert text.count("  bv_decide\n") == 1 and "sorry" not in text and "native_decide" not in text and "axiom" not in text
     r = B.run_lean(p, 300)
     print(f"OBS 79.55 test one binding: ok {r['ok']}, wall {r['secs']:.1f} s")
     assert r["ok"], r["out"][:500]
@@ -106,11 +106,52 @@ def test_a_planted_false_lemma_is_refused_with_a_counterexample_that_is_a_board(
     assert row in db.facts("rook_on_file") and row not in db.facts("attack_by")                # the evaluator confirms: left holds, right does not
 
 
+@needs_lean
+def test_a_case_of_a_split_is_closed_and_carries_its_assumptions(tmp_path):
+    """The cases lemma at one binding is too large whole; with the king's square and the moved unit taken as known (a case of a split) the same statement closes. The case is a theorem that carries the
+    facts it assumes as hypotheses, and its expressions equal the evaluator's at a state that meets them."""
+    RL, B, RC = mods()
+    lemma = RL.load("chess", "exposed_by_cases")
+    prog = RL.program(lemma)
+    hyps = B.hypotheses_of(HYPS / "exposed_by_cases.json")
+    spec = [["cell", "*", "*", "white", "king", False], ["cell", "e", "1", "white", "king", True],
+            ["cell", "e", "2", "*", "*", False], ["cell", "e", "2", "white", "pawn", True]]
+    assume = B.assume_of(prog, spec)
+    assert assume["f_cell_e_1_white_king"] is True and assume["f_cell_a_1_white_king"] is False and assume["f_cell_e_2_white_pawn"] is True
+    bits = B.Bits(lemma, hyps, assume, prog)
+    b = (("e", "2", "e", "3"), ("white",))
+    p = bits.write(tmp_path / "case.lean", [b])
+    text = p.read_text()
+    assert "CASE:" in text and "hasm0" in text and text.count("  bv_decide\n") == 1
+    state = RC.state_of_text("(control white) (cell e 1 white king) (cell e 2 white pawn) (cell e 8 black king)")
+    db = prog.run(state, wanted=("exposed", "exposed_by_cases"))
+    true_vars = {B.var_name(rel, args) for rel, args in state}
+    st = bits.statement(b)
+    assert bits.g.dag.eval(st.left, true_vars, {}) == (("e", "2", "e", "3") in db.facts("exposed"))
+    r = B.run_lean(p, 900)
+    print(f"OBS 79.55 test case closed: ok {r['ok']}, wall {r['secs']:.1f} s, text {len(text)} bytes")
+    assert r["ok"], r["out"][:500]
+
+
+def test_the_closed_lemmas_have_their_record_and_no_document_changed():
+    """The two lemmas all of whose bindings the solver was given closed have a record beside the document, read back with the file's hash; the standing of each document is as it was (PROVED by the
+    library, CERTIFIED, CERTIFIED), and the cases lemma has no record."""
+    RL, B, RC = mods()
+    for name in ("lone_rook_attacks_its_file", "candidate_is_mover_unit"):
+        lemma = RL.load("chess", name)
+        word, detail = B.standing(lemma)
+        print(f"OBS 79.55 test standing {name}: {word} ({detail})")
+        assert word == "SOLVER-PROVED", detail
+    assert B.standing(RL.load("chess", "exposed_by_cases"))[0] == "NONE"
+    for name, is_ in (("candidate_is_mover_unit", "PROVED"), ("exposed_by_cases", "CERTIFIED"), ("lone_rook_attacks_its_file", "CERTIFIED")):
+        assert RL.load("chess", name).standing["is"] == is_
+
+
 def test_the_hypotheses_a_statement_needs_are_written_and_listed():
     RL, B, RC = mods()
     lemma = RL.load("chess", "exposed_by_cases")
     hyps = B.hypotheses_of(HYPS / "exposed_by_cases.json")
-    assert {h["fluent"] for h in hyps} == {"cell"} and all("why" in h for h in hyps)
+    assert {h["fluent"] for h in hyps} == {"cell", "control"} and all("why" in h for h in hyps)
     bits = B.Bits(lemma, hyps)
     b = (("e", "1", "e", "2"), ("white",))
     st = bits.statement(b)

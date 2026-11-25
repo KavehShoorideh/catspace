@@ -1,0 +1,18 @@
+{
+ "bindings": 49152,
+ "closed": 896,
+ "failed": 0,
+ "file_hash": "d81e492cc238079a",
+ "form": "IMPLIES",
+ "fuse": 0,
+ "game": "chess",
+ "hypotheses": [],
+ "kind": "bv_decide: a SAT solver's certificate, checked in Lean (the proof rests on the axiom Lean.ofReduceBool, which `#print axioms` lists)",
+ "lean_file": "lean/ideas/Ideas/Mined/rule_lemma_bits_chess_lone_rook_attacks_its_file.lean",
+ "lemma": "lone_rook_attacks_its_file",
+ "settled": 48256,
+ "theorems": 896,
+ "to_solver": 896,
+ "trust": "the statement over bits is made from the description by rule_lemma_bits.py (trusted, not tied in Lean to the description's relations); bindings the writer settles by constants are not checked by Lean",
+ "wall_secs": 23.1
+}

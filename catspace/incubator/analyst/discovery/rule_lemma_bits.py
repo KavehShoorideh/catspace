@@ -21,6 +21,8 @@ WHAT IS NOT CLAIMED. The statement over bits is made from the description by thi
 the statement over the description's relations (not built). A binding whose two expressions are constants is settled by this program's own evaluation and not by Lean; it is counted
 and said (`settled`), never counted as closed by the solver.
 THE AGREEMENT TEST that the expressions are the right ones: `agree` evaluates each binding's expressions at the bits of a corpus state and compares them with the rows of the reader's evaluator.
+A CASE of a split: `assume` (a list of known facts, see `assume_of`) unfolds the relations with those facts taken as true or false; the theorem of a case carries them as hypotheses, so the
+cases of a split are separate theorems, and that the cases cover the states (the facts assumed one at a time are every possibility under the hypotheses) is read, not proved, here.
 THE PLANTED FALSE LEMMA: a lemma in memory that is false is refused by the solver; `counterexample` reads the assignment the solver prints back as the facts of a state.
 
 INTERFACE (who calls it: the tests; `python -m catspace.incubator.analyst.discovery.rule_lemma_bits <verb> <game> <lemma> [--hyps FILE]`, verbs plan | write | agree | run):
@@ -53,6 +55,7 @@ ROOT = RL.ROOT
 MINED = ROOT / "lean" / "ideas" / "Ideas" / "Mined"
 LEAN_ROOT = ROOT / "lean" / "ideas"
 INPUT_RELATIONS = ("does", "record")
+SHARE_FROM = 2                            # a node used this many times or more in a statement is named by a hypothesis `q = (expression)`; fewer: written inline
 LADDER_FROM = 3                           # a group of more facts than this is written as a running OR, not as every pair
 
 
@@ -353,6 +356,20 @@ def hypotheses_of(path) -> list:
     return doc["hypotheses"] if isinstance(doc, dict) else doc
 
 
+def assume_of(prog: GDL.Program, spec: list) -> dict:
+    """The facts taken as known in a case of a split: a list of [fluent, place, place, ..., value] where a place is a member or `*` (every member), later entries overriding earlier ones;
+    the result maps variable names to True / False."""
+    g = Grounder(prog)
+    out: dict = {}
+    for item in spec:
+        fl, pats, value = item[0], item[1:-1], bool(item[-1])
+        sig = g.sig_of("true." + fl)
+        doms = [g.domain(s) if p == "*" else [p] for p, s in zip(pats, sig)]
+        for args in itertools.product(*doms):
+            out[var_name("true." + fl, args)] = value
+    return out
+
+
 def ident(lemma: RL.Lemma) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", f"rule_lemma_bits_{lemma.game}_{lemma.name}")
 
@@ -368,6 +385,7 @@ class Bits:
         self.lemma = lemma
         self.prog = prog or RL.program(lemma)
         self.assume = assume or {}
+        self.share_from = SHARE_FROM
         self.g = Grounder(self.prog, self.assume)
         self.hyps = hyps or []
         lf, rg = lemma.left, lemma.right
@@ -476,14 +494,15 @@ class Bits:
         shared = []
         for n in order:
             k = d.nodes[n]
-            if k[0] in ("and", "or", "not") and (uses.get(n, 0) >= 2):
+            if k[0] in ("and", "or", "not") and (uses.get(n, 0) >= self.share_from):
                 name_of[n] = f"q{len(shared)}"
                 shared.append(n)
         varnames = sorted({d.nodes[n][1] for n in order if d.nodes[n][0] == "v"})
         hyps = self.hypothesis_lines(set(varnames))
         binders = []
-        if varnames:
-            binders.append("(" + " ".join(varnames) + " : Bool)")
+        extra = sorted(set(self.assume) - set(varnames))
+        if varnames or extra:
+            binders.append("(" + " ".join(varnames + extra) + " : Bool)")
         if shared:
             binders.append("(" + " ".join(name_of[n] for n in shared) + " : Bool)")
         for i, n in enumerate(shared):
@@ -504,6 +523,8 @@ class Bits:
         if aux:
             binders.append("(" + " ".join(aux) + " : Bool)")
         binders.extend(ladder)
+        for i, (nm, val) in enumerate(sorted(self.assume.items())):
+            binders.append(f"(hasm{i} : {nm} = {'true' if val else 'false'})")
         binders.append(f"(hcond : {self.expr(st.cond, name_of)} = true)")
         goal = (f"({self.expr(st.left, name_of)} == {self.expr(st.right, name_of)}) = true" if form == "SAME"
                 else f"(!{self.expr(st.left, name_of)} || {self.expr(st.right, name_of)}) = true")
@@ -517,7 +538,8 @@ class Bits:
                 f"   discovery/rule_lemma_bits.py and closed by bv_decide, one theorem a binding ({count} here). GENERATED: do not edit.\n"
                 f"   Each variable is one fact of a state. Each theorem says: for any bits that meet the hypotheses named, if the condition holds then the two sides agree.\n"
                 f"   HYPOTHESES (assumptions, not shown to hold at every reached state):\n{hy}\n"
-                f"   TRUST: the statement is made from the description by that program, which is trusted; it is not tied in Lean to the description's relations. -/\n"
+                + (f"   CASE: {sum(self.assume.values())} facts assumed true and {len(self.assume) - sum(self.assume.values())} assumed false (each theorem carries them as hypotheses hasm*); a case, not the lemma.\n" if self.assume else "")
+                + f"   TRUST: the statement is made from the description by that program, which is trusted; it is not tied in Lean to the description's relations. -/\n"
                 "import Std.Tactic.BVDecide\n\nset_option maxRecDepth 100000\nset_option linter.unusedVariables false\nset_option maxHeartbeats 0\n\n")
 
     def text(self, bindings: list) -> str:
@@ -647,6 +669,62 @@ def state_text(bits: Bits, names) -> str:
     return " ".join(out)
 
 
+def split_of(prog: GDL.Program, binding, splits: list) -> list:
+    """The cases of a split for one binding: each entry of `splits` is {"fluent": f, "places": [member | "*" | "@pN" | "@cN"]} (`@pN` the binding's place N, `@cN` its condition member N);
+    the facts it matches are a group, and a case takes exactly one fact of the group true and the others false, or (the last case) none. The cases are the product over the splits; each is
+    an `assume` dict. That the cases cover the states holds when the hypotheses say at most one fact of each group does (the document lists them; the cover is read, not proved, here)."""
+    g = Grounder(prog)
+    places, cvals = binding
+    per = []
+    for sp in splits:
+        sig = g.sig_of("true." + sp["fluent"])
+        pats = []
+        for x in sp["places"]:
+            pats.append(places[int(x[2:])] if x.startswith("@p") else cvals[int(x[2:])] if x.startswith("@c") else x)
+        doms = [g.domain(s) if x == "*" else [x] for x, s in zip(pats, sig)]
+        group = [var_name("true." + sp["fluent"], a) for a in itertools.product(*doms)]
+        per.append([{n: (n == pick) for n in group} for pick in group + [None]])
+    out = []
+    for combo in itertools.product(*per):
+        a: dict = {}
+        for c in combo:
+            a.update(c)
+        out.append(a)
+    return out
+
+
+def run_cases(game: str, name: str, hyps: list, splits: list, k: int, seed: int, jobs: int, fuse: int, dest_dir: Path) -> tuple:
+    """A random sample of k cases (a binding, a case of its split) of the lemma, each unfolded alone, each written and run under the fuse: (the settled draws, [(label, cone size, ok, secs,
+    timeout)], draws made)."""
+    import random
+    from concurrent.futures import ThreadPoolExecutor
+    lemma = RL.load(game, name)
+    prog = RL.program(lemma)
+    base = Bits(lemma, hyps, None, prog)
+    bs = base.bindings()
+    rng = random.Random(seed)
+    todo, settled = [], []
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    tries = 0
+    while len(todo) < k and tries < 50 * k:
+        tries += 1
+        b = bs[rng.randrange(len(bs))]
+        cases = split_of(prog, b, splits)
+        a = cases[rng.randrange(len(cases))]
+        bits = Bits(lemma, hyps, a, prog)
+        st = bits.statement(b)
+        if st.settled is not None:
+            settled.append(b)
+            continue
+        cone = len(bits.g.dag.cone([st.cond, st.left, st.right]))
+        label = "_".join(list(b[0]) + list(b[1])) + "__" + "_".join(sorted(n.replace("f_cell_", "") for n, v in a.items() if v))
+        todo.append((label, bits, b, cone))
+    paths = [bits.write(dest_dir / (label + ".lean"), [b]) for label, bits, b, cone in todo]
+    with ThreadPoolExecutor(max_workers=min(jobs, 4)) as ex:
+        res = list(ex.map(lambda p: run_lean(p, fuse), paths))
+    return settled, [(lab, cone, r["ok"], r["secs"], r["timeout"]) for (lab, _bits, _b, cone), r in zip(todo, res)], tries
+
+
 def sample_of(items: list, k: int) -> list:
     if k >= len(items):
         return items
@@ -694,13 +772,26 @@ def main(argv: list) -> int:
     opt = lambda k, d=None: argv[argv.index(k) + 1] if k in argv else d
     hyps = hypotheses_of(opt("--hyps"))
     lemma = RL.load(game, name)
-    bits = Bits(lemma, hyps)
+    prog = RL.program(lemma)
+    assume = assume_of(prog, json.loads(opt("--assume"))) if opt("--assume") else {}
+    if verb == "cases":
+        from catspace.io import paths
+        d = Path(paths.experiment("rule_lemma_bits", game, name, "cases.txt")).parent
+        splits = json.loads(opt("--split"))
+        settled_rows, runs, tries = run_cases(game, name, hyps, splits, int(opt("--k", 8)), int(opt("--seed", 55)), int(opt("--jobs", 1)), int(opt("--fuse", 600)), d)
+        print(f"OBS 79.55 cases {game} {name}: drawn {tries}, settled by the writer {len(settled_rows)}, run {len(runs)}")
+        for lab, cone, ok, secs, to in runs:
+            print(f"OBS 79.55 case {lab}: cone {cone} nodes, ok {ok}, wall {secs:.1f} s, fuse {to}")
+        return 0 if all(r[2] for r in runs) else 1
+    bits = Bits(lemma, hyps, assume, prog)
     bs = bits.bindings()
     only = opt("--only")
     if only:
         want = tuple(only.split(","))
         bs = [b for b in bs if tuple(b[0]) + tuple(b[1]) == want]
     sample = int(opt("--sample", 0))
+    if sample and verb != "plan":
+        bs = sample_of(bs, sample)             # a sample of ALL the choices (before any is unfolded), the ones the writer settles are then left out
     jobs = int(opt("--jobs", 1))
     fuse = int(opt("--fuse", 600))
     t0 = time.time()
@@ -711,8 +802,6 @@ def main(argv: list) -> int:
     print(f"OBS 79.55 plan {game} {name}: bindings {len(bs)}, settled by the program {settled}, to the solver {len(todo)}, expression nodes {len(bits.g.dag.nodes)}, facts {len(bits.g.facts)}, writer seconds {ground:.1f}")
     if verb == "plan":
         return 0
-    if sample:
-        todo = sample_of(todo, sample)
     if verb == "write":
         print(bits.write(path_of(lemma), todo))
         return 0
@@ -732,6 +821,16 @@ def main(argv: list) -> int:
         return 0 if all(r[1] for r in runs) else 1
     if verb == "whole":
         p = bits.write(path_of(lemma), todo)
+        if "--axioms" in argv:
+            ax = p.with_name(p.stem + "_axioms.lean")
+            names = re.findall(r"^theorem (\S+)", p.read_text(), flags=re.M)
+            ax.write_text(p.read_text() + "\n" + "\n".join(f"#print axioms {n}" for n in names) + "\n")
+            ra = run_lean(ax, fuse)
+            native = ra["out"].count("bv_decide.ax")
+            gap = ra["out"].count("sorryAx")
+            print(f"OBS 79.55 axioms {game} {name}: theorems {len(names)}, ok {ra['ok']}, depending on a solver axiom (the native run of the certificate's checker) {native}, on sorryAx {gap}, wall {ra['secs']:.1f} s")
+            ax.unlink()
+            return 0 if ra["ok"] else 1
         r = run_lean(p, fuse)
         print(f"OBS 79.55 whole {game} {name}: theorems {len(todo)}, ok {r['ok']}, timeout {r['timeout']}, wall {r['secs']:.1f} s, text {p.stat().st_size} bytes")
         if not r["ok"]:
