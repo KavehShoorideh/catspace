@@ -1229,6 +1229,30 @@ the harness holds the rewritten piece to the plain one as it does a pass; (c) th
 exists for learned lemmas (rules/learned/<game>/lemmas, the certificates under discovery/lemmas) is the starting point, to be searched
 before anything is added.
 
+**The lower layers are made as fast as the outside library first; the facts stay; the list of allowed moves is made once a state** (Kaveh
+2026-11-24: "i don't care about the engine just yet. i want the lower layers to be as fast as shakmati if possible"; "while keeping our
+representation in terms of facts"; "yes fix the lower layers in kernel.rs").
+(i) ORDER OF WORK. The speed of layer 2 comes before work on the engine above it. This lifts, for speed work only, the freeze of the
+rules layer of 2026-11-22. The mark is the outside library's rate at the same questions on the same positions.
+(ii) WHAT THE MEASURES OF 2026-11-24 SAID (one run each, a loaded machine, directions only; the printed lines are under
+artifacts/experiments/rules_share_79_37/now and in the plan note). The translated module's time is spread over many pieces, none
+large enough to be worth a lemma of its own. Its cost is in how it works: it makes every row of every derived relation at every state,
+one row at a time, with allocations, and it does the work of the end of the game when only the moves were asked. In the engine, the
+rules take about two thirds of a decision, and the largest part is the end of the game asked of the outside library, which makes the
+whole list of allowed moves to answer it; the same state is asked two to four times in a row.
+(iii) THE FACTS STAY. A state is a set of facts and every rule speaks of facts. HOW the facts are stored is free: a relation over small
+sorts known in advance may be stored as machine words, one bit a fact, and a whole set of facts may be made by one operation or one
+lookup. Every state can be handed out as a list of facts and made from one. NOT allowed: a layout of the state designed by hand for one
+game; a stored field with no fact behind it (such a field is a lemma and belongs in the lemma files, standing and all).
+(iv) THE STEPS, none of them a lemma, each in the translator and so for every game: answer only what was asked (the end's own work
+only when the end is asked); no allocation on the path of a question; a set of rows made at once from a table the translator builds
+from the description's own rule; derived rows made only where the question reads them. What is left after these, the test of each move
+against the mover's own safety, is the generic lemma "a test is skipped for a move that touches none of the cells the test reads".
+Others' work to read first: demand transformation (magic sets) and incremental view maintenance for logic programs.
+(v) THE BRIDGE OVER THE OUTSIDE LIBRARY (kernel.rs, changed at Kaveh's word): the last state read on a thread is kept with its end and
+its list of allowed moves, so the list is made once a state. The answers are unchanged. The library's own equality of two states
+leaves out the move clock, a variant's count and the units in hand, so the bridge compares them as well.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1659,4 +1683,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | One lemma machinery used twice: lemmas about the rules feed the translator, lemmas about play feed the layers above | 2026-11-23 | 11 (last block) |
 | Future prediction is one channel with a near (concrete) and a far (believed, to be made concrete by evidence) sub-layer; a target is left only when both say nothing; a goal some unmet facts away; frames join through forcing moves | 2026-11-24 | 7 (last block) |
 | Result first, then least cost; a way that wins is taken and locked, safe by a falling measure and a cheap check; narrowness of their good replies and steering toward it; the game of preparation owed later | 2026-11-24 | 7 (last block) |
+| Lower layers as fast as the outside library first; the facts stay, their storage is free; the list of allowed moves made once a state | 2026-11-24 | 11 (last block) |
 | What was replaced | 2026-11-16 | 14 |
