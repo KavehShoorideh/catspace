@@ -6,8 +6,8 @@
  "module": "rust/engine/game/tests/generated/chess_fast.rs",
  "module_header": {
   "description-sha256": "da9fcbaa18aba1e6a4bc25306c1e72ac69927821753e9cd24de84bc4510f13d2",
-  "translator-sha256": "4987593f6483729b73d2a8491e0b47a26f9164c3d37ac4ef7cac95d4b352ee4b",
-  "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated"
+  "translator-sha256": "49edb7ce7692f887cddeea9b90c4cbedacd0a0b2442d25e54ffac1eb3dac52d8",
+  "passes": "dense,demand,copy,delta,bits,order,keep,scan,cut,shift,base,start,ends,orient,asked,project,worth,gated,cones,words,tables,topdown"
  },
  "small": {
   "game": "chess",
@@ -22,7 +22,7 @@
   "left_out": {},
   "causes": {},
   "examples": [],
-  "seconds": 1.0,
+  "seconds": 1.4,
   "cores": 1,
   "seeds": 1,
   "seed0": 1000,
@@ -44,13 +44,13 @@
   "left_out": {},
   "causes": {},
   "examples": [],
-  "seconds": 326.3,
+  "seconds": 578.3,
   "cores": 11,
   "seeds": 128,
   "seed0": 1000,
   "games_a_seed": 280,
   "test_returned": 0,
-  "states_a_second": 37813
+  "states_a_second": 21336
  },
  "chain": {
   "held_to_the_evaluator": {
@@ -79,7 +79,7 @@
    "ended": 2000,
    "disagreements": 0,
    "first": [],
-   "seconds": 303.6,
+   "seconds": 376.3,
    "cores": 11,
    "test_returned": 0
   }
@@ -88,14 +88,14 @@
  "examples": [],
  "hashes": {
   "description": "452571cf08d02fa4",
-  "translator": "1c51c994e27cab95",
-  "module": "0493b5921a434731",
-  "kernel": "487238bab26ede14",
+  "translator": "e9d88c2a6d9c9687",
+  "module": "e4f9b6a809a7ab63",
+  "kernel": "fd0e1164ab3eb328",
   "bridge": "21927597ac637677",
-  "test": "d00dd42da271a1ae",
+  "test": "97ee6721d4742c58",
   "lock": "91fd9fd42c1ba92b"
  },
- "key": "9ca85cb5c22b0f18",
- "date": "2026-11-24",
- "seconds": 690.1
+ "key": "e4d33f9ac5dc7347",
+ "date": "2026-11-25",
+ "seconds": 1020.1
 }

@@ -7,7 +7,7 @@
  "invalid_left_out": 0,
  "disagreements": 0,
  "examples": [],
- "key": "82bce622cceb8d6d",
+ "key": "a8bbd69a2d6ed83d",
  "sources": [
   "rules/chess.gdl",
   "rust/engine/gdl/src/lib.rs",
@@ -16,6 +16,6 @@
   "rust/engine/game/src/certify.rs",
   "rust/engine/Cargo.lock"
  ],
- "date": "2026-11-23",
- "seconds": 17.6
+ "date": "2026-11-25",
+ "seconds": 18.1
 }
