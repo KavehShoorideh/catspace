@@ -1305,6 +1305,26 @@ narrowness of section 7. The asking belongs to layer 3 and above; layer 2 only a
 bridge to the outside library, not on the translated module, so this plan makes the translated module faster and leaves the engine's
 speed as it is until a translated module is certified fast enough to take the bridge's place (section 13).
 
+**Layer 2 as a port for games: a description, reference engines and an optional test go in; a compiled module held to the references
+comes out** (Kaveh 2026-11-25: "we'll have multiple ports where we can plug in multiple different games for layer 2 ... for each game we
+would have to input the GDL description and some reference engines, one or more ... and then some sort of a test, optional"; "find the
+lemma and then put the lemma in the language of GDL, and then have the compiler compile it back"; "sample from some starting point, and
+do like a random sequence of positions"). THE PORT. For a game, three things are given: its description in the game description
+language; one or more reference engines; optionally a test, such as the count of states to a small depth. Layer 2 compiles the
+description to Rust, plays the compiled module beside each reference and compares; a disagreement is traced and mended. The slow
+evaluator of the description is not needed by the port's check and may be skipped there; it stays the way to tell whether a disagreement
+is the description's fault or the translator's. LEMMAS, THE SECOND HALF. A lemma about the game, proved in Lean, is written back in the
+description language and compiled by the same translator, so no translator from Lean to Rust is needed; it must leave every answer
+unchanged on the compared states and make them faster. THE COMPARED STATES are segments of games: a sampled start, then a random run of
+moves, kept shallow for now, because the module answers a state after the last one faster than a state from nowhere (ix). WHAT EXISTS OF
+THIS (2026-11-25): the translator; the evaluator; the comparison along seeded games for seven games against one outside library, and
+for the first game a second library; one lemma written as a change to the description and compiled by the translator, CERTIFIED and not
+proved. WHAT DOES NOT: (1) the descriptions were written here and mended to agree with the one outside library, none was taken from a
+published source, so for six games the only outside check shares the rules' origin; (2) a second reference engine for the variants;
+(3) the optional test by counts; (4) one declared port (today the bridge to the outside library is written by hand for its family of
+games, and the steps are separate scripts); (5) a lemma proved in Lean; (6) the engine plays on the reference's bridge, not on the
+compiled module, because the module is slower (section 13).
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1743,4 +1763,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Lower layers as fast as the outside library first; the facts stay, their storage is free; the list of allowed moves made once a state | 2026-11-24 | 11 (last block) |
 | Two ways of answering in one translated module: bottom-up rows and a top-down walk; tables for walks found by the form of the rules; the way chosen by a clock | 2026-11-24 | 11 (last block, vii) |
 | Answers carried from the last state in the translated module: the change is the difference of the words, a group of rows is carried while its read set does not meet the change; the count first; the lock of the lower layers after it | 2026-11-25 | 11 (last block, ix) |
+| Layer 2 as a port: description, reference engines and an optional test in; a compiled module held to the references out; lemmas proved in Lean written back in the description language; compared on segments of games | 2026-11-25 | 11 (last block but one before 12) |
 | What was replaced | 2026-11-16 | 14 |
