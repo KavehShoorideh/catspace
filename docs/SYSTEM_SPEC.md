@@ -1295,6 +1295,15 @@ full. Programs written by hand that kept such tables are remembered to have foun
 (from memory, not checked; to be read before part B). SO THE COUNT COMES FIRST: part A counts, between a state and the state after one
 move, the share of the derived rows of each relation that are the same, and the share of the time spent in the pieces that made them;
 part B is built on that count and the note says what the count allows at most. The lock of (viii) then holds after plan 79.54 is read.
+WHAT IS DERIVED EACH PLY (Kaveh 2026-11-25: "why calculate my allowed moves after my own move"; "the only time it makes sense is
+when I am trying to calculate a pass situation"). The relations both sides share (lines, attacks) are kept for both sides every ply. The
+test that a move is allowed is made for the side to move only, and for the other side only when a layer above asks through the pass.
+After a pass nothing changes but whose turn it is, so everything that does not read the turn is carried untouched. The layers above ask
+the pass for two things: a threat (what the side that just moved would do with a free move) and zugzwang (the side to move would do
+better by passing than by every move it has); "close to zugzwang" is few moves that do as well as the pass, the far end of the
+narrowness of section 7. The asking belongs to layer 3 and above; layer 2 only answers. WHAT THIS DOES NOT DO: the engine plays on the
+bridge to the outside library, not on the translated module, so this plan makes the translated module faster and leaves the engine's
+speed as it is until a translated module is certified fast enough to take the bridge's place (section 13).
 
 ## 12. What exists
 
