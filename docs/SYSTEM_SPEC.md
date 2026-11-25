@@ -1669,6 +1669,14 @@ bit-word goal to a satisfiability solver and checks its certificate in the kerne
 Lean-auto are the first-order route (not installed here; the 79.49 run was without them). OPEN, Kaveh's: whether a lemma closed by a
 solver with a certificate the kernel checks counts as PROVED (it covers every state and is no sample, yet it is no proof by reasoning
 that a person reads, which the rule of 2026-10-27 asked for).
+DECIDED 2026-11-25 (Kaveh: "I agree with you. Use lean's BV decide and see how that goes"). For a lemma about the rules, used by layer 2
+as a shortcut, a proof that a solver finds and whose certificate Lean's kernel checks counts as PROVED: such a lemma only has to be true.
+For a lemma about play, in the layers above, where a lemma is meant to explain, a proof by reasoning that a person reads is still asked.
+The first try is plan 79.55: the lemma stated over the bits of a state and closed by `bv_decide`. WHAT SUCH A PROOF RESTS ON, to be said
+with every such standing: the statement over bits is made from the description by a program, so the program that makes it is trusted as
+the translator is, until the statement over bits is itself tied in Lean to the statement over the description's relations; and it holds
+for every state that meets the conditions written in it (such as one unit at most on a place), which are assumptions until shown to
+hold at every state the game reaches.
 
 ## 14. What was replaced, so that no earlier statement misleads
 
@@ -1782,4 +1790,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | Two ways of answering in one translated module: bottom-up rows and a top-down walk; tables for walks found by the form of the rules; the way chosen by a clock | 2026-11-24 | 11 (last block, vii) |
 | Answers carried from the last state in the translated module: the change is the difference of the words, a group of rows is carried while its read set does not meet the change; the count first; the lock of the lower layers after it | 2026-11-25 | 11 (last block, ix) |
 | Layer 2 as a port: description, reference engines and an optional test in; a compiled module held to the references out; lemmas proved in Lean written back in the description language; compared on segments of games | 2026-11-25 | 11 (last block but one before 12) |
+| A rule lemma closed by a solver with a certificate the kernel checks counts as PROVED for layer 2; a lemma about play still asks for readable reasoning | 2026-11-25 | 13 |
 | What was replaced | 2026-11-16 | 14 |
