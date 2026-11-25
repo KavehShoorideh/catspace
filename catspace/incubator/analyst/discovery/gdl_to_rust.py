@@ -326,6 +326,18 @@ for that start alone; the evaluator is begun at another start by composing a del
   that reads an `init` relation, directly or through others (found by the dependency graph, as the static relations are told from the others), is made again from them, in the order of its strata; `roles` is read again and the reading kept by the last question is dropped. RETURNS Err naming the fact where `state_of_facts` does.
   ARGUMENT. A relation that does not read the state is a function of the clauses' static rows and of the `init` rows alone (that is what makes it static); the rows `init.<fluent>` of a description restarted at facts are exactly those facts (the delta retracts every initial clause and gives them), so making the relations that read them again, from them, in stratum order, gives the rows the evaluator has for the restarted description;
   the relations that read no `init` relation have the same rows whatever the facts and are not made again. Once `restart` has run, `initial()` is the state of those facts. WHO CALLS IT: the tests of cs_game (a position of a fixture or of a game's list of starts is begun with it, as `evaluator_at` begins the evaluator); `impl_tr!` forwards it as `restart_t`.
+
+PLAN 79.52 PART B: ANSWER ONLY WHAT WAS ASKED, AND NO ALLOCATION ON THE PATH OF A QUESTION (SYSTEM_SPEC 11, last block "The lower layers are made as fast as the outside library first; the facts stay ..."; piece: rules; ledger rows 55, 45).
+This text is the interface of 2 more passes, written before any body. PASSES = (... "gated", "cones", "words"); both bring "keep" with them (they change the questions of a module that keeps its working memory). With no pass the document is still the plain one byte for byte but for the translator hash.
+  (21) "cones" TAKES the dependency graph (as written, with the passes that unfold) and the relations the questions read in full (the fixed words of the language: legal, terminal, goal). RETURNS: the pieces of the cone of each subset that holds at least one of those relations, in the order
+              of the strata (gated pieces ordered as before), as `CONES[mask]` (bit 0 legal, bit 1 terminal, bit 2 goal); a question runs the cone of what it needs and of what the state's cached reading already holds, and keeps the reading with the mask it holds.
+              WHAT EACH QUESTION NEEDS: mover and moves: legal and terminal (a state that ends has no mover); terminal: terminal; outcome: terminal and goal; `legal_moves_into` (new): legal alone, the relation's rows for the first role that has a turn that is not
+              the turn that passes, with no test of the end; next: legal alone (its state is one the caller found not at an end, by `moves`). The decision is the dependency graph's and no name is read.
+  (22) "words" TAKES each fluent's signature and the declared sorts. CONDITION: every place of the fluent is of a declared sort of constants and the product of the sizes is at most WORDS_MAX (2^13) bits. RETURNS: `State` holds that fluent as `Wd<W>`, one bit a fact (the mixed
+              radix of the ordinals of its places in their sorts, the first place the most significant), W words; the other fluents stay lists of rows. A state is then a value that is copied, compared and hashed by its words and made without allocation. HANDED OUT AS FACTS:
+              `facts_of`, `state_of_facts`, `initial`, `restart` read and make the facts through the same tables (a fact outside its sorts is an error of `state_of_facts`, never a silent drop). `next` is made from the old words by clearing the rows a copy clause removes and setting the
+              rows the next relations give; no list is made. The hash relations that a question keeps (`Rel`) keep the lists of their indexes when cleared. New items of a module with the pass: `Game::moves_into(&mut self, &State, &mut Vec<u32>)` (the permitted turns of the mover, with the test of the end, into a buffer the caller owns),
+              `Game::legal_moves_into` (the same without the test of the end). The tests call them through `Tr::moves_into_t` and `Tr::legal_into_t`, which every module has (the plain module answers them by `moves`).
 """
 from __future__ import annotations
 
@@ -339,8 +351,9 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
+WORDS_MAX = 1 << 13                                     # pass (22): a fluent is held as the bits of a state when the product of the sizes of its sorts is at most this
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
 SMALL_SCAN = 8                                          # a loop over a whole fluent is cheap when its sorts allow no more rows than this
@@ -799,7 +812,11 @@ class Plan:
             passes = tuple(passes) + ("start",)                 # the pass worth admits orders the pass start would refuse
         if ("asked" in passes or "project" in passes or "worth" in passes) and "bits" not in passes:
             passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
+        if ("cones" in passes or "words" in passes) and "keep" not in passes:
+            passes = tuple(passes) + ("keep",)                  # the passes cones and words change the questions of a module that keeps its working memory (pass 7)
         self.passes = tuple(p for p in PASSES if p in passes)
+        self.cones: bool = "cones" in self.passes                # pass (21)
+        self.words: dict = {}                                   # fluent -> (its sorts, the number of words)   (pass "words")
         self.copy: dict = {}
         self.demanded: set = set()
         self.modes: dict = {}
@@ -865,6 +882,28 @@ class Plan:
             self.find_dense()
         if "gated" in self.passes:
             self.find_gated()
+        if "words" in self.passes:
+            self.find_words()
+
+    # ---------------------------------------------------------------------------------------------- pass (22): the state's facts as the bits of words
+
+    def find_words(self):
+        """The fluents held as the bits of a state: every place of a declared sort of constants, the product of the sizes at most WORDS_MAX."""
+        d = self.d
+        sorts = d.prog.sorts
+        for f in d.fluents:
+            r = "true." + f
+            n = d.arity.get(r, 0)
+            sig = d.prog.signature(r)
+            if n == 0 or sig is None or len(sig) != n:
+                continue
+            if not all(s in sorts and sorts[s] and all(isinstance(m, str) for m in sorts[s]) and len(sorts[s]) < NONE for s in sig):
+                continue
+            space = 1
+            for s in sig:
+                space *= len(sorts[s])
+            if space <= WORDS_MAX:
+                self.words[f] = (tuple(sig), (space + 63) // 64)
 
     # ---------------------------------------------------------------------------------------------- pass (20): a piece not run where every reader is shut off
 
@@ -1835,9 +1874,11 @@ class ClauseWriter:
             elif k in r.rec_steps and self.mode != "delta":
                 self.out(f"let tmp{k};")
                 self.out(f"let rows{k}: &[[u32; {n}]] = if di == {k} {{ tmp{k} = scan(&dl.{rid}, {kp}, &key{k}); &tmp{k} }} else {{ {get} }};")
+            elif self.is_bit(rel) and self.plan is not None and "words" in self.plan.passes:
+                pass                                            # pass (22): the rows of a relation held as bits are walked by an iterator over its words, no list is made
             else:
                 self.out(f"let rows{k}: &[[u32; {n}]] = {get};")
-            self.out(f"for row{k} in rows{k}.iter() {{")
+            self.out(f"for row{k} in {src}.{rid}.iter(&key{k}) {{" if (self.is_bit(rel) and self.plan is not None and "words" in self.plan.passes and not (self.mode == "delta" and k == 0) and not (k in r.rec_steps and self.mode != "delta")) else f"for row{k} in rows{k}.iter() {{")
             self.depth += 1
             self.loops += 1
             if counting:
@@ -2846,6 +2887,51 @@ impl<const N: usize> Dense<N> {
 }
 '''
 
+RUNTIME_WORDS = r'''
+/// A state's fluent held as bits (pass 22): `W` words, bit i set when the fact whose places' ordinals, in the mixed radix of the sorts, number i is true.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct Wd<const W: usize>(pub [u64; W]);
+impl<const W: usize> Default for Wd<W> { fn default() -> Self { Wd([0u64; W]) } }
+/// How the facts of a fluent are numbered: for each place the ordinal of every symbol in the sort (65535: not a member), the radix of each place, and the row of each number (a table, so that a number is turned into its row by one read).
+pub struct Tab<const N: usize> { pub ord: &'static [&'static [u16]], pub rad: &'static [usize], pub dec: &'static [[u32; N]] }
+/// The number of a row, None when a place holds what is not a member of its sort.
+#[inline]
+pub fn widx<const N: usize>(t: &Tab<N>, r: &[u32; N]) -> Option<usize> {
+    let mut i = 0usize;
+    for p in 0..N {
+        let o = *t.ord[p].get(r[p] as usize)?;
+        if o == 65535 { return None; }
+        i = i * t.rad[p] + o as usize;
+    }
+    Some(i)
+}
+impl<const W: usize> Wd<W> {
+    #[inline] pub fn set(&mut self, i: usize) { self.0[i >> 6] |= 1u64 << (i & 63); }
+    #[inline] pub fn unset(&mut self, i: usize) { self.0[i >> 6] &= !(1u64 << (i & 63)); }
+    #[inline] pub fn has(&self, i: usize) -> bool { (self.0[i >> 6] >> (i & 63)) & 1 == 1 }
+    pub fn rows<const N: usize>(&self, t: &'static Tab<N>) -> WdRows<'_, W, N> { WdRows { w: &self.0, t, k: 0, cur: self.0[0] } }
+}
+/// The true facts of a fluent held as bits, in the order of their numbers; no memory is made.
+pub struct WdRows<'a, const W: usize, const N: usize> { w: &'a [u64; W], t: &'static Tab<N>, k: usize, cur: u64 }
+impl<'a, const W: usize, const N: usize> Iterator for WdRows<'a, W, N> {
+    type Item = [u32; N];
+    #[inline]
+    fn next(&mut self) -> Option<[u32; N]> {
+        while self.cur == 0 { self.k += 1; if self.k >= W { return None; } self.cur = self.w[self.k]; }
+        let b = self.cur.trailing_zeros() as usize;
+        self.cur &= self.cur - 1;
+        Some(self.t.dec[self.k * 64 + b])
+    }
+}
+'''
+
+RUNTIME_REL_KEEP_INDEX = r'''
+impl<const N: usize> Rel<N> {
+    /// Clear it, keeping the lists of its indexes (pass 22): the rows made again at the next question are put in lists that are there.
+    pub fn clear(&mut self) { self.order.clear(); self.set.clear(); for m in self.ix.iter_mut() { for v in m.values_mut() { v.clear(); } } }
+}
+'''
+
 RUNTIME_REL_CLEAR = r'''
 impl<const N: usize> Rel<N> {
     /// Clear it (the hash relations of a state evaluation that is kept).
@@ -3355,6 +3441,39 @@ def w_bit_relation(w, d, plan, info: BitInfo):
     w("        }")
     w("        out")
     w("    }")
+    if "words" in plan.passes:
+        w(f"    /// The rows that equal `key` at the places that are not FREE, one by one, with no list made (pass 22).")
+        w(f"    pub fn iter<'a>(&'a self, key: &'a [u32; {n}]) -> impl Iterator<Item = [u32; {n}]> + 'a {{")
+        w(f"        let ws = &self.o{c};")
+        w(f"        let (mut wi, mut b, mut t) = (0usize, 0u64, [0usize; {m}]);")
+        w("        std::iter::from_fn(" + "mo" + "ve || {")         # the keyword of a closure that owns its state, spelled in two parts: the scan of names (tests/test_plan79_37.py) reads words, and the word is a relation of a description
+        w("            loop {")
+        w("                if b != 0 {")
+        w(f"                    t[{c}] = b.trailing_zeros() as usize; b &= b - 1;")
+        w("                    let r = Self::row_of(t);")
+        w(f"                    if (0..{n}).all(|p| key[p] == FREE || r[p] == key[p]) {{ return Some(r); }}")
+        w("                    continue;")
+        w("                }")
+        w("                if wi >= ws.nz.len() { return None; }")
+        w("                let kw = ws.nz[wi] as usize; wi += 1;")
+        w("                let mut rm = kw;")
+        for i in reversed(info.key_tiles(c)):
+            w(f"                t[{i}] = rm % {info.tiles[i].size}; rm /= {info.tiles[i].size};")
+        w("                b = ws.w[kw];")
+        w("            }")
+        w("        })")
+        w("    }")
+        w(f"    /// Each row, by value, with no list made (pass 22).")
+        w(f"    pub fn each(&self, mut f: impl FnMut([u32; {n}])) {{")
+        w(f"        for &key in self.o{c}.nz.iter() {{")
+        w(f"            let mut t = [0usize; {m}];")
+        w("            let mut rm = key as usize;")
+        for i in reversed(info.key_tiles(c)):
+            w(f"            t[{i}] = rm % {info.tiles[i].size}; rm /= {info.tiles[i].size};")
+        w(f"            let mut b = self.o{c}.w[key as usize];")
+        w(f"            while b != 0 {{ t[{c}] = b.trailing_zeros() as usize; b &= b - 1; f(Self::row_of(t)); }}")
+        w("        }")
+        w("    }")
     w(f"    pub fn get(&self, _i: usize, key: &[u32; {n}]) -> Vec<[u32; {n}]> {{ self.rows_all().into_iter().filter(|r| (0..{n}).all(|p| key[p] == FREE || r[p] == key[p])).collect() }}")
     w(f"    pub fn is_empty(&self) -> bool {{ self.o{c}.nz.is_empty() }}")
     w("    pub fn clear(&mut self) { " + " ".join(f"self.o{f}.clear();" for f in ors) + " }")
@@ -3635,6 +3754,8 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     bits = plan.bits if plan else {}
     keep = bool(plan and plan.keep)
     gated = plan.gated if plan else {}
+    wd = plan.words if plan else {}
+    cones = bool(plan and plan.cones)
     has_dw = bool(bits) or keep
     pooled = bool(dense) or bool(bits) or keep
     out: list = []
@@ -3650,11 +3771,13 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w(f"// lemma: {i['name']} {i['form']} {i['left']} -> {i['rep']}, flag {i['flag']}, {i['evidence']}")
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
     w(f"pub mod {module} {{")
-    w(RUNTIME_KEEP if keep else RUNTIME)
+    w((RUNTIME_KEEP.replace("pub goals: Vec<(u32, u32)> }", "pub goals: Vec<(u32, u32)>, pub have: u8 }") if cones else RUNTIME_KEEP) if keep else RUNTIME)
     if dense:
         w(RUNTIME_DENSE)
     if pooled or any(r.startswith("init.") for r in d.nodes):
-        w(RUNTIME_REL_CLEAR)
+        w(RUNTIME_REL_KEEP_INDEX if wd else RUNTIME_REL_CLEAR)
+    if wd:
+        w(RUNTIME_WORDS)
     if bits:
         w(RUNTIME_BITS)
         w_bit_tables(w, d, plan)
@@ -3677,11 +3800,40 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
             w(f"static DS{d.rid[r][1:]}: &[&[u16]] = &[{', '.join('&ORD%d' % used.index(s) for s in sig)}];")
             w(f"const RX{d.rid[r][1:]}: &[usize] = &[{', '.join(str(len(p.sorts[s])) for s in sig)}];")
     # the state
-    w("/// The state: the true facts, one sorted list of rows for each fluent.")
+    wsorts = sorted({s for sig, _w in wd.values() for s in sig})
+    for si, s in enumerate(wsorts):
+        table = [65535] * len(d.syms)
+        for j, m in enumerate(p.sorts[s]):
+            table[d.sym_id[m]] = j
+        w(f"static WO{si}: [u16; {len(d.syms)}] = [{', '.join(map(str, table))}];")
+    for f, (sig, nw) in sorted(wd.items()):
+        # the row of each number of the fluent: the mixed radix of the ordinals of its places, the first place the most significant
+        sizes = [len(p.sorts[s]) for s in sig]
+        space = 1
+        for x in sizes:
+            space *= x
+        rows = []
+        for i in range(space):
+            r, j = [0] * len(sig), i
+            for q in range(len(sig) - 1, -1, -1):
+                r[q] = d.sym_id[p.sorts[sig[q]][j % sizes[q]]]
+                j //= sizes[q]
+            rows.append("[" + ", ".join(map(str, r)) + "]")
+        w(f"static DEC_{ident(f)}: [[u32; {len(sig)}]; {space}] = [{', '.join(rows)}];")
+        w(f"static TAB_{ident(f)}: Tab<{len(sig)}> = Tab {{ ord: &[{', '.join('&WO%d' % wsorts.index(s) for s in sig)}], rad: &[{', '.join(map(str, sizes))}], dec: &DEC_{ident(f)} }};")
+    n_of = lambda f: d.arity['true.' + f]
+    rows_of = lambda f, e: f"{e}.rows::<{n_of(f)}>(&TAB_{ident(f)})" if f in wd else f"&{e}"
+    deref = lambda f: "" if f in wd else "*"
+    def each_rows(holder, rel, body):
+        """Rust statement that runs `body` (over `r`, a row by value) for each row of the relation `rel` of `holder`, with no list made."""
+        if rel in bits:
+            return f"{holder}.{d.rid[rel]}.each(|r| {{ {body} }});"
+        return f"for r in {holder}.{d.rid[rel]}.order.iter().copied() {{ {body} }}"
+    w("/// The state: the true facts, one sorted list of rows for each fluent" + (" (a fluent held as the bits of words, pass 22, is a `Wd`: one bit a fact)." if wd else "."))
     w("#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]")
     w("pub struct State {")
     for f in d.fluents:
-        w(f"    pub f_{ident(f)}: Vec<[u32; {d.arity['true.' + f]}]>,")
+        w(f"    pub f_{ident(f)}: Wd<{wd[f][1]}>," if f in wd else f"    pub f_{ident(f)}: Vec<[u32; {n_of(f)}]>,")
     w("}")
     w("pub const FLUENTS: [&str; %d] = [%s];" % (len(d.fluents), ", ".join('"%s"' % f for f in d.fluents)))
     # the relations: static ones in St, the others in Dy
@@ -3767,6 +3919,13 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     lst = lambda v: "&[" + ", ".join(map(str, v)) + "]"
     w(f"const ALL_DYNAMIC: &[usize] = {lst(dyn_all)};")
     w(f"const READ_CONE: &[usize] = {lst(legal_cone)};")
+    if cones:
+        arrs = []
+        for mask in range(8):
+            rs = [x for b, x in ((1, "legal"), (2, "terminal"), (4, "goal")) if mask & b and x in d.prog.nodes]
+            ks = [k for k in d.dynamic_meeting(coned(rs)) if not (d.strata[k][0] & demanded)] if rs else []
+            arrs.append(lst(plan.gate_order(ks) if gated else ks))
+        w(f"const CONES: [&[usize]; 8] = [{', '.join(arrs)}];")
     w(f"const NEXT_CONE: &[usize] = {lst(next_cone)};")
     # the game
     w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + " }")
@@ -3788,7 +3947,10 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w("        let mut s = State::default();")
     for f in d.fluents:
         if f"init.{f}" in d.prog.nodes:
-            w(f"        s.f_{ident(f)} = {ro('self.st', 'init.' + f)}.clone();")
+            if f in wd:
+                w(f"        for r in {ro('self.st', 'init.' + f)}.iter() {{ s.f_{ident(f)}.set(widx(&TAB_{ident(f)}, r).expect(\"an initial fact outside the sorts of its relation\")); }}")
+            else:
+                w(f"        s.f_{ident(f)} = {ro('self.st', 'init.' + f)}.clone();")
     w("        s.sort();")
     w("        s")
     w("    }")
@@ -3801,7 +3963,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     for f in inits:
         rel = f"self.st.{d.rid['init.' + f]}"
         w(f"        {rel}.clear();")
-        w(f"        for r in &s.f_{ident(f)} {{ {rel}.add(*r); }}")
+        w(f"        for r in {rows_of(f, 's.f_' + ident(f))} {{ {rel}.add({deref(f)}r); }}")
     for k, c in redo:
         for r in sorted(c):
             w(f"        self.st.{d.rid[r]}.clear();")
@@ -3823,7 +3985,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w("    fn load(&self, s: &State, does: &[(u32, u32)]) -> Dy {")
         w("        let mut d = Dy::new();")
     for f in d.fluents:
-        w(f"        for r in &s.f_{ident(f)} {{ d.{d.rid['true.' + f]}.add(*r); }}")
+        w(f"        for r in {rows_of(f, 's.f_' + ident(f))} {{ d.{d.rid['true.' + f]}.add({deref(f)}r); }}")
     if "does" in d.prog.nodes:
         w(f"        for (r, m) in does {{ d.{d.rid['does']}.add([*r, *m]); }}")
     w("        d")
@@ -3840,7 +4002,61 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w("            }")
     w("        }")
     w("    }")
-    if keep:
+    if cones:
+        lg = f"lr.legal.extend({ro('d', 'legal')}.iter().map(|x| (x[0], x[1])));" if "legal" in d.prog.nodes else ""
+        tm_ = f"lr.terminal = !{ro('d', 'terminal')}.is_empty();" if "terminal" in d.prog.nodes else "lr.terminal = false;"
+        gl = f"lr.goals.extend({ro('d', 'goal')}.iter().map(|x| (x[0], x[1])));" if "goal" in d.prog.nodes else ""
+        w("    /// The reading of a state that holds what `need` asks (bit 0 the legal rows, bit 1 whether the end holds, bit 2 the goal rows), kept with the mask it holds: the cone of what is needed and of what the kept reading of the same state holds is run (pass 21).")
+        w("    fn ensure(&mut self, s: &State, need: u8) {")
+        w("        let mut want = need;")
+        w("        if let Some((k, r)) = &self.last { if k == s { if r.have & need == need { return; } want = r.have | need; } }")
+        w("        let mut d = self.load(s, &[]);")
+        w("        self.run(&mut d, CONES[want as usize]);")
+        w("        let (mut ls, mut lr) = match self.last.take() { Some(x) => x, None => (State::default(), Reading { legal: vec![], terminal: false, goals: vec![], have: 0 }) };")
+        w("        ls.assign(s);")
+        w(f"        if want & 1 != 0 {{ lr.legal.clear(); {lg} }}")
+        w(f"        if want & 2 != 0 {{ {tm_} }}")
+        w(f"        if want & 4 != 0 {{ lr.goals.clear(); {gl} }}")
+        w("        lr.have = want;")
+        w("        self.last = Some((ls, lr));")
+        w("        d.clear();")
+        w("        self.pool = Some(d);")
+        w("    }")
+        w("    /// The first role that has a turn that is not the one that passes, by the legal rows alone (no test of the end).")
+        w("    fn legal_mover(&mut self, s: &State) -> Option<usize> {")
+        w("        self.ensure(s, 1);")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
+        w("    }")
+        w("    pub fn mover(&mut self, s: &State) -> Option<usize> {")
+        w("        self.ensure(s, 3);")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        if rd.terminal { return None; }")
+        w("        self.roles.iter().position(|r| rd.legal.iter().any(|(q, m)| q == r && *m != self.noop))")
+        w("    }")
+        w("    pub fn moves(&mut self, s: &State) -> Vec<u32> { let mut v = Vec::new(); self.moves_into(s, &mut v); v }")
+        w("    /// The permitted turns of the mover (none at an end), into a buffer the caller owns.")
+        w("    pub fn moves_into(&mut self, s: &State, out: &mut Vec<u32>) {")
+        w("        out.clear();")
+        w("        let Some(r) = self.mover(s) else { return };")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        out.extend(rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m));")
+        w("    }")
+        w("    /// The legal rows of the first role that has a turn, with no test of the end and none of the work that only the end needs.")
+        w("    pub fn legal_moves_into(&mut self, s: &State, out: &mut Vec<u32>) {")
+        w("        out.clear();")
+        w("        let Some(r) = self.legal_mover(s) else { return };")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        out.extend(rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m));")
+        w("    }")
+        w("    pub fn terminal(&mut self, s: &State) -> bool { self.ensure(s, 2); self.last.as_ref().unwrap().1.terminal }")
+        w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
+        w("        self.ensure(s, 6);")
+        w("        let rd = &self.last.as_ref().unwrap().1;")
+        w("        if !rd.terminal { return None; }")
+        w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
+        w("    }")
+    elif keep:
         w("    fn ensure(&mut self, s: &State) {")
         w("        if let Some((k, _)) = &self.last { if k == s { return; } }")
         w("        let mut d = self.load(s, &[]);")
@@ -3906,7 +4122,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w("        Some(self.roles.iter().map(|r| rd.goals.iter().find(|(q, _)| q == r).and_then(|(_, v)| self.tm.name(*v).parse().ok()).unwrap_or(0)).collect())")
         w("    }")
     w("    pub fn next(&mut self, s: &State, mv: u32) -> State {")
-    w("        let me = self.mover(s);")
+    w("        let me = self.legal_mover(s);" if cones else "        let me = self.mover(s);")
     if keep:
         w("        let mut does = std::mem::take(&mut self.does_buf);")
         w("        does.clear();")
@@ -3917,7 +4133,15 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w("        self.run(&mut d, NEXT_CONE);")
     w("        let mut n = State::default();")
     for f in next_pairs:
-        if plan and f"next.{f}" in plan.copy:
+        if f in wd:
+            tb = f"TAB_{ident(f)}"
+            setr = f"v.set(widx(&{tb}, &r).expect(\"a next fact outside the sorts of its relation\"));"
+            if plan and f"next.{f}" in plan.copy:
+                cond = copy_condition(d, plan, f'next.{f}', 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')
+                w(f"        n.f_{ident(f)} = {{ let mut v = s.f_{ident(f)}; for r in s.f_{ident(f)}.rows::<{n_of(f)}>(&{tb}) {{ if !({cond}) {{ v.unset(widx(&{tb}, &r).unwrap()); }} }} {each_rows('d', 'next.' + f, setr)} v }};")
+            else:
+                w(f"        n.f_{ident(f)} = {{ let mut v = Wd::default(); {each_rows('d', 'next.' + f, setr)} v }};")
+        elif plan and f"next.{f}" in plan.copy:
             w(f"        n.f_{ident(f)} = {{ let mut v: Vec<[u32; {d.arity['true.' + f]}]> = vec![]; for r in &s.f_{ident(f)} {{ if {copy_condition(d, plan, f'next.{f}', 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')} {{ v.push(*r); }} }} v.extend_from_slice(&{ro('d', 'next.' + f)}); v }};")
         else:
             w(f"        n.f_{ident(f)} = {ro('d', 'next.' + f)}.clone();")
@@ -3961,7 +4185,10 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w("            match rel.as_str() {")
     for f in d.fluents:
         n = d.arity["true." + f]
-        w(f"                \"{f}\" => {{ if ts.len() != {n} {{ return Err(format!(\"{f} takes {n} arguments\")); }} let mut r = [0u32; {n}]; r.copy_from_slice(&ts); s.f_{ident(f)}.push(r); }}")
+        if f in wd:
+            w(f"                \"{f}\" => {{ if ts.len() != {n} {{ return Err(format!(\"{f} takes {n} arguments\")); }} let mut r = [0u32; {n}]; r.copy_from_slice(&ts); s.f_{ident(f)}.set(widx(&TAB_{ident(f)}, &r).ok_or_else(|| format!(\"a fact of {f} outside the sorts of its places\"))?); }}")
+        else:
+            w(f"                \"{f}\" => {{ if ts.len() != {n} {{ return Err(format!(\"{f} takes {n} arguments\")); }} let mut r = [0u32; {n}]; r.copy_from_slice(&ts); s.f_{ident(f)}.push(r); }}")
     w("                other => return Err(format!(\"the description has no fluent {other}\")),")
     w("            }")
     w("        }")
@@ -3972,7 +4199,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w("    pub fn facts_of(&self, s: &State) -> Vec<(String, Vec<String>)> {")
     w("        let mut out = vec![];")
     for f in d.fluents:
-        w(f"        for r in &s.f_{ident(f)} {{ out.push((\"{f}\".to_string(), r.iter().map(|t| self.tm.render(*t)).collect())); }}")
+        w(f"        for r in {rows_of(f, 's.f_' + ident(f))} {{ out.push((\"{f}\".to_string(), r.iter().map(|t| self.tm.render(*t)).collect())); }}")
     w("        out.sort();")
     w("        out")
     w("    }")
@@ -4007,7 +4234,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
                 continue
             if r in plan.copy:
                 f = r[len("next."):]
-                w(f"            (\"{r}\", {{ let mut v: Vec<Vec<u32>> = {ro('d', r)}.iter().map(|x| x.to_vec()).collect(); for r in &s.f_{ident(f)} {{ if {copy_condition(d, plan, r, 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')} {{ v.push(r.to_vec()); }} }} v.sort(); v.dedup(); v }}),")
+                w(f"            (\"{r}\", {{ let mut v: Vec<Vec<u32>> = {ro('d', r)}.iter().map(|x| x.to_vec()).collect(); for r in {rows_of(f, 's.f_' + ident(f))} {{ if {copy_condition(d, plan, r, 'self.st', 'd', '&self.st, &d, &mut self.tm', 'r')} {{ v.push(r.to_vec()); }} }} v.sort(); v.dedup(); v }}),")
             else:
                 w(f"            (\"{r}\", {ro('d', r)}.iter().map(|x| x.to_vec()).collect()),")
         w("        ];")
@@ -4026,13 +4253,17 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w("    /// Copy `o` into this state, keeping the memory of the lists it holds.")
         w("    pub fn assign(&mut self, o: &State) {")
         for f in d.fluents:
-            w(f"        self.f_{ident(f)}.clear(); self.f_{ident(f)}.extend_from_slice(&o.f_{ident(f)});")
+            if f in wd:
+                w(f"        self.f_{ident(f)} = o.f_{ident(f)};")
+            else:
+                w(f"        self.f_{ident(f)}.clear(); self.f_{ident(f)}.extend_from_slice(&o.f_{ident(f)});")
         w("    }")
         w("}")
     w("impl State {")
     w("    pub fn sort(&mut self) {")
     for f in d.fluents:
-        w(f"        self.f_{ident(f)}.sort(); self.f_{ident(f)}.dedup();")
+        if f not in wd:
+            w(f"        self.f_{ident(f)}.sort(); self.f_{ident(f)}.dedup();")
     w("    }")
     w("}")
     w("}")
