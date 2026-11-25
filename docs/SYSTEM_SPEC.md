@@ -1677,6 +1677,19 @@ with every such standing: the statement over bits is made from the description b
 the translator is, until the statement over bits is itself tied in Lean to the statement over the description's relations; and it holds
 for every state that meets the conditions written in it (such as one unit at most on a place), which are assumptions until shown to
 hold at every state the game reaches.
+PROPOSED 2026-11-25 (Kaveh; asked as "is this loop feasible", NOT yet decided; the lower layers stay locked until he says). (a) The
+input of layer 2 is a SEGMENT: a start and a run of moves (a segment may be one state long); layer 2 keeps the facts it knows of every
+state of the segment, from the first on. (b) A LOOP THAT MAKES LAYER 2 FASTER BY LEMMAS: candidates come in, each is tried on segments
+against the module without it (the same answers, less time on average), a candidate that does not pay is rejected, one that pays is
+then proved in Lean (the `bv_decide` route of plan 79.55) and only then counts. His aim in his words: "a faster but absolutely
+provably, verifiably correct layer 2". THE MAIN AGENT'S READING, given the same day: the test, the rejection and the compiling of a
+lemma exist (the lemma machinery of this section; the clocks); the keeping of a segment is cheap. NOT there: (1) a proposer; no tool
+found invents such lemmas, the one in use was written by hand; candidates are a miner over the segments (conditions under which a dear
+relation is empty or equals a cheap one) or a learner of logic programs (Popper), both untried; (2) the size of the prize: the measures
+of 79.52 to 79.54 and of the time by ply say the gap to the outside library is mostly a cost a row and a fixed cost a state, which a
+lemma does not remove; (3) "provably correct" needs more than proved lemmas: the translator and its passes are a program held by
+sampled co-play, so the claim needs each made module shown equal to the description (a check of the module's answer as a Boolean
+circuit against the description's, by the same solver) and the conditions on a state shown to hold at every reached state.
 
 ## 14. What was replaced, so that no earlier statement misleads
 
