@@ -71,7 +71,7 @@ PLANTED = sibling("test_plan79_41").WALK + """
 
 def test_the_two_passes_end_the_list_and_bring_the_pass_keep():
     T = translator()
-    assert T.PASSES[-2:] == ("cones", "words")
+    assert T.PASSES[-4:-2] == ("cones", "words")                 # plan 79.53 added two passes after them
     assert T.PASSES.index("gated") < T.PASSES.index("cones")
     d = T.Description(PLANTED)
     for p in ("cones", "words"):
@@ -145,7 +145,7 @@ def test_kept_modules_with_passes_hold_the_state_as_words_and_the_plain_ones_do_
     make = sibling("test_plan79_38")
     d = T.Description(make.description_of(game))
     fast, plain = kept(game), kept(game, "")
-    assert re.search(r"^// passes: .*cones,words$", fast, re.M)
+    assert re.search(r"^// passes: .*cones,words,tables,topdown$", fast, re.M)
     want = T.Plan(d, list(T.PASSES)).words
     assert want and len(want) >= 4, want
     for f, (sig, w) in want.items():

@@ -338,6 +338,28 @@ This text is the interface of 2 more passes, written before any body. PASSES = (
               `facts_of`, `state_of_facts`, `initial`, `restart` read and make the facts through the same tables (a fact outside its sorts is an error of `state_of_facts`, never a silent drop). `next` is made from the old words by clearing the rows a copy clause removes and setting the
               rows the next relations give; no list is made. The hash relations that a question keeps (`Rel`) keep the lists of their indexes when cleared. New items of a module with the pass: `Game::moves_into(&mut self, &State, &mut Vec<u32>)` (the permitted turns of the mover, with the test of the end, into a buffer the caller owns),
               `Game::legal_moves_into` (the same without the test of the end). The tests call them through `Tr::moves_into_t` and `Tr::legal_into_t`, which every module has (the plain module answers them by `moves`).
+
+PLAN 79.53 PART A: TABLES FOR WALKS (SYSTEM_SPEC 11, last block, (vi) and (vii); piece: rules; ledger rows 55, 45). Interface written before the body. PASSES = (... "cones", "words", "tables"); it brings "bits" and "shift" (it is a form of a walk made by the pass shift).
+  (23) "tables" TAKES a recursive set made by the pass shift (one relation W held as bits, one recursive clause of the form of the pass shift: a literal of W, literals that stop the walk and test the member the walk stands on, and one literal of a relation that does not read the state that takes a member to the next ones), its onward relation read at translation.
+              THE FORM IT FINDS, by the clauses and the rows of the onward relation alone: for each combination of the onward relation's other places (a line), the onward link is ONE displacement of the member's number with a mask of the members that have a next one (no branching), and following it from any member ends (no cycle), inside the free tile, and the chains
+              fit at most TABLE_WORDS words. RETURNS: a table CH[line][member] of the members reached from a member by following the link again and again, the member included, as a word (the table is read from the rows of the onward relation, which the pass shift has tested against every row; it is no lemma and has no standing of its own);
+              the closure of a walk then is, for each member the base clauses made: the chain word, and of it the members up to and including the first member that the stop literals shut (the lowest bit of the shut members on the chain when the link raises the number, the highest when it lowers it), taken by one count of trailing or leading zeros; the readers of the walk read the same words as before.
+              WHAT IT REFUSES, naming why (`Plan.tables_refused`): a line with two displacements, a chain that returns to a member, a chain that leaves the tile, a tile of more than a word, a table of more than TABLE_WORDS words; a walk so refused keeps the shifts of the pass shift.
+  HELD TO THE PLAIN MODULE: by the harness of 79.38 on every relation at every state (the walk's relation is compared as text), and by tests/test_plan79_53.py on planted cases.
+PLAN 79.53 PART B: THE TOP-DOWN WAY BESIDE THE BOTTOM-UP ONE (SYSTEM_SPEC 11, last block, (vii)). PASSES = (... "tables", "topdown"); "topdown" brings "words" and "cones". Interface written before the body.
+  (24) "topdown" TAKES the clauses of the description as written, the relations of the cone of the end (terminal) and of the legal rows (legal), the state as the words of pass (22), and the rows of the relations that do not read the state. RETURNS, in the same module and over the same State,
+              Game::terminal_td(&State) -> bool           whether the end holds: a depth-first walk of the clauses of the end that stops at the first rule that holds
+              Game::has_turn_td(&State) -> bool           whether a turn that is not the turn that passes is legal (the mover exists; the end is not asked): the walk stops at the first legal row
+              Game::ask_td(&State, relation) -> Option<Vec<Vec<u32>>>   the rows of a relation of the cone with no place bound, by the same walk (for the tests that hold each relation to the bottom-up rows); a place where a clause gives a compound term holds FREE - 1
+              Game::terminal_bu, Game::has_turn, Game::terminal  the bottom-up end, the entry for the question, and the end by the way recorded for it; `WAYS: &[(&str, &str)]` records for each question ("end", "legal-turn") the way that answers it, "bottom-up" or "top-down", given to `translate(..., ways=)`
+              by the script that makes the files from the clocks of plan 79.53 (the translator chooses nothing); the default is bottom-up.
+              HOW A WALK RUNS. A literal of a relation that does not read the state or of a fact of the state is a loop over the rows of a table read by the places already bound (the tables are Dense relations made at `Game::new` and from the state at each question); a literal of a derived relation is a CALL with the places bound and the rest of the clause as the
+              continuation: a closure that is given each row and says whether to stop; a negated literal or a literal read only for existence is a call whose closure stops at the first row. Clauses are joined in the reader's order with the places the caller binds taken as bound (`JoinRule`), a relation of a walk taken once the places it keeps are bound.
+              HOW IT TERMINATES. A relation not in a recursive set calls only relations below it. A relation of ONE linear recursive clause (one literal of its own relation) is answered for one call as a WORKLIST: the rows of the clauses without the literal (the seeds, made for the places the walk keeps), then each row found once (a row already found is not made again, so a cycle of the link relation ends) is joined with the recursive clause; the rows found are
+              at most TD_CAP: when more are found the question is given to the bottom-up way and the module counts it (`td_over`). A relation in a recursive set of more than one relation, a clause that reads its own relation twice, and a literal with a compound term in the cone are REFUSED (`Plan.td_refused`, naming the relation or the clause) and the module has no top-down way.
+              HOW A NEGATED CONDITION IS ANSWERED. By the call that asks whether a row exists with every place bound (the reader's order takes a negation only when its variables are bound, as the evaluator does); the negation of a relation of the cone is the failure of that walk, which has finished (the relation is below the clause in the strata).
+              A place that a clause gives as a compound term is not computed: it holds FREE - 1, permitted where the caller's variable is used nowhere else (else refused). The facts, the rows and the questions of the bottom-up way are unchanged; every old entry point keeps working.
+  HELD TO THE BOTTOM-UP WAY: rust/engine/game/tests/translated_topdown.rs (the end and the legal turn at every position of the fixture of each of the seven games and at every state of seeded random games; each relation of the cone asked with no place bound) and tests/test_plan79_53.py (planted cases).
 """
 from __future__ import annotations
 
@@ -351,8 +373,9 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
-PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words")
+PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words", "tables", "topdown")
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
+TABLE_WORDS = 1 << 13                                   # pass (23): a walk gets a table when its chains are at most this many words
 WORDS_MAX = 1 << 13                                     # pass (22): a fluent is held as the bits of a state when the product of the sizes of its sorts is at most this
 DENSE_SPACE = 1 << 22                                   # a dense relation: at most this many tuples of its sorts ...
 DENSE_KEYS = 1 << 16                                    # ... and at most this many keys for any index the joins ask by
@@ -682,7 +705,7 @@ class JoinRule:
     relation in `avoid` that no variable already bound reaches (constants do not count) is taken last (pass 2: a demanded relation is joined from a key, never read whole), and the literal `first` (an element of the clause's body) is taken before every other (pass 4). With `avoid` vacant the steps are the reader's, to the tuple (tests/test_plan79_38.py pins this on every clause
     of every description). The fields are the reader's `_Rule`: clause, nvars, head_rel, head, steps, rec_steps."""
 
-    def __init__(self, clause, scc: set, avoid=(), first=None, est=None):
+    def __init__(self, clause, scc: set, avoid=(), first=None, est=None, need=None):
         self.clause = clause
         names: dict = {}
 
@@ -723,7 +746,8 @@ class JoinRule:
                     return (2,)
                 nb = sum(1 for a in x[2] if GDL.term_vars(a, set()) <= bound)
                 keyed = sum(1 for a in x[2] if GDL.term_vars(a, set()) and GDL.term_vars(a, set()) <= bound)
-                return (not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -est(x, bound, scc) if est else 0, -len(x[2]))
+                waits = bool(need) and x[1] in need and not all(GDL.term_vars(x[2][p], set()) <= bound for p in need[x[1]])        # pass (24): a relation asked for the places it keeps (a walk) is taken when they are bound
+                return (not waits, not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -est(x, bound, scc) if est else 0, -len(x[2]))
             best = max(pending, key=ranking)
             pending.remove(best)
             order.append(best)
@@ -806,16 +830,24 @@ class Plan:
         self.d = d
         if "base" in passes and "scan" not in passes:
             passes = tuple(passes) + ("scan",)                 # the clauses pass (8) makes ask words with their key tiles unbound, which only pass (10) answers by the words held (on top of bits alone it made the module half as fast: diagnosed, 79.41 part A)
-        if "ends" in passes:
+        if "ends" in passes or "tables" in passes:
             passes = tuple(passes) + tuple(p for p in ("bits", "shift") if p not in passes)     # the pass ends is a form of a walk made by the pass shift, over relations held as bits
         if "worth" in passes and "start" not in passes:
             passes = tuple(passes) + ("start",)                 # the pass worth admits orders the pass start would refuse
         if ("asked" in passes or "project" in passes or "worth" in passes) and "bits" not in passes:
             passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
+        if "topdown" in passes:
+            passes = tuple(passes) + tuple(p for p in ("words", "cones") if p not in passes)         # the top-down way reads the facts of a state as the bits of words (pass 22) and falls back on the legal rows alone (pass 21)
         if ("cones" in passes or "words" in passes) and "keep" not in passes:
             passes = tuple(passes) + ("keep",)                  # the passes cones and words change the questions of a module that keeps its working memory (pass 7)
         self.passes = tuple(p for p in PASSES if p in passes)
         self.cones: bool = "cones" in self.passes                # pass (21)
+        self.topdown: bool = "topdown" in self.passes            # pass (24)
+        self.td_refused: str = ""                               # why pass (24) made no top-down way (blank: it was made)
+        self.tables: bool = "tables" in self.passes              # pass (23)
+        self.tables_found: dict = {}                            # relation of a walk -> (the chains of its table, the words of its table)   (pass "tables")
+        self.tables_refused: dict = {}                          # relation of a walk -> why pass (23) keeps its shifts
+        self.chain_used: dict = {}                              # table id -> (chains, number of keys, tile size)   (pass "tables")
         self.words: dict = {}                                   # fluent -> (its sorts, the number of words)   (pass "words")
         self.copy: dict = {}
         self.demanded: set = set()
@@ -2783,7 +2815,35 @@ def write_shift(w, d, plan, places, name: str, comp, rule, shape: dict, ends: bo
         e = bw.tile_expr(rel, sim.tiles[i], sargs)
         acc_sel = e if n == 0 else f"({acc_sel}) * {sim.tiles[i].size} + {e}"
     bw.out(f"let tab{u} = SH{tab_id}[{acc_sel}];")
-    if ends and all(len(dd) <= 1 for dd in by):
+    chains = None
+    if plan.tables:
+        try:
+            if nsel * info.tiles[info.canon].size > TABLE_WORDS:
+                raise ShiftRefuse(f"the table would hold {nsel * info.tiles[info.canon].size} words (at most {TABLE_WORDS})")
+            chains, _inc = chain_table(by, info.tiles[info.canon].size)
+            plan.tables_found[h] = (nsel, nsel * info.tiles[info.canon].size)
+            plan.tables_refused.pop(h, None)
+        except ShiftRefuse as e:
+            plan.tables_refused[h] = str(e)
+            plan.tables_found.pop(h, None)
+    if chains is not None:
+        # pass (23): the chain of each member as a word; the walk from a member stops at the first member the stop literals shut (that member included), found as the lowest or highest bit of the shut members on the chain
+        plan.chain_used[tab_id] = (chains, nsel, info.tiles[info.canon].size)
+        bw.out(f"if let Some(&(dl, _)) = tab{u}.first() {{")
+        bw.depth += 1
+        bw.out(f"let chains{u} = &CH{tab_id}[{acc_sel}];")
+        bw.out(f"let mut f{u} = fr{u};")
+        bw.out(f"while f{u} != 0 {{")
+        bw.depth += 1
+        bw.out(f"let b{u} = f{u}.trailing_zeros() as usize; f{u} &= f{u} - 1;")
+        bw.out(f"let ch{u} = chains{u}[b{u}];")
+        bw.out(f"let blk{u} = ch{u} & !live{u};")
+        bw.out(f"acc{u} |= if blk{u} == 0 {{ ch{u} }} else if dl > 0 {{ let low = blk{u} & blk{u}.wrapping_neg(); ch{u} & (low | (low - 1)) }} else {{ let hi = 1u64 << (63 - blk{u}.leading_zeros()); ch{u} & !(hi - 1) }};")
+        bw.depth -= 1
+        bw.out("}")
+        bw.depth -= 1
+        bw.out("}")
+    elif ends and all(len(dd) <= 1 for dd in by):
         # pass (15): the doubling form (generate and propagate), a constant number of rounds
         rounds = max(1, (info.tiles[info.canon].size - 1).bit_length())
         bw.out(f"if let Some(&(dl, m)) = tab{u}.first() {{")
@@ -2821,6 +2881,33 @@ def write_shift(w, d, plan, places, name: str, comp, rule, shape: dict, ends: bo
     w("\n".join(bw.lines))
 
 
+def chain_table(by: list, size: int):
+    """Pass (23): from the displacements of a walk's onward relation (`by`: for each key, {displacement: mask of the members that have a next one}) the CHAINS: for each key and member, the set of members reached by following the onward link again and again, the member included, as a word.
+    Returns (chains, inc) or raises ShiftRefuse naming why not: a key with two displacements (the line branches), a chain that returns to a member it has left (a cycle), or members that do not fit a word."""
+    if size > TILE_MAX:
+        raise ShiftRefuse(f"the free tile has {size} members, more than a word")
+    chains, inc = [], []
+    for s, dd in enumerate(by):
+        if len(dd) > 1:
+            raise ShiftRefuse(f"the key {s} has {len(dd)} displacements: the line branches")
+        row = [1 << b for b in range(size)]
+        if dd:
+            (dl, m), = dd.items()
+            for b in range(size):
+                cur, word = b, 1 << b
+                while (m >> cur) & 1:
+                    cur += dl
+                    if cur < 0 or cur >= size:
+                        raise ShiftRefuse(f"the key {s}: a member with a next one whose next is outside the tile")
+                    if (word >> cur) & 1:
+                        raise ShiftRefuse(f"the key {s}: the chain from member {b} returns to member {cur}")
+                    word |= 1 << cur
+                row[b] = word
+        chains.append(row)
+        inc.append(next(iter(dd)) > 0 if dd else True)
+    return chains, inc
+
+
 def key_of_table(rel: str, fin: int, fout: int) -> tuple:
     return (rel, fin, fout)
 
@@ -2831,6 +2918,9 @@ def w_shift_tables(w, plan):
         tid, by, nsel, sel = plan.shift_tables[key]
         rows = ", ".join("&[" + ", ".join(f"({dl}, 0x{m:x}u64)" for dl, m in sorted(dd.items())) + "]" for dd in by)
         w(f"static SH{tid}: [&[(i32, u64)]; {nsel}] = [{rows}];")
+        if tid in plan.chain_used:
+            chains, nk, size = plan.chain_used[tid]
+            w(f"static CH{tid}: [[u64; {size}]; {nk}] = [{', '.join('[' + ', '.join('0x%xu64' % x for x in row) + ']' for row in chains)}];")
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ what the passes add to the document
@@ -3728,11 +3818,354 @@ def over_approximations(text: str) -> tuple:
     return text + "\n" + "\n".join(GDL._unparse(c) for c in added) + "\n", over
 
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ pass (24): the top-down way
+
+TD_CAP = 64                                             # pass (24): the rows a walk of one relation keeps for one question, at most this many (more: the question is answered by the bottom-up way)
+
+
+class TopDownRefuse(Exception):
+    """The top-down way cannot be made for this description, with the reason (the relation or the clause is named in it)."""
+
+
+class TopDown:
+    """PASS (24), the top-down way (module text, (24)): the functions that answer the questions "is there a legal turn" and "does the end hold" by a depth-first walk of the clauses, from the question's relation down to the facts of the state and to the relations that do not read it,
+    stopping at the first answer. One function for each (relation, the places a caller binds); a literal of a derived relation is a call with the rest of the clause as the continuation (a closure that is given each row and says whether to stop); a negated literal is a call that
+    asks whether a row exists, its places bound; a relation of one linear recursive clause is made for one call as a worklist of the rows found (each once, at most TD_CAP of them: more and the question is given to the bottom-up way). Nothing here names a relation: every name comes from the text."""
+
+    def __init__(self, d: "Description", plan: "Plan"):
+        self.d, self.plan = d, plan
+        self.texts: list = []
+        self.fns: dict = {}                             # (relation, bound places) -> function name
+        self.todo: list = []
+        self.pats: dict = {}                            # relation -> sorted list of the bound-place tuples a literal asks it by (static and fluent relations)
+        self.used: set = set()                          # the static and fluent relations a function reads
+        self.head_compound: dict = {}                   # relation -> places where some clause has a compound head term
+        self.nvar = 0
+        self.cone: set = set()
+        self.keeps: dict = {}                           # relation of one linear recursive clause -> the places the walk keeps (the head's variable is the literal's): a literal of it is taken once they are bound
+
+    # ---- what is a relation here
+    def how(self, rel: str) -> str:
+        d = self.d
+        if rel.startswith("true."):
+            if rel[len("true."):] not in self.plan.words:
+                raise TopDownRefuse(f"the fluent {rel} is not held as words")
+            return "fluent"
+        if rel in INPUT_RELS:
+            return "input"
+        if d.static[rel]:
+            return "static"
+        return "derived"
+
+    def clauses_of(self, rel: str) -> list:
+        k = next(k for k, (comp, _r) in enumerate(self.d.strata) if rel in comp)
+        comp, rules = self.d.strata[k]
+        if len(comp) != 1 and any(x.rec_steps for x in rules):
+            raise TopDownRefuse(f"{rel} is in a recursive set of {len(comp)} relations")
+        return [x.clause for x in rules if x.clause.head[0] == rel]
+
+    def is_recursive(self, rel: str) -> bool:
+        k = next(k for k, (comp, _r) in enumerate(self.d.strata) if rel in comp)
+        return any(x.rec_steps for x in self.d.strata[k][1])
+
+    def pat(self, rel: str, keypos: tuple) -> int:
+        lst = self.pats.setdefault(rel, [])
+        if tuple(keypos) not in lst:
+            lst.append(tuple(keypos))
+        self.used.add(rel)
+        return lst.index(tuple(keypos))
+
+    def fname(self, rel: str, mask: tuple) -> str:
+        key = (rel, tuple(mask))
+        if key not in self.fns:
+            n = self.d.arity.get(rel, 0)
+            self.fns[key] = f"td_{self.d.rid[rel][2:]}_m{''.join('1' if j in mask else '0' for j in range(n))}"
+            self.todo.append(key)
+        return self.fns[key]
+
+    # ---- terms
+    def expr(self, t) -> str:
+        if t[0] == "v":
+            return f"v{t[1]}"
+        if t[0] == "c":
+            if t[1].startswith(BOUND):
+                return f"u_{ident(t[1][len(BOUND):])}"
+            return str(self.d.sym_id[t[1]])
+        raise TopDownRefuse("a compound term in the body of a clause in the cone of the question")
+
+    def make(self, rel: str, mask: tuple) -> str:
+        """The text of the function for (relation, bound places)."""
+        d = self.d
+        n = d.arity.get(rel, 0)
+        name = self.fname(rel, mask)
+        rec = self.is_recursive(rel)
+        cl = self.clauses_of(rel)
+        out = [f"fn {name}(td: &Td, a: [u32; {n}], k: &mut dyn FnMut(&[u32; {n}]) -> bool) -> bool {{"]
+        if rec:
+            out.append(f"    let mut got = [[0u32; {n}]; {TD_CAP}];")
+            out.append("    let mut ns = 0usize;")
+            test = " && ".join(f"(a[{j}] == FREE || r[{j}] == a[{j}])" for j in range(n)) or "true"
+            out.append(f"    macro_rules! out {{ ($r:expr) => {{{{ let r: [u32; {n}] = $r; if !got[..ns].contains(&r) {{ if ns == {TD_CAP} {{ td.overflow.store(true, std::sync::atomic::Ordering::Relaxed); return true; }} got[ns] = r; ns += 1; if {test} && k(&r) {{ return true; }} }} }}}}; }}")
+        sink = "out!(ROW);" if rec else "if k(&ROW) { return true; }"
+        inv = set(range(n))
+        for c in cl:
+            lits = [x for x in c.body if x[0] == "pos" and x[1] == rel]
+            if rec and len(lits) > 1:
+                raise TopDownRefuse(f"{rel} reads itself twice in a clause: {c.text}")
+            for lit in lits:
+                inv &= {j for j in range(n) if GDL.is_var(c.head[1][j]) and lit[2][j] == c.head[1][j]}      # the places the walk does not change: the head's variable is the literal's
+        for c in cl:
+            lits = [x for x in c.body if x[0] == "pos" and x[1] == rel]
+            if lits:
+                continue
+            # the seeds of a walk are made for the places the walk keeps; the others are asked of each row found
+            out += self.clause(rel, c, tuple(j for j in mask if (not rec or j in inv)), None, sink)
+        if rec:
+            out.append("    let mut hd = 0usize;")
+            out.append("    while hd < ns {")
+            out.append("        let w = got[hd]; hd += 1;")
+            for c in cl:
+                lits = [x for x in c.body if x[0] == "pos" and x[1] == rel]
+                if lits:
+                    out += self.clause(rel, c, (), lits[0], sink)
+            out.append("    }")
+        out.append("    false")
+        out.append("}")
+        return "\n".join(out)
+
+    def clause(self, rel: str, c, mask: tuple, first, sink: str) -> list:
+        """One clause as text, its head places in `mask` bound by the call (`a`), or, with `first` (the clause's literal of its own relation), bound by the row `w` taken from the worklist."""
+        d = self.d
+        names: set = set()
+        conds, binds = [], []
+        seenvar: dict = {}
+        for j in mask:
+            t = c.head[1][j]
+            if isinstance(t, tuple):
+                raise TopDownRefuse(f"a compound term at a bound place of {rel}: {c.text}")
+            if GDL.is_var(t):
+                if t in seenvar:
+                    conds.append(f"a[{j}] == a[{seenvar[t]}]")
+                else:
+                    seenvar[t] = j
+                    names.add(t)
+                    binds.append(f"let u_{ident(t[1:])} = a[{j}];")
+            else:
+                conds.append(f"a[{j}] == {d.sym_id[t]}")
+        rule = JoinRule(bind_clause(c, names) if names else c, {rel} if first is not None else set(), (), first, None, self.keeps)
+        lines = [f"    if {' && '.join(conds) if conds else 'true'} {{"]
+        self.ind = 2
+        self.fail = ["continue"]
+        self.bound: set = set()
+        self.lab = 0
+        body: list = []
+        self.emit = body.append
+        for b in binds:
+            self.emit(b)
+        self.emit("'cl: {")
+        self.fail = ["break 'cl"]
+        self.ind += 1
+        steps = rule.steps
+        # the head row
+        def head_row():
+            xs = []
+            for j, t in enumerate(rule.head):
+                if t[0] == "f":
+                    xs.append("FREE - 1")
+                else:
+                    xs.append(self.expr(t))
+            return "[" + ", ".join(xs) + "]"
+        self.steps(rule, 0, head_row, sink, first)
+        self.ind -= 1
+        self.emit("}")
+        lines += ["        " + x for x in body]
+        lines.append("    }")
+        return lines
+
+    def line(self, s: str):
+        self.emit("    " * (self.ind - 1) + s)
+
+    def steps(self, rule, i: int, head_row, sink: str, first):
+        d = self.d
+        if i == len(rule.steps):
+            self.line(sink.replace("ROW", head_row()))
+            return
+        st = rule.steps[i]
+        fail = self.fail[-1]
+        if st[0] == "distinct":
+            self.line(f"if {self.expr(st[1])} == {self.expr(st[2])} {{ {fail}; }}")
+            self.steps(rule, i + 1, head_row, sink, first)
+            return
+        sign, rel, args = st[0], st[1], st[2]
+        n = len(args)
+        way = self.how(rel)
+        if any(a[0] == "f" for a in args):
+            raise TopDownRefuse(f"a compound term in a literal of {rel} in the cone of the question")
+        if sign == "neg":
+            key = "[" + ", ".join(self.expr(a) for a in args) + "]"
+            if way == "input":
+                pass
+            elif way == "derived":
+                self.line(f"if {self.fname(rel, tuple(range(n)))}(td, {key}, &mut |_| true) {{ {fail}; }}")
+            else:
+                self.pat(rel, tuple(range(n)))
+                self.line(f"if td.{self.holder(rel)}.has(&{key}) {{ {fail}; }}")
+            self.steps(rule, i + 1, head_row, sink, first)
+            return
+        keypos = tuple(st[3])
+        is_first = first is not None and i == self.first_index(rule, first)
+        # a literal read from the worklist row
+        if is_first:
+            self.bind_row(args, "w", fail)
+            self.steps(rule, i + 1, head_row, sink, first)
+            return
+        key = "[" + ", ".join(self.expr(args[j]) if j in keypos else "FREE" for j in range(n)) + "]"
+        if way == "input":
+            self.line(f"{fail};")
+            return
+        fresh = [j for j in range(n) if j not in keypos]
+        if way in ("static", "fluent"):
+            if not fresh:
+                self.pat(rel, tuple(range(n)))
+                self.line(f"if !td.{self.holder(rel)}.has(&{key}) {{ {fail}; }}")
+                self.steps(rule, i + 1, head_row, sink, first)
+                return
+            ix = self.pat(rel, keypos)
+            src = f"td.{self.holder(rel)}.get({ix}, &{key})" if keypos else f"td.{self.holder(rel)}.order.as_slice()"
+            self.line(f"for row{i} in {src}.iter() {{")
+            self.fail.append("continue")
+            self.ind += 1
+            self.bind_row(args, f"row{i}", "continue", only=fresh)
+            self.steps(rule, i + 1, head_row, sink, first)
+            self.ind -= 1
+            self.fail.pop()
+            self.line("}")
+            return
+        # a derived relation: a call, the rest of the clause the continuation (or, where only existence is asked, a test)
+        fn = self.fname(rel, keypos)
+        for j in self.head_compound.get(rel, ()):
+            if j in keypos or args[j][0] != "v" or self.occurs(rule, args[j][1]) > 1:
+                raise TopDownRefuse(f"{rel} gives a compound term at place {j}, which a clause that reads it uses or binds")
+        if only_exists(rule, i) or not fresh:
+            self.line(f"if !{fn}(td, {key}, &mut |_| true) {{ {fail}; }}")
+            self.steps(rule, i + 1, head_row, sink, first)
+            return
+        self.line(f"if {fn}(td, {key}, &mut |row{i}| {{")
+        self.fail.append("return false")
+        self.ind += 1
+        self.bind_row(args, f"row{i}", "return false", only=fresh)
+        self.steps(rule, i + 1, head_row, sink, first)
+        self.line("false")
+        self.ind -= 1
+        self.fail.pop()
+        self.line("}) { return true; }")
+
+    def occurs(self, rule, v: int) -> int:
+        """How many times the variable of this number stands in the head and the literals of the rule."""
+        n = sum(1 for t in rule.head if v in comp_vars(t))
+        for s in rule.steps:
+            if s[0] == "distinct":
+                n += (v in comp_vars(s[1])) + (v in comp_vars(s[2]))
+            else:
+                n += sum(1 for a in s[2] if v in comp_vars(a))
+        return n
+
+    def first_index(self, rule, first) -> int:
+        return rule.rec_steps[0]
+
+    def bind_row(self, args, row: str, fail: str, only=None):
+        """Take the places of a row into the variables of a literal: a variable met for the first time is set, one already set (in the key, or earlier in this literal) is compared; a constant is compared."""
+        for j, a in enumerate(args):
+            if only is not None and j not in only:
+                continue
+            if a[0] == "v":
+                if a[1] in self.bound:
+                    self.line(f"if {row}[{j}] != v{a[1]} {{ {fail}; }}")
+                else:
+                    self.bound.add(a[1])
+                    self.line(f"let v{a[1]} = {row}[{j}];")
+            elif a[0] == "c":
+                self.line(f"if {row}[{j}] != {self.expr(a)} {{ {fail}; }}")
+
+    def holder(self, rel: str) -> str:
+        return ("fl_" if rel.startswith("true.") else "st_") + self.d.rid[rel][2:]
+
+    # ---- the whole
+    def build(self, roots: list) -> dict:
+        d = self.d
+        # the relations of the cone, and where a clause gives a compound term
+        cone = d.cone(roots)
+        for rel in sorted(cone):
+            if self.how(rel) != "derived":
+                continue
+            for c in self.clauses_of(rel):
+                for j, t in enumerate(c.head[1]):
+                    if isinstance(t, tuple):
+                        self.head_compound.setdefault(rel, set()).add(j)
+        for rel in sorted(cone):
+            if self.how(rel) == "derived" and self.is_recursive(rel):
+                n = d.arity.get(rel, 0)
+                keep = set(range(n))
+                for c in self.clauses_of(rel):
+                    for lit in (x for x in c.body if x[0] == "pos" and x[1] == rel):
+                        keep &= {j for j in range(n) if GDL.is_var(c.head[1][j]) and lit[2][j] == c.head[1][j]}
+                self.keeps[rel] = tuple(sorted(keep))
+        for rel in roots:
+            self.fname(rel, ())
+        for rel in sorted(cone):                         # every relation of the cone asked with no place bound too, for the tests (`ask_td`)
+            if self.how(rel) == "derived":
+                self.fname(rel, ())
+        while self.todo:
+            rel, mask = self.todo.pop(0)
+            if self.how(rel) != "derived":
+                continue
+            self.texts.append(self.make(rel, mask))
+        return {"cone": cone}
+
+
+def w_topdown_tables(w, d, plan, td: "TopDown"):
+    """The relations the functions read as Dense tables with the places they are asked by, the struct `Td` that holds them, and the functions."""
+    sorts = d.prog.sorts
+    used = sorted(td.used)
+    tabs = sorted({s for r in used for s in (d.prog.signature(r) or ())})
+    for r in used:
+        sig = d.prog.signature(r)
+        n = d.arity.get(r, 0)
+        if sig is None or len(sig) != n or not all(s in sorts and sorts[s] and all(isinstance(m, str) for m in sorts[s]) and len(sorts[s]) < NONE for s in sig):
+            raise TopDownRefuse(f"{r} has no signature of sorts of constants")
+        size = [len(sorts[s]) for s in sig]
+        space = 1
+        for x in size:
+            space *= x
+        if space > DENSE_SPACE:
+            raise TopDownRefuse(f"{r} has {space} possible rows")
+        for pl in td.pats[r]:
+            keys = 1
+            for p in pl:
+                keys *= size[p]
+            if keys > DENSE_KEYS:
+                raise TopDownRefuse(f"{r} asked by {pl} needs {keys} buckets")
+    for si, s in enumerate(tabs):
+        table = [65535] * len(d.syms)
+        for j, m in enumerate(sorts[s]):
+            table[d.sym_id[m]] = j
+        w(f"static TDO{si}: [u16; {len(d.syms)}] = [{', '.join(map(str, table))}];")
+    for r in used:
+        sig = d.prog.signature(r)
+        w(f"static TDS_{d.rid[r][2:]}: &[&[u16]] = &[{', '.join('&TDO%d' % tabs.index(s) for s in sig)}];")
+        w(f"const TDR_{d.rid[r][2:]}: &[usize] = &[{', '.join(str(len(sorts[s])) for s in sig)}];")
+        w(f"const TDK_{d.rid[r][2:]}: &[&[usize]] = &[{', '.join('&[' + ', '.join(map(str, pl)) + ']' for pl in td.pats[r])}];")
+    w("pub struct Td { pub overflow: std::sync::atomic::AtomicBool, " + ", ".join(f"pub {td.holder(r)}: Dense<{d.arity[r]}>" for r in used) + " }")
+    w("impl Td { pub fn new() -> Td { Td { overflow: std::sync::atomic::AtomicBool::new(false), " + ", ".join(f"{td.holder(r)}: Dense::new(TDS_{d.rid[r][2:]}, TDR_{d.rid[r][2:]}, TDK_{d.rid[r][2:]})" for r in used) + " } } }")
+    for t in td.texts:
+        w(t)
+
+
 def rs_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def translate(text: str, module: str, passes=(), lemmas=()) -> str:
+def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
     """The Rust source of the description `text` (composed) as `pub mod <module>`, with the passes named and the lemmas read as rewrites (see the module text for the interface); with none, the plain translation."""
     src_text = text
     infos: list = []
@@ -3772,7 +4205,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
     w(f"pub mod {module} {{")
     w((RUNTIME_KEEP.replace("pub goals: Vec<(u32, u32)> }", "pub goals: Vec<(u32, u32)>, pub have: u8 }") if cones else RUNTIME_KEEP) if keep else RUNTIME)
-    if dense:
+    if dense or (plan and plan.topdown):
         w(RUNTIME_DENSE)
     if pooled or any(r.startswith("init.") for r in d.nodes):
         w(RUNTIME_REL_KEEP_INDEX if wd else RUNTIME_REL_CLEAR)
@@ -3874,7 +4307,30 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     if plan:
         w_asks(w, d, plan)
     nst = len(d.strata)
+    td_on = False
+    if plan and plan.topdown:
+        tdg = TopDown(d, plan)
+        try:
+            roots = [x for x in ("terminal", "legal") if x in d.prog.nodes]
+            if not roots:
+                raise TopDownRefuse("the description has no terminal and no legal")
+            tdg.cone = tdg.build(roots)["cone"]
+            td_tabs: list = []
+            w_topdown_tables(td_tabs.append, d, plan, tdg)
+            td_on = True
+        except TopDownRefuse as e:
+            plan.td_refused = str(e)
     ro = lambda holder, rel: f"{holder}.{d.rid[rel]}.rows_all()" if rel in bits else f"{holder}.{d.rid[rel]}.order"
+    if td_on:
+        w("\n".join(td_tabs))
+        ways = dict(ways or {})
+        for q in ways:
+            if q not in ("end", "legal-turn") or ways[q] not in ("bottom-up", "top-down"):
+                raise Untranslatable(f"no question {q} with way {ways[q]}")
+        w(f"/// For each question that has both ways, the way that answers it (decided by the clocks of plan 79.53, tests/translated_speed_bits.rs, and recorded by scripts/gdl_to_rust_make.py).")
+        w(f"pub const WAYS: &[(&str, &str)] = &[(\"end\", \"{ways.get('end', 'bottom-up')}\"), (\"legal-turn\", \"{ways.get('legal-turn', 'bottom-up')}\")];")
+        w(f"const WAY_END_TOP_DOWN: bool = {'true' if ways.get('end') == 'top-down' else 'false'};")
+        w(f"const WAY_TURN_TOP_DOWN: bool = {'true' if ways.get('legal-turn') == 'top-down' else 'false'};")
     dwp = ", dw: &mut Dw" if has_dw else ""
     dwa = ", dw" if has_dw else ""
     w(f"pub const PIECES: [(&str, bool); {nst}] = [" + ", ".join('("%s", %s)' % ("+".join(sorted(c)), "true" if s else "false") for _, s, c in stratum_fns) + "];")
@@ -3928,7 +4384,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w(f"const CONES: [&[usize]; 8] = [{', '.join(arrs)}];")
     w(f"const NEXT_CONE: &[usize] = {lst(next_cone)};")
     # the game
-    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + " }")
+    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + (", td: Td, pub td_over: u64" if td_on else "") + " }")
     w("impl Game {")
     w(f"    pub fn new() -> Game {{")
     w("        let mut st = St::new();")
@@ -3940,8 +4396,72 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         if s:
             w(f"        st{k}(&mut st, &mut tm, &dy{', &mut dw' if has_dw else ''});")
     w(f"        let roles: Vec<u32> = {ro('st', 'role')}.iter().map(|r| r[0]).collect();")
-    w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + " }")
+    if td_on:
+        w(f"        let mut g = Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + ", td: Td::new(), td_over: 0 };")
+        w("        g.fill_td();")
+        w("        g")
+    else:
+        w(f"        Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + " }")
     w("    }")
+    if td_on:
+        statics_td = [r for r in sorted(tdg.used) if not r.startswith("true.")]
+        fluents_td = [r for r in sorted(tdg.used) if r.startswith("true.")]
+        w("    /// The relations that do not read the state, as the tables the top-down functions ask (made again by `restart`).")
+        w("    fn fill_td(&mut self) {")
+        for r in statics_td:
+            w(f"        self.td.{tdg.holder(r)}.clear();")
+            w(f"        for r in {ro('self.st', r)}.iter().copied() {{ self.td.{tdg.holder(r)}.add(r); }}")
+        w("    }")
+        w("    fn load_td(&mut self, s: &State) {")
+        w("        self.td.overflow.store(false, std::sync::atomic::Ordering::Relaxed);")
+        for r in fluents_td:
+            f = r[len("true."):]
+            w(f"        for r in s.f_{ident(f)}.rows::<{d.arity[r]}>(&TAB_{ident(f)}) {{ self.td.{tdg.holder(r)}.add(r); }}")
+        w("    }")
+        w("    /// Only the load and the clearing of the tables the top-down functions read, for the timing that says what they cost.")
+        w("    pub fn td_load_only(&mut self, s: &State) { self.load_td(s); self.clear_td(); }")
+        w("    fn clear_td(&mut self) {")
+        for r in fluents_td:
+            w(f"        self.td.{tdg.holder(r)}.clear();")
+        w("    }")
+        w("    /// The rows of a relation of the cone of the questions, every place free, by the top-down way (for the tests that hold each relation of it to the bottom-up way); None when the name is not such a relation or the worklist overflowed. A place where a clause gives a compound term holds `FREE - 1`.")
+        w("    pub fn ask_td(&mut self, s: &State, rel: &str) -> Option<Vec<Vec<u32>>> {")
+        w("        self.load_td(s);")
+        w("        let mut v: Vec<Vec<u32>> = vec![];")
+        w("        let known = match rel {")
+        for r in sorted(tdg.cone):
+            if tdg.how(r) == "derived":
+                n = d.arity.get(r, 0)
+                w(f"            \"{r}\" => {{ {tdg.fname(r, ())}(&self.td, [FREE; {n}], &mut |row| {{ v.push(row.to_vec()); false }}); true }}")
+        w("            _ => false,")
+        w("        };")
+        w("        let over = self.td.overflow.load(std::sync::atomic::Ordering::Relaxed);")
+        w("        self.clear_td();")
+        w("        if !known || over { return None; }")
+        w("        v.sort(); v.dedup();")
+        w("        Some(v)")
+        w("    }")
+        if "terminal" in d.prog.nodes:
+            w("    /// The end of the game, answered top-down: the first rule that holds ends the walk (module text, (24)).")
+            w("    pub fn terminal_td(&mut self, s: &State) -> bool {")
+            w("        self.load_td(s);")
+            w(f"        let r = {tdg.fname('terminal', ())}(&self.td, [], &mut |_| true);")
+            w("        let over = self.td.overflow.load(std::sync::atomic::Ordering::Relaxed);")
+            w("        self.clear_td();")
+            w("        if over { self.td_over += 1; return self.terminal_bu(s); }")
+            w("        r")
+            w("    }")
+        if "legal" in d.prog.nodes:
+            w("    /// Whether a turn that is not the one that passes is legal at the state (the mover exists), answered top-down: the first legal row ends the walk.")
+            w("    pub fn has_turn_td(&mut self, s: &State) -> bool {")
+            w("        self.load_td(s);")
+            w("        let noop = self.noop;")
+            w(f"        let r = {tdg.fname('legal', ())}(&self.td, [FREE; 2], &mut |row| row[1] != noop);")
+            w("        let over = self.td.overflow.load(std::sync::atomic::Ordering::Relaxed);")
+            w("        self.clear_td();")
+            w("        if over { self.td_over += 1; return self.legal_mover(s).is_some(); }")
+            w("        r")
+            w("    }")
     w("    pub fn roles(&self) -> &[u32] { &self.roles }")
     w("    pub fn initial(&self) -> State {")
     w("        let mut s = State::default();")
@@ -3973,6 +4493,8 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w(f"        st{k}(&mut self.st, &mut self.tm, &dy{', &mut self.dw' if has_dw else ''});")
     w(f"        self.roles = {ro('self.st', 'role')}.iter().map(|r| r[0]).collect();")
     w("        self.last = None;")
+    if td_on:
+        w("        self.fill_td();")
     w("        Ok(())")
     w("    }")
     w("    /// The state's rows and the turn's into a fresh evaluation.")
@@ -4049,7 +4571,14 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
         w("        let rd = &self.last.as_ref().unwrap().1;")
         w("        out.extend(rd.legal.iter().filter(|(q, _)| *q == self.roles[r]).map(|(_, m)| *m));")
         w("    }")
-        w("    pub fn terminal(&mut self, s: &State) -> bool { self.ensure(s, 2); self.last.as_ref().unwrap().1.terminal }")
+        if td_on:
+            w("    /// The end of the game, by the way the module records for that question (`WAYS`, module text, (24)).")
+            w("    pub fn terminal(&mut self, s: &State) -> bool { if WAY_END_TOP_DOWN { self.terminal_td(s) } else { self.terminal_bu(s) } }")
+            w("    /// Whether a turn that is not the one that passes is legal, by the way the module records for that question.")
+            w("    pub fn has_turn(&mut self, s: &State) -> bool { if WAY_TURN_TOP_DOWN { self.has_turn_td(s) } else { self.legal_mover(s).is_some() } }")
+            w("    pub fn terminal_bu(&mut self, s: &State) -> bool { self.ensure(s, 2); self.last.as_ref().unwrap().1.terminal }")
+        else:
+            w("    pub fn terminal(&mut self, s: &State) -> bool { self.ensure(s, 2); self.last.as_ref().unwrap().1.terminal }")
         w("    pub fn outcome(&mut self, s: &State) -> Option<Vec<i64>> {")
         w("        self.ensure(s, 6);")
         w("        let rd = &self.last.as_ref().unwrap().1;")
@@ -4267,6 +4796,7 @@ def translate(text: str, module: str, passes=(), lemmas=()) -> str:
     w("    }")
     w("}")
     w("}")
+    translate.last_plan = plan                              # what the passes found, for the tests and the printing scripts that ask (a diagnostic, not part of the document)
     return "\n".join(out) + "\n"
 
 

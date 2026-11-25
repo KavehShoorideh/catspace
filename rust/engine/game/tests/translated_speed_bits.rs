@@ -94,8 +94,8 @@ include!("generated/scratch/atomic_prev_project.rs");
 #[cfg(singles)]
 include!("generated/scratch/atomic_prev_asked.rs");
 impl_tr!(chess);
-impl_tr!(chess_fast, fresh);
-impl_tr!(chess_lemma, fresh);
+impl_tr!(chess_fast, topdown);
+impl_tr!(chess_lemma, topdown);
 // 2026-11-24 (plan 79.52 part B): the kept modules of the commit before the plan (renamed, under generated/scratch, made by hand from git: the clocks "before"), compiled with `--cfg before52`
 #[cfg(before52)]
 include!("generated/scratch/chess_before.rs");
@@ -112,6 +112,18 @@ impl_tr!(chess_p52_cones, fresh);
 #[cfg(before52)]
 impl_tr!(atomic_p52_cones, fresh);
 #[cfg(before52)]
+include!("generated/scratch/chess_b52.rs");
+#[cfg(before52)]
+include!("generated/scratch/chess_lemma_b52.rs");
+#[cfg(before52)]
+include!("generated/scratch/atomic_b52.rs");
+#[cfg(before52)]
+impl_tr!(chess_b52, fresh);
+#[cfg(before52)]
+impl_tr!(chess_lemma_b52, fresh);
+#[cfg(before52)]
+impl_tr!(atomic_b52, fresh);
+#[cfg(before52)]
 impl_tr!(chess_before, passes);
 #[cfg(before52)]
 impl_tr!(chess_lemma_before, passes);
@@ -122,7 +134,7 @@ impl_tr!(chess_p43, passes);
 #[cfg(singles)]
 impl_tr!(chess_lm_nogate, passes);
 impl_tr!(atomic);
-impl_tr!(atomic_fast, fresh);
+impl_tr!(atomic_fast, topdown);
 #[cfg(singles)]
 impl_tr!(chess_prev, passes);
 #[cfg(singles)]
@@ -220,11 +232,14 @@ fn positions<T: Tr>(kernel: &KernelGame, t: &mut T, games: usize, plies: usize, 
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Work { Moves, MovesAndNext, MovesInto, MovesIntoAndNext, LegalInto, LegalIntoAndNext }
+enum Work { Moves, MovesAndNext, MovesInto, MovesIntoAndNext, LegalInto, LegalIntoAndNext, End, EndTd, HasMoveTd, TdLoad }
 
 fn pass_kernel(k: &KernelGame, p: &[(<KernelGame as Game>::State, usize)], n: usize, w: Work) -> usize {
     let mut sum = 0;
     for (s, i) in p.iter().take(n) {
+        if matches!(w, Work::End | Work::EndTd) { sum += k.outcome(s).is_some() as usize; continue; }
+        if w == Work::TdLoad { sum += 1; continue; }
+        if w == Work::HasMoveTd { sum += !k.moves(s).is_empty() as usize; continue; }
         let ms = k.moves(s);
         sum += ms.len();
         if matches!(w, Work::MovesAndNext | Work::MovesIntoAndNext | Work::LegalIntoAndNext) { let c = k.apply(s, &ms[*i]); std::hint::black_box(&c); sum += 1; }
@@ -236,6 +251,10 @@ fn pass_trans<T: Tr>(t: &mut T, p: &Positions<T>, n: usize, w: Work) -> usize {
     let mut buf: Vec<u32> = Vec::with_capacity(256);                       // 2026-11-24 (plan 79.52): the buffer of the questions that make no memory (`moves_into_t`, `legal_into_t`)
     for (s, i) in p.trans.iter().take(n) {
         match w {
+            Work::End => { sum += t.terminal_t(s) as usize; }
+            Work::EndTd => { sum += t.terminal_td_t(s) as usize; }
+            Work::TdLoad => { t.td_load_only_t(s); sum += 1; }
+            Work::HasMoveTd => { sum += t.has_move_td_t(s) as usize; }
             Work::Moves | Work::MovesAndNext => {
                 let ms = t.moves_t(s);
                 sum += ms.len();
@@ -506,3 +525,40 @@ fn atomic_the_pieces_after_part_b() {
 #[test]
 #[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
 fn chess_the_pieces_before_part_b() { pieces::<chess_before::Game>("chess", "fast-before"); pieces::<chess_lemma_before::Game>("chess", "lemma-before"); pieces::<atomic_before::Game>("atomic", "fast-before"); }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------ PLAN 79.53: the clocks of the tables for walks and of the top-down way
+// The kernel, the kept modules of the commit before the plan (`b52`: every pass of 79.52; only with `--cfg before52`) and the kept modules now (`fast`, `lemma`): the end, the allowed moves, the allowed moves and one next state. The column of the top-down end is in the same table (Work::EndTd) once the pass exists.
+const WORKS_53: &[(Work, &str)] = &[(Work::TdLoad, "only the load of the top-down tables"), (Work::End, "the end (terminal_t), bottom-up"), (Work::EndTd, "the end, top-down"), (Work::HasMoveTd, "is there a legal turn, top-down"), (Work::MovesInto, "allowed moves into a buffer"), (Work::LegalInto, "allowed moves into a buffer, without the end"), (Work::MovesIntoAndNext, "allowed moves into a buffer and the next state of one move")];
+#[cfg(before52)]
+fn chess_53() -> Vec<Maker> { makers![("b52", chess_b52::Game), ("lemma-b52", chess_lemma_b52::Game), ("fast", chess_fast::Game), ("lemma", chess_lemma::Game)] }
+#[cfg(not(before52))]
+fn chess_53() -> Vec<Maker> { makers![("fast", chess_fast::Game), ("lemma", chess_lemma::Game)] }
+#[cfg(before52)]
+fn atomic_53() -> Vec<Maker> { makers![("b52", atomic_b52::Game), ("fast", atomic_fast::Game)] }
+#[cfg(not(before52))]
+fn atomic_53() -> Vec<Maker> { makers![("fast", atomic_fast::Game)] }
+#[test]
+fn chess_a_short_run_of_plan_53_gives_the_same_number_of_moves() { run_game_works::<chess_fast::Game>("chess", false, chess_53(), 0, WORKS_53); }
+#[test]
+fn atomic_a_short_run_of_plan_53_gives_the_same_number_of_moves() { run_game_works::<atomic_fast::Game>("atomic", false, atomic_53(), 0, WORKS_53); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_times_of_plan_53() { run_game_works::<chess_fast::Game>("chess", true, chess_53(), 3, WORKS_53); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn atomic_the_times_of_plan_53() { run_game_works::<atomic_fast::Game>("atomic", true, atomic_53(), 3, WORKS_53); }
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_pieces_in_plan_53() {
+    for (w, what) in [(Work::MovesIntoAndNext, "moves into a buffer and one next each")] {
+        pieces_work::<chess_fast::Game>("chess", "fast", w, what);
+        pieces_work::<chess_lemma::Game>("chess", "lemma", w, what);
+    }
+}
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn atomic_the_pieces_in_plan_53() { pieces_work::<atomic_fast::Game>("atomic", "fast", Work::MovesIntoAndNext, "moves into a buffer and one next each"); }
+#[cfg(before52)]
+#[test]
+#[ignore = "a clock: run by hand, alone on the machine, with --nocapture"]
+fn chess_the_pieces_before_plan_53() { pieces_work::<chess_b52::Game>("chess", "b52", Work::MovesIntoAndNext, "moves into a buffer and one next each"); pieces_work::<chess_lemma_b52::Game>("chess", "lemma-b52", Work::MovesIntoAndNext, "moves into a buffer and one next each"); pieces_work::<atomic_b52::Game>("atomic", "b52", Work::MovesIntoAndNext, "moves into a buffer and one next each"); }
