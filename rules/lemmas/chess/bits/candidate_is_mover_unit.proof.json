@@ -1,0 +1,18 @@
+{
+ "bindings": 8192,
+ "closed": 3584,
+ "failed": 0,
+ "file_hash": "a55d9c0e490030cc",
+ "form": "IMPLIES",
+ "fuse": 0,
+ "game": "chess",
+ "hypotheses": [],
+ "kind": "bv_decide: a SAT solver's certificate, checked in Lean (the proof rests on the axiom Lean.ofReduceBool, which `#print axioms` lists)",
+ "lean_file": "lean/ideas/Ideas/Mined/rule_lemma_bits_chess_candidate_is_mover_unit.lean",
+ "lemma": "candidate_is_mover_unit",
+ "settled": 4608,
+ "theorems": 3584,
+ "to_solver": 3584,
+ "trust": "the statement over bits is made from the description by rule_lemma_bits.py (trusted, not tied in Lean to the description's relations); bindings the writer settles by constants are not checked by Lean",
+ "wall_secs": 386.2
+}
