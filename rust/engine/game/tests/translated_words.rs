@@ -38,9 +38,9 @@ include!("generated/chess_fast.rs");
 include!("generated/atomic.rs");
 include!("generated/atomic_fast.rs");
 impl_tr!(chess);
-impl_tr!(chess_fast, fresh);
+impl_tr!(chess_fast, topdown);
 impl_tr!(atomic);
-impl_tr!(atomic_fast, fresh);
+impl_tr!(atomic_fast, topdown);
 
 const SEED: u64 = 5252;
 
