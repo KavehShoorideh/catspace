@@ -1252,6 +1252,18 @@ Others' work to read first: demand transformation (magic sets) and incremental v
 (v) THE BRIDGE OVER THE OUTSIDE LIBRARY (kernel.rs, changed at Kaveh's word): the last state read on a thread is kept with its end and
 its list of allowed moves, so the list is made once a state. The answers are unchanged. The library's own equality of two states
 leaves out the move clock, a variant's count and the units in hand, so the bridge compares them as well.
+(vi) FIRST READING OF OTHERS' WORK, 2026-11-24 (a reading agent; numbers are the papers' own, on their machines and in their units,
+not ours; not to be set beside our rates without checking what each counts). Regular Boardgames (Kowalski, Mika, Sutowicz, Szykula,
+AAAI 2019, arXiv 1706.02462; "Efficient Reasoning in Regular Boardgames", arXiv 2006.08295): a language with the board as a labelled
+graph, compiled; its largest single gain is tables that replace a run of board steps by one lookup, and it makes moves by a depth-first
+walk that changes the state in place and undoes it, with nothing written out. Propositional networks for descriptions of our kind
+(Sironi and Winands, 2016): far above a prover, well below the compiled board language at chess, and their own passes gained a few per
+cent each. A compiler of such descriptions to C++ that evaluates bottom-up (Lancucki, arXiv 1401.5813): little gain at chess. No source
+shows a general description reaching a hand-written library at chess; the board language's own authors report their compiled code three
+to thirteen times behind their hand-written code on simpler games. No source applies demand transformation or incremental view
+maintenance to making moves. No source derives blocker-indexed tables from a description; one design note only (H. G. Muller). What the
+reading says to copy: find in the description the relations that are walks along a fixed step, and compile them to tables. OPEN: how
+far to go (section 13).
 
 ## 12. What exists
 
@@ -1574,6 +1586,11 @@ list (8); every build checked against the spec (11); the pointing at a weakness 
 - OPEN (2026-11-24, future prediction): what it means that force can arrive at a target, beyond units on a line and the reach of row 16. One example is held (the fixture of 2026-11-24). To be defined from more cases, with Kaveh.
 
 - OPEN (2026-11-24): the game of preparation (each side guessing what the other prepared) is an aim with no design; energy as a cost is named and not measured; the work of others listed in section 7's last block is to be read before a plan is written.
+
+OPEN (2026-11-24, layer 2 speed): the two steps of plan 79.52 part B gained a few per cent; the reading says nobody has brought a general
+description to a hand-written library's speed at chess. Kaveh to choose: (a) tables for walks, found in the description by the
+translator; (b) a new back end that walks depth-first and changes the state in place; (c) the outside library kept as the certified fast
+copy where one exists, the translated rules fast enough for games that have none.
 
 ## 14. What was replaced, so that no earlier statement misleads
 
