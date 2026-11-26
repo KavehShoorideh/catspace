@@ -21,6 +21,7 @@ for _g in ("3check", "kingofthehill", "antichess", "chess960", "horde"):
 SCRATCH_GAMES = ("chess", "atomic")                                 # the files of the single passes and the clocks of the passes are made for the first two games only
 PASSES_NOCARRY = [p for p in T.PASSES if p != "carry"]              # plan 79.54: the pass carry (answers kept from the last state) is in the modules `_carry`, beside the modules `_fast` of every other pass, until the clocks say which a game uses
 KEPT = {"": [], "_fast": PASSES_NOCARRY, "_carry": list(T.PASSES)}
+KEPT_SUPPORT = {"_support": PASSES_NOCARRY + ["support"]}      # plan 79.56 (pass 26): the module with the support filter, kept for every game where the shape is found (the pass is not one of PASSES: a caller asks for it by name)
 KEPT_LEMMA = {"chess": {"_lemma": PASSES_NOCARRY}}                  # plan 79.45: the game that has a lemma folder, every pass and its lemmas (the one file kept besides the plain and the fast ones)
 COMBOS = {"bits_keep": ["bits", "keep"], "bits_order": ["bits", "order"], "bits_order_keep": ["bits", "order", "keep"], "bits_demand": ["bits", "demand"], "bits_dense": ["bits", "dense"], "bits_copy": ["bits", "copy"], "bits_delta": ["bits", "delta"]}
 # plan 79.41: each new pass alone on top of bits (the clocks), and `prev`, the module of every pass of 79.40 (the one the new passes are clocked against); `prev38` is the four passes of 79.38
@@ -73,7 +74,7 @@ def rust_name(game: str) -> str:
     return digits[int(game[0])] + game[1:] if game[:1].isdigit() else game
 
 
-def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: tuple | None = None) -> None:
+def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: tuple | None = None, support: bool = False) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for game, sources in GAMES.items():
         if games is not None and game not in games:
@@ -84,6 +85,18 @@ def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: t
             src = T.translate(text, module, passes, ways=WAYS.get(game))
             (out / f"{game}{variant}.rs").write_text(src)
             print(f"OBS 79.40 translate {game}{variant} (module {module}): description {len(text)} bytes, passes {','.join(passes) or '-'}, Rust {len(src)} bytes {src.count(chr(10))} lines")
+    for variant, passes in KEPT_SUPPORT.items() if (support and games is None) else ():
+        for game, sources in GAMES.items():
+            text = T.compose_text(sources) if len(sources) > 1 else sources[0].read_text()
+            module = rust_name(game) + variant
+            src = T.translate(text, module, passes, ways=WAYS.get(game))
+            heads = [x[3:] for x in src.split("\n", 12)[:12] if x.startswith("// support")]
+            if "// support: test " not in src:
+                (out / f"{game}{variant}.rs").unlink(missing_ok=True)
+                print(f"OBS 79.56 translate {game}{variant}: the shape is not found or no question reads it, no module kept; " + " | ".join(heads))
+                continue
+            (out / f"{game}{variant}.rs").write_text(src)
+            print(f"OBS 79.56 translate {game}{variant} (module {module}): passes {','.join(passes)}, Rust {len(src)} bytes {src.count(chr(10))} lines; " + " | ".join(h[:150] for h in heads[:1]))
     for game, vs in (lemma_variants or {}).items():
         ltext, docs = lemma_docs(game)
         for variant, passes in vs.items():
@@ -114,7 +127,7 @@ def main(argv=None) -> int:
     if "--placed" in args:
         make_placed()
         return 0
-    make(OUT, KEPT, KEPT_LEMMA)
+    make(OUT, KEPT, KEPT_LEMMA, None, True)
     if "--scratch" in args:
         make(OUT_SCRATCH, SCRATCH, SCRATCH_LEMMA, SCRATCH_GAMES)
     return 0

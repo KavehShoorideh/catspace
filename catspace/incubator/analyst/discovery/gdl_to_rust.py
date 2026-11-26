@@ -404,6 +404,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
 PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words", "tables", "topdown", "carry")
+OPT_PASSES = ("support",)                               # passes a caller asks for by name; "every pass" (PASSES) does not hold them (pass 26: AS BUILT, the module text says why)
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 TABLE_WORDS = 1 << 13                                   # pass (23): a walk gets a table when its chains are at most this many words
 WORDS_MAX = 1 << 13                                     # pass (22): a fluent is held as the bits of a state when the product of the sizes of its sorts is at most this
@@ -735,7 +736,7 @@ class JoinRule:
     relation in `avoid` that no variable already bound reaches (constants do not count) is taken last (pass 2: a demanded relation is joined from a key, never read whole), and the literal `first` (an element of the clause's body) is taken before every other (pass 4). With `avoid` vacant the steps are the reader's, to the tuple (tests/test_plan79_38.py pins this on every clause
     of every description). The fields are the reader's `_Rule`: clause, nvars, head_rel, head, steps, rec_steps."""
 
-    def __init__(self, clause, scc: set, avoid=(), first=None, est=None, need=None):
+    def __init__(self, clause, scc: set, avoid=(), first=None, est=None, need=None, late=()):
         self.clause = clause
         names: dict = {}
 
@@ -777,7 +778,7 @@ class JoinRule:
                 nb = sum(1 for a in x[2] if GDL.term_vars(a, set()) <= bound)
                 keyed = sum(1 for a in x[2] if GDL.term_vars(a, set()) and GDL.term_vars(a, set()) <= bound)
                 waits = bool(need) and x[1] in need and not all(GDL.term_vars(x[2][p], set()) <= bound for p in need[x[1]])        # pass (24): a relation asked for the places it keeps (a walk) is taken when they are bound
-                return (not waits, not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -est(x, bound, scc) if est else 0, -len(x[2]))
+                return (not waits, x[1] not in late, not (x[1] in avoid and keyed == 0 and len(x[2]) > 0), nb == len(x[2]), nb, -est(x, bound, scc) if est else 0, -len(x[2]))
             best = max(pending, key=ranking)
             pending.remove(best)
             order.append(best)
@@ -855,8 +856,8 @@ class Plan:
 
     def __init__(self, d: Description, passes):
         for p in passes:
-            if p not in PASSES:
-                raise Untranslatable(f"no pass named {p} (the passes: {', '.join(PASSES)})")
+            if p not in PASSES and p not in OPT_PASSES:
+                raise Untranslatable(f"no pass named {p} (the passes: {', '.join(PASSES + OPT_PASSES)})")
         self.d = d
         if "base" in passes and "scan" not in passes:
             passes = tuple(passes) + ("scan",)                 # the clauses pass (8) makes ask words with their key tiles unbound, which only pass (10) answers by the words held (on top of bits alone it made the module half as fast: diagnosed, 79.41 part A)
@@ -866,13 +867,19 @@ class Plan:
             passes = tuple(passes) + ("start",)                 # the pass worth admits orders the pass start would refuse
         if ("asked" in passes or "project" in passes or "worth" in passes) and "bits" not in passes:
             passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
+        if "support" in passes and "topdown" not in passes:
+            passes = tuple(passes) + ("topdown",)               # the support filter tests a key by the top-down functions (pass 26)
         if "topdown" in passes:
             passes = tuple(passes) + tuple(p for p in ("words", "cones") if p not in passes)         # the top-down way reads the facts of a state as the bits of words (pass 22) and falls back on the legal rows alone (pass 21)
         if "carry" in passes and "cones" not in passes:
             passes = tuple(passes) + ("cones",)                 # the carry keeps the evaluation of a state for the questions of the cones (pass 21)
         if ("cones" in passes or "words" in passes) and "keep" not in passes:
             passes = tuple(passes) + ("keep",)                  # the passes cones and words change the questions of a module that keeps its working memory (pass 7)
-        self.passes = tuple(p for p in PASSES if p in passes)
+        self.passes = tuple(p for p in PASSES if p in passes) + tuple(p for p in OPT_PASSES if p in passes)
+        self.support: list = []                                  # pass (26): the tests found, each a dict (SupportFinder.shape); decided in `translate`, which knows whether the top-down way was made
+        self.support_refused: dict = {}                          # pass (26): relation -> why it is not a test of the shape
+        self.support_h: list = []                                # pass (26): the hypothetical relations of the tests, in order
+        self.support_reads: dict = {}                            # pass (26): test -> the relations its piece reads (the guards): the cones are made with these in place of the clauses' reads
         self.cones: bool = "cones" in self.passes                # pass (21)
         self.topdown: bool = "topdown" in self.passes            # pass (24)
         self.carry: bool = "carry" in self.passes                # pass (25)
@@ -1435,7 +1442,7 @@ class Plan:
         for k, (comp, _r) in enumerate(self.d.strata):
             reads = {st[1] for r in self.rules[k] for st in r.steps if st[0] != "distinct"}
             for h in comp:
-                deps.setdefault(h, set()).update(reads)
+                deps.setdefault(h, set()).update(self.support_reads.get(h, reads))
         reached: set = set()
         todo = [x for x in wanted if x in self.d.prog.nodes]
         while todo:
@@ -3875,6 +3882,9 @@ class TopDown:
         self.head_compound: dict = {}                   # relation -> places where some clause has a compound head term
         self.nvar = 0
         self.cone: set = set()
+        self.late: dict = {}                            # pass (26): relation made from a hypothetical relation -> the hypothetical relations its clauses read last (after the literals that bind the places they are read at)
+        self.rec: dict = {}                             # pass (26): hypothetical relation -> (its number, key places, row places): its functions record the places they are asked about
+        self.extra: list = []                           # pass (26): (relation, bound places) functions made besides those the cone of the questions asks
         self.keeps: dict = {}                           # relation of one linear recursive clause -> the places the walk keeps (the head's variable is the literal's): a literal of it is taken once they are bound
 
     # ---- what is a relation here
@@ -3934,6 +3944,9 @@ class TopDown:
         rec = self.is_recursive(rel)
         cl = self.clauses_of(rel)
         out = [f"fn {name}(td: &Td, a: [u32; {n}], k: &mut dyn FnMut(&[u32; {n}]) -> bool) -> bool {{"]
+        if rel in self.rec:
+            hi, hm, hp = self.rec[rel]
+            out.append(f"    if SP_ON{hi}.with(|o| o.get()) {{ SP_REC{hi}.with(|r| {{ let mut q = [FREE; {hp}]; q.copy_from_slice(&a[{hm}..]); r.borrow_mut().push(q); }}); }}")
         if rec:
             out.append(f"    let mut got = [[0u32; {n}]; {TD_CAP}];")
             out.append("    let mut ns = 0usize;")
@@ -3985,7 +3998,7 @@ class TopDown:
                     binds.append(f"let u_{ident(t[1:])} = a[{j}];")
             else:
                 conds.append(f"a[{j}] == {d.sym_id[t]}")
-        rule = JoinRule(bind_clause(c, names) if names else c, {rel} if first is not None else set(), (), first, None, self.keeps)
+        rule = JoinRule(bind_clause(c, names) if names else c, {rel} if first is not None else set(), (), first, None, self.keeps, self.late.get(rel, ()))
         lines = [f"    if {' && '.join(conds) if conds else 'true'} {{"]
         self.ind = 2
         self.fail = ["continue"]
@@ -4148,6 +4161,8 @@ class TopDown:
         for rel in sorted(cone):                         # every relation of the cone asked with no place bound too, for the tests (`ask_td`)
             if self.how(rel) == "derived":
                 self.fname(rel, ())
+        for rel, mask in self.extra:                     # pass (26): the functions the support filter calls
+            self.fname(rel, mask)
         while self.todo:
             rel, mask = self.todo.pop(0)
             if self.how(rel) != "derived":
@@ -4194,6 +4209,446 @@ def w_topdown_tables(w, d, plan, td: "TopDown"):
         w(t)
 
 
+class SupportRefuse(Exception):
+    """The shape of pass (26) is not found for a relation, with the reason."""
+
+
+class SupportFinder:
+    """PASS (26), the finding (module text, (26)). Reads the clauses as written and the dependency graph; names no relation. `found`: one dict for each conforming test R (`shape`); `refused`: {relation: why}."""
+
+    def __init__(self, d: "Description", demanded=()):
+        self.d = d
+        self.demanded = set(demanded)
+        self.cl: dict = {}
+        for comp, rules in d.strata:
+            for r in rules:
+                self.cl.setdefault(r.clause.head[0], []).append(r.clause)
+        self.found: list = []
+        self.refused: dict = {}
+
+    # ---- small helpers over the clauses
+    def derived(self, rel: str) -> bool:
+        return rel in self.cl and not rel.startswith("true.") and rel not in INPUT_RELS
+
+    @staticmethod
+    def flat(args) -> bool:
+        return all(not isinstance(a, tuple) for a in args)
+
+    def view_of(self, h: str, c):
+        """The relation a clause of h is a view of (one positive literal, the head's variables distinct and the same, in the same order), else None."""
+        if len(c.body) != 1 or c.body[0][0] != "pos":
+            return None
+        _s, v, args = c.body[0]
+        hd = c.head[1]
+        if v == h or tuple(args) != tuple(hd) or len(set(hd)) != len(hd) or not all(GDL.is_var(a) for a in hd):
+            return None
+        return v
+
+    def copy_clause(self, c, m: int):
+        """-> (B, guards, negs) when the clause is a COPY clause with a key of m places, else None; SupportRefuse when it has the form but breaks a condition."""
+        hd = c.head[1]
+        key, row = hd[:m], hd[m:]
+        B = None
+        for lit in c.body:
+            if lit[0] == "pos" and lit[1].startswith("true.") and tuple(lit[2]) == tuple(row) and len(row) == self.d.arity.get(lit[1], -1) and len(set(row)) == len(row) and all(GDL.is_var(a) for a in row):
+                B = lit[1]
+                break
+        if B is None:
+            return None
+        if len(set(key)) != m or not all(GDL.is_var(a) for a in key):
+            raise SupportRefuse(f"a copy clause whose key places are not distinct variables: {c.text}")
+        guards, negs = [], []
+        for lit in c.body:
+            if lit[0] == "distinct":
+                raise SupportRefuse(f"a test distinct in a copy clause: {c.text}")
+            sign, rel, args = lit
+            if not self.flat(args):
+                raise SupportRefuse(f"a compound term in a copy clause: {c.text}")
+            if sign == "pos" and rel == B and tuple(args) == tuple(row):
+                continue
+            avars = {a for a in args if GDL.is_var(a)}
+            if sign == "pos":
+                if avars & set(row):
+                    raise SupportRefuse(f"a positive literal besides the state relation holds a row variable: {c.text}")
+                if not avars & set(key):
+                    raise SupportRefuse(f"a positive literal of a copy clause holds no key variable: {c.text}")
+                guards.append((rel, tuple(args)))
+            else:
+                if avars - set(key) - set(row):
+                    raise SupportRefuse(f"a negated literal of a copy clause names a variable that is neither key nor row: {c.text}")
+                negs.append((rel, tuple(args)))
+        return B, guards, negs
+
+    def hypothetical(self, h: str) -> dict:
+        """-> {views: [(V, 'copy' | 'add', [clauses])], B, m, p} when h has the shape H (module text, (26)); SupportRefuse otherwise."""
+        d = self.d
+        if not self.derived(h) or d.static[h]:
+            raise SupportRefuse("not a relation that reads the state")
+        n = d.arity[h]
+        views = []
+        for c in self.cl[h]:
+            v = self.view_of(h, c)
+            if v is None:
+                raise SupportRefuse(f"a clause that is not a view: {c.text}")
+            if not self.derived(v) or d.arity.get(v) != n:
+                raise SupportRefuse(f"the view {v} is not a relation of the same places")
+            views.append(v)
+        info = {"views": [], "B": None, "m": None, "p": None}
+        for v in sorted(set(views)):
+            kinds = set()
+            for c in self.cl[v]:
+                got = None
+                for m in sorted({n - d.arity[lit[1]] for lit in c.body if lit[0] == "pos" and lit[1].startswith("true.") and 0 < d.arity[lit[1]] < n}):
+                    got = self.copy_clause(c, m)
+                    if got is not None:
+                        if info["m"] not in (None, m) or info["B"] not in (None, got[0]):
+                            raise SupportRefuse(f"two ways of copying a state relation: {c.text}")
+                        info["m"], info["p"], info["B"] = m, n - m, got[0]
+                        break
+                kinds.add("copy" if got is not None else "add")
+            if len(kinds) != 1:
+                raise SupportRefuse(f"the view {v} has clauses of both forms")
+            info["views"].append((v, kinds.pop(), self.cl[v]))
+        if info["B"] is None:
+            raise SupportRefuse("no clause copies a state relation")
+        m = info["m"]
+        for v, kind, cls in info["views"]:
+            for c in cls:
+                if kind == "copy":
+                    if self.copy_clause(c, m) is None:
+                        raise SupportRefuse(f"a copy clause that does not copy {info['B']} at the row: {c.text}")
+                else:
+                    if any(isinstance(t, tuple) for t in c.head[1]):
+                        raise SupportRefuse(f"a compound term in an add clause: {c.text}")
+                    if any(lit[0] != "distinct" and lit[1] == info["B"] and tuple(lit[2]) == tuple(c.head[1][m:]) for lit in c.body):
+                        raise SupportRefuse(f"an add clause that reads the state relation at its row: {c.text}")
+        return info
+
+    def dependents(self, h: str) -> set:
+        """The relations that depend on h (the relations made from it), h not included."""
+        deps = self.d.prog.deps
+        out: set = set()
+        grew = True
+        while grew:
+            grew = False
+            for r, ds in deps.items():
+                if r not in out and r != h and (h in ds or ds & out):
+                    out.add(r)
+                    grew = True
+        return out
+
+    def conform(self, R: str, h: str, m: int, hd: set):
+        """Follow the calls from R with the key found as the module text says; -> (key places of each relation reached, the guards [(relation, places, sign)]); SupportRefuse when a clause reads the key outside H."""
+        d = self.d
+        kp = {R: tuple(range(m))}
+        queue = [R]
+        seen = {R}
+        guards: list = []
+        while queue:
+            x = queue.pop(0)
+            for c in self.cl[x]:
+                kv = [c.head[1][j] for j in kp[x]]
+                if len(set(kv)) != len(kv) or not all(GDL.is_var(a) for a in kv):
+                    raise SupportRefuse(f"the key places of {x} are not distinct variables: {c.text}")
+                kvs = set(kv)
+                for lit in c.body:
+                    if lit[0] == "distinct":
+                        if any(isinstance(a, tuple) or a in kvs for a in (lit[1], lit[2])):
+                            raise SupportRefuse(f"a test distinct holds a key variable: {c.text}")
+                        continue
+                    sign, rel, args = lit
+                    if not self.flat(args):
+                        raise SupportRefuse(f"a compound term in a literal of the cone: {c.text}")
+                    at = tuple(j for j, a in enumerate(args) if a in kvs)
+                    got = [args[j] for j in at]
+                    if rel == h:
+                        if at != tuple(range(m)) or got != kv:
+                            raise SupportRefuse(f"a literal of {h} whose first places are not the key in order: {c.text}")
+                    elif rel in hd:
+                        if got != kv:
+                            raise SupportRefuse(f"a literal of {rel}, made from {h}, that does not hold the whole key in order: {c.text}")
+                        if kp.setdefault(rel, at) != at:
+                            raise SupportRefuse(f"{rel} holds the key at two sets of places")
+                        if rel not in seen:
+                            seen.add(rel)
+                            queue.append(rel)
+                    elif at:
+                        if d.static[rel]:
+                            raise SupportRefuse(f"a relation that does not read the state holds a key variable: {c.text}")
+                        if got != kv:
+                            raise SupportRefuse(f"a guard {rel} that does not hold the whole key in order: {c.text}")
+                        if (rel, at, sign) not in guards:
+                            guards.append((rel, at, sign))
+        return kp, guards
+
+    def needs_guard(self, x: str, g: tuple, hd: set, kp: dict, memo: dict, active: frozenset) -> bool:
+        """Whether every clause of x holds a positive literal of the guard g = (relation, key places) or of a relation of hd that needs it (a clause that reads x itself is taken to need it where the other clauses of x do)."""
+        if x in memo:
+            return memo[x]
+        if x in active:
+            return True
+        act = active | {x}
+        ok = True
+        for c in self.cl[x]:
+            kvs = {c.head[1][j] for j in kp[x]}
+            good = False
+            for lit in c.body:
+                if lit[0] != "pos":
+                    continue
+                if lit[1] == g[0] and tuple(j for j, a in enumerate(lit[2]) if a in kvs) == g[1]:
+                    good = True
+                    break
+                if lit[1] == x:
+                    good = True                 # the recursive clause: its rows come from the rows of the clauses that do not read x
+                    break
+                if lit[1] in hd and self.needs_guard(lit[1], g, hd, kp, memo, act):
+                    good = True
+                    break
+            if not good:
+                ok = False
+                break
+        memo[x] = ok
+        return ok
+
+    def shape(self, R: str, h: str, info: dict, hd: set, kp: dict, guards: list) -> dict:
+        d = self.d
+        m, p = info["m"], info["p"]
+        # the differing places D(K): the add views, and the negated literals of the copy clauses
+        dparts = []
+        gstars = None
+        for v, kind, cls in info["views"]:
+            if kind == "add":
+                dparts.append(("add", v))
+                continue
+            for c in cls:
+                B, cguards, negs = self.copy_clause(c, m)
+                key, row = c.head[1][:m], c.head[1][m:]
+                mine = {(rel, tuple(j for j, a in enumerate(args) if a in set(key))) for rel, args in cguards if [a for a in args if a in set(key)] == list(key)}
+                gstars = mine if gstars is None else gstars & mine
+                for rel, args in negs:
+                    if not self.derived(rel):
+                        raise SupportRefuse(f"a negated literal of a copy clause over {rel}, which is not made by clauses: {c.text}")
+                    amap = []
+                    for a in args:
+                        if a in key:
+                            amap.append(("k", key.index(a)))
+                        elif a in row:
+                            amap.append(("r", row.index(a)))
+                        else:
+                            amap.append(("c", a))
+                    dparts.append(("neg", rel, tuple(amap)))
+        cands = sorted(g for g in (gstars or set()) if not d.static[g[0]] and g[0] not in self.demanded)
+        memo: dict = {}
+        gstar = None
+        for g in cands:
+            memo.clear()
+            if self.needs_guard(R, g, hd, kp, memo, frozenset()):
+                gstar = g
+                break
+        if gstar is None:
+            raise SupportRefuse("no guard that every copy clause and every clause of the test hold: the keys of the test are not known")
+        for rel, at, sign in guards:
+            if rel in self.demanded:
+                raise SupportRefuse(f"the guard {rel} is answered on demand, no rows of it are made")
+        uniq = []
+        for rel, at, sign in guards:
+            if (rel, at) not in uniq:
+                uniq.append((rel, at))
+        if gstar not in uniq:
+            uniq.append(gstar)
+        return {"R": R, "H": h, "B": info["B"], "m": m, "p": p, "kp": kp, "hd": sorted(kp), "views": [(v, kind) for v, kind, _c in info["views"]],
+                "dparts": dparts, "guards": uniq, "gstar": gstar}
+
+    def run(self) -> None:
+        d = self.d
+        for h in sorted(d.nodes):
+            if not self.derived(h) or not self.cl.get(h) or not all(self.view_of(h, c) is not None for c in self.cl[h]):
+                continue
+            try:
+                info = self.hypothetical(h)
+            except SupportRefuse as e:
+                self.refused[h] = str(e)
+                continue
+            m = info["m"]
+            hd = self.dependents(h)
+            tops = sorted(r for r in hd if d.arity.get(r) == m and r in self.cl)
+            if not tops:
+                self.refused[h] = "no relation made from it has exactly the places of the key"
+                continue
+            got = []
+            for R in tops:
+                try:
+                    kp, guards = self.conform(R, h, m, hd)
+                    got.append(self.shape(R, h, info, hd, kp, guards))
+                except SupportRefuse as e:
+                    self.refused[R] = str(e)
+            # a test that another test of the same key reaches is part of that one: only the outermost are kept
+            for s in got:
+                if not any(s["R"] != o["R"] and s["R"] in o["kp"] for o in got):
+                    self.found.append(s)
+
+
+def support_prelude(plan) -> list:
+    """The thread-local buffers where a function of a hypothetical relation records the places it was asked about (pass 26), one for each hypothetical relation, and the counters of the Game."""
+    out = ["#[derive(Clone, Copy, Default, Debug)]",
+           "pub struct SpCount { pub states: u64, pub keys: u64, pub tests: u64, pub answered: u64, pub noref: u64 }",
+           "/// One key of one question (for the tests that read the support words): the key, the places it differs at (patterns, FREE: any), the places its test read (empty for a key answered from a reference), the answer, and how (0 tested, 1 tested and kept as the reference, 2 answered from the reference).",
+           "#[derive(Clone, Debug)]",
+           "pub struct SpLog { pub key: Vec<u32>, pub d: Vec<Vec<u32>>, pub s: Vec<Vec<u32>>, pub ans: bool, pub how: u8 }",
+           "fn sp_meet<const P: usize>(a: &[u32; P], b: &[u32; P]) -> bool { (0..P).all(|j| a[j] == FREE || b[j] == FREE || a[j] == b[j]) }",
+           "fn sp_disjoint<const P: usize>(d: &[[u32; P]], s: &[[u32; P]]) -> bool { !d.iter().any(|x| s.iter().any(|y| sp_meet(x, y))) }"]
+    for hi, h in enumerate(plan.support_h):
+        p = next(s["p"] for s in plan.support if s["H"] == h)
+        out.append(f"thread_local! {{ static SP_ON{hi}: std::cell::Cell<bool> = const {{ std::cell::Cell::new(false) }}; static SP_REC{hi}: std::cell::RefCell<Vec<[u32; {p}]>> = const {{ std::cell::RefCell::new(Vec::new()) }}; }}")
+    return out
+
+
+def support_free(d, plan, tdg) -> list:
+    """For each conforming test, the function that gives D(K) as patterns over the row (pass 26)."""
+    out = []
+    for i, s in enumerate(plan.support):
+        m, p = s["m"], s["p"]
+        out.append(f"/// Pass (26): the places where the world of the key differs from the state, as patterns over the row (FREE: any), for the test {s['R']}.")
+        out.append(f"fn sp_d{i}(td: &Td, key: &[u32; {m}], out: &mut Vec<[u32; {p}]>) {{")
+        for part in s["dparts"]:
+            if part[0] == "add":
+                fn = tdg.fname(part[1], tuple(range(m)))
+                a = ", ".join([f"key[{j}]" for j in range(m)] + ["FREE"] * p)
+                out.append(f"    {fn}(td, [{a}], &mut |row| {{ let mut q = [FREE; {p}]; q.copy_from_slice(&row[{m}..]); out.push(q); false }});")
+            else:
+                _t, rel, amap = part
+                mask = tuple(j for j, (kind, _v) in enumerate(amap) if kind in ("k", "c"))
+                fn = tdg.fname(rel, mask)
+                a = ", ".join(f"key[{v}]" if kind == "k" else (str(d.sym_id[v]) if kind == "c" else "FREE") for kind, v in amap)
+                body = []
+                for j, (kind, v) in enumerate(amap):
+                    if kind == "r":
+                        body.append(f"{{ let x = row[{j}]; if q[{v}] != FREE && q[{v}] != x {{ ok = false; }} else {{ q[{v}] = x; }} }}")
+                rb = tuple(sorted({v for kind, v in amap if kind == "r"}))
+                hold = tdg.holder(s["B"])
+                if rb:
+                    grab = f"for brow in td.{hold}.get({tdg.pat(s['B'], rb)}, &q).iter() {{ out.push(*brow); }}"
+                else:
+                    grab = f"for brow in td.{hold}.order.as_slice().iter() {{ out.push(*brow); }}"
+                out.append(f"    {fn}(td, [{a}], &mut |row| {{ let mut q = [FREE; {p}]; let mut ok = true; {' '.join(body)} if ok {{ {grab} }} false }});")
+        out.append("}")
+    return out
+
+
+def support_methods(d, plan, tdg, ro, gated, has_dw) -> list:
+    """For each conforming test, `Game::run_support<i>` (pass 26), the piece that is run in place of the test's own piece, and the counters."""
+    out = ["    /// Pass (26): the counters of the support filter (on under the profile switch only): (states, keys, tests run, keys answered from a reference, guard classes with no reference).",
+           "    pub fn support_counts(&self) -> (u64, u64, u64, u64, u64) { let c = self.sp; (c.states, c.keys, c.tests, c.answered, c.noref) }",
+           "    pub fn reset_support_counts(&mut self) { self.sp = SpCount::default(); }"]
+    dwa = ", &mut self.dw" if has_dw else ""
+    for i, s in enumerate(plan.support):
+        m, p = s["m"], s["p"]
+        hi = plan.support_h.index(s["H"])
+        kR = next(k for k, (comp, _r) in enumerate(d.strata) if s["R"] in comp)
+        fb = sorted({next(k for k, (comp, _r) in enumerate(d.strata) if x in comp) for x in s["kp"]})
+        gs = s["guards"].index(s["gstar"])
+        out.append(f"    /// Pass (26): the test {s['R']} for every key of the guard domain, answered once for the keys that leave the places its reference test read alone (module text, (26)).")
+        out.append(f"    fn run_support{i}(&mut self, d: &mut Dy) -> (u64, u64, u64) {{")
+        if kR in gated:
+            out.append(f"        if !d.whole && off(d, {kR}) {{ return (0, 0, 0); }}")
+        out.append(f"        let mut ent: Vec<([u32; {m}], u8, Vec<u32>)> = Vec::new();")
+        for gi, (rel, at) in enumerate(s["guards"]):
+            n = d.arity[rel]
+            rest = [j for j in range(n) if j not in at]
+            out.append(f"        for r in {ro('d', rel)}.iter() {{ ent.push(([{', '.join(f'r[{j}]' for j in at)}], {gi}, vec![{', '.join(f'r[{j}]' for j in rest)}])); }}")
+        out.append("        ent.sort_unstable();")
+        out.append("        let s = std::mem::take(&mut self.sp_s);")
+        out.append("        self.clear_td(); self.load_td(&s);")
+        out.append("        self.sp_s = s;")
+        out.append("        let mut classes: HashMap<Vec<u32>, usize> = HashMap::new();")
+        out.append(f"        let mut refs: Vec<Option<(Vec<[u32; {p}]>, bool)>> = Vec::new();")
+        out.append(f"        let mut rows: Vec<[u32; {m}]> = Vec::new();")
+        out.append("        let (mut tests, mut answered, mut keys) = (0u64, 0u64, 0u64);")
+        out.append(f"        let mut dk: Vec<[u32; {p}]> = Vec::new();")
+        out.append("        let (mut i0, mut over) = (0usize, false);")
+        out.append("        while i0 < ent.len() {")
+        out.append("            let key = ent[i0].0;")
+        out.append("            let (mut i1, mut sig, mut has) = (i0, Vec::<u32>::new(), false);")
+        out.append(f"            while i1 < ent.len() && ent[i1].0 == key {{ sig.push(ent[i1].1 as u32); sig.push(ent[i1].2.len() as u32); sig.extend_from_slice(&ent[i1].2); if ent[i1].1 == {gs} {{ has = true; }} i1 += 1; }}")
+        out.append("            i0 = i1;")
+        out.append("            if !has { continue; }")
+        out.append("            keys += 1;")
+        out.append("            let cn = classes.len();")
+        out.append("            let c = *classes.entry(sig).or_insert(cn);")
+        out.append("            if c == refs.len() { refs.push(None); }")
+        out.append(f"            dk.clear(); sp_d{i}(&self.td, &key, &mut dk);")
+        out.append("            if let Some((s0, ans)) = &refs[c] { if sp_disjoint(&dk, s0) { answered += 1; if let Some(l) = self.sp_log.as_mut() { l.push(SpLog { key: key.to_vec(), d: dk.iter().map(|x| x.to_vec()).collect(), s: vec![], ans: *ans, how: 2 }); } if *ans { rows.push(key); } continue; } }")
+        out.append(f"            SP_REC{hi}.with(|r| r.borrow_mut().clear()); SP_ON{hi}.with(|o| o.set(true));")
+        fn = tdg.fname(s["R"], tuple(range(m)))
+        out.append(f"            let ans = {fn}(&self.td, [{', '.join(f'key[{j}]' for j in range(m))}], &mut |_| true);")
+        out.append(f"            SP_ON{hi}.with(|o| o.set(false));")
+        out.append("            tests += 1;")
+        out.append("            if self.td.overflow.load(std::sync::atomic::Ordering::Relaxed) { over = true; break; }")
+        out.append(f"            let mut how = 0u8;")
+        out.append(f"            if refs[c].is_none() || self.sp_log.is_some() {{ let s0: Vec<[u32; {p}]> = SP_REC{hi}.with(|r| r.borrow().clone()); if let Some(l) = self.sp_log.as_mut() {{ l.push(SpLog {{ key: key.to_vec(), d: dk.iter().map(|x| x.to_vec()).collect(), s: s0.iter().map(|x| x.to_vec()).collect(), ans, how: 0 }}); }} if refs[c].is_none() && sp_disjoint(&dk, &s0) {{ how = 1; refs[c] = Some((s0, if self.sp_plant {{ !ans }} else {{ ans }})); }} }}")
+        out.append("            if how == 1 { if let Some(l) = self.sp_log.as_mut() { if let Some(x) = l.last_mut() { x.how = 1; } } }")
+        out.append("            if ans { rows.push(key); }")
+        out.append("        }")
+        out.append("        self.clear_td();")
+        out.append("        if over {")
+        out.append("            self.td.overflow.store(false, std::sync::atomic::Ordering::Relaxed);")
+        out.append(f"            for &k in SP_FALLBACK{i} {{ run_piece(&self.st, d, &mut self.tm{dwa}, k); }}")
+        out.append("            return (0, 0, 0);")
+        out.append("        }")
+        out.append("        let mut made = 0u64;")
+        out.append(f"        for k in rows.iter() {{ if d.{d.rid[s['R']]}.add(*k) {{ made += 1; }} }}")
+        out.append("        if self.profiling { let c = &mut self.sp; c.states += 1; c.keys += keys; c.tests += tests; c.answered += answered; c.noref += refs.iter().filter(|r| r.is_none()).count() as u64; }")
+        out.append("        (made, tests, answered)")
+        out.append("    }")
+    return out
+
+
+def support_consts(d, plan) -> list:
+    out = []
+    for i, s in enumerate(plan.support):
+        kR = next(k for k, (comp, _r) in enumerate(d.strata) if s["R"] in comp)
+        fb = sorted({next(k for k, (comp, _r) in enumerate(d.strata) if x in comp) for x in s["kp"]})
+        out.append(f"const SP_K{i}: usize = {kR};")
+        out.append(f"/// The pieces the module without the pass runs for this test, in order (the fallback of a worklist that overflowed).")
+        out.append(f"const SP_FALLBACK{i}: &[usize] = &[{', '.join(map(str, fb))}];")
+    out.append("/// Pass (26): the tests the pass found, with the hypothetical relation each reads the key through and the state relation it is made from.")
+    out.append("pub const SUPPORT: &[(&str, &str, &str)] = &[" + ", ".join(f'("{s["R"]}", "{s["H"]}", "{s["B"]}")' for s in plan.support) + "];")
+    return out
+
+
+def prepare_support(d, plan, tdg) -> None:
+    """Pass (26), before the top-down functions are made: find the tests (SupportFinder), keep those a question reads, and tell the top-down maker which functions record and which it must make besides."""
+    f = SupportFinder(d, plan.demanded)
+    f.run()
+    plan.support_refused = dict(f.refused)
+    wanted = [x for x in QUESTION_RELS if x in d.prog.nodes] + [f"next.{x}" for x in d.fluents if f"next.{x}" in d.prog.nodes]
+    reach = d.cone(wanted)
+    keep = []
+    for s in f.found:
+        if s["R"] in reach:
+            keep.append(s)
+        else:
+            plan.support_refused[s["R"]] = "no question reads it (the shape is there; nothing is changed)"
+    plan.support = keep
+    plan.support_h = sorted({s["H"] for s in keep})
+    plan.support_reads = {s["R"]: {g[0] for g in s["guards"]} for s in keep}
+    for s in keep:
+        m = s["m"]
+        for x in s["kp"]:
+            tdg.late[x] = tuple(sorted(set(tdg.late.get(x, ())) | {s["H"]}))
+        tdg.rec[s["H"]] = (plan.support_h.index(s["H"]), m, s["p"])
+        tdg.extra.append((s["R"], tuple(range(m))))
+        for part in s["dparts"]:
+            if part[0] == "add":
+                tdg.extra.append((part[1], tuple(range(m))))
+            else:
+                tdg.extra.append((part[1], tuple(j for j, (kind, _v) in enumerate(part[2]) if kind in ("k", "c"))))
+                rb = tuple(sorted({v for kind, v in part[2] if kind == "r"}))
+                if rb:
+                    tdg.pat(s["B"], rb)                 # the rows of the state relation a negated literal names are read by an index on those places
+                tdg.used.add(s["B"])
+
+
 def rs_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -4232,6 +4687,7 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
     w(f"// translator-sha256: {translator_hash()}")
     if plan:
         w(f"// passes: {','.join(plan.passes)}")
+    head_at = len(out)
     for walk, ow in sorted(over.items()):
         w(f"// over-approximation: {ow} of {walk}")
     for i in infos:
@@ -4348,15 +4804,28 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
             roots = [x for x in ("terminal", "legal") if x in d.prog.nodes]
             if not roots:
                 raise TopDownRefuse("the description has no terminal and no legal")
+            if "support" in plan.passes:
+                prepare_support(d, plan, tdg)
             tdg.cone = tdg.build(roots)["cone"]
             td_tabs: list = []
             w_topdown_tables(td_tabs.append, d, plan, tdg)
             td_on = True
         except TopDownRefuse as e:
             plan.td_refused = str(e)
+            plan.support, plan.support_h, plan.support_reads = [], [], {}
+            plan.support_refused["(all)"] = f"the top-down way was not made: {e}"
+    if plan and "support" in plan.passes:
+        heads = [f"// support: test {x['R']}, hypothetical relation {x['H']} made from {x['B']} (key {x['m']} places, row {x['p']}), guard domain {x['gstar'][0]}, relations made from it {','.join(x['hd'])}" for x in plan.support]
+        heads += [f"// support refused: {k}: {v[:160]}" for k, v in sorted(plan.support_refused.items())]
+        if not plan.support and not plan.support_refused:
+            heads.append("// support: no hypothetical relation found")
+        out[head_at:head_at] = heads
+    sup = bool(td_on and plan and plan.support)
     ro = lambda holder, rel: f"{holder}.{d.rid[rel]}.rows_all()" if rel in bits else f"{holder}.{d.rid[rel]}.order"
     if td_on:
         w("\n".join(td_tabs))
+        if plan.support:
+            w("\n".join(support_prelude(plan) + support_consts(d, plan) + support_free(d, plan, tdg)))
         ways = dict(ways or {})
         for q in ways:
             if q not in ("end", "legal-turn") or ways[q] not in ("bottom-up", "top-down"):
@@ -4382,7 +4851,7 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
             f"Lm {{ name: {rs_str(i['name'])}, form: {rs_str(i['form'])}, left: {rs_str(i['left'])}, right: {rs_str(i['right'])}, replacement: {rs_str(i['rep'])}, flag: {rs_str(i['flag'])}, evidence: {rs_str(i['evidence'])}, condition: &[" + ", ".join(
                 f"({rs_str(r)}, &[{', '.join(rs_str(a) for a in args)}], {'true' if ng else 'false'})" for r, args, ng in i["condition"]) + "] }" for i in infos) + "];")
     dyn_all = [k for k, s, c in stratum_fns if not s and not (c & demanded)]
-    coned = plan.cone if (plan and (plan.unfolded or plan.asked or plan.projected)) else d.cone
+    coned = plan.cone if (plan and (plan.unfolded or plan.asked or plan.projected or plan.support)) else d.cone
     legal_cone = [k for k in d.dynamic_meeting(coned([x for x in ("legal", "terminal", "goal")])) if not (d.strata[k][0] & demanded)]
     next_pairs = [f for f in d.fluents if f"next.{f}" in d.prog.nodes]
     next_cone = [k for k in d.dynamic_meeting(coned([f"next.{f}" for f in next_pairs])) if not (d.strata[k][0] & demanded)]
@@ -4446,7 +4915,7 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
         w("    }")
         w("}")
     # the game
-    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + (", td: Td, pub td_over: u64" if td_on else "") + (", cd: Option<Dy>, cvalid: Vec<bool>" if carry else "") + " }")
+    w("pub struct Game { st: St, pub tm: Terms, roles: Vec<u32>, noop: u32, last: Option<(State, Reading)>, pub prof: Vec<Stat>, pub profiling: bool" + (", pool: Option<Dy>" if pooled else "") + (", dw: Dw" if has_dw else "") + (", does_buf: Vec<(u32, u32)>" if keep else "") + (", td: Td, pub td_over: u64" if td_on else "") + (", sp: SpCount, sp_s: State, pub sp_plant: bool, pub sp_log: Option<Vec<SpLog>>" if sup else "") + (", cd: Option<Dy>, cvalid: Vec<bool>" if carry else "") + " }")
     w("impl Game {")
     w(f"    pub fn new() -> Game {{")
     w("        let mut st = St::new();")
@@ -4459,7 +4928,7 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
             w(f"        st{k}(&mut st, &mut tm, &dy{', &mut dw' if has_dw else ''});")
     w(f"        let roles: Vec<u32> = {ro('st', 'role')}.iter().map(|r| r[0]).collect();")
     if td_on:
-        w(f"        let mut g = Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + ", td: Td::new(), td_over: 0" + (f", cd: None, cvalid: vec![false; {nst}]" if carry else "") + " };")
+        w(f"        let mut g = Game {{ st, tm, roles, noop: {d.sym_id[NOOP]}, last: None, prof: vec![Stat::default(); {nst}], profiling: false" + (", pool: Some(dy)" if pooled else "") + (", dw" if has_dw else "") + (", does_buf: Vec::new()" if keep else "") + ", td: Td::new(), td_over: 0" + (", sp: SpCount::default(), sp_s: State::default(), sp_plant: false, sp_log: None" if sup else "") + (f", cd: None, cvalid: vec![false; {nst}]" if carry else "") + " };")
         w("        g.fill_td();")
         w("        g")
     else:
@@ -4565,6 +5034,8 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
     if pooled:
         w("    fn load(&mut self, s: &State, does: &[(u32, u32)]) -> Dy {")
         w("        let mut d = match self.pool.take() { Some(d) => d, None => Dy::new() };")
+        if sup:
+            w("        self.sp_s.assign(s);")
         if gated:
             w("        d.whole = false;")
     else:
@@ -4578,16 +5049,22 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
     w("    }")
     w("    fn run(&mut self, d: &mut Dy, which: &[usize]) {")
     w("        for &k in which {")
+    if sup:
+        pc = "match k { " + " ".join(f"SP_K{i} => self.run_support{i}(d)," for i in range(len(plan.support))) + f" _ => run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k) }}"
+    else:
+        pc = f"run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k)"
     w("            if self.profiling {")
     w("                let t = std::time::Instant::now();")
-    w(f"                let (a, b, c) = run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k);")
+    w(f"                let (a, b, c) = {pc};")
     w("                let p = &mut self.prof[k];")
     w("                p.calls += 1; p.nanos += t.elapsed().as_nanos() as u64; p.rows += a; p.visits += b; p.probes += c;")
     w("            } else {")
-    w(f"                run_piece(&self.st, d, &mut self.tm{', &mut self.dw' if has_dw else ''}, k);")
+    w(f"                {pc};")
     w("            }")
     w("        }")
     w("    }")
+    if sup:
+        w("\n".join(support_methods(d, plan, tdg, ro, gated, has_dw)))
     if cones:
         lg = f"lr.legal.extend({ro('d', 'legal')}.iter().map(|x| (x[0], x[1])));" if "legal" in d.prog.nodes else ""
         tm_ = f"lr.terminal = !{ro('d', 'terminal')}.is_empty();" if "terminal" in d.prog.nodes else "lr.terminal = false;"
