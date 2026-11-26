@@ -65,6 +65,9 @@ pub trait Tr {
     /// `carried_valid_t()`: how many pieces of the kept evaluation hold the rows of the last state read (the others are made again when asked). The default is 0.
     fn carried_t(&mut self, _s: &Self::S) -> Vec<(&'static str, Vec<Vec<u32>>)> { vec![] }
     fn carried_valid_t(&self) -> usize { 0 }
+    /// Plan 79.56: the counters of the support filter (states, keys, tests run, keys answered from a reference, classes with no reference) and their reset; nought in a module without the pass.
+    fn support_counts_t(&self) -> (u64, u64, u64, u64, u64) { (0, 0, 0, 0, 0) }
+    fn support_reset_t(&mut self) {}
 }
 
 #[macro_export]
@@ -120,6 +123,11 @@ macro_rules! impl_tr_passes {
         $crate::impl_tr_passes!($m, topdown);
         fn carried_t(&mut self, s: &Self::S) -> Vec<(&'static str, Vec<Vec<u32>>)> { self.carried_relations(s) }
         fn carried_valid_t(&self) -> usize { self.carried_valid() }
+    };
+    ($m:ident, support) => {
+        $crate::impl_tr_passes!($m, topdown);
+        fn support_counts_t(&self) -> (u64, u64, u64, u64, u64) { self.support_counts() }
+        fn support_reset_t(&mut self) { self.reset_support_counts() }
     };
     ($m:ident, fresh) => {
         $crate::impl_tr_passes!($m, passes);

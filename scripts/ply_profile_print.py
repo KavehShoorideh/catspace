@@ -2,6 +2,7 @@
   python scripts/ply_profile_print.py games <records folder name> <out file> [<games>]   the moves of the first <games> (default 300) games of at least 60 plies, a game a line; no name of a player is read or written
   python scripts/ply_profile_print.py attacked <rows file> <tag>                          the same clock with the states marked where the side to move is attacked at its goal unit
   python scripts/ply_profile_print.py plot <rows file> <tag>                              the figures (through catspace.io.paths) and OBS lines, from the rows of rust/engine/game/tests/translated_ply_profile.rs
+  python scripts/ply_profile_print.py support <rows file> [<log file>]                    (plan 79.56) OBS lines: the tests run for each allowed move with and without the pass `support`, and the nanoseconds a state of library, fast, lemma and support, each split by whether the side to move is attacked at its goal unit; the log file is the output of the cargo run (its lines hold the load)
 """
 from __future__ import annotations
 
@@ -148,8 +149,39 @@ def plot_attacked(rows: str, tag: str) -> int:
     return 0
 
 
+def support(rows: str, log: str | None) -> int:
+    """Plan 79.56 part D: the metric of the support filter, printed as OBS lines from the rows C (counters of a state) and G (the clock of a state)."""
+    C = []            # (attacked, allowed, keys, tests, answered)
+    G = collections.defaultdict(list)   # label -> [(attacked, allowed, ns a state)]
+    for line in Path(rows).read_text().splitlines():
+        c = line.split(",")
+        if c[0] == "C" and c[1] == "support":
+            C.append((int(c[4]), int(c[5]), int(c[6]), int(c[7]), int(c[8])))
+        elif c[0] == "G":
+            G[c[1]].append((int(c[4]), int(c[5]), int(c[7]) / int(c[6])))
+    if log:
+        for line in Path(log).read_text().splitlines():
+            if line.startswith("OBS ply profile") and "load" in line:
+                print(line)
+    for name, sel in (("all states", None), ("not attacked", 0), ("attacked", 1)):
+        rows_ = [x for x in C if sel is None or x[0] == sel]
+        if not rows_:
+            print(f"OBS 79.56 D tests per allowed move, {name}: no state")
+            continue
+        n, mv, keys, tests, ans = len(rows_), sum(x[1] for x in rows_), sum(x[2] for x in rows_), sum(x[3] for x in rows_), sum(x[4] for x in rows_)
+        print(f"OBS 79.56 D tests per allowed move, {name}: {n} states, {mv} allowed moves, {keys} keys; without the pass {keys / max(mv, 1):.3f} tests an allowed move ({keys / n:.2f} a state), with the pass {tests / max(mv, 1):.3f} ({tests / n:.2f} a state), {ans} keys answered from a reference ({100 * ans / max(keys, 1):.1f} per cent)")
+    for label in ("library", "fast", "lemma", "support"):
+        for name, sel in (("all states", None), ("not attacked", 0), ("attacked", 1)):
+            v = [x for x in G.get(label, []) if sel is None or x[0] == sel]
+            if v:
+                print(f"OBS 79.56 D nanoseconds a state, {label}, {name}: {len(v)} states, {sum(x[2] for x in v) / len(v):.0f} ns on average, {sum(x[1] for x in v) / len(v):.1f} allowed moves on average")
+    return 0
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
+    if len(a) in (2, 3) and a[0] == "support":
+        sys.exit(support(a[1], a[2] if len(a) == 3 else None))
     if len(a) >= 3 and a[0] == "games":
         sys.exit(games(a[1], a[2], int(a[3]) if len(a) > 3 else 300))
     if len(a) == 3 and a[0] == "plot":

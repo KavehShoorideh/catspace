@@ -148,7 +148,8 @@ def test_a_file_with_passes_carries_the_hashes_and_the_passes_and_a_fresh_transl
 
 def test_the_files_of_the_generated_folder_are_the_plain_ones_and_those_with_every_pass():
     more = ("3check", "kingofthehill", "antichess", "chess960", "horde")                                          # 2026-11-24 (plan 79.47): the five more games of the seven certified kernels, plain and every pass
-    want = {f"{g}.rs" for g in GAMES + more} | {f"{g}_{v}.rs" for g in GAMES + more for v in KEPT} | {"chess_lemma.rs"} | {f"{g}_carry.rs" for g in GAMES + more}              # 2026-11-25 (plan 79.54): the modules with the pass carry are kept beside the others. 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
+    # 2026-11-25 (plan 79.56, mended): the modules <game>_support.rs of the six games where pass (26) finds a test that a question reads (not antichess) are kept besides the others
+    want = {f"{g}.rs" for g in GAMES + more} | {f"{g}_{v}.rs" for g in GAMES + more for v in KEPT} | {"chess_lemma.rs"} | {f"{g}_carry.rs" for g in GAMES + more} | {f"{g}_support.rs" for g in GAMES + more if g != "antichess"}              # 2026-11-25 (plan 79.54): the modules with the pass carry are kept beside the others. 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
     assert {p.name for p in GEN.iterdir() if p.is_file()} == want
 
 

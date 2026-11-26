@@ -2,12 +2,13 @@
 //! WHAT IT TAKES: `CS_PLY_GAMES`, a file with one game a line, the moves of the game by the names of the outside library, separated by spaces; `CS_PLY_OUT`, the file the rows are written to;
 //! `CS_PLY_REPLAYS` (default 20), how often every game is walked for the clock; `CS_PLY_MAX` (default 120), the last ply kept.
 //! WHAT IT DOES: every game is followed from its start; at every ply the one question "the allowed moves with the end" is asked once, of the outside library (`KernelGame::moves`) and of three kept
-//! modules of the first game (`fast`: every pass but the carry; `carry`: every pass; `lemma`: with the lemma of the cases), in the order of the game, so each state is asked right after the state before it.
+//! modules of the first game (`fast`: every pass but the carry; `carry`: every pass; `lemma`: with the lemma of the cases; `support`: every pass but the carry, and the support filter, plan 79.56), in the order of the game, so each state is asked right after the state before it.
 //! WHAT IT RETURNS (rows of `CS_PLY_OUT`, comma separated):
 //!   T,<label>,<ply>,<asks>,<nanoseconds in all>                        the clock of the question by ply
 //!   P,<label>,<ply>,<piece>,<nanoseconds in all>,<rows made>,<calls>   the same question with the profile on (two walks), by piece
 //!   S,<ply>,<states>,<allowed moves in all>,<units in all>             what stands at that ply
 //!   G,<label>,<game>,<ply>,<1 when the side to move is attacked at its goal unit, else 0>,<allowed moves>,<asks>,<nanoseconds in all>   the clock of every state by itself
+//!   C,<label>,<game>,<ply>,<attacked>,<allowed moves>,<keys>,<tests run>,<keys answered from a reference>   (plan 79.56, only a module with the pass `support`) the counters of the support filter for that state, with the profile on
 //! WHO CALLS IT: `scripts/ply_profile_print.py`, by hand. `cargo test --release --offline -p cs_game --test translated_ply_profile -- --ignored --nocapture`.
 #[macro_use]
 mod translated_common;
@@ -22,9 +23,11 @@ use translated_common::*;
 include!("generated/chess_fast.rs");
 include!("generated/chess_carry.rs");
 include!("generated/chess_lemma.rs");
+include!("generated/chess_support.rs");
 impl_tr!(chess_fast, carry);
 impl_tr!(chess_carry, carry);
 impl_tr!(chess_lemma, topdown);
+impl_tr!(chess_support, support);
 
 type KS = <KernelGame as Game>::State;
 fn env_usize(k: &str, d: usize) -> usize { std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d) }
@@ -87,11 +90,14 @@ fn module_rows<T: Tr>(label: &str, kstates: &[Vec<KS>], names: &[Vec<String>], r
     t.profiling_t(true);
     let np = t.pieces_t().len();
     let mut acc = vec![(0u64, 0u64, 0u64); max * np];
-    for _ in 0..2 {
-        for g in &games {
+    for walk in 0..2 {
+        for (gi, g) in games.iter().enumerate() {
             for (ply, s) in g.iter().enumerate() {
                 t.reset_profile_t();
+                t.support_reset_t();
                 t.moves_into_t(s, &mut buf);
+                let c = t.support_counts_t();
+                if walk == 0 && c.1 > 0 { writeln!(out, "C,{label},{gi},{ply},{},{},{},{},{}", kstates[gi][ply].is_check() as u8, buf.len(), c.1, c.2, c.3).unwrap(); }
                 for (i, p) in t.pieces_t().iter().enumerate() { let a = &mut acc[ply * np + i]; a.0 += p.3; a.1 += p.4; a.2 += p.2; }
             }
         }
@@ -132,7 +138,8 @@ fn run(path: &str, out_path: &str, replays: usize, max: usize) {
     let lf = module_rows::<chess_fast::Game>("fast", &kstates, &names, replays, max, &mut out);
     let lc = module_rows::<chess_carry::Game>("carry", &kstates, &names, replays, max, &mut out);
     let ll = module_rows::<chess_lemma::Game>("lemma", &kstates, &names, replays, max, &mut out);
-    assert!(lf == legal && lc == legal && ll == legal, "a module's count of allowed moves differs from the library's at some ply");
+    let ls = module_rows::<chess_support::Game>("support", &kstates, &names, replays, max, &mut out);
+    assert!(lf == legal && lc == legal && ll == legal && ls == legal, "a module's count of allowed moves differs from the library's at some ply");
     for ply in 0..max { let n = asks[ply] / replays as u64; if n > 0 { writeln!(out, "S,{ply},{n},{},{}", legal[ply], units[ply]).unwrap(); } }
     std::fs::write(out_path, out).unwrap();
     println!("OBS ply profile: {} games, {} states, rows written to {out_path}; every module's count of allowed moves equals the library's at every ply", kstates.len(), kstates.iter().map(|g| g.len()).sum::<usize>());
