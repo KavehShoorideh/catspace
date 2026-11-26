@@ -397,6 +397,14 @@ PLAN 79.56 PART B: THE SUPPORT FILTER (SYSTEM_SPEC 11, blocks "Layer 2 unlocked 
     (d) A key is in the DOMAIN when the guard domain G* has a row at it; the guard class is the sorted rows of every guard of the cone at the key, with the key's places removed, taken as one list; a class has at most one reference (the first key of the class, in the order of the sorted rows, whose test ends with D(K0) and S0 disjoint). The guard rows are read from the relations made by the pieces of the guards (they are in the cones: `Plan.support_reads`), the state is read as the top-down tables (loaded and cleared inside the piece, `Game::sp_s` holds the state of `load`).
     (e) `Game::sp_plant` turns the answer a reference keeps round (the test that plants a wrong reference); `Game::sp_log: Option<Vec<SpLog>>` keeps, for each key of a question, D(K), S and the answer (the material of the stop rule). Both are test hooks in every module with the pass.
     (f) The pass is an interpreter of the test by the top-down functions: the guards and the places D(K) are read from are made again top-down, key by key. It is NOT claimed to be faster than the bulk piece of the module without the pass: the part C and D tests print tests and nanoseconds.
+PLAN 79.57 PART B: THE READS OF AN ANSWER (SYSTEM_SPEC 11, blocks "A divergence found and named" and "The support filter"; LAYER 2, piece: rules, on layer 1's kept graph; ledger rows 58, 57). Interface written before the body.
+  THE LEMMA IS THE ONE OF 79.56 (lean/ideas/Ideas/Support.lean, `Test.run_of_disjoint`): an answer made by reading facts is the same in two worlds that agree on every fact that was read. The pass gives the facts read; the caller (the keeper of the graph) keeps them.
+  (27) "reads" TAKES the clauses as written, the passes before it (it brings "topdown"), and a list `reads` of (relation, k) given by the CALLER of `translate` (the make script names the relations; this source names none): each relation is asked with its first k places bound (its KEY) and the rest free.
+  IT FINDS, from the clauses alone: nothing to search for; for each (relation, k) it makes the top-down function of the relation with the first k places bound (the functions of the relations it reads are made as the way of pass (24) makes them), and REFUSES, naming the reason, a relation that is not derived, has fewer than k places, is not in the description, or whose walk reads a fluent of more places than the record holds.
+  RETURNS, in the same module: `Game::ask_reads(&mut self, s: &State, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)>`: TAKES a state, one of the relations given and a key of its k places; RETURNS the rows of the relation at the key (all places, sorted, no duplicate) and THE READS: every read of a fluent of the state made by the walk, in the order made, as (the fluent's number, its places as asked: a number where the read binds the place, FREE where it does not), a read of a row that is not there counted like the read of a row (it is recorded before it is made); None when the relation is not one given or the walk gave a question to the bottom-up way (the worklist overflowed).
+    `READS_FLUENTS: &[&str]` the fluents in the order of their numbers (as the clauses name them, without the word `true.`), `READS: &[(&str, usize)]` the relations given with their k.
+  WHO CALLS IT: the keeper's second rule (rust/engine/game/src/keeper.rs, through the test adapter tests/described: the places a read binds are the places of the support of an answer); the tests of the modules made with it (tests/translated_reads.rs). Nothing on the engine's path.
+  SOUNDNESS: the walk is the top-down way of pass (24), which tests hold equal to the bottom-up rows; every consult of a fluent goes through a recorded statement (each form a literal of a fluent takes: a negated literal, a literal with no place left free, a literal with places left free); relations that do not read the state are not recorded. The module without "reads" is the module of the commit before, byte for byte but for the translator hash line.
 """
 from __future__ import annotations
 
@@ -411,7 +419,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
 PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words", "tables", "topdown", "carry")
-OPT_PASSES = ("support",)                               # passes a caller asks for by name; "every pass" (PASSES) does not hold them (pass 26: AS BUILT, the module text says why)
+OPT_PASSES = ("support", "reads")                              # passes a caller asks for by name; "every pass" (PASSES) does not hold them (pass 26: AS BUILT, the module text says why)
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 TABLE_WORDS = 1 << 13                                   # pass (23): a walk gets a table when its chains are at most this many words
 WORDS_MAX = 1 << 13                                     # pass (22): a fluent is held as the bits of a state when the product of the sizes of its sorts is at most this
@@ -874,8 +882,8 @@ class Plan:
             passes = tuple(passes) + ("start",)                 # the pass worth admits orders the pass start would refuse
         if ("asked" in passes or "project" in passes or "worth" in passes) and "bits" not in passes:
             passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
-        if "support" in passes and "topdown" not in passes:
-            passes = tuple(passes) + ("topdown",)               # the support filter tests a key by the top-down functions (pass 26)
+        if ("support" in passes or "reads" in passes) and "topdown" not in passes:
+            passes = tuple(passes) + ("topdown",)               # the support filter tests a key by the top-down functions (pass 26); the reads of an answer are the top-down walk's (pass 27)
         if "topdown" in passes:
             passes = tuple(passes) + tuple(p for p in ("words", "cones") if p not in passes)         # the top-down way reads the facts of a state as the bits of words (pass 22) and falls back on the legal rows alone (pass 21)
         if "carry" in passes and "cones" not in passes:
@@ -887,6 +895,8 @@ class Plan:
         self.support_refused: dict = {}                          # pass (26): relation -> why it is not a test of the shape
         self.support_h: list = []                                # pass (26): the hypothetical relations of the tests, in order
         self.support_reads: dict = {}                            # pass (26): test -> the relations its piece reads (the guards): the cones are made with these in place of the clauses' reads
+        self.reads: list = []                                    # pass (27): the (relation, key places) pairs whose answers come with the fluent facts they read; decided in `translate`
+        self.reads_refused: dict = {}                            # pass (27): relation -> why it is not made
         self.cones: bool = "cones" in self.passes                # pass (21)
         self.topdown: bool = "topdown" in self.passes            # pass (24)
         self.carry: bool = "carry" in self.passes                # pass (25)
@@ -3892,6 +3902,8 @@ class TopDown:
         self.late: dict = {}                            # pass (26): relation made from a hypothetical relation -> the hypothetical relations its clauses read last (behind the literals that bind the places they are read at)
         self.rec: dict = {}                             # pass (26): hypothetical relation -> (its number, key places, row places): its functions record the places they are asked about
         self.extra: list = []                           # pass (26): (relation, bound places) functions made besides those the cone of the questions asks
+        self.fl_rec: bool = False                       # pass (27): every read of a fluent of the state is recorded (`rd_note`)
+        self.fl_no: dict = {}                           # pass (27): fluent relation -> its number, in the order of the first read emitted
         self.keeps: dict = {}                           # relation of one linear recursive clause -> the places the walk keeps (the head's variable is the literal's): a literal of it is taken once they are bound
 
     # ---- what is a relation here
@@ -4062,6 +4074,7 @@ class TopDown:
                 self.line(f"if {self.fname(rel, tuple(range(n)))}(td, {key}, &mut |_| true) {{ {fail}; }}")
             else:
                 self.pat(rel, tuple(range(n)))
+                self.note_read(rel, key)
                 self.line(f"if td.{self.holder(rel)}.has(&{key}) {{ {fail}; }}")
             self.steps(rule, i + 1, head_row, sink, first)
             return
@@ -4080,10 +4093,12 @@ class TopDown:
         if way in ("static", "fluent"):
             if not fresh:
                 self.pat(rel, tuple(range(n)))
+                self.note_read(rel, key)
                 self.line(f"if !td.{self.holder(rel)}.has(&{key}) {{ {fail}; }}")
                 self.steps(rule, i + 1, head_row, sink, first)
                 return
             ix = self.pat(rel, keypos)
+            self.note_read(rel, key)
             src = f"td.{self.holder(rel)}.get({ix}, &{key})" if keypos else f"td.{self.holder(rel)}.order.as_slice()"
             self.line(f"for row{i} in {src}.iter() {{")
             self.fail.append("continue")
@@ -4112,6 +4127,13 @@ class TopDown:
         self.ind -= 1
         self.fail.pop()
         self.line("}) { return true; }")
+
+    def note_read(self, rel: str, key: str):
+        """Pass (27): before a read of a fluent of the state, the statement that records it (the fluent's number and the places as asked); nothing for a relation that does not read the state."""
+        if not self.fl_rec or not rel.startswith("true."):
+            return
+        no = self.fl_no.setdefault(rel, len(self.fl_no))
+        self.line(f"rd_note({no}, &{key});")
 
     def occurs(self, rule, v: int) -> int:
         """How many times the variable of this number stands in the head and the literals of the rule."""
@@ -4501,6 +4523,61 @@ class SupportFinder:
                     self.found.append(s)
 
 
+def prepare_reads(d, plan, tdg, reads) -> None:
+    """Pass (27), before the top-down functions are made: for each (relation, k) the caller gave, ask the top-down maker for the function with the first k places bound, and switch the recording of fluent reads on; a relation that cannot be made is refused with the reason."""
+    for rel, k in reads:
+        if rel not in d.arity or rel not in d.prog.nodes:
+            plan.reads_refused[rel] = "the description has no such relation"
+        elif tdg.how(rel) != "derived":
+            plan.reads_refused[rel] = "not a relation derived from clauses"
+        elif not (0 <= k <= d.arity[rel]):
+            plan.reads_refused[rel] = f"the key of {k} places does not fit its {d.arity[rel]} places"
+        else:
+            plan.reads.append((rel, k))
+            tdg.extra.append((rel, tuple(range(k))))
+    tdg.fl_rec = bool(plan.reads)
+
+
+def reads_prelude(d, plan, tdg) -> list:
+    """Pass (27): the buffer where a read of a fluent is recorded, the recording function, the numbers of the fluents and the relations given."""
+    width = max([d.arity.get(r, 0) for r in tdg.fl_no] + [1])
+    names = sorted(tdg.fl_no, key=lambda r: tdg.fl_no[r])
+    return [f"pub const RD_W: usize = {width};",
+            "thread_local! { static RD_ON: std::sync::atomic::AtomicBool = const { std::sync::atomic::AtomicBool::new(false) }; static RD_REC: std::sync::Mutex<Vec<(u16, [u32; RD_W])>> = const { std::sync::Mutex::new(Vec::new()) }; }",
+            "/// Pass (27): record one read of a fluent of the state (its number and the places as asked, FREE where the read leaves a place free), while a question asks for the reads.",
+            "#[inline] fn rd_note(f: u16, key: &[u32]) { if RD_ON.with(|o| o.load(std::sync::atomic::Ordering::Relaxed)) { let mut q = [FREE; RD_W]; q[..key.len()].copy_from_slice(key); RD_REC.with(|r| r.lock().unwrap().push((f, q))); } }",
+            "/// The fluents in the order of their numbers, and the number of places of each.",
+            "pub const READS_FLUENTS: &[&str] = &[" + ", ".join(f'"{r[len("true."):]}"' for r in names) + "];",
+            "pub const READS_ARITY: &[usize] = &[" + ", ".join(str(d.arity[r]) for r in names) + "];",
+            "/// The relations whose answers come with their reads, each with the number of places of its key.",
+            "pub const READS: &[(&str, usize)] = &[" + ", ".join(f'("{r}", {k})' for r, k in plan.reads) + "];"]
+
+
+def reads_method(d, plan, tdg) -> list:
+    """Pass (27): `Game::ask_reads`, the rows of a relation at a key with the fluent facts the walk read."""
+    out = ["    /// Pass (27): the rows of one of the relations given at a key (its first places bound), by the top-down way, with every read of a fluent of the state the walk made (module text, (27)); None when the relation is not one given or the walk overflowed.",
+           "    pub fn ask_reads(&mut self, s: &State, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)> {",
+           "        self.load_td(s);",
+           "        RD_REC.with(|r| r.lock().unwrap().clear());",
+           "        RD_ON.with(|o| o.store(true, std::sync::atomic::Ordering::Relaxed));",
+           "        let mut v: Vec<Vec<u32>> = vec![];",
+           "        let known = match rel {"]
+    for rel, k in plan.reads:
+        n = d.arity[rel]
+        out.append(f'            "{rel}" if key.len() == {k} => {{ let mut a = [FREE; {n}]; a[..{k}].copy_from_slice(key); {tdg.fname(rel, tuple(range(k)))}(&self.td, a, &mut |row| {{ v.push(row.to_vec()); false }}); true }}')
+    out += ["            _ => false,",
+            "        };",
+            "        RD_ON.with(|o| o.store(false, std::sync::atomic::Ordering::Relaxed));",
+            "        let rec: Vec<(u16, [u32; RD_W])> = RD_REC.with(|r| std::mem::take(&mut *r.lock().unwrap()));",
+            "        let over = self.td.overflow.load(std::sync::atomic::Ordering::Relaxed);",
+            "        self.clear_td();",
+            "        if !known || over { return None; }",
+            "        v.sort(); v.dedup();",
+            "        Some((v, rec.into_iter().map(|(f, q)| (f, q[..READS_ARITY[f as usize]].to_vec())).collect()))",
+            "    }"]
+    return out
+
+
 def support_prelude(plan) -> list:
     """The thread-local buffers where a function of a hypothetical relation records the places it was asked about (pass 26), one for each hypothetical relation, and the counters of the Game."""
     out = ["#[derive(Clone, Copy, Default, Debug)]",
@@ -4666,7 +4743,7 @@ def rs_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
+def translate(text: str, module: str, passes=(), lemmas=(), ways=None, reads=()) -> str:
     """The Rust source of the description `text` (composed) as `pub mod <module>`, with the passes named and the lemmas read as rewrites (see the module text for the interface); with none, the plain translation."""
     src_text = text
     infos: list = []
@@ -4819,6 +4896,8 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
                 raise TopDownRefuse("the description has no terminal and no legal")
             if "support" in plan.passes:
                 prepare_support(d, plan, tdg)
+            if "reads" in plan.passes:
+                prepare_reads(d, plan, tdg, reads)
             tdg.cone = tdg.build(roots)["cone"]
             td_tabs: list = []
             w_topdown_tables(td_tabs.append, d, plan, tdg)
@@ -4827,11 +4906,18 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
             plan.td_refused = str(e)
             plan.support, plan.support_h, plan.support_reads = [], [], {}
             plan.support_refused["(all)"] = f"the top-down way was not made: {e}"
+            plan.reads = []
+            if "reads" in plan.passes:
+                plan.reads_refused["(all)"] = f"the top-down way was not made: {e}"
     if plan and "support" in plan.passes:
         heads = [f"// support: test {x['R']}, hypothetical relation {x['H']} made from {x['B']} (key {x['m']} places, row {x['p']}), guard domain {x['gstar'][0]}, relations made from it {','.join(x['hd'])}" for x in plan.support]
         heads += [f"// support refused: {k}: {v[:160]}" for k, v in sorted(plan.support_refused.items())]
         if not plan.support and not plan.support_refused:
             heads.append("// support: no hypothetical relation found")
+        out[head_at:head_at] = heads
+    if plan and "reads" in plan.passes:
+        heads = [f"// reads: {r} with its first {k} places as the key" for r, k in plan.reads]
+        heads += [f"// reads refused: {k}: {v[:160]}" for k, v in sorted(plan.reads_refused.items())]
         out[head_at:head_at] = heads
     sup = bool(td_on and plan and plan.support)
     ro = lambda holder, rel: f"{holder}.{d.rid[rel]}.rows_all()" if rel in bits else f"{holder}.{d.rid[rel]}.order"
@@ -4839,6 +4925,8 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
         w("\n".join(td_tabs))
         if plan.support:
             w("\n".join(support_prelude(plan) + support_consts(d, plan) + support_free(d, plan, tdg)))
+        if tdg.fl_rec:
+            w("\n".join(reads_prelude(d, plan, tdg)))
         ways = dict(ways or {})
         for q in ways:
             if q not in ("end", "legal-turn") or ways[q] not in ("bottom-up", "top-down"):
@@ -4985,6 +5073,8 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None) -> str:
         w("        v.sort(); v.dedup();")
         w("        Some(v)")
         w("    }")
+        if tdg.fl_rec:
+            w("\n".join(reads_method(d, plan, tdg)))
         if "terminal" in d.prog.nodes:
             w("    /// The end of the game, answered top-down: the first rule that holds ends the walk (module text, (24)).")
             w("    pub fn terminal_td(&mut self, s: &State) -> bool {")

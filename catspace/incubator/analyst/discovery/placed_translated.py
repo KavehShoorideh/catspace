@@ -54,7 +54,7 @@ KNOWN: dict = json.loads((ROOT / "rules" / "placed" / "known.json").read_text())
 
 
 def games() -> list:
-    return sorted(p.stem for p in GEN.glob("*.rs"))
+    return sorted(p.stem for p in GEN.glob("*.rs") if not p.stem.endswith("_reads"))      # 2026-11-25 (plan 79.57): the modules made with pass (27) `reads` (<game>_reads.rs) are not a game's placed module
 
 
 def module_path(game: str) -> Path:
