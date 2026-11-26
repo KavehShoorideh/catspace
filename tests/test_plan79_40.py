@@ -84,7 +84,8 @@ def test_a_kept_file_carries_the_hashes_and_the_passes_and_a_fresh_translation_i
 def test_only_the_plain_files_and_the_files_with_every_pass_are_kept():
     names = sorted(p.name for p in GEN.iterdir() if p.is_file())
     more = ("3check", "kingofthehill", "antichess", "chess960", "horde")                                                    # 2026-11-24 (plan 79.47): the five more games of the seven certified kernels, plain and every pass
-    assert names == sorted([f"{g}.rs" for g in GAMES + more] + [f"{g}_fast.rs" for g in GAMES + more] + [f"{g}_carry.rs" for g in GAMES + more] + ["chess_lemma.rs"]), names          # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
+    # 2026-11-25 (plan 79.56, mended): the modules <game>_support.rs of the six games where pass (26) finds a test that a question reads (not antichess) are kept besides the others
+    assert names == sorted([f"{g}.rs" for g in GAMES + more] + [f"{g}_fast.rs" for g in GAMES + more] + [f"{g}_carry.rs" for g in GAMES + more] + [f"{g}_support.rs" for g in GAMES + more if g != "antichess"] + ["chess_lemma.rs"]), names          # 2026-11-24 (plan 79.45): the first game's file with every pass and its lemma is kept too
     tracked = git("ls-files", "rust/engine/game/tests/generated").stdout.split()
     assert sorted(Path(x).name for x in tracked) == names, tracked
     assert "generated/scratch/" in (ROOT / ".gitignore").read_text()

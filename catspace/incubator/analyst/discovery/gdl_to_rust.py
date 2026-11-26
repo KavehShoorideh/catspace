@@ -382,14 +382,21 @@ PLAN 79.56 PART B: THE SUPPORT FILTER (SYSTEM_SPEC 11, blocks "Layer 2 unlocked 
               A HYPOTHETICAL RELATION H of m+p places (m >= 1, a KEY K at the first m places, a ROW at the last p), not recursive, every clause of which is a VIEW (one positive literal of a relation V with the head's variables, distinct, in the same order); every view V has clauses all of one of two forms:
                 COPY: a positive literal of B whose p places are the head's p row variables in order; besides it, positive literals that bind no row variable ("guards": they say whether the key is in play), and negated literals whose places are variables of the key or of the row and that name no other variable; no test `distinct`.
                 ADD: a clause with no positive literal of B at the row variables; the rows it gives at the key are the places the key changes (the guards it reads are real facts).
-              H IS "B OUTSIDE THE PLACES THE KEY TOUCHES, GIVEN ROWS AT THOSE PLACES": H(K, .) differs from B(.) only at the rows of the ADD views at K and at the rows of B that a negated literal of a COPY clause names at K. D(K), the DIFFERING PLACES of K, is that set, written as patterns over the row (a number at a place the literal fixes, FREE at the others), and is read off the clauses: the rows of each ADD view at K, and for each negated literal of a COPY clause the rows of its relation at K, each turned into a pattern; a superset is sound.
+              H IS "B OUTSIDE THE PLACES THE KEY TOUCHES, GIVEN ROWS AT THOSE PLACES": H(K, .) differs from B(.) only at the rows of the ADD views at K and at the rows of B that a negated literal of a COPY clause names at K. D(K), the DIFFERING PLACES of K, is that set, written as patterns over the row (a number at a place the literal fixes, FREE at the others), and is read off the clauses: the rows of each ADD view at K, and for each negated literal of a COPY clause the rows of its relation at K, each turned into a pattern; a superset is safe.
               THE RELATIONS MADE FROM H (HD): the relations that depend on H. R, A TEST OF THE KEY: a relation of HD with exactly the key's m places that a relation outside HD reads. R CONFORMS when, for every clause of every relation of HD it reaches (the key of a relation is the places that hold the key variables of the clause that calls it, found by following the calls from R, whose key is its places): each literal is a literal of H with the key at its first m places in the order of the clause's key variables, or a literal of an HD relation with the whole key at some places in that order, or a GUARD (a relation outside HD that reads the state and has a key variable); no literal over a static relation, no `distinct`, no compound term, holds a key variable. A GUARD DOMAIN: a guard G* such that every clause of R reaches a positive literal of G* with the key through relations whose every clause holds one (R has no row at a key that G* has no row at). THE GUARD CLASS of a key: the rows of every guard of the cone at the key, the key's places removed (the guards' values are what the test reads besides H).
-              A DESCRIPTION WITHOUT THIS SHAPE IS LEFT UNCHANGED: `Plan.support` is empty and `Plan.support_refused` names, for each relation that came near, the reason (the head lines print both).
+              A DESCRIPTION WITHOUT THIS SHAPE IS LEFT UNCHANGED: `Plan.support` is blank and `Plan.support_refused` names, for each relation that came near, the reason (the head lines print both).
   RETURNS, for each conforming R, in the same module: R's piece is not run in the cone of a question: `Game::run` runs `run_support` in its place, and the relations made only to answer R (those of HD that no other piece of the cones reads) are out of the cones (the cones are the written clauses' graph with R's reads taken to be the guard domain's, the fluents and the relations that do not read the state). In ONE QUESTION at ONE STATE, `run_support` does this: it takes the keys of the guard domain (the rows of the guard's relation made by its piece, the key places); for each key K, in the order of the rows: computes D(K) (top-down, the key bound); takes the guard class of K; if the class has a REFERENCE (S0, answer) and no pattern of D(K) is met by a pattern of S0, K takes the reference's answer, NO TEST; otherwise K is TESTED: the top-down function of R at K, with every call of a function of H recorded (its bound places, FREE elsewhere) in a word S; if D(K) is met by no pattern of S and the class has no reference, (S, answer) becomes the class's reference. Every other key is tested as before. No reference found: every key is tested as before. The references die with the state (they are made in the question). The rows of R are the keys whose answer is true, put into R's relation at the end. A td worklist that overflowed (`td.overflow`) makes the question run the pieces the module without the pass runs (the relations of HD in order and R's plain piece): the answer is then the plain one.
   A COUNTER, on under the profile switch only: `Game::support_counts() -> (states, keys, tests, answered_from_reference, no_reference_classes)`; `reset_support_counts()`.
-  SOUNDNESS (Ideas.Support.Test.run_of_disjoint; the easy direction only): R(K) is a test whose inputs are the facts of H(K, .) it consults (every consult is recorded as a pattern: a superset of the facts read), the facts of the guards at K (equal for two keys of one class), and static facts. H(K0, .) and H(K1, .) both agree with B outside D(K0) and D(K1); the reference's S0 meets neither; so both worlds agree on every input the reference's test asked, and the answer of K1 is the reference's. Nothing is proved about a game.
-  HELD TO THE MODULE WITHOUT THE PASS: rust/engine/game/tests/translated_support.rs (the rows of every relation that the module with the pass makes equal those of the module `fast`, and the allowed moves, at every state of the seeded games used for the carry; a planted wrong reference is caught by the equality test); tests/test_plan79_56.py (the pass finds the shape in the clauses of a description whose every name is changed, and refuses where a clause reads the key outside H).
+  SOUNDNESS (Ideas.Support.Test.run_of_disjoint; the easy way only): R(K) is a test whose inputs are the facts of H(K, .) it consults (every consult is recorded as a pattern: a superset of the facts read), the facts of the guards at K (equal for two keys of one class), and static facts. H(K0, .) and H(K1, .) both agree with B outside D(K0) and D(K1); the reference's S0 meets neither; so both worlds agree on every input the reference's test asked, and the answer of K1 is the reference's. Nothing is proved about a game.
+  HELD TO THE MODULE WITHOUT THE PASS: rust/engine/game/tests/translated_support.rs (the rows of every relation that the module with the pass makes equal those of the module `fast`, and the permitted moves, at every state of the seeded games used for the carry; a planted wrong reference is caught by the equality test); tests/test_plan79_56.py (the pass finds the shape in the clauses of a description whose every name is changed, and refuses where a clause reads the key outside H).
   THE KEPT MODULE `<game>_support.rs` is made by scripts/gdl_to_rust_make.py for every game where the shape is found; the modules without the pass stay as they are.
+  AS BUILT 79.56, where the body differs from the text above (said here because the text was committed first):
+    (a) "support" is NOT one of PASSES: it is in OPT_PASSES, a caller asks for it by name; "every pass" (PASSES, which the gates of the earlier plans take) is still the twenty-3, and `Plan.passes` lists it behind them. The head of a module with it holds `// passes: ...,support` and one line `// support: test ...` for each test found and `// support refused: <relation>: <reason>` for each relation that came near (a relation that no question reads is refused with that reason: the shape is there and nothing is changed).
+    (b) D(K) is a set of ROWS, not of places alone: a negated literal of a copy clause names places (a pattern with FREE at the others); the rows of B at those places are read through an index of the top-down tables and put into D(K) one by one (a row of an add view is a row already). The first writing took the place alone and the pattern then met every read of a unit of a form, so no key ever became a reference.
+    (c) ORDER. The clauses of the relations made from H are joined with the literals of H LAST (`JoinRule(late=)`, only in a module with the pass; the rows are the same, the order is another order of the same conjunction): joined by the reader's rule, a literal of H with a constant form was read first, which reads every unit of that form, and S held `(* * * *)`. Found by the log of a question (`Game::sp_log`, printed by translated_support.rs `the_support_words_chess`): 0 of 17987 keys were ever answered from a reference in the first game before this order, and about half behind it (see the OBS lines of translated_support.rs).
+    (d) A key is in the DOMAIN when the guard domain G* has a row at it; the guard class is the sorted rows of every guard of the cone at the key, with the key's places removed, taken as one list; a class has at most one reference (the first key of the class, in the order of the sorted rows, whose test ends with D(K0) and S0 disjoint). The guard rows are read from the relations made by the pieces of the guards (they are in the cones: `Plan.support_reads`), the state is read as the top-down tables (loaded and cleared inside the piece, `Game::sp_s` holds the state of `load`).
+    (e) `Game::sp_plant` turns the answer a reference keeps round (the test that plants a wrong reference); `Game::sp_log: Option<Vec<SpLog>>` keeps, for each key of a question, D(K), S and the answer (the material of the stop rule). Both are test hooks in every module with the pass.
+    (f) The pass is an interpreter of the test by the top-down functions: the guards and the places D(K) are read from are made again top-down, key by key. It is NOT claimed to be faster than the bulk piece of the module without the pass: the part C and D tests print tests and nanoseconds.
 """
 from __future__ import annotations
 
@@ -3882,7 +3889,7 @@ class TopDown:
         self.head_compound: dict = {}                   # relation -> places where some clause has a compound head term
         self.nvar = 0
         self.cone: set = set()
-        self.late: dict = {}                            # pass (26): relation made from a hypothetical relation -> the hypothetical relations its clauses read last (after the literals that bind the places they are read at)
+        self.late: dict = {}                            # pass (26): relation made from a hypothetical relation -> the hypothetical relations its clauses read last (behind the literals that bind the places they are read at)
         self.rec: dict = {}                             # pass (26): hypothetical relation -> (its number, key places, row places): its functions record the places they are asked about
         self.extra: list = []                           # pass (26): (relation, bound places) functions made besides those the cone of the questions asks
         self.keeps: dict = {}                           # relation of one linear recursive clause -> the places the walk keeps (the head's variable is the literal's): a literal of it is taken once they are bound
@@ -3946,7 +3953,7 @@ class TopDown:
         out = [f"fn {name}(td: &Td, a: [u32; {n}], k: &mut dyn FnMut(&[u32; {n}]) -> bool) -> bool {{"]
         if rel in self.rec:
             hi, hm, hp = self.rec[rel]
-            out.append(f"    if SP_ON{hi}.with(|o| o.get()) {{ SP_REC{hi}.with(|r| {{ let mut q = [FREE; {hp}]; q.copy_from_slice(&a[{hm}..]); r.borrow_mut().push(q); }}); }}")
+            out.append(f"    if SP_ON{hi}.with(|o| o.load(std::sync::atomic::Ordering::Relaxed)) {{ SP_REC{hi}.with(|r| {{ let mut q = [FREE; {hp}]; q.copy_from_slice(&a[{hm}..]); r.lock().unwrap().push(q); }}); }}")
         if rec:
             out.append(f"    let mut got = [[0u32; {n}]; {TD_CAP}];")
             out.append("    let mut ns = 0usize;")
@@ -4312,9 +4319,9 @@ class SupportFinder:
         if info["B"] is None:
             raise SupportRefuse("no clause copies a state relation")
         m = info["m"]
-        for v, kind, cls in info["views"]:
+        for v, form, cls in info["views"]:
             for c in cls:
-                if kind == "copy":
+                if form == "copy":
                     if self.copy_clause(c, m) is None:
                         raise SupportRefuse(f"a copy clause that does not copy {info['B']} at the row: {c.text}")
                 else:
@@ -4342,7 +4349,7 @@ class SupportFinder:
         d = self.d
         kp = {R: tuple(range(m))}
         queue = [R]
-        seen = {R}
+        met = {R}
         guards: list = []
         while queue:
             x = queue.pop(0)
@@ -4369,8 +4376,8 @@ class SupportFinder:
                             raise SupportRefuse(f"a literal of {rel}, made from {h}, that does not hold the whole key in order: {c.text}")
                         if kp.setdefault(rel, at) != at:
                             raise SupportRefuse(f"{rel} holds the key at two sets of places")
-                        if rel not in seen:
-                            seen.add(rel)
+                        if rel not in met:
+                            met.add(rel)
                             queue.append(rel)
                     elif at:
                         if d.static[rel]:
@@ -4416,8 +4423,8 @@ class SupportFinder:
         # the differing places D(K): the add views, and the negated literals of the copy clauses
         dparts = []
         gstars = None
-        for v, kind, cls in info["views"]:
-            if kind == "add":
+        for v, form, cls in info["views"]:
+            if form == "add":
                 dparts.append(("add", v))
                 continue
             for c in cls:
@@ -4456,13 +4463,19 @@ class SupportFinder:
                 uniq.append((rel, at))
         if gstar not in uniq:
             uniq.append(gstar)
-        return {"R": R, "H": h, "B": info["B"], "m": m, "p": p, "kp": kp, "hd": sorted(kp), "views": [(v, kind) for v, kind, _c in info["views"]],
+        return {"R": R, "H": h, "B": info["B"], "m": m, "p": p, "kp": kp, "hd": sorted(kp), "views": [(v, form) for v, form, _c in info["views"]],
                 "dparts": dparts, "guards": uniq, "gstar": gstar}
 
     def run(self) -> None:
         d = self.d
         for h in sorted(d.nodes):
-            if not self.derived(h) or not self.cl.get(h) or not all(self.view_of(h, c) is not None for c in self.cl[h]):
+            if not self.derived(h) or not self.cl.get(h):
+                continue
+            vs = [self.view_of(h, c) for c in self.cl[h]]
+            if not any(v is not None and self.derived(v) for v in vs):
+                continue                                # no clause is a view of a relation made by clauses: not a contender for H
+            if not all(v is not None for v in vs):
+                self.refused[h] = "a clause that is not a view: " + next(c.text for c, v in zip(self.cl[h], vs) if v is None)
                 continue
             try:
                 info = self.hypothetical(h)
@@ -4492,14 +4505,14 @@ def support_prelude(plan) -> list:
     """The thread-local buffers where a function of a hypothetical relation records the places it was asked about (pass 26), one for each hypothetical relation, and the counters of the Game."""
     out = ["#[derive(Clone, Copy, Default, Debug)]",
            "pub struct SpCount { pub states: u64, pub keys: u64, pub tests: u64, pub answered: u64, pub noref: u64 }",
-           "/// One key of one question (for the tests that read the support words): the key, the places it differs at (patterns, FREE: any), the places its test read (empty for a key answered from a reference), the answer, and how (0 tested, 1 tested and kept as the reference, 2 answered from the reference).",
+           "/// One key of one question (for the tests that read the support words): the key, the places it differs at (patterns, FREE: any), the places its test read (blank for a key answered from a reference), the answer, and how (0 tested, 1 tested and kept as the reference, 2 answered from the reference).",
            "#[derive(Clone, Debug)]",
            "pub struct SpLog { pub key: Vec<u32>, pub d: Vec<Vec<u32>>, pub s: Vec<Vec<u32>>, pub ans: bool, pub how: u8 }",
            "fn sp_meet<const P: usize>(a: &[u32; P], b: &[u32; P]) -> bool { (0..P).all(|j| a[j] == FREE || b[j] == FREE || a[j] == b[j]) }",
            "fn sp_disjoint<const P: usize>(d: &[[u32; P]], s: &[[u32; P]]) -> bool { !d.iter().any(|x| s.iter().any(|y| sp_meet(x, y))) }"]
     for hi, h in enumerate(plan.support_h):
         p = next(s["p"] for s in plan.support if s["H"] == h)
-        out.append(f"thread_local! {{ static SP_ON{hi}: std::cell::Cell<bool> = const {{ std::cell::Cell::new(false) }}; static SP_REC{hi}: std::cell::RefCell<Vec<[u32; {p}]>> = const {{ std::cell::RefCell::new(Vec::new()) }}; }}")
+        out.append(f"thread_local! {{ static SP_ON{hi}: std::sync::atomic::AtomicBool = const {{ std::sync::atomic::AtomicBool::new(false) }}; static SP_REC{hi}: std::sync::Mutex<Vec<[u32; {p}]>> = const {{ std::sync::Mutex::new(Vec::new()) }}; }}")
     return out
 
 
@@ -4517,14 +4530,14 @@ def support_free(d, plan, tdg) -> list:
                 out.append(f"    {fn}(td, [{a}], &mut |row| {{ let mut q = [FREE; {p}]; q.copy_from_slice(&row[{m}..]); out.push(q); false }});")
             else:
                 _t, rel, amap = part
-                mask = tuple(j for j, (kind, _v) in enumerate(amap) if kind in ("k", "c"))
+                mask = tuple(j for j, (form, _v) in enumerate(amap) if form in ("k", "c"))
                 fn = tdg.fname(rel, mask)
-                a = ", ".join(f"key[{v}]" if kind == "k" else (str(d.sym_id[v]) if kind == "c" else "FREE") for kind, v in amap)
+                a = ", ".join(f"key[{v}]" if form == "k" else (str(d.sym_id[v]) if form == "c" else "FREE") for form, v in amap)
                 body = []
-                for j, (kind, v) in enumerate(amap):
-                    if kind == "r":
+                for j, (form, v) in enumerate(amap):
+                    if form == "r":
                         body.append(f"{{ let x = row[{j}]; if q[{v}] != FREE && q[{v}] != x {{ ok = false; }} else {{ q[{v}] = x; }} }}")
-                rb = tuple(sorted({v for kind, v in amap if kind == "r"}))
+                rb = tuple(sorted({v for form, v in amap if form == "r"}))
                 hold = tdg.holder(s["B"])
                 if rb:
                     grab = f"for brow in td.{hold}.get({tdg.pat(s['B'], rb)}, &q).iter() {{ out.push(*brow); }}"
@@ -4578,14 +4591,14 @@ def support_methods(d, plan, tdg, ro, gated, has_dw) -> list:
         out.append("            if c == refs.len() { refs.push(None); }")
         out.append(f"            dk.clear(); sp_d{i}(&self.td, &key, &mut dk);")
         out.append("            if let Some((s0, ans)) = &refs[c] { if sp_disjoint(&dk, s0) { answered += 1; if let Some(l) = self.sp_log.as_mut() { l.push(SpLog { key: key.to_vec(), d: dk.iter().map(|x| x.to_vec()).collect(), s: vec![], ans: *ans, how: 2 }); } if *ans { rows.push(key); } continue; } }")
-        out.append(f"            SP_REC{hi}.with(|r| r.borrow_mut().clear()); SP_ON{hi}.with(|o| o.set(true));")
+        out.append(f"            SP_REC{hi}.with(|r| r.lock().unwrap().clear()); SP_ON{hi}.with(|o| o.store(true, std::sync::atomic::Ordering::Relaxed));")
         fn = tdg.fname(s["R"], tuple(range(m)))
         out.append(f"            let ans = {fn}(&self.td, [{', '.join(f'key[{j}]' for j in range(m))}], &mut |_| true);")
-        out.append(f"            SP_ON{hi}.with(|o| o.set(false));")
+        out.append(f"            SP_ON{hi}.with(|o| o.store(false, std::sync::atomic::Ordering::Relaxed));")
         out.append("            tests += 1;")
         out.append("            if self.td.overflow.load(std::sync::atomic::Ordering::Relaxed) { over = true; break; }")
         out.append(f"            let mut how = 0u8;")
-        out.append(f"            if refs[c].is_none() || self.sp_log.is_some() {{ let s0: Vec<[u32; {p}]> = SP_REC{hi}.with(|r| r.borrow().clone()); if let Some(l) = self.sp_log.as_mut() {{ l.push(SpLog {{ key: key.to_vec(), d: dk.iter().map(|x| x.to_vec()).collect(), s: s0.iter().map(|x| x.to_vec()).collect(), ans, how: 0 }}); }} if refs[c].is_none() && sp_disjoint(&dk, &s0) {{ how = 1; refs[c] = Some((s0, if self.sp_plant {{ !ans }} else {{ ans }})); }} }}")
+        out.append(f"            if refs[c].is_none() || self.sp_log.is_some() {{ let s0: Vec<[u32; {p}]> = SP_REC{hi}.with(|r| r.lock().unwrap().clone()); if let Some(l) = self.sp_log.as_mut() {{ l.push(SpLog {{ key: key.to_vec(), d: dk.iter().map(|x| x.to_vec()).collect(), s: s0.iter().map(|x| x.to_vec()).collect(), ans, how: 0 }}); }} if refs[c].is_none() && sp_disjoint(&dk, &s0) {{ how = 1; refs[c] = Some((s0, if self.sp_plant {{ !ans }} else {{ ans }})); }} }}")
         out.append("            if how == 1 { if let Some(l) = self.sp_log.as_mut() { if let Some(x) = l.last_mut() { x.how = 1; } } }")
         out.append("            if ans { rows.push(key); }")
         out.append("        }")
@@ -4622,10 +4635,10 @@ def prepare_support(d, plan, tdg) -> None:
     f.run()
     plan.support_refused = dict(f.refused)
     wanted = [x for x in QUESTION_RELS if x in d.prog.nodes] + [f"next.{x}" for x in d.fluents if f"next.{x}" in d.prog.nodes]
-    reach = d.cone(wanted)
+    attain = d.cone(wanted)
     keep = []
     for s in f.found:
-        if s["R"] in reach:
+        if s["R"] in attain:
             keep.append(s)
         else:
             plan.support_refused[s["R"]] = "no question reads it (the shape is there; nothing is changed)"
@@ -4642,8 +4655,8 @@ def prepare_support(d, plan, tdg) -> None:
             if part[0] == "add":
                 tdg.extra.append((part[1], tuple(range(m))))
             else:
-                tdg.extra.append((part[1], tuple(j for j, (kind, _v) in enumerate(part[2]) if kind in ("k", "c"))))
-                rb = tuple(sorted({v for kind, v in part[2] if kind == "r"}))
+                tdg.extra.append((part[1], tuple(j for j, (form, _v) in enumerate(part[2]) if form in ("k", "c"))))
+                rb = tuple(sorted({v for form, v in part[2] if form == "r"}))
                 if rb:
                     tdg.pat(s["B"], rb)                 # the rows of the state relation a negated literal names are read by an index on those places
                 tdg.used.add(s["B"])

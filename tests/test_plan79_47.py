@@ -347,7 +347,8 @@ def test_a_kept_file_of_the_five_more_games_carries_the_hashes_and_the_passes_an
 
 def test_every_kept_file_has_its_restart_and_the_files_are_the_seven_games_plain_and_every_pass_and_the_one_with_the_lemma():
     names = sorted(p.name for p in GEN.iterdir() if p.is_file())
-    want = sorted([f"{g}{v}.rs" for g in SEVEN for v in ("", "_fast", "_carry")] + ["chess_lemma.rs"])
+    # 2026-11-25 (plan 79.56, mended): the modules <game>_support.rs of the six games where pass (26) finds a test that a question reads (not antichess) are kept besides the others
+    want = sorted([f"{g}{v}.rs" for g in SEVEN for v in ("", "_fast", "_carry")] + [f"{g}_support.rs" for g in SEVEN if g != "antichess"] + ["chess_lemma.rs"])
     assert names == want, names
     for n in names:
         assert "pub fn restart(" in (GEN / n).read_text(), n

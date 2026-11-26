@@ -134,7 +134,8 @@ def test_nothing_under_the_sources_of_the_engine_names_the_generated_files_the_t
     assert not list(ENGINE.glob("*/src/generated")) and not list(ENGINE.glob("*/src/**/generated"))
     names = sorted(p.name for p in GEN.iterdir() if p.is_file())                  # (plan 79.40 part F: the single-pass files are made under generated/scratch, a folder that is not kept)
     assert {"atomic.rs", "chess.rs"} <= set(names)
-    assert all(re.fullmatch(r"(chess|atomic|3check|kingofthehill|antichess|chess960|horde)(_(dense|demand|copy|delta|fast|lemma|carry))?\.rs", n) for n in names), names     # (plan 79.38 puts the files with passes beside the plain ones; tests/test_plan79_38.py lists them); 2026-11-24 (plan 79.45): `lemma` joins the names, the first game's file with every pass and its lemma     # 2026-11-24 (plan 79.47): the names of the five more games (3check, kingofthehill, antichess, chess960, horde) are among those of the kept files
+    # 2026-11-25 (plan 79.56, mended): the modules <game>_support.rs of the six games where pass (26) finds a test that a question reads (not antichess) are kept besides the others
+    assert all(re.fullmatch(r"(chess|atomic|3check|kingofthehill|antichess|chess960|horde)(_(dense|demand|copy|delta|fast|lemma|carry|support))?\.rs", n) for n in names), names     # (plan 79.38 puts the files with passes beside the plain ones; tests/test_plan79_38.py lists them); 2026-11-24 (plan 79.45): `lemma` joins the names, the first game's file with every pass and its lemma     # 2026-11-24 (plan 79.47): the names of the five more games (3check, kingofthehill, antichess, chess960, horde) are among those of the kept files
 
 
 @pytest.mark.skipif(not have_before(), reason="the commit before the plan is not on this machine")
