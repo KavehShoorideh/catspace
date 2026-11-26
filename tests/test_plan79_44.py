@@ -486,6 +486,8 @@ def test_no_description_no_reader_and_no_source_of_the_engine_s_crates_differs_f
     # (the crates this plan could have touched: the representation, the base, the description reader and the memory; another plan's translated files under rust/engine/game/tests are its own)
     changed = git("diff", "--name-only", BEFORE, "--", "rust/engine/rep", "rust/engine/base", "rust/engine/gdl", "rust/engine/memory", "rust/engine/Cargo.lock").stdout.split()
     print(f"OBS 79.44 G: files of those crates that differ from {BEFORE}: {changed}")
+    # 2026-11-25 (plan 79.58 B3): the count of slots of layer 1's door rose from four to five (the number in two source files and the two assertions that state it); tests/test_plan79_58.py holds that diff to exactly those lines
+    changed = [c for c in changed if c not in ("rust/engine/rep/src/graph.rs", "rust/engine/rep/src/lib.rs", "rust/engine/rep/tests/units_board.rs")]
     assert changed == ["rust/engine/rep/tests/rule_lemma_statements.rs"], changed
     assert not [c for c in git("diff", "--name-only", BEFORE, "--", "rules").stdout.split() if not c.startswith(("rules/lemmas/", "rules/placed/"))]  # 2026-11-24 (plan 79.48): the definitions of the placed questions are another plan's own files, as the lemmas are
 

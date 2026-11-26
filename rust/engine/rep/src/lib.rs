@@ -18,7 +18,7 @@
 //! Layer 1 says what is seen in one state with no knowledge of play: the kinds and their names, the board (places, plain links: next, on a line, on an edge), the TWO CLASSES of places, the units with kind and side and where they stand, any state it is shown, and the history. It
 //! names NO relation that follows from how things move, and it says nothing of which state a game starts from (the start is layer 2's). It keeps one DOOR by which a layer above writes relations of its own onto a position's graph without layer 1 knowing their names or meaning.
 //! THE DOOR (static dispatch: a relation is a VALUE, no boxed function, no map or text compare per node).
-//!   `graph::REL_SLOTS: usize = 4`                          how many kinds of relation a layer above may write onto one position's graph.
+//!   `graph::REL_SLOTS: usize = 5`                        how many kinds of relation a layer above may write onto one position's graph.
 //!   `graph::Rel { slot: u8, word: &'static str }`          a relation as the layer above names it: its slot and the word the ids of its nodes begin with; `Rel::new(slot, word)` is const.
 //!   `graph::NodeType::{Place, Direction, Line, Edge, Kind, Side, Unit, Relation(Rel)}`   no relation of the rules is a node type of layer 1.
 //!   `Board::write(&self, part: &mut PositionPart, rel: Rel, unit: usize, to: Place)`   writes one relation of a unit: the node `<word>(<unit id>,<place id>)` and its links (by, at_place, at_unit, along, between).

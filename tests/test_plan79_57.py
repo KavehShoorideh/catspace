@@ -85,6 +85,8 @@ def test_layers_0_and_1_are_unchanged_and_the_keepers_text_names_the_second_rule
     if not git("cat-file", "-t", PARENT).strip():
         pytest.skip("the plan's parent commit is not in this checkout")
     changed = git("diff", "--name-only", PARENT, "--", "rust/engine/base", "rust/engine/rep").split()
+    # 2026-11-25 (plan 79.58 B3): the count of slots of layer 1's door rose from four to five (a number in two source files and the two tests that state it); tests/test_plan79_58.py holds that diff to exactly those lines
+    changed = [c for c in changed if c not in ("rust/engine/rep/src/graph.rs", "rust/engine/rep/src/lib.rs", "rust/engine/rep/tests/units_board.rs")]
     assert changed == [], f"layer 0 or layer 1 changed: {changed}"
     text = (ROOT / "rust" / "engine" / "game" / "src" / "keeper.rs").read_text()
     for needle in ("PLAN 79.57 PART B, THE SECOND RULE", "pub fn make_supported", "pub fn new_supported", "pub trait Supported", "pub struct Support"):
