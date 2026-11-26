@@ -153,10 +153,29 @@ def make_placed(out: Path = OUT_PLACED) -> None:
         print(f"OBS 79.57 translate {game}_reads (module {rmodule}): passes {','.join(PASSES_NOCARRY)},reads, Rust {len(rsrc)} bytes {rsrc.count(chr(10))} lines; " + " | ".join(x[3:] for x in rsrc.split(chr(10), 12)[:12] if x.startswith("// reads")))
 
 
+OUT_MINED = ROOT / "rust" / "engine" / "game" / "tests" / "generated_mined"
+
+
+def make_explain(out: Path = OUT_MINED) -> None:
+    """Plan 79.59 part A (pass 28 "explain"; SYSTEM_SPEC 11, block "The lemma miner of layer 2"): the placed module of each game made with the reads of an answer each tagged with the clause and the literal of the description that made it, kept as generated_mined/<game>_explain.rs
+    (the Rust module is `placed_<rust_name>_explain`). The questions are those of `make_placed`'s reads module (READS_KEYED); this script may name the relations, the translator does not."""
+    from catspace.incubator.analyst.discovery import placed_questions as PQ
+    out.mkdir(parents=True, exist_ok=True)
+    for game in GAMES:
+        text = PQ.composed_text(game)
+        module = "placed_" + rust_name(game) + "_explain"
+        src = T.translate(text + "\n" + "\n".join(allowed_unfolded(text)), module, PASSES_NOCARRY + ["reads", "explain"], reads=READS_KEYED)
+        (out / f"{game}_explain.rs").write_text(src)
+        print(f"OBS 79.59 translate {game}_explain (module {module}): passes {','.join(PASSES_NOCARRY)},reads,explain, Rust {len(src)} bytes {src.count(chr(10))} lines; " + " | ".join(x[3:] for x in src.split(chr(10), 14)[:14] if x.startswith("// explain")))
+
+
 def main(argv=None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if "--placed" in args:
         make_placed()
+        return 0
+    if "--explain" in args:
+        make_explain()
         return 0
     make(OUT, KEPT, KEPT_LEMMA, None, True)
     if "--scratch" in args:

@@ -72,6 +72,12 @@ pub trait Tr {
     fn reads_t(&mut self, _s: &Self::S, _rel: &str, _key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)> { None }
     /// The fluents of the reads, in the order of their numbers (empty in a module without the pass).
     fn reads_fluents_t(&self) -> Vec<&'static str> { vec![] }
+    /// Plan 79.59 (pass 28 "explain"): as `reads_t`, each read tagged with the function-clause and the step of its join that made it and the number of the chain of calls above it (`explain_chain_t`); None in a module without the pass.
+    fn explain_t(&mut self, _s: &Self::S, _rel: &str, _key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>, u16, u16, u32)>)> { None }
+    /// The chain of calls (function-clause, step; outermost first) a read carries the number of; the numbers are those of the calling thread.
+    fn explain_chain_t(&self, _id: u32) -> Vec<(u16, u16)> { vec![] }
+    /// The text of each clause that made a read; for each the text of its literals in the order written; and for each function-clause (clause, head places bound, the places of the literals in the order joined, a worklist clause).
+    fn explain_tables_t(&self) -> (Vec<&'static str>, Vec<Vec<&'static str>>, Vec<(u16, &'static str, Vec<u16>, bool)>) { (vec![], vec![], vec![]) }
 }
 
 #[macro_export]
@@ -137,6 +143,12 @@ macro_rules! impl_tr_passes {
         $crate::impl_tr_passes!($m, passes);
         fn reads_t(&mut self, s: &Self::S, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)> { self.ask_reads(s, rel, key) }
         fn reads_fluents_t(&self) -> Vec<&'static str> { $m::READS_FLUENTS.to_vec() }
+    };
+    ($m:ident, explain) => {
+        $crate::impl_tr_passes!($m, reads);
+        fn explain_t(&mut self, s: &Self::S, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>, u16, u16, u32)>)> { self.ask_explain(s, rel, key) }
+        fn explain_chain_t(&self, id: u32) -> Vec<(u16, u16)> { $m::expl_chain(id) }
+        fn explain_tables_t(&self) -> (Vec<&'static str>, Vec<Vec<&'static str>>, Vec<(u16, &'static str, Vec<u16>, bool)>) { ($m::EXPL_CLAUSES.to_vec(), $m::EXPL_LITS.iter().map(|l| l.to_vec()).collect(), $m::EXPL_FUNCS.iter().map(|(c, m, o, w)| (*c, *m, o.to_vec(), *w)).collect()) }
     };
     ($m:ident, fresh) => {
         $crate::impl_tr_passes!($m, passes);
