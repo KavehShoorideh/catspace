@@ -1329,6 +1329,8 @@ compiled module, because the module is slower (section 13).
 
 **The support filter (plan 79.56, 2026-11-25).** The first lemma of the unlocked layer 2 is one general statement, proved once: an answer made by reading facts is the same in two worlds that agree on every fact read. The translator uses it as a FILTER in pass "support": where a relation is tested once a key on the state changed at the places the key touches, the test of one reference key records the places it consulted, and every key that touches none of them takes the reference's answer; every other key is still tested by the description's own clauses. Only the easy direction is relied on, so no statement about a game is proved. Interface: a pass of `translate`, a kept module `<game>_support.rs`, a counter under the profile switch.
 
+**A divergence found and named: the translated module stands outside layers 0 and 1 (Kaveh, 2026-11-25).** Kaveh's design, restated by him: layer 0 holds the mathematics, layer 1 the graph and its objects, layer 2 the relationships, said IN TERMS OF layer 1's graph; that is the part to be made fast, and it is what lets another game be plugged in and lets anyone ask "what are the facts in this situation". The aim behind it: when the facts of the present are good enough (lemmas among them), the facts of the future can be predicted, and the decision to make is how deep one must go to predict them. WHAT WAS BUILT INSTEAD (plans 79.38 to 79.56): the translator turns a description into a closed Rust module with its own state as words; it reads and writes nothing of layer 1 and uses nothing of layer 0; the description restates the board inside itself. The main agent wrote "not built" in this section and never brought it to Kaveh as a divergence; that broke rule 12. STANDING FROM HERE: the translated modules are a measure and a reference, not layer 2's form. Layer 2's form is relations written onto layer 1's graph through its door of change, each derived fact with what it rests on (the support of plan 79.56), so that facts can be asked and their survival of a move predicted. How this is built is NOT decided; no plan yet.
+
 ## 12. What exists
 
 The three inventories (the repo against these pieces; the earlier frame and intermezzo work; the October Lean
@@ -1814,4 +1816,5 @@ reasoning carries the reason it ended. A candidate rule is scored on surprises i
 | A rule lemma closed by a solver with a certificate the kernel checks counts as PROVED for layer 2; a lemma about play still asks for readable reasoning | 2026-11-25 | 13 |
 | Layer 2 unlocked for lemmas; correctness the gate, narrowness then clock the metric; no blind search | 2026-11-25 | 11 |
 | The support filter: one general lemma, used as a filter by pass support | 2026-11-25 | 11 |
+| Divergence named: translated module outside layers 0 and 1; layer 2's form is relations on layer 1's graph with supports | 2026-11-25 | 11 |
 | What was replaced | 2026-11-16 | 14 |
