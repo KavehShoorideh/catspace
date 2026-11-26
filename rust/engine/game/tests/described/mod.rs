@@ -8,9 +8,13 @@
 //!   HOW A STATE IS ASKED. A question about a state is one call of the module on the state's facts for the relations of the placed questions (what stands where; what every unit bears on; and, for each side, what every unit of that side may move to when that side is to move and no place is passed over: the
 //!   state of the questions the placed corpus uses). The answer rows of one state are kept under the state's key (a state asked twice is read once); a question of the keeper for one unit is a look-up in them. `asked()` counts the questions of units.
 //!   HOW PLACES AND KINDS ARE NUMBERED (the adapter's only knowledge of the module): a place is `file * 8 + rank` (the files and ranks of the description's sorts in the order of their texts, which is the kernel's order of `place_names`), a kind is its index in the kernel's `kind_names`, a side its index in the kernel's `roles`.
+//!   PART B (`Supported`, src/keeper.rs): with a module made with pass (27) "reads", `bearing_with_support` / `reach_with_support` ask the module for ONE unit (the unit's kind, side, file and rank as the key) and get the answer with the fluent facts the walk read. THE SUPPORT is the places of those reads: a read of the fluent that holds the units
+//!   binds a place (or a file or a rank or none: then every place of it); a read of the facts that a side's own question fixes (whose turn it is, a passed-over place) is no dependence on the state in the question of a side's reach (its state is the side to move, no passed-over place), and a read of any other fluent makes the support `all`.
+//!   The question of a unit's bearing is asked of the state as it stands; of its reach, of the state of its side's questions. A module with no reads gives `all` (every unit asked again).
 //!   WHO CALLS IT: tests/translated_graph.rs (the gate of part A and of part B's rule), tests/translated_reads.rs, scripts' measure tests.
 #![allow(dead_code)]
 use crate::translated_common::Tr;
+use cs_game::keeper::{Support, Supported};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{NoStep, Placed};
 use cs_game::{Fact, Game, Role};
@@ -23,15 +27,19 @@ pub type Pairs = Vec<(String, Vec<String>)>;
 pub const FREE: u32 = u32::MAX;
 
 /// Term numbers of the module as the numbers of the answers: a file, a rank, a kind, a side.
-pub struct Dec { file: HashMap<u32, u16>, rank: HashMap<u32, u16>, kind: HashMap<u32, u16>, side: HashMap<u32, u16> }
+pub struct Dec {
+    file: HashMap<u32, u16>, rank: HashMap<u32, u16>, kind: HashMap<u32, u16>, side: HashMap<u32, u16>,
+    /// the other way: the term numbers of a file, a rank, a kind (by index), a side (by index)
+    pub file_t: Vec<u32>, pub rank_t: Vec<u32>, pub kind_t: Vec<u32>, pub side_t: Vec<u32>,
+}
 
 impl Dec {
     pub fn new<T: Tr>(t: &T, kinds: &[String], roles: &[String]) -> Dec {
-        let mut d = Dec { file: HashMap::new(), rank: HashMap::new(), kind: HashMap::new(), side: HashMap::new() };
-        for (i, c) in "abcdefgh".chars().enumerate() { if let Some(n) = t.sym_t(&c.to_string()) { d.file.insert(n, i as u16); } }
-        for (i, c) in "12345678".chars().enumerate() { if let Some(n) = t.sym_t(&c.to_string()) { d.rank.insert(n, i as u16); } }
-        for (i, k) in kinds.iter().enumerate() { if let Some(n) = t.sym_t(k) { d.kind.insert(n, i as u16); } }
-        for (i, r) in roles.iter().enumerate() { if let Some(n) = t.sym_t(r) { d.side.insert(n, i as u16); } }
+        let mut d = Dec { file: HashMap::new(), rank: HashMap::new(), kind: HashMap::new(), side: HashMap::new(), file_t: vec![], rank_t: vec![], kind_t: vec![], side_t: vec![] };
+        for (i, c) in "abcdefgh".chars().enumerate() { let n = t.sym_t(&c.to_string()); d.file_t.push(n.unwrap_or(FREE)); if let Some(n) = n { d.file.insert(n, i as u16); } }
+        for (i, c) in "12345678".chars().enumerate() { let n = t.sym_t(&c.to_string()); d.rank_t.push(n.unwrap_or(FREE)); if let Some(n) = n { d.rank.insert(n, i as u16); } }
+        for (i, k) in kinds.iter().enumerate() { let n = t.sym_t(k); d.kind_t.push(n.unwrap_or(FREE)); if let Some(n) = n { d.kind.insert(n, i as u16); } }
+        for (i, r) in roles.iter().enumerate() { let n = t.sym_t(r); d.side_t.push(n.unwrap_or(FREE)); if let Some(n) = n { d.side.insert(n, i as u16); } }
         d
     }
     pub fn place(&self, f: u32, r: u32) -> Option<u16> { Some(self.file.get(&f)? * 8 + self.rank.get(&r)?) }
@@ -70,6 +78,10 @@ pub struct Described<T: Tr> {
     t: RefCell<T>,
     dec: Dec,
     cache: RefCell<HashMap<u64, Rc<StateRows>>>,
+    /// the module's states of one kernel state, by its key: (the state as it stands, the state of each side's questions): for the questions asked for one unit
+    mstates: RefCell<HashMap<u64, Rc<(T::S, Vec<T::S>)>>>,
+    /// the fluents the reads named, for the test of what was read (name -> how many reads)
+    pub fluents_read: RefCell<std::collections::BTreeMap<String, usize>>,
     /// (questions of a unit's bearing, questions of a unit's reach, states the module was asked at)
     asked: Cell<(u64, u64, u64)>,
 }
@@ -77,10 +89,53 @@ pub struct Described<T: Tr> {
 impl<T: Tr> Described<T> {
     pub fn new(kernel: KernelGame, t: T) -> Described<T> {
         let dec = Dec::new(&t, &kernel.kind_names(), &kernel.roles());
-        Described { kernel, t: RefCell::new(t), dec, cache: RefCell::new(HashMap::new()), asked: Cell::new((0, 0, 0)) }
+        Described { kernel, t: RefCell::new(t), dec, cache: RefCell::new(HashMap::new()), mstates: RefCell::new(HashMap::new()), fluents_read: RefCell::new(Default::default()), asked: Cell::new((0, 0, 0)) }
     }
     pub fn asked(&self) -> (u64, u64, u64) { self.asked.get() }
-    pub fn reset(&self) { self.asked.set((0, 0, 0)); self.cache.borrow_mut().clear(); }
+    pub fn reset(&self) { self.asked.set((0, 0, 0)); self.cache.borrow_mut().clear(); self.mstates.borrow_mut().clear(); }
+
+    /// The module's states of one kernel state: as it stands, and for each side the state of that side's questions (it to move, no passed-over place).
+    fn mstates(&self, s: &<KernelGame as Game>::State) -> Rc<(T::S, Vec<T::S>)> {
+        let key = self.kernel.key(s);
+        if let Some(r) = self.mstates.borrow().get(&key) { return r.clone(); }
+        let base = pairs_of(&self.kernel.state_facts(s));
+        let mut t = self.t.borrow_mut();
+        let s0 = t.state_of_facts_t(&base).expect("the module reads the state");
+        let sides: Vec<T::S> = self.kernel.roles().iter().map(|name| t.state_of_facts_t(&with_control(&base, name)).expect("the module reads the state of a side's questions")).collect();
+        let a = self.asked.get();
+        self.asked.set((a.0, a.1, a.2 + 1));
+        let r = Rc::new((s0, sides));
+        self.mstates.borrow_mut().insert(key, r.clone());
+        r
+    }
+
+    /// One unit's answer of a relation with the places of the state it read. `reach`: the question is the side's own (control fixed to the side, no passed-over place), so a read of those two facts is no dependence on the state. None when the module gives no reads (or overflowed).
+    fn with_support(&self, s: &<KernelGame as Game>::State, rel: &str, owner: Role, kind: Kind, at: Place, reach: bool) -> Option<(Vec<Place>, Support)> {
+        let ms = self.mstates(s);
+        let st = if reach { &ms.1[owner] } else { &ms.0 };
+        let key = [self.dec.kind_t[kind as usize], self.dec.side_t[owner], self.dec.file_t[(at / 8) as usize], self.dec.rank_t[(at % 8) as usize]];
+        let mut t = self.t.borrow_mut();
+        let (rows, reads) = t.reads_t(st, rel, &key)?;
+        let names = t.reads_fluents_t();
+        let mut places = vec![];
+        let mut all = false;
+        let mut seen = self.fluents_read.borrow_mut();
+        for (f, pat) in &reads {
+            let name = names[*f as usize];
+            *seen.entry(format!("{}{}", name, if reach { " (reach)" } else { " (bears)" })).or_insert(0) += 1;
+            if name == "cell" {
+                let files: Vec<u16> = if pat[0] == FREE { (0..8).collect() } else { self.dec.file_of(pat[0]).into_iter().collect() };
+                let ranks: Vec<u16> = if pat[1] == FREE { (0..8).collect() } else { self.dec.rank_of(pat[1]).into_iter().collect() };
+                for f in &files { for r in &ranks { places.push(f * 8 + r); } }
+            } else if reach && (name == "control" || name == "ep_square") {
+                // fixed in the question's state: control is the side's own and no place is passed over
+            } else { all = true; }
+        }
+        let mut out: Vec<Place> = rows.iter().filter_map(|x| self.dec.place(x[4], x[5])).collect();
+        out.sort_unstable();
+        out.dedup();
+        Some((out, if all { Support::all() } else { Support::of(places) }))
+    }
 
     /// The module's rows of one state (made once per state key).
     pub fn rows(&self, s: &<KernelGame as Game>::State) -> Rc<StateRows> {
@@ -129,6 +184,19 @@ impl<T: Tr> Game for Described<T> {
     fn move_name(&self, s: &Self::State, m: &Self::Move) -> String { self.kernel.move_name(s, m) }
     fn key(&self, s: &Self::State) -> u64 { self.kernel.key(s) }
     fn units(&self, s: &Self::State) -> Vec<(Role, String)> { self.kernel.units(s) }
+}
+
+impl<T: Tr> Supported for Described<T> {
+    fn bearing_with_support(&self, s: &Self::State, owner: Role, kind: Kind, at: Place) -> (Vec<Place>, Support) {
+        let a = self.asked.get();
+        self.asked.set((a.0 + 1, a.1, a.2));
+        self.with_support(s, "placed_bears", owner, kind, at, false).unwrap_or_else(|| (self.rows(s).bears.get(&(owner, kind, at)).cloned().unwrap_or_default(), Support::all()))
+    }
+    fn reach_with_support(&self, s: &Self::State, owner: Role, kind: Kind, at: Place) -> (Vec<Place>, Support) {
+        let a = self.asked.get();
+        self.asked.set((a.0, a.1 + 1, a.2));
+        self.with_support(s, "placed_reaches", owner, kind, at, true).unwrap_or_else(|| (self.rows(s).reaches.get(&(owner, kind, at)).cloned().unwrap_or_default(), Support::all()))
+    }
 }
 
 impl<T: Tr> Placed for Described<T> {

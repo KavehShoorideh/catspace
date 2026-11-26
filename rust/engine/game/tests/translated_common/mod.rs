@@ -68,6 +68,10 @@ pub trait Tr {
     /// Plan 79.56: the counters of the support filter (states, keys, tests run, keys answered from a reference, classes with no reference) and their reset; nought in a module without the pass.
     fn support_counts_t(&self) -> (u64, u64, u64, u64, u64) { (0, 0, 0, 0, 0) }
     fn support_reset_t(&mut self) {}
+    /// Plan 79.57 (pass 27): the rows of one of the relations given to the pass at a key, with the reads of the answer (the fluent's number and its places as asked, FREE where free); None in a module without the pass.
+    fn reads_t(&mut self, _s: &Self::S, _rel: &str, _key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)> { None }
+    /// The fluents of the reads, in the order of their numbers (empty in a module without the pass).
+    fn reads_fluents_t(&self) -> Vec<&'static str> { vec![] }
 }
 
 #[macro_export]
@@ -128,6 +132,11 @@ macro_rules! impl_tr_passes {
         $crate::impl_tr_passes!($m, topdown);
         fn support_counts_t(&self) -> (u64, u64, u64, u64, u64) { self.support_counts() }
         fn support_reset_t(&mut self) { self.reset_support_counts() }
+    };
+    ($m:ident, reads) => {
+        $crate::impl_tr_passes!($m, passes);
+        fn reads_t(&mut self, s: &Self::S, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)> { self.ask_reads(s, rel, key) }
+        fn reads_fluents_t(&self) -> Vec<&'static str> { $m::READS_FLUENTS.to_vec() }
     };
     ($m:ident, fresh) => {
         $crate::impl_tr_passes!($m, passes);

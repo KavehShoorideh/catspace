@@ -106,6 +106,7 @@ def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: t
             print(f"OBS 79.45 translate {module}: composed description {len(ltext)} bytes, passes {','.join(passes) or '-'}, lemmas {','.join(x['name'] for x in docs)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
 
 
+READS_KEYED = (("placed_bears", 4), ("placed_reaches", 4))      # plan 79.57: the placed questions asked for one unit (kind, side, place = the first four places), with the reads of the answer (this script may name the relations; the translator does not)
 OUT_PLACED = ROOT / "rust" / "engine" / "game" / "tests" / "generated_placed"
 
 
@@ -120,6 +121,11 @@ def make_placed(out: Path = OUT_PLACED) -> None:
         src = T.translate(text, module, PASSES_NOCARRY)
         (out / f"{game}.rs").write_text(src)
         print(f"OBS 79.48 translate {game} (module {module}): composed description {len(text)} bytes, passes {','.join(PASSES_NOCARRY)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
+        # plan 79.57 (pass 27): the same module with the reads of an answer: the bearing and the reach of a unit, asked with the unit's kind, side and place as the key
+        rmodule = module + "_reads"
+        rsrc = T.translate(text, rmodule, PASSES_NOCARRY + ["reads"], reads=READS_KEYED)
+        (out / f"{game}_reads.rs").write_text(rsrc)
+        print(f"OBS 79.57 translate {game}_reads (module {rmodule}): passes {','.join(PASSES_NOCARRY)},reads, Rust {len(rsrc)} bytes {rsrc.count(chr(10))} lines; " + " | ".join(x[3:] for x in rsrc.split(chr(10), 12)[:12] if x.startswith("// reads")))
 
 
 def main(argv=None) -> int:
