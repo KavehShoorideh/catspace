@@ -2,6 +2,10 @@
   python scripts/facts_moved_print.py measure [<games> [<plies>]]   writes the moves of the first <games> (default 30) games of the records folder lichess_2019-01 to a file (no name of a player is read or written: scripts/ply_profile_print.py games) and runs the cargo
                                                                     measure rust/engine/game/tests/translated_reads.rs `facts_moved`; prints its OBS lines: the relation rows on the graph a state; under the hand rule and under the support rule the rows kept and the rows derived again a move; the rows that are new after a move.
   python scripts/facts_moved_print.py facts [<ply>]                 the graph of the state after <ply> plies (default 12) of the first game of that file, made from the description: each unit with what it bears on and may move to (and the position text of the state).
+PLAN 79.58 (LAYER 2, piece: rules; ledger rows 58, 57, 44):
+  python scripts/facts_moved_print.py classes [<games> [<plies>]]   A1: the rows the support rule derives again after a move, split by class (the unit that moved; support touched and the answer changed; support touched and the answer the same) with what a finer support would have saved (default 300 games, 40 plies).
+  python scripts/facts_moved_print.py clock [<games> [<plies>]]     A2: the clock (ns of a unit's question with its reads, the same from the bulk piece, a whole make under the three ways), three walks, the load said. Run it on a quiet machine.
+  python scripts/facts_moved_print.py other [<games> [<plies>]]     A3: the count of `measure` for the six other games on seeded walks (default 30 games, 40 plies).
 Needs the records under LCP_DATA (the folder of the repository's data). The cargo side is the test file named above; this script only calls it and prints."""
 from __future__ import annotations
 
@@ -24,7 +28,7 @@ def games_file(n: int) -> Path:
 def run(test: str, env: dict) -> int:
     r = subprocess.run(CARGO + [test], env={**os.environ, **env}, capture_output=True, text=True)
     for ln in r.stdout.splitlines():
-        if ln.startswith(("OBS 79.57", "STATE", "FACTS", "tempo", "support of")) or " bears on [" in ln or "bear and may_move rows" in ln:
+        if ln.startswith(("OBS 79.57", "OBS 79.58", "STATE", "FACTS", "tempo", "support of")) or " bears on [" in ln or "bear and may_move rows" in ln:
             print(ln)
     if r.returncode:
         print(r.stdout[-3000:], r.stderr[-3000:])
@@ -42,6 +46,10 @@ def main(argv) -> int:
     if argv[0] == "facts":
         f = games_file(1)
         return run("facts", {"CS_FACTS_GAMES": str(f), "CS_FACTS_PLY": argv[1] if len(argv) > 1 else "12"})
+    if argv[0] in ("classes", "clock", "other"):
+        n = int(argv[1]) if len(argv) > 1 else (300 if argv[0] == "classes" else 30)
+        f = games_file(n)
+        return run(argv[0], {"CS_FACTS_GAMES": str(f), "CS_FACTS_N": str(n), "CS_FACTS_MAX": argv[2] if len(argv) > 2 else "40"})
     print(__doc__)
     return 2
 

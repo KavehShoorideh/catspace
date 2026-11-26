@@ -106,7 +106,32 @@ def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: t
             print(f"OBS 79.45 translate {module}: composed description {len(ltext)} bytes, passes {','.join(passes) or '-'}, lemmas {','.join(x['name'] for x in docs)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
 
 
-READS_KEYED = (("placed_bears", 4), ("placed_reaches", 4))      # plan 79.57: the placed questions asked for one unit (kind, side, place = the first four places), with the reads of the answer (this script may name the relations; the translator does not)
+# plan 79.57: the placed questions asked for one unit (kind, side, place = the first four places), with the reads of the answer (this script may name the relations; the translator does not).
+# plan 79.58 part A: the same two asked for one ROW (all six places bound: the reads of one row of the answer, for the measure of a support by row); part B: the allowed moves of one unit (placed_allowed: side and place = the first three places; made by `allowed_unfolded` below).
+READS_KEYED = (("placed_bears", 4), ("placed_reaches", 4), ("placed_bears", 6), ("placed_reaches", 6), ("placed_allowed", 3))
+
+
+def allowed_unfolded(text: str) -> list:
+    """Plan 79.58 part B. The top-down way refuses a literal with a compound term, and the placed question for the allowed moves reads `(legal ?c (move ?f1 ?r1 ?f2 ?r2))`. A literal of a relation with a compound is UNFOLDED by the clauses of that relation whose head
+    has the same functor (resolution, the bodies copied with the head's variables put for the literal's and every other variable renamed): the result is a relation `placed_allowed` of the same rows as `placed_ends`, with no compound term, made of the description's own clauses and no rule of the game.
+    TAKES the composed text; RETURNS the lines to add (a signature and one clause for each pair of an ends clause and a legal clause of its functor)."""
+    import re
+    lines = text.splitlines()
+    legal = [m for m in (re.match(r"\(<= \(legal (\?\w+) \((\w+) ([^()]*)\)\) (.*)\)$", l) for l in lines) if m]
+    out = ["(signature placed_allowed side file rank file rank)"]
+    for l in lines:
+        e = re.match(r"\(<= \(placed_ends ([^()]*)\) \(legal (\?\w+) \((\w+) ([^()]*)\)\)\)$", l)
+        if not e:
+            continue
+        head, c, functor, args = e.group(1), e.group(2), e.group(3), e.group(4).split()
+        for m in legal:
+            if m.group(2) != functor or len(m.group(3).split()) != len(args):
+                continue
+            sub = {m.group(1): c, **dict(zip(m.group(3).split(), args))}
+            out.append("(<= (placed_allowed " + head + ") " + re.sub(r"\?\w+", lambda v: sub.get(v.group(0), v.group(0) + "_u"), m.group(4)) + ")")
+    return out
+
+
 OUT_PLACED = ROOT / "rust" / "engine" / "game" / "tests" / "generated_placed"
 
 
@@ -123,7 +148,7 @@ def make_placed(out: Path = OUT_PLACED) -> None:
         print(f"OBS 79.48 translate {game} (module {module}): composed description {len(text)} bytes, passes {','.join(PASSES_NOCARRY)}, Rust {len(src)} bytes {src.count(chr(10))} lines")
         # plan 79.57 (pass 27): the same module with the reads of an answer: the bearing and the reach of a unit, asked with the unit's kind, side and place as the key
         rmodule = module + "_reads"
-        rsrc = T.translate(text, rmodule, PASSES_NOCARRY + ["reads"], reads=READS_KEYED)
+        rsrc = T.translate(text + "\n" + "\n".join(allowed_unfolded(text)), rmodule, PASSES_NOCARRY + ["reads"], reads=READS_KEYED)
         (out / f"{game}_reads.rs").write_text(rsrc)
         print(f"OBS 79.57 translate {game}_reads (module {rmodule}): passes {','.join(PASSES_NOCARRY)},reads, Rust {len(rsrc)} bytes {rsrc.count(chr(10))} lines; " + " | ".join(x[3:] for x in rsrc.split(chr(10), 12)[:12] if x.startswith("// reads")))
 

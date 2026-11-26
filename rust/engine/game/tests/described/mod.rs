@@ -84,12 +84,14 @@ pub struct Described<T: Tr> {
     pub fluents_read: RefCell<std::collections::BTreeMap<String, usize>>,
     /// (questions of a unit's bearing, questions of a unit's reach, states the module was asked at)
     asked: Cell<(u64, u64, u64)>,
+    /// plan 79.58 part A2: nanoseconds spent (in the bulk piece's rows of a state, loading a state into the module, in a unit's question with reads)
+    pub ns: Cell<(u128, u128, u128)>,
 }
 
 impl<T: Tr> Described<T> {
     pub fn new(kernel: KernelGame, t: T) -> Described<T> {
         let dec = Dec::new(&t, &kernel.kind_names(), &kernel.roles());
-        Described { kernel, t: RefCell::new(t), dec, cache: RefCell::new(HashMap::new()), mstates: RefCell::new(HashMap::new()), fluents_read: RefCell::new(Default::default()), asked: Cell::new((0, 0, 0)) }
+        Described { kernel, t: RefCell::new(t), dec, cache: RefCell::new(HashMap::new()), mstates: RefCell::new(HashMap::new()), fluents_read: RefCell::new(Default::default()), asked: Cell::new((0, 0, 0)), ns: Cell::new((0, 0, 0)) }
     }
     pub fn asked(&self) -> (u64, u64, u64) { self.asked.get() }
     pub fn reset(&self) { self.asked.set((0, 0, 0)); self.cache.borrow_mut().clear(); self.mstates.borrow_mut().clear(); }
@@ -98,6 +100,7 @@ impl<T: Tr> Described<T> {
     fn mstates(&self, s: &<KernelGame as Game>::State) -> Rc<(T::S, Vec<T::S>)> {
         let key = self.kernel.key(s);
         if let Some(r) = self.mstates.borrow().get(&key) { return r.clone(); }
+        let t0 = std::time::Instant::now();
         let base = pairs_of(&self.kernel.state_facts(s));
         let mut t = self.t.borrow_mut();
         let s0 = t.state_of_facts_t(&base).expect("the module reads the state");
@@ -105,6 +108,7 @@ impl<T: Tr> Described<T> {
         let a = self.asked.get();
         self.asked.set((a.0, a.1, a.2 + 1));
         let r = Rc::new((s0, sides));
+        let n = self.ns.get(); self.ns.set((n.0, n.1 + t0.elapsed().as_nanos(), n.2));
         self.mstates.borrow_mut().insert(key, r.clone());
         r
     }
@@ -115,7 +119,10 @@ impl<T: Tr> Described<T> {
         let st = if reach { &ms.1[owner] } else { &ms.0 };
         let key = [self.dec.kind_t[kind as usize], self.dec.side_t[owner], self.dec.file_t[(at / 8) as usize], self.dec.rank_t[(at % 8) as usize]];
         let mut t = self.t.borrow_mut();
-        let (rows, reads) = t.reads_t(st, rel, &key)?;
+        let t0 = std::time::Instant::now();
+        let got = t.reads_t(st, rel, &key);
+        let n = self.ns.get(); self.ns.set((n.0, n.1, n.2 + t0.elapsed().as_nanos()));
+        let (rows, reads) = got?;
         let names = t.reads_fluents_t();
         let mut places = vec![];
         let mut all = false;
@@ -137,10 +144,33 @@ impl<T: Tr> Described<T> {
         Some((out, if all { Support::all() } else { Support::of(places) }))
     }
 
+    // ---- PLAN 79.58 PART A: the raw reads of an answer, for the measure of what a finer support would have saved (see the header of tests/translated_reads.rs). TAKES the module state of one kernel state and a key; RETURNS the rows and the reads with the fluent's name.
+    /// `which`: None the state as it stands, Some(side) the state of that side's own questions.
+    pub fn reads_raw(&self, s: &<KernelGame as Game>::State, rel: &str, key: &[u32], which: Option<Role>) -> Option<(Vec<Vec<u32>>, Vec<(String, Vec<u32>)>)> {
+        let ms = self.mstates(s);
+        let st = match which { None => &ms.0, Some(o) => &ms.1[o] };
+        let mut t = self.t.borrow_mut();
+        let (rows, reads) = t.reads_t(st, rel, key)?;
+        let names = t.reads_fluents_t();
+        Some((rows, reads.into_iter().map(|(f, pat)| (names[f as usize].to_string(), pat)).collect()))
+    }
+    pub fn key4(&self, owner: Role, kind: Kind, at: Place) -> [u32; 4] { [self.dec.kind_t[kind as usize], self.dec.side_t[owner], self.dec.file_t[(at / 8) as usize], self.dec.rank_t[(at % 8) as usize]] }
+    pub fn key6(&self, owner: Role, kind: Kind, at: Place, to: Place) -> [u32; 6] { let k = self.key4(owner, kind, at); [k[0], k[1], k[2], k[3], self.dec.file_t[(to / 8) as usize], self.dec.rank_t[(to % 8) as usize]] }
+    /// A read of the cell fluent as places: (file, rank, side, kind), each None where the read left it free; None when a bound term is not a member the adapter knows (the read is then not comparable).
+    pub fn cell_pattern(&self, pat: &[u32]) -> Option<[Option<u16>; 4]> {
+        let one = |t: u32, f: &dyn Fn(u32) -> Option<u16>| -> Option<Option<u16>> { if t == FREE { Some(None) } else { f(t).map(Some) } };
+        Some([one(pat[0], &|t| self.dec.file_of(t))?, one(pat[1], &|t| self.dec.rank_of(t))?, one(pat[2], &|t| self.dec.side(t))?, one(pat[3], &|t| self.dec.kind(t))?])
+    }
+    /// The cells of a state (the adapter's own list, made once a state) that a read pattern matches.
+    pub fn matching(&self, s: &<KernelGame as Game>::State, pat: &[Option<u16>; 4]) -> Vec<(Role, Kind, Place)> {
+        self.rows(s).cells.iter().filter(|(o, k, p)| pat[0].map_or(true, |f| p / 8 == f) && pat[1].map_or(true, |r| p % 8 == r) && pat[2].map_or(true, |c| *o == c as usize) && pat[3].map_or(true, |x| *k == x as u8)).copied().collect()
+    }
+
     /// The module's rows of one state (made once per state key).
     pub fn rows(&self, s: &<KernelGame as Game>::State) -> Rc<StateRows> {
         let key = self.kernel.key(s);
         if let Some(r) = self.cache.borrow().get(&key) { return r.clone(); }
+        let t0 = std::time::Instant::now();
         let base = pairs_of(&self.kernel.state_facts(s));
         let roles = self.kernel.roles();
         let mut t = self.t.borrow_mut();
@@ -165,6 +195,7 @@ impl<T: Tr> Described<T> {
         let a = self.asked.get();
         self.asked.set((a.0, a.1, a.2 + 1));
         let r = Rc::new(out);
+        let n = self.ns.get(); self.ns.set((n.0 + t0.elapsed().as_nanos(), n.1, n.2));
         self.cache.borrow_mut().insert(key, r.clone());
         r
     }
