@@ -419,7 +419,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
 PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words", "tables", "topdown", "carry")
-OPT_PASSES = ("support", "reads")                              # passes a caller asks for by name; "every pass" (PASSES) does not hold them (pass 26: AS BUILT, the module text says why)
+OPT_PASSES = ("support", "reads", "explain")                              # passes a caller asks for by name; "every pass" (PASSES) does not hold them (pass 26: AS BUILT, the module text says why)
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 TABLE_WORDS = 1 << 13                                   # pass (23): a walk gets a table when its chains are at most this many words
 WORDS_MAX = 1 << 13                                     # pass (22): a fluent is held as the bits of a state when the product of the sizes of its sorts is at most this
@@ -428,6 +428,23 @@ DENSE_KEYS = 1 << 16                                    # ... and at most this m
 SMALL_SCAN = 8                                          # a loop over a whole fluent is cheap when its sorts allow no more rows than this
 START_MAX = 4                                           # pass (13): at most this many orders of one clause are written (the reader's and the best others)
 BOUND = "\0"                                            # the mark of a constant that stands for a variable bound by the key of a demanded relation
+
+
+def render_term(t) -> str:
+    """A term of a clause as written: a variable or constant as it is, a compound as a list."""
+    if isinstance(t, tuple):
+        return "(" + " ".join(render_term(x) for x in t) + ")"
+    return t.replace(BOUND, "?") if isinstance(t, str) else str(t)
+
+
+def render_literal(x) -> str:
+    """Pass (28): a literal of a clause as it is written in the description (a literal of a state fluent as `(true (f ...))`, a negation as `(not ...)`)."""
+    if x[0] == "distinct":
+        return f"(distinct {render_term(x[1])} {render_term(x[2])})"
+    rel, args = x[1], x[2]
+    body = " ".join(render_term(a) for a in args)
+    inner = f"(true ({rel[len('true.'):]}{' ' + body if body else ''}))" if rel.startswith("true.") else f"({rel}{' ' + body if body else ''})"
+    return f"(not {inner})" if x[0] == "neg" else inner
 
 
 class Untranslatable(Exception):
@@ -882,7 +899,7 @@ class Plan:
             passes = tuple(passes) + ("start",)                 # the pass worth admits orders the pass start would refuse
         if ("asked" in passes or "project" in passes or "worth" in passes) and "bits" not in passes:
             passes = tuple(passes) + ("bits",)                  # the passes asked and project read relations held as bits
-        if ("support" in passes or "reads" in passes) and "topdown" not in passes:
+        if ("support" in passes or "reads" in passes or "explain" in passes) and "topdown" not in passes:
             passes = tuple(passes) + ("topdown",)               # the support filter tests a key by the top-down functions (pass 26); the reads of an answer are the top-down walk's (pass 27)
         if "topdown" in passes:
             passes = tuple(passes) + tuple(p for p in ("words", "cones") if p not in passes)         # the top-down way reads the facts of a state as the bits of words (pass 22) and falls back on the legal rows alone (pass 21)
@@ -3904,6 +3921,11 @@ class TopDown:
         self.extra: list = []                           # pass (26): (relation, bound places) functions made besides those the cone of the questions asks
         self.fl_rec: bool = False                       # pass (27): every read of a fluent of the state is recorded (`rd_note`)
         self.fl_no: dict = {}                           # pass (27): fluent relation -> its number, in the order of the first read emitted
+        self.fl_ex: bool = False                        # pass (28): every recorded read also carries the clause and the literal of the description that made it
+        self.ex_clause: dict = {}                       # pass (28): clause text -> its number, in the order the clauses are first met
+        self.ex_lits: dict = {}                         # pass (28): clause number -> the texts of its literals in the order written
+        self.ex_func: dict = {}                         # pass (28): (clause number, head places bound, join order, a worklist clause) -> the number of the function-clause, in the order made
+        self.cur_fi: int = 0                            # pass (28): the number of the function-clause being written
         self.keeps: dict = {}                           # relation of one linear recursive clause -> the places the walk keeps (the head's variable is the literal's): a literal of it is taken once they are bound
 
     # ---- what is a relation here
@@ -4018,6 +4040,8 @@ class TopDown:
             else:
                 conds.append(f"a[{j}] == {d.sym_id[t]}")
         rule = JoinRule(bind_clause(c, names) if names else c, {rel} if first is not None else set(), (), first, None, self.keeps, self.late.get(rel, ()))
+        if self.fl_ex:
+            self.cur_fi = self.explain_func(c, mask, first, rule)
         lines = [f"    if {' && '.join(conds) if conds else 'true'} {{"]
         self.ind = 2
         self.fail = ["continue"]
@@ -4071,10 +4095,14 @@ class TopDown:
             if way == "input":
                 pass
             elif way == "derived":
-                self.line(f"if {self.fname(rel, tuple(range(n)))}(td, {key}, &mut |_| true) {{ {fail}; }}")
+                if self.fl_ex:
+                    self.line(f"ex_push({self.cur_fi}, {i}); let ex_r = {self.fname(rel, tuple(range(n)))}(td, {key}, &mut |_| true); ex_pop();")
+                    self.line(f"if ex_r {{ {fail}; }}")
+                else:
+                    self.line(f"if {self.fname(rel, tuple(range(n)))}(td, {key}, &mut |_| true) {{ {fail}; }}")
             else:
                 self.pat(rel, tuple(range(n)))
-                self.note_read(rel, key)
+                self.note_read(rel, key, rule, i)
                 self.line(f"if td.{self.holder(rel)}.has(&{key}) {{ {fail}; }}")
             self.steps(rule, i + 1, head_row, sink, first)
             return
@@ -4093,12 +4121,12 @@ class TopDown:
         if way in ("static", "fluent"):
             if not fresh:
                 self.pat(rel, tuple(range(n)))
-                self.note_read(rel, key)
+                self.note_read(rel, key, rule, i)
                 self.line(f"if !td.{self.holder(rel)}.has(&{key}) {{ {fail}; }}")
                 self.steps(rule, i + 1, head_row, sink, first)
                 return
             ix = self.pat(rel, keypos)
-            self.note_read(rel, key)
+            self.note_read(rel, key, rule, i)
             src = f"td.{self.holder(rel)}.get({ix}, &{key})" if keypos else f"td.{self.holder(rel)}.order.as_slice()"
             self.line(f"for row{i} in {src}.iter() {{")
             self.fail.append("continue")
@@ -4115,25 +4143,58 @@ class TopDown:
             if j in keypos or args[j][0] != "v" or self.occurs(rule, args[j][1]) > 1:
                 raise TopDownRefuse(f"{rel} gives a compound term at place {j}, which a clause that reads it uses or binds")
         if only_exists(rule, i) or not fresh:
-            self.line(f"if !{fn}(td, {key}, &mut |_| true) {{ {fail}; }}")
+            if self.fl_ex:
+                self.line(f"ex_push({self.cur_fi}, {i}); let ex_r = {fn}(td, {key}, &mut |_| true); ex_pop();")
+                self.line(f"if !ex_r {{ {fail}; }}")
+            else:
+                self.line(f"if !{fn}(td, {key}, &mut |_| true) {{ {fail}; }}")
             self.steps(rule, i + 1, head_row, sink, first)
             return
-        self.line(f"if {fn}(td, {key}, &mut |row{i}| {{")
-        self.fail.append("return false")
-        self.ind += 1
+        if self.fl_ex:
+            self.line(f"let ex_d = ex_push({self.cur_fi}, {i});")
+            self.line(f"let ex_r = {fn}(td, {key}, &mut |row{i}| {{")
+            self.fail.append("return false")
+            self.ind += 1
+            self.line("let _ex_g = ExCut::new(ex_d);")
+        else:
+            self.line(f"if {fn}(td, {key}, &mut |row{i}| {{")
+            self.fail.append("return false")
+            self.ind += 1
         self.bind_row(args, f"row{i}", "return false", only=fresh)
         self.steps(rule, i + 1, head_row, sink, first)
         self.line("false")
         self.ind -= 1
         self.fail.pop()
-        self.line("}) { return true; }")
+        if self.fl_ex:
+            self.line("});")
+            self.line("ex_pop(); if ex_r { return true; }")
+        else:
+            self.line("}) { return true; }")
 
-    def note_read(self, rel: str, key: str):
-        """Pass (27): before a read of a fluent of the state, the statement that records it (the fluent's number and the places as asked); nothing for a relation that does not read the state."""
+    def note_read(self, rel: str, key: str, rule=None, i: int = 0):
+        """Pass (27): before a read of a fluent of the state, the statement that records it (the fluent's number and the places as asked); nothing for a relation that does not read the state.
+        Pass (28): the statement also carries the number of the function-clause that makes the read and the step of its join (which names the clause, the literal and the order the clause was joined in)."""
         if not self.fl_rec or not rel.startswith("true."):
             return
         no = self.fl_no.setdefault(rel, len(self.fl_no))
+        if self.fl_ex and rule is not None:
+            self.line(f"rd_note({no}, &{key}, {self.cur_fi}, {i});")
+            return
         self.line(f"rd_note({no}, &{key});")
+
+    def explain_func(self, c, mask: tuple, first, rule) -> int:
+        """Pass (28): the number of the function-clause written next: a clause of the description, the head places a call binds, the order its literals are joined in (the places of the literals in the order written) and whether it is a clause of a worklist.
+        The clause is numbered by its text, in the order the clauses are first met; the tables of the texts and of the function-clauses are constants of the module."""
+        text = rule.clause.text
+        if text not in self.ex_clause:
+            self.ex_clause[text] = len(self.ex_clause)
+            self.ex_lits[self.ex_clause[text]] = [render_literal(x) for x in rule.clause.body]
+        order = tuple(next(j for j, x in enumerate(rule.clause.body) if x is y) for y in rule.order)
+        n = self.d.arity.get(rule.head_rel, 0)
+        key = (self.ex_clause[text], "".join("1" if j in mask else "0" for j in range(n)), order, first is not None)
+        if key not in self.ex_func:
+            self.ex_func[key] = len(self.ex_func)
+        return self.ex_func[key]
 
     def occurs(self, rule, v: int) -> int:
         """How many times the variable of this number stands in the head and the literals of the rule."""
@@ -4536,10 +4597,49 @@ def prepare_reads(d, plan, tdg, reads) -> None:
             plan.reads.append((rel, k))
             tdg.extra.append((rel, tuple(range(k))))
     tdg.fl_rec = bool(plan.reads)
+    tdg.fl_ex = tdg.fl_rec and "explain" in plan.passes
+
+
+def explain_prelude(d, plan, tdg) -> list:
+    """Pass (28): the buffer where a read of a fluent is recorded WITH the function-clause and the step that made it and the chain of calls above it, the stack of calls, and the tables that name them: the text of each clause, the text of each of its literals in the order written, and for each function-clause its clause,
+    the head places a call binds and the order its literals are joined in."""
+    width = max([d.arity.get(r, 0) for r in tdg.fl_no] + [1])
+    names = sorted(tdg.fl_no, key=lambda r: tdg.fl_no[r])
+    texts = sorted(tdg.ex_clause, key=lambda t: tdg.ex_clause[t])
+    funcs = sorted(tdg.ex_func, key=lambda k: tdg.ex_func[k])
+    out = [f"pub const RD_W: usize = {width};",
+           "type ExFrame = (u16, u16);",
+           "thread_local! { static RD_ON: std::sync::atomic::AtomicBool = const { std::sync::atomic::AtomicBool::new(false) }; static RD_REC: std::sync::Mutex<Vec<(u16, [u32; RD_W], u16, u16, u32)>> = const { std::sync::Mutex::new(Vec::new()) }; static EX_STACK: std::cell::RefCell<Vec<ExFrame>> = const { std::cell::RefCell::new(Vec::new()) }; static EX_CHAINS: std::cell::RefCell<(Vec<Vec<ExFrame>>, HashMap<Vec<ExFrame>, u32>)> = std::cell::RefCell::new((Vec::new(), HashMap::new())); }",
+           "/// Pass (28): a call of a derived relation from a literal (function-clause, step) puts a frame on the stack and takes it off when the call returns; the rest of the clause after the literal runs inside the callee (a closure), so it first cuts the stack back to the depth of its own call (`ExCut`) and puts it back on leaving.",
+           "#[inline] fn ex_push(fi: u16, st: u16) -> usize { EX_STACK.with(|s| { let mut s = s.borrow_mut(); let d = s.len(); s.push((fi, st)); d }) }",
+           "#[inline] fn ex_pop() { EX_STACK.with(|s| { s.borrow_mut().pop(); }) }",
+           "struct ExCut(Vec<ExFrame>);",
+           "impl ExCut { #[inline] fn new(d: usize) -> ExCut { ExCut(EX_STACK.with(|s| { let mut s = s.borrow_mut(); if s.len() > d { s.split_off(d) } else { Vec::new() } })) } }",
+           "impl Drop for ExCut { #[inline] fn drop(&mut self) { EX_STACK.with(|s| s.borrow_mut().extend(self.0.drain(..))); } }",
+           "/// Pass (28): the number of the chain of calls above the read being made now (the chains are kept once each, by number, in this thread).",
+           "fn ex_chain() -> u32 { EX_STACK.with(|s| { let s = s.borrow(); EX_CHAINS.with(|c| { let mut c = c.borrow_mut(); if let Some(&i) = c.1.get(&*s) { return i; } let i = c.0.len() as u32; c.0.push(s.clone()); c.1.insert(s.clone(), i); i }) }) }",
+           "/// Pass (28): the chain of calls of a number (the function-clause and step of each call, outermost first); the numbers are those of this thread.",
+           "pub fn expl_chain(id: u32) -> Vec<(u16, u16)> { EX_CHAINS.with(|c| c.borrow().0[id as usize].clone()) }",
+           "/// Pass (28): record one read of a fluent of the state (its number, the places as asked, FREE where the read leaves a place free) with the function-clause and the step that make it and the chain of calls above it, while a question asks for the reads.",
+           "#[inline] fn rd_note(f: u16, key: &[u32], fi: u16, st: u16) { if RD_ON.with(|o| o.load(std::sync::atomic::Ordering::Relaxed)) { let mut q = [FREE; RD_W]; q[..key.len()].copy_from_slice(key); let ch = ex_chain(); RD_REC.with(|r| r.lock().unwrap().push((f, q, fi, st, ch))); } }",
+           "/// The fluents in the order of their numbers, and the number of places of each.",
+           "pub const READS_FLUENTS: &[&str] = &[" + ", ".join(f'"{r[len("true."):]}"' for r in names) + "];",
+           "pub const READS_ARITY: &[usize] = &[" + ", ".join(str(d.arity[r]) for r in names) + "];",
+           "/// The relations whose answers come with their reads, each with the number of places of its key.",
+           "pub const READS: &[(&str, usize)] = &[" + ", ".join(f'("{r}", {k})' for r, k in plan.reads) + "];",
+           "/// Pass (28): the text of each clause that made a read, by its number.",
+           "pub const EXPL_CLAUSES: &[&str] = &[" + ", ".join(rs_str(t) for t in texts) + "];",
+           "/// Pass (28): for each clause, the text of its literals in the order written.",
+           "pub const EXPL_LITS: &[&[&str]] = &[" + ", ".join("&[" + ", ".join(rs_str(x) for x in tdg.ex_lits[i]) + "]" for i in range(len(texts))) + "];",
+           "/// Pass (28): for each function-clause (the number a read and a call carry): the number of its clause, which head places the call binds (1 bound), the places of its literals, in the order written, in the order they are joined, and whether it is a clause of a worklist (a walk).",
+           "pub const EXPL_FUNCS: &[(u16, &str, &[u16], bool)] = &[" + ", ".join(f'({k[0]}, "{k[1]}", &[{", ".join(str(x) for x in k[2])}], {"true" if k[3] else "false"})' for k in funcs) + "];"]
+    return out
 
 
 def reads_prelude(d, plan, tdg) -> list:
     """Pass (27): the buffer where a read of a fluent is recorded, the recording function, the numbers of the fluents and the relations given."""
+    if tdg.fl_ex:
+        return explain_prelude(d, plan, tdg)
     width = max([d.arity.get(r, 0) for r in tdg.fl_no] + [1])
     names = sorted(tdg.fl_no, key=lambda r: tdg.fl_no[r])
     return [f"pub const RD_W: usize = {width};",
@@ -4553,8 +4653,41 @@ def reads_prelude(d, plan, tdg) -> list:
             "pub const READS: &[(&str, usize)] = &[" + ", ".join(f'("{r}", {k})' for r, k in plan.reads) + "];"]
 
 
+def explain_method(d, plan, tdg) -> list:
+    """Pass (28): `Game::ask_explain`, the rows of a relation at a key with every read of a fluent the walk made, each with the function-clause and step that made it and the number of the chain of calls above it: a small proof of the answer. `ask_reads` is the same walk with the tags dropped."""
+    out = ["    /// Pass (28): the rows of one of the relations given at a key (as `ask_reads`) with, for each read of a fluent, (the fluent's number, the places as asked, the function-clause, the step, the number of the chain of calls above the read: `expl_chain`); None as `ask_reads`.",
+           "    pub fn ask_explain(&mut self, s: &State, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>, u16, u16, u32)>)> {",
+           "        self.load_td(s);",
+           "        RD_REC.with(|r| r.lock().unwrap().clear());",
+           "        EX_STACK.with(|s| s.borrow_mut().clear());",
+           "        RD_ON.with(|o| o.store(true, std::sync::atomic::Ordering::Relaxed));",
+           "        let mut v: Vec<Vec<u32>> = vec![];",
+           "        let known = match rel {"]
+    for rel, k in plan.reads:
+        n = d.arity[rel]
+        out.append(f'            "{rel}" if key.len() == {k} => {{ let mut a = [FREE; {n}]; a[..{k}].copy_from_slice(key); {tdg.fname(rel, tuple(range(k)))}(&self.td, a, &mut |row| {{ v.push(row.to_vec()); false }}); true }}')
+    out += ["            _ => false,",
+            "        };",
+            "        RD_ON.with(|o| o.store(false, std::sync::atomic::Ordering::Relaxed));",
+            "        let rec: Vec<(u16, [u32; RD_W], u16, u16, u32)> = RD_REC.with(|r| std::mem::take(&mut *r.lock().unwrap()));",
+            "        let over = self.td.overflow.load(std::sync::atomic::Ordering::Relaxed);",
+            "        self.clear_td();",
+            "        if !known || over { return None; }",
+            "        v.sort(); v.dedup();",
+            "        Some((v, rec.into_iter().map(|(f, q, c, l, ch)| (f, q[..READS_ARITY[f as usize]].to_vec(), c, l, ch)).collect()))",
+            "    }",
+            "    /// Pass (27), the same walk: `ask_explain` with the tags left off.",
+            "    pub fn ask_reads(&mut self, s: &State, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)> {",
+            "        let (v, r) = self.ask_explain(s, rel, key)?;",
+            "        Some((v, r.into_iter().map(|(f, q, _, _, _)| (f, q)).collect()))",
+            "    }"]
+    return out
+
+
 def reads_method(d, plan, tdg) -> list:
     """Pass (27): `Game::ask_reads`, the rows of a relation at a key with the fluent facts the walk read."""
+    if tdg.fl_ex:
+        return explain_method(d, plan, tdg)
     out = ["    /// Pass (27): the rows of one of the relations given at a key (its first places bound), by the top-down way, with every read of a fluent of the state the walk made (module text, (27)); None when the relation is not one given or the walk overflowed.",
            "    pub fn ask_reads(&mut self, s: &State, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>)>)> {",
            "        self.load_td(s);",
@@ -4917,6 +5050,8 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None, reads=())
         out[head_at:head_at] = heads
     if plan and "reads" in plan.passes:
         heads = [f"// reads: {r} with its first {k} places as the key" for r, k in plan.reads]
+        if tdg.fl_ex:
+            heads.append(f"// explain: every read carries its clause and literal ({len(tdg.ex_clause)} clauses)")
         heads += [f"// reads refused: {k}: {v[:160]}" for k, v in sorted(plan.reads_refused.items())]
         out[head_at:head_at] = heads
     sup = bool(td_on and plan and plan.support)
