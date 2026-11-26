@@ -67,3 +67,4 @@ import Ideas.Layer0.Chance
 import Ideas.Layer0.Choice
 import Ideas.Mined.rule_lemma_chess_candidate_is_mover_unit
 import Ideas.Support
+import Ideas.NullFilter

@@ -8,11 +8,9 @@
 //!      by the program. What the support of 79.58 holds (the line a player names, a read of every unit, a read of every unit of the goal kind, two whole fluents) is thereby traced to the clauses that make it. No clause or literal is named here: both come from the module's tables.
 //!   TAKES CS_FACTS_GAMES (the games file, for the first game), CS_FACTS_N (games, default 30), CS_FACTS_MAX (plies, default 40), CS_FACTS_JOBS (threads).
 //! WHO CALLS: scripts/lemma_explain_print.py. NOT on the engine's path.
+mod mined_common;
 mod translated_common;
 mod variants_common;
-use cs_game::kernel::KernelGame;
-use cs_game::rng::Rng;
-use cs_game::{Fact, Game};
 use std::collections::{BTreeMap, BTreeSet};
 use translated_common::*;
 use variants_common::kernel;
@@ -32,60 +30,14 @@ impl_tr!(placed_antichess_explain, explain);
 impl_tr!(placed_chess960_explain, explain);
 impl_tr!(placed_horde_explain, explain);
 
-const SEED: u64 = 5757;
-const FREE: u32 = u32::MAX;
-type State = <KernelGame as Game>::State;
-
-fn env_usize(k: &str, d: usize) -> usize { std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d) }
-
-fn lines_of(path: &str, n: usize) -> Vec<Vec<String>> { std::fs::read_to_string(path).unwrap().lines().take(n).map(|l| l.split_whitespace().map(|w| w.to_string()).collect()).collect() }
-
-/// The games of a file as states, from their start (`max` plies at most).
-fn states_of_lines(game: &str, lines: &[Vec<String>], max: usize) -> Vec<Vec<State>> {
-    let k = kernel(game);
-    let mut out = vec![];
-    for l in lines {
-        let mut s = k.initial();
-        let mut v = vec![s.clone()];
-        for nm in l.iter().take(max) {
-            if k.outcome(&s).is_some() { break; }
-            let Some(m) = k.find_move(&s, nm) else { break };
-            s = k.apply(&s, &m);
-            v.push(s.clone());
-        }
-        out.push(v);
-    }
-    out
-}
-
-/// Seeded random walks of a game (the moves taken in the order of their names, as the other measures do).
-fn seeded_states(k: &KernelGame, n: usize, plies: usize) -> Vec<Vec<State>> {
-    let mut rng = Rng::new(SEED);
-    let mut out = vec![];
-    for _ in 0..n {
-        let mut s = k.initial();
-        let mut states = vec![s.clone()];
-        for _ in 0..plies {
-            let mv = k.moves(&s);
-            if mv.is_empty() || k.outcome(&s).is_some() { break; }
-            let mut sorted: Vec<(String, usize)> = mv.iter().enumerate().map(|(i, m)| (k.move_name(&s, m), i)).collect();
-            sorted.sort();
-            let (_, i) = sorted[rng.below(sorted.len())].clone();
-            s = k.apply(&s, &mv[i]);
-            states.push(s.clone());
-        }
-        out.push(states);
-    }
-    out
-}
-
-fn pairs(facts: &[Fact]) -> Vec<(String, Vec<String>)> { facts.iter().map(|x| (x.relation.clone(), x.args.clone())).collect() }
+use cs_game::Game;
+use mined_common::*;
 
 /// One kind of read in the aggregate: the fluent, which of its places the read binds (a bit each, bound = 1), the clause and the literal that made it.
 type ReadKey = (String, u32, u16, u16);
 
 #[derive(Default, Clone, Debug)]
-struct Group { reads: u64, questions: u64, chain: Vec<(u16, u16)> }
+struct Group { reads: u64, questions: u64, chain: Vec<(u16, u16)>, leaf: (u16, u16) }
 
 #[derive(Default, Clone, Debug)]
 struct Explained {
@@ -98,7 +50,7 @@ struct Explained {
 impl Explained {
     fn add(&mut self, o: &Explained) {
         self.states += o.states; self.questions += o.questions; self.reads += o.reads; self.raw += o.raw; self.rows += o.rows;
-        for (k, g) in &o.groups { let e = self.groups.entry(k.clone()).or_default(); e.reads += g.reads; e.questions += g.questions; if e.chain.is_empty() { e.chain = g.chain.clone(); } }
+        for (k, g) in &o.groups { let e = self.groups.entry(k.clone()).or_default(); e.reads += g.reads; e.questions += g.questions; if e.chain.is_empty() { e.chain = g.chain.clone(); e.leaf = g.leaf; } }
         if self.clauses.is_empty() { self.clauses = o.clauses.clone(); self.lits = o.lits.clone(); self.funcs = o.funcs.clone(); }
     }
 }
@@ -137,9 +89,10 @@ fn explain_game<T: Tr + 'static>(game: &str, games: &[Vec<State>]) -> Explained 
                         e.reads += 1;
                         if e.chain.is_empty() {
                             // the first chain of calls this kind of read was made under, each frame as (clause, literal)
-                            let funcs = &out.funcs;
-                            let chain: Vec<(u16, u16)> = t.explain_chain_t(*ch).iter().map(|(f, s)| (funcs[*f as usize].0, funcs[*f as usize].2[*s as usize])).collect();
-                            out.groups.get_mut(&key).unwrap().chain = chain;
+                            let chain: Vec<(u16, u16)> = t.explain_chain_t(*ch);
+                            let g = out.groups.get_mut(&key).unwrap();
+                            g.chain = chain;
+                            g.leaf = (*fi, *st);
                         }
                     }
                     kinds.insert(key);
@@ -193,7 +146,10 @@ fn print_game(game: &str, e: &Explained, arity: &dyn Fn(&str) -> usize, cell_flu
         if wide.starts_with("EVERY") || wide.starts_with("a whole") {
             println!("OBS 79.59 A {game}: WIDE {fl}[{}] ({wide}) in {:.3} of the questions, made by clause {cl} literal {lt}", mask_text(*mask, arity(fl)), g.questions as f64 / e.questions.max(1) as f64);
             println!("EXPL {game}: WIDE clause {cl}: {}  LITERAL {lt}: {}", e.clauses[*cl as usize], e.lits[*cl as usize][*lt as usize]);
-            for (c2, l2) in &g.chain { println!("EXPL {game}:   called by clause {c2} literal {l2}: {}  /  {}", e.clauses[*c2 as usize], e.lits[*c2 as usize][*l2 as usize]); }
+            // the frames, outermost first, each as the function-clause that made the call and the position of the literal in its join: the text of the clause, the head places bound, the order of the join, the position (read by scripts/lemma_miner_print.py `explain`)
+            let frame = |fi: u16, st: u16| -> String { let (c, m, o, w) = &e.funcs[fi as usize]; format!("{} ||| {} ||| {} ||| {} ||| {}", e.clauses[*c as usize], m, o.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","), st, w) };
+            for (f2, s2) in &g.chain { let (c2, _m, o2, _w) = &e.funcs[*f2 as usize]; let l2 = o2[*s2 as usize]; println!("EXPL {game}:   called by clause {c2} literal {l2}: {}  /  {}", e.clauses[*c2 as usize], e.lits[*c2 as usize][l2 as usize]); println!("EXPLF {game} CALL {}", frame(*f2, *s2)); }
+            println!("EXPLF {game} READ {}", frame(g.leaf.0, g.leaf.1));
         }
     }
 }
@@ -227,4 +183,44 @@ fn explain() {
         }
     }
     println!("OBS 79.59 A all seven games: {:.1} s, {} threads", t0.elapsed().as_secs_f64(), jobs);
+}
+
+/// PART F (a count only, no build): the rows of EVERY relation a description defines, at the states of the segments: for each relation the mean and the largest number of rows a state. `COUNT <game> <relation> <mean rows> <largest> <states>` lines; the shapes of the relations (which have a unit and a place, two places, what the rest are) are read from the signatures by scripts/lemma_miner_print.py `count`.
+#[derive(Default)]
+struct Counted { states: u64, sum: BTreeMap<String, u64>, max: BTreeMap<String, u64> }
+
+fn count_game<T: Tr + 'static>(game: &str, segs: &[Vec<State>]) -> Counted {
+    let k = kernel(game);
+    let mut t = T::make();
+    let mut out = Counted::default();
+    for g in segs {
+        for s in g {
+            let ms = t.state_of_facts_t(&pairs(&k.state_facts(s))).expect("the module reads the state");
+            out.states += 1;
+            for (name, rows) in t.all_t(&ms, &[]) {
+                *out.sum.entry(name.to_string()).or_insert(0) += rows.len() as u64;
+                let e = out.max.entry(name.to_string()).or_insert(0);
+                *e = (*e).max(rows.len() as u64);
+            }
+        }
+    }
+    out
+}
+
+#[test]
+#[ignore = "a count, by hand (plan 79.59 part F): CS_FACTS_GAMES names the games file; scripts/lemma_miner_print.py count"]
+fn relations_count() {
+    let path = std::env::var("CS_FACTS_GAMES").expect("CS_FACTS_GAMES names the file of games");
+    let (n, max) = (env_usize("CS_FACTS_N", 30), env_usize("CS_FACTS_MAX", 40));
+    macro_rules! one { ($m:ident, $name:expr, $segs:expr) => {{
+        let c = count_game::<$m::Game>($name, $segs);
+        for (r, s) in &c.sum { println!("COUNT {} {} {:.3} {} {}", $name, r, *s as f64 / c.states.max(1) as f64, c.max[r], c.states); }
+    }}}
+    one!(placed_chess_explain, "chess", &states_of_lines("chess", &lines_of(&path, n), max));
+    one!(placed_atomic_explain, "atomic", &seeded_states(&kernel("atomic"), n, max));
+    one!(placed_threecheck_explain, "3check", &seeded_states(&kernel("3check"), n, max));
+    one!(placed_kingofthehill_explain, "kingofthehill", &seeded_states(&kernel("kingofthehill"), n, max));
+    one!(placed_antichess_explain, "antichess", &seeded_states(&kernel("antichess"), n, max));
+    one!(placed_chess960_explain, "chess960", &seeded_states(&kernel("chess960"), n, max));
+    one!(placed_horde_explain, "horde", &seeded_states(&kernel("horde"), n, max));
 }

@@ -405,6 +405,17 @@ PLAN 79.57 PART B: THE READS OF AN ANSWER (SYSTEM_SPEC 11, blocks "A divergence 
     `READS_FLUENTS: &[&str]` the fluents in the order of their numbers (as the clauses name them, without the word `true.`), `READS: &[(&str, usize)]` the relations given with their k.
   WHO CALLS IT: the keeper's second rule (rust/engine/game/src/keeper.rs, through the test adapter tests/described: the places a read binds are the places of the support of an answer); the tests of the modules made with it (tests/translated_reads.rs). Nothing on the engine's path.
   SOUNDNESS: the walk is the top-down way of pass (24), which tests hold equal to the bottom-up rows; every consult of a fluent goes through a recorded statement (each form a literal of a fluent takes: a negated literal, a literal with no place left free, a literal with places left free); relations that do not read the state are not recorded. The module without "reads" is the module of the commit before, byte for byte but for the translator hash line.
+PLAN 79.59 PART A: THE EXPLANATIONS OF AN ANSWER (SYSTEM_SPEC 11, block "The lemma miner of layer 2"; LAYER 2, piece: rules; ledger rows 59, 58, 57). Interface written before the body. PASSES are as above; OPT_PASSES = ("support", "reads", "explain", "filter"); with no "explain" every module is the module of the commit before, byte for byte but for the translator hash line.
+  (28) "explain" TAKES the passes before it and brings "reads" with its relations (the caller of `translate` gives `reads` as before; this source names none). IT FINDS nothing new: it tags what pass (27) records. RETURNS, in the same module: every read of a fluent that `ask_reads` records is also tagged with the FUNCTION-CLAUSE that made it (a clause of the description, the head places a call binds, the order its literals are joined in) and the POSITION of the literal in that join, and with the number of the CHAIN OF CALLS above it
+  (the function-clause and position of each call of a derived relation from the root of the question down to the read); `Game::ask_explain(state, relation, key) -> Option<(rows, [(fluent, places as asked, function-clause, position, chain)])>`; `EXPL_CLAUSES: &[&str]` the text of each clause that made a read, `EXPL_LITS: &[&[&str]]` the text of each of its literals in the order written, `EXPL_FUNCS: &[(clause, head places bound, the places of its literals in the order joined, a clause of a walk)]`, `expl_chain(number) -> [(function-clause, position)]`.
+  A recorded answer is thereby a small proof: the clauses used, the literal of each read, the rows asked, and under which call each read was made. `ask_reads` is the same walk with the tags dropped. A call of a derived relation puts a frame on a stack; the rest of the clause behind the literal runs inside the callee (a closure), so it cuts the stack back to its own depth while it runs.
+  SOUNDNESS: the tags are statements written beside the statements of pass (27); no clause is changed and no answer changes (held by rust/engine/game/tests/translated_mined.rs: the rows of `ask_explain` equal those of `ask_reads`). WHO CALLS IT: tests/translated_mined.rs and scripts/lemma_explain_print.py. Nothing on the engine's path.
+PLAN 79.59 PART E: A FILTER LEMMA AS A REWRITE (SYSTEM_SPEC 11, blocks "The support filter" and "The lemma miner of layer 2"; ledger rows 59, 57, 49). Interface written before the body.
+  (29) "filter" TAKES a lemma of the form FILTER given as data, as pass (19) takes a lemma of the form SAME: {"name", "form": "FILTER", "left": {"relation": R, "places": m}, "right": {"relation": A, "places": m}, "filter": {"hits": Hh, "tested": Tt}, "standing": {"is": "PROPOSED" | "TESTED" | "PROVED", ...}}; `text` is the composed description, the base with the lemma's delta, so that A and Hh are relations of the text.
+  THE LEMMA (what the document says): for every key x of R at a state, if x is not a row of Hh then x is a row of R exactly when it is a row of A. (Tt, given in the document and R where it is not, is a copy of R whose cone is made for the keys of Hh only (plan 79.59 part E, the mask): at a key of Hh it has the rows of R. R is the test of a key on a hypothetical relation, A the answer of the test with the hypothesis read as the state, Hh the keys whose differing rows meet a row R0 read: plan 79.59 part B, lemma_miner.py.)
+  THE REWRITE, in the text before anything else reads it (with no lemma of this form the text is unchanged, byte for byte): R' (x_1 .. x_m) <= A (x_1 .. x_m), (not Hh (x_1 .. x_m)); R' (x_1 .. x_m) <= Hh (x_1 .. x_m), Tt (x_1 .. x_m); and in every clause whose head is not R every literal over R is read over R'. R' has the signature of R.
+  ARGUMENT: at a key that is a row of Hh the second clause gives R's answer and the first is silent; at a key that is not, the second is silent and the first gives A's answer, which the lemma says is R's; so R' has the rows of R and every clause that read R reads the same rows. WHAT THE ARGUMENT NEEDS, and the pass tests from the clauses, refusing with the lemma and the reason named: (i) R, A and Hh are in the text with m places each and R is no question, no state, no input and not in a recursive set; (ii) neither A nor Hh reads R (else R' would read itself); (iii) R, A and Hh read the state only (no `does`, no `record`); (iv) the text with the rewrite is stratified, safe and well sorted.
+  The head of a module with it holds `// lemma: <name> FILTER <R> -> <R'>, hits <Hh>, <standing>`. THE LEMMA IS AS SURE AS ITS STANDING: the judge of plan 79.59 (scripts/lemma_miner_run.py, rust/engine/game/tests/translated_mined.rs) holds the module with the rewrite to the module without it at every state of its segments; the theorem the standing PROVED rests on is lean/ideas/Ideas/NullFilter.lean (`Test.run_of_null`).
 """
 from __future__ import annotations
 
@@ -419,7 +430,7 @@ from catspace.incubator.analyst.discovery import gdl as GDL
 NOOP = "noop"
 INPUT_RELS = ("does", "record")
 PASSES = ("dense", "demand", "copy", "delta", "bits", "order", "keep", "scan", "cut", "shift", "base", "start", "ends", "orient", "asked", "project", "worth", "gated", "cones", "words", "tables", "topdown", "carry")
-OPT_PASSES = ("support", "reads", "explain")                              # passes a caller asks for by name; "every pass" (PASSES) does not hold them (pass 26: AS BUILT, the module text says why)
+OPT_PASSES = ("support", "reads", "explain", "filter")                              # passes a caller asks for by name; "every pass" (PASSES) does not hold them (pass 26: AS BUILT, the module text says why)
 QUESTION_RELS = ("legal", "terminal", "goal")           # read in full by the questions (as are the `next` relations)
 TABLE_WORDS = 1 << 13                                   # pass (23): a walk gets a table when its chains are at most this many words
 WORDS_MAX = 1 << 13                                     # pass (22): a fluent is held as the bits of a state when the product of the sizes of its sorts is at most this
@@ -3828,6 +3839,67 @@ def rewrite_lemmas(text: str, lemmas) -> tuple:
     return cur, infos
 
 
+def rewrite_filters(text: str, lemmas) -> tuple:
+    """Plan 79.59 part E, pass (29) (the module text states the rewrite and its argument): -> (the text with each FILTER lemma read as a rewrite, [the facts of each lemma for the document]). Untranslatable, naming the lemma and the reason, where the argument's needs (i) to (iv) are not met."""
+    cur = text
+    infos = []
+    for n, lem in enumerate(lemmas, 1):
+        nm = lem.get("name", "?")
+        for k in ("name", "form", "left", "right", "filter", "standing"):
+            if k not in lem:
+                raise Untranslatable(f"lemma {nm}: the lemma has no {k}")
+        if lem["form"] != "FILTER":
+            raise Untranslatable(f"lemma {nm}: the form is {lem['form']}, not FILTER")
+        st = lem["standing"]
+        if not isinstance(st, dict) or st.get("is") not in ("PROPOSED", "TESTED", "PROVED"):
+            raise Untranslatable(f"lemma {nm}: the standing is {st}")
+        try:
+            prog = GDL.Program(cur)
+        except GDL.GDLError as e:
+            raise Untranslatable(f"lemma {nm}: the text does not read: {e}")
+        left, ans, hits = lem["left"]["relation"], lem["right"]["relation"], lem["filter"].get("hits")
+        tested = lem["filter"].get("tested") or left
+        arity = lem["left"]["places"]
+        for rel, places in ((left, arity), (ans, lem["right"]["places"]), (hits, arity), (tested, arity)):
+            if rel not in prog.nodes:
+                raise Untranslatable(f"lemma {nm}: the relation {rel} is not in the text (the composed text holds the lemma's delta)")
+            sig = prog.signature(rel)
+            if sig is None or len(sig) != places:
+                raise Untranslatable(f"lemma {nm}: {rel} has {None if sig is None else len(sig)} places in the text and the document says {places}")
+        if left in QUESTION_RELS or left in INPUT_RELS or left.startswith(("true.", "next.", "init.")):
+            raise Untranslatable(f"lemma {nm}: {left} is read by a question or is a state, an input or a next: its rows are not for a rewrite")
+        taken = set(prog.nodes) | set(prog.signatures)
+        rep = f"filter{n}_rep"
+        while rep in taken:
+            rep += "_"
+        xs = [f"?x{i}" for i in range(1, arity + 1)]
+        atom_of = lambda rel: [rel] + xs
+        out = []
+        for x in GDL.parse(cur):
+            if isinstance(x, list) and x and x[0] == "<=" and GDL.to_atom(x[1])[0] != left:
+                x = [x[0], x[1]] + [swap_atom(y, left, rep) for y in x[2:]]
+            out.append(x)
+        out.append(["signature", rep] + list(prog.signature(left)))
+        out.append(["<=", atom_of(rep), atom_of(ans), ["not", atom_of(hits)]])
+        out.append(["<=", atom_of(rep), atom_of(hits), atom_of(tested)])
+        new = "\n".join(GDL._unparse(x) for x in out) + "\n"
+        try:
+            d2 = Description(new)
+        except GDL.GDLError as e:
+            raise Untranslatable(f"lemma {nm}: the text with the rewrite is not a program: {e}")
+        if len(next(comp for comp, _r in d2.strata if left in comp)) > 1 or any(r.rec_steps for comp, rules in d2.strata if left in comp for r in rules):
+            raise Untranslatable(f"lemma {nm}: {left} is in a recursive set: its replacement would read itself")
+        for who, rel in (("the answer", ans), ("the hits", hits), ("the tested copy", tested)):
+            if left in d2.cone([rel]):
+                raise Untranslatable(f"lemma {nm}: {who} reads {left}: the rewrite would read itself")
+        turn = sorted(set(INPUT_RELS) & d2.cone([left, ans, hits, tested]))
+        if turn:
+            raise Untranslatable(f"lemma {nm}: {left}, {ans} or {hits} reads the turn ({turn}): the lemma is about states")
+        infos.append({"name": nm, "form": "FILTER", "left": left, "right": ans, "rep": rep, "flag": "", "hits": hits, "tested": tested, "evidence": f"{st['is']} {st.get('theorem') or st.get('detail') or ''}".strip(), "condition": []})
+        cur = new
+    return cur, infos
+
+
 def over_approximations(text: str) -> tuple:
     """Plan 79.47 part A (module text, (17, widened)): -> (the text, and for each walk that a clause outside it reads more than once, a relation that is its STATIC OVER-APPROXIMATION added to the text, {walk: its over-approximation}). The over-approximation `S` of a
     walk `W` has W's clauses with every literal over a relation that reads the state taken out and W's own literal read over S: S holds every row of W (a clause with fewer literals gives at least the rows of the clause, and a positive program is monotone), and S reads no state, so it
@@ -4173,7 +4245,7 @@ class TopDown:
 
     def note_read(self, rel: str, key: str, rule=None, i: int = 0):
         """Pass (27): before a read of a fluent of the state, the statement that records it (the fluent's number and the places as asked); nothing for a relation that does not read the state.
-        Pass (28): the statement also carries the number of the function-clause that makes the read and the step of its join (which names the clause, the literal and the order the clause was joined in)."""
+        Pass (28): the statement also carries the number of the function-clause that makes the read and the position of its join (which names the clause, the literal and the order the clause was joined in)."""
         if not self.fl_rec or not rel.startswith("true."):
             return
         no = self.fl_no.setdefault(rel, len(self.fl_no))
@@ -4601,7 +4673,7 @@ def prepare_reads(d, plan, tdg, reads) -> None:
 
 
 def explain_prelude(d, plan, tdg) -> list:
-    """Pass (28): the buffer where a read of a fluent is recorded WITH the function-clause and the step that made it and the chain of calls above it, the stack of calls, and the tables that name them: the text of each clause, the text of each of its literals in the order written, and for each function-clause its clause,
+    """Pass (28): the buffer where a read of a fluent is recorded WITH the function-clause and the position that made it and the chain of calls above it, the stack of calls, and the tables that name them: the text of each clause, the text of each of its literals in the order written, and for each function-clause its clause,
     the head places a call binds and the order its literals are joined in."""
     width = max([d.arity.get(r, 0) for r in tdg.fl_no] + [1])
     names = sorted(tdg.fl_no, key=lambda r: tdg.fl_no[r])
@@ -4609,18 +4681,18 @@ def explain_prelude(d, plan, tdg) -> list:
     funcs = sorted(tdg.ex_func, key=lambda k: tdg.ex_func[k])
     out = [f"pub const RD_W: usize = {width};",
            "type ExFrame = (u16, u16);",
-           "thread_local! { static RD_ON: std::sync::atomic::AtomicBool = const { std::sync::atomic::AtomicBool::new(false) }; static RD_REC: std::sync::Mutex<Vec<(u16, [u32; RD_W], u16, u16, u32)>> = const { std::sync::Mutex::new(Vec::new()) }; static EX_STACK: std::cell::RefCell<Vec<ExFrame>> = const { std::cell::RefCell::new(Vec::new()) }; static EX_CHAINS: std::cell::RefCell<(Vec<Vec<ExFrame>>, HashMap<Vec<ExFrame>, u32>)> = std::cell::RefCell::new((Vec::new(), HashMap::new())); }",
-           "/// Pass (28): a call of a derived relation from a literal (function-clause, step) puts a frame on the stack and takes it off when the call returns; the rest of the clause after the literal runs inside the callee (a closure), so it first cuts the stack back to the depth of its own call (`ExCut`) and puts it back on leaving.",
-           "#[inline] fn ex_push(fi: u16, st: u16) -> usize { EX_STACK.with(|s| { let mut s = s.borrow_mut(); let d = s.len(); s.push((fi, st)); d }) }",
-           "#[inline] fn ex_pop() { EX_STACK.with(|s| { s.borrow_mut().pop(); }) }",
+           "thread_local! { static RD_ON: std::sync::atomic::AtomicBool = const { std::sync::atomic::AtomicBool::new(false) }; static RD_REC: std::sync::Mutex<Vec<(u16, [u32; RD_W], u16, u16, u32)>> = const { std::sync::Mutex::new(Vec::new()) }; static EX_STACK: std::sync::Mutex<Vec<ExFrame>> = const { std::sync::Mutex::new(Vec::new()) }; static EX_CHAINS: std::sync::Mutex<(Vec<Vec<ExFrame>>, HashMap<Vec<ExFrame>, u32>)> = std::sync::Mutex::new((Vec::new(), HashMap::new())); }",
+           "/// Pass (28): a call of a derived relation from a literal (function-clause, position) puts a frame on the stack and takes it off when the call returns; the rest of the clause behind the literal runs inside the callee (a closure), so it first cuts the stack back to the depth of its own call (`ExCut`) and puts it back on leaving.",
+           "#[inline] fn ex_push(fi: u16, st: u16) -> usize { EX_STACK.with(|s| { let mut s = s.lock().unwrap(); let d = s.len(); s.push((fi, st)); d }) }",
+           "#[inline] fn ex_pop() { EX_STACK.with(|s| { s.lock().unwrap().pop(); }) }",
            "struct ExCut(Vec<ExFrame>);",
-           "impl ExCut { #[inline] fn new(d: usize) -> ExCut { ExCut(EX_STACK.with(|s| { let mut s = s.borrow_mut(); if s.len() > d { s.split_off(d) } else { Vec::new() } })) } }",
-           "impl Drop for ExCut { #[inline] fn drop(&mut self) { EX_STACK.with(|s| s.borrow_mut().extend(self.0.drain(..))); } }",
+           "impl ExCut { #[inline] fn new(d: usize) -> ExCut { ExCut(EX_STACK.with(|s| { let mut s = s.lock().unwrap(); if s.len() > d { s.split_off(d) } else { Vec::new() } })) } }",
+           "impl Drop for ExCut { #[inline] fn drop(&mut self) { EX_STACK.with(|s| s.lock().unwrap().extend(self.0.drain(..))); } }",
            "/// Pass (28): the number of the chain of calls above the read being made now (the chains are kept once each, by number, in this thread).",
-           "fn ex_chain() -> u32 { EX_STACK.with(|s| { let s = s.borrow(); EX_CHAINS.with(|c| { let mut c = c.borrow_mut(); if let Some(&i) = c.1.get(&*s) { return i; } let i = c.0.len() as u32; c.0.push(s.clone()); c.1.insert(s.clone(), i); i }) }) }",
-           "/// Pass (28): the chain of calls of a number (the function-clause and step of each call, outermost first); the numbers are those of this thread.",
-           "pub fn expl_chain(id: u32) -> Vec<(u16, u16)> { EX_CHAINS.with(|c| c.borrow().0[id as usize].clone()) }",
-           "/// Pass (28): record one read of a fluent of the state (its number, the places as asked, FREE where the read leaves a place free) with the function-clause and the step that make it and the chain of calls above it, while a question asks for the reads.",
+           "fn ex_chain() -> u32 { EX_STACK.with(|s| { let s = s.lock().unwrap(); EX_CHAINS.with(|c| { let mut c = c.lock().unwrap(); if let Some(&i) = c.1.get(&*s) { return i; } let i = c.0.len() as u32; c.0.push(s.clone()); c.1.insert(s.clone(), i); i }) }) }",
+           "/// Pass (28): the chain of calls of a number (the function-clause and position of each call, outermost first); the numbers are those of this thread.",
+           "pub fn expl_chain(id: u32) -> Vec<(u16, u16)> { EX_CHAINS.with(|c| c.lock().unwrap().0[id as usize].clone()) }",
+           "/// Pass (28): record one read of a fluent of the state (its number, the places as asked, FREE where the read leaves a place free) with the function-clause and the position that make it and the chain of calls above it, while a question asks for the reads.",
            "#[inline] fn rd_note(f: u16, key: &[u32], fi: u16, st: u16) { if RD_ON.with(|o| o.load(std::sync::atomic::Ordering::Relaxed)) { let mut q = [FREE; RD_W]; q[..key.len()].copy_from_slice(key); let ch = ex_chain(); RD_REC.with(|r| r.lock().unwrap().push((f, q, fi, st, ch))); } }",
            "/// The fluents in the order of their numbers, and the number of places of each.",
            "pub const READS_FLUENTS: &[&str] = &[" + ", ".join(f'"{r[len("true."):]}"' for r in names) + "];",
@@ -4654,12 +4726,12 @@ def reads_prelude(d, plan, tdg) -> list:
 
 
 def explain_method(d, plan, tdg) -> list:
-    """Pass (28): `Game::ask_explain`, the rows of a relation at a key with every read of a fluent the walk made, each with the function-clause and step that made it and the number of the chain of calls above it: a small proof of the answer. `ask_reads` is the same walk with the tags dropped."""
-    out = ["    /// Pass (28): the rows of one of the relations given at a key (as `ask_reads`) with, for each read of a fluent, (the fluent's number, the places as asked, the function-clause, the step, the number of the chain of calls above the read: `expl_chain`); None as `ask_reads`.",
+    """Pass (28): `Game::ask_explain`, the rows of a relation at a key with every read of a fluent the walk made, each with the function-clause and position that made it and the number of the chain of calls above it: a small proof of the answer. `ask_reads` is the same walk with the tags dropped."""
+    out = ["    /// Pass (28): the rows of one of the relations given at a key (as `ask_reads`) with, for each read of a fluent, (the fluent's number, the places as asked, the function-clause, the position, the number of the chain of calls above the read: `expl_chain`); None as `ask_reads`.",
            "    pub fn ask_explain(&mut self, s: &State, rel: &str, key: &[u32]) -> Option<(Vec<Vec<u32>>, Vec<(u16, Vec<u32>, u16, u16, u32)>)> {",
            "        self.load_td(s);",
            "        RD_REC.with(|r| r.lock().unwrap().clear());",
-           "        EX_STACK.with(|s| s.borrow_mut().clear());",
+           "        EX_STACK.with(|s| s.lock().unwrap().clear());",
            "        RD_ON.with(|o| o.store(true, std::sync::atomic::Ordering::Relaxed));",
            "        let mut v: Vec<Vec<u32>> = vec![];",
            "        let known = match rel {"]
@@ -4881,12 +4953,20 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None, reads=())
     src_text = text
     infos: list = []
     if lemmas:
-        text, infos = rewrite_lemmas(text, lemmas)
+        same = [l for l in lemmas if l.get("form") != "FILTER"]
+        filters = [l for l in lemmas if l.get("form") == "FILTER"]
+        if filters and "filter" not in passes:
+            raise Untranslatable("a lemma of the form FILTER is read only with the pass filter")
+        if same:
+            text, infos = rewrite_lemmas(text, same)
+        if filters:
+            text, finfos = rewrite_filters(text, filters)
+            infos = infos + finfos
     over: dict = {}
     if "asked" in passes:
         text, over = over_approximations(text)
     d = Description(text)
-    d.flags = {i["flag"] for i in infos}
+    d.flags = {i["flag"] for i in infos if i["flag"]}
     d.over = over
     p = d.prog
     for needed in ("role",):
@@ -4914,7 +4994,10 @@ def translate(text: str, module: str, passes=(), lemmas=(), ways=None, reads=())
     for walk, ow in sorted(over.items()):
         w(f"// over-approximation: {ow} of {walk}")
     for i in infos:
-        w(f"// lemma: {i['name']} {i['form']} {i['left']} -> {i['rep']}, flag {i['flag']}, {i['evidence']}")
+        if i["form"] == "FILTER":
+            w(f"// lemma: {i['name']} FILTER {i['left']} -> {i['rep']}, hits {i['hits']}, answer {i['right']}, tested {i['tested']}, {i['evidence']}")
+        else:
+            w(f"// lemma: {i['name']} {i['form']} {i['left']} -> {i['rep']}, flag {i['flag']}, {i['evidence']}")
     w(f"#[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all{', unreachable_code' if plan else ''})]")
     w(f"pub mod {module} {{")
     w((RUNTIME_KEEP.replace("pub goals: Vec<(u32, u32)> }", "pub goals: Vec<(u32, u32)>, pub have: u8 }") if cones else RUNTIME_KEEP) if keep else RUNTIME)
