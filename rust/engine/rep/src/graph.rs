@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 pub enum NodeType { Place, Direction, Line, Edge, Kind, Side, Unit, Relation(Rel) }
 
 /// How many kinds of relation a layer above may write onto one position's graph.
-pub const REL_SLOTS: usize = 4;
+pub const REL_SLOTS: usize = 5;
 
 /// A RELATION AS THE LAYER ABOVE NAMES IT (plan 79.34): the slot it is kept in and the word the ids of its nodes begin with. A value, made as a constant by the layer above: layer 1 never compares its text and never looks it up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

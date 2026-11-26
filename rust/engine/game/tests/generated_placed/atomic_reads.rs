@@ -7,6 +7,7 @@
 // reads: placed_bears with its first 6 places as the key
 // reads: placed_reaches with its first 6 places as the key
 // reads: placed_allowed with its first 3 places as the key
+// reads: placed_allowed with its first 5 places as the key
 #[allow(dead_code, unused_variables, unused_mut, unused_imports, unused_parens, non_snake_case, non_upper_case_globals, clippy::all, unreachable_code)]
 pub mod placed_atomic_reads {
 
@@ -22165,6 +22166,37 @@ fn td_placed_allowed_m11100(td: &Td, a: [u32; 5], k: &mut dyn FnMut(&[u32; 5]) -
     }
     false
 }
+fn td_placed_allowed_m11111(td: &Td, a: [u32; 5], k: &mut dyn FnMut(&[u32; 5]) -> bool) -> bool {
+    if true {
+        let u_c = a[0];
+        let u_f1 = a[1];
+        let u_r1 = a[2];
+        let u_f2 = a[3];
+        let u_r2 = a[4];
+        'cl: {
+                if td_promotes_m11111(td, [u_c, u_f1, u_r1, u_f2, u_r2], &mut |_| true) { break 'cl; }
+                if !td_candidate_m11111(td, [u_c, u_f1, u_r1, u_f2, u_r2], &mut |_| true) { break 'cl; }
+                if !td_sound_m1111(td, [u_f1, u_r1, u_f2, u_r2], &mut |_| true) { break 'cl; }
+                if k(&[u_c, u_f1, u_r1, u_f2, u_r2]) { return true; }
+        }
+    }
+    if true {
+        let u_c = a[0];
+        let u_f1 = a[1];
+        let u_r1 = a[2];
+        let u_f2 = a[3];
+        let u_r2 = a[4];
+        'cl: {
+                if !td_promotes_m11111(td, [u_c, u_f1, u_r1, u_f2, u_r2], &mut |_| true) { break 'cl; }
+                if !td_sound_m1111(td, [u_f1, u_r1, u_f2, u_r2], &mut |_| true) { break 'cl; }
+                for row2 in td.st_promotable.order.as_slice().iter() {
+                    let v0 = row2[0];
+                    if k(&[u_c, u_f1, u_r1, u_f2, u_r2]) { return true; }
+                }
+        }
+    }
+    false
+}
 fn td_candidate_m01111(td: &Td, a: [u32; 5], k: &mut dyn FnMut(&[u32; 5]) -> bool) -> bool {
     if true {
         let u_f1 = a[1];
@@ -26364,7 +26396,7 @@ thread_local! { static RD_ON: std::sync::atomic::AtomicBool = const { std::sync:
 pub const READS_FLUENTS: &[&str] = &["control", "cell", "castling_right", "halfmove", "ep_square"];
 pub const READS_ARITY: &[usize] = &[1, 4, 2, 1, 2];
 /// The relations whose answers come with their reads, each with the number of places of its key.
-pub const READS: &[(&str, usize)] = &[("placed_bears", 4), ("placed_reaches", 4), ("placed_bears", 6), ("placed_reaches", 6), ("placed_allowed", 3)];
+pub const READS: &[(&str, usize)] = &[("placed_bears", 4), ("placed_reaches", 4), ("placed_bears", 6), ("placed_reaches", 6), ("placed_allowed", 3), ("placed_allowed", 5)];
 /// For each question that has both ways, the way that answers it (decided by the clocks of plan 79.53, tests/translated_speed_bits.rs, and recorded by scripts/gdl_to_rust_make.py).
 pub const WAYS: &[(&str, &str)] = &[("end", "bottom-up"), ("legal-turn", "bottom-up")];
 const WAY_END_TOP_DOWN: bool = false;
@@ -26650,6 +26682,7 @@ impl Game {
             "placed_bears" if key.len() == 6 => { let mut a = [FREE; 6]; a[..6].copy_from_slice(key); td_placed_bears_m111111(&self.td, a, &mut |row| { v.push(row.to_vec()); false }); true }
             "placed_reaches" if key.len() == 6 => { let mut a = [FREE; 6]; a[..6].copy_from_slice(key); td_placed_reaches_m111111(&self.td, a, &mut |row| { v.push(row.to_vec()); false }); true }
             "placed_allowed" if key.len() == 3 => { let mut a = [FREE; 5]; a[..3].copy_from_slice(key); td_placed_allowed_m11100(&self.td, a, &mut |row| { v.push(row.to_vec()); false }); true }
+            "placed_allowed" if key.len() == 5 => { let mut a = [FREE; 5]; a[..5].copy_from_slice(key); td_placed_allowed_m11111(&self.td, a, &mut |row| { v.push(row.to_vec()); false }); true }
             _ => false,
         };
         RD_ON.with(|o| o.store(false, std::sync::atomic::Ordering::Relaxed));

@@ -7,6 +7,9 @@
 //!   `PartRelations` for `PositionPart`                    `bears() / moves() / shuts() / throughs() -> &Vec<RelRec>`: the relations written, in the order written (inline: one index into an array, as cheap as the fields they replace); `struck_by(np, side) -> PlaceSet`: the places borne on by some unit of the side.
 //!   `UnitRelations` for `LiveUnit`                        `bears() / reach() / shuts() -> &Vec<Place>`.
 //!   `node_words() -> Vec<&'static str>`                   the words of every node type of a graph, layer 1's then these.
+//! PLAN 79.58 PART B1 (SYSTEM_SPEC 11, blocks "A divergence found and named" and "The support filter"; LAYER 2, piece: rules; ledger rows 58, 57, 44): a FIFTH relation.
+//!   `ALLOWED: Rel`                                         slot 4 of a position's graph, the word `allowed`: a unit of the side to act may be played to a place (the two ends of an allowed move, a promotion's kind not told). Written onto the graph by `keeper::AllowedKeeper::write` through the door; a graph that is not given the rows has none (slot 4 is empty and nothing of the graph differs from before).
+//!   `PartRelations::allowed(&self) -> &Vec<RelRec>`        the rows written in slot 4. `node_words()` is not changed (it lists the four relations of the graphs made before this one).
 //! Called by: the layers above that read the graph (the tactical reading, the wake, the question sheet) and by `graph::Static`, `keeper::GraphKeeper`, `graph_facts::FactReader` in this crate.
 use cs_rep::graph::{NodeType, PositionPart, Rel, RelRec};
 use cs_rep::live::LiveUnit;
@@ -16,12 +19,14 @@ pub const BEAR: Rel = Rel::new(0, "bear");
 pub const MAY_MOVE: Rel = Rel::new(1, "may_move");
 pub const SHUT: Rel = Rel::new(2, "shut");
 pub const THROUGH: Rel = Rel::new(3, "through");
+pub const ALLOWED: Rel = Rel::new(4, "allowed");
 
 pub trait PartRelations {
     fn bears(&self) -> &Vec<RelRec>;
     fn moves(&self) -> &Vec<RelRec>;
     fn shuts(&self) -> &Vec<RelRec>;
     fn throughs(&self) -> &Vec<RelRec>;
+    fn allowed(&self) -> &Vec<RelRec>;
     /// Places borne on by some unit of `side`.
     fn struck_by(&self, np: usize, side: Side) -> PlaceSet;
 }
@@ -35,6 +40,8 @@ impl PartRelations for PositionPart {
     fn shuts(&self) -> &Vec<RelRec> { &self.rels[SHUT.slot as usize] }
     #[inline(always)]
     fn throughs(&self) -> &Vec<RelRec> { &self.rels[THROUGH.slot as usize] }
+    #[inline(always)]
+    fn allowed(&self) -> &Vec<RelRec> { &self.rels[ALLOWED.slot as usize] }
     fn struck_by(&self, np: usize, side: Side) -> PlaceSet {
         let mut out = PlaceSet::new(np);
         for r in self.bears() { if self.units[r.unit].side == side { out.insert(r.place); } }

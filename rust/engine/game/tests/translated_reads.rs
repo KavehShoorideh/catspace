@@ -11,13 +11,18 @@
 //!      six places bound) in place of by unit. A unit whose every read matches the same cells before and after MUST have the same answer (the lemma): a unit that breaks it is counted and fails the run. TAKES CS_FACTS_GAMES (the file), CS_FACTS_N, CS_FACTS_MAX, CS_FACTS_JOBS (threads, default all cores).
 //!   `clock` (A2): on a quiet machine, three walks of the same games, the load printed; nanoseconds for (i) one unit's question with its reads recorded (the module's `ask_reads`, key of four places, state already loaded), (ii) the same question from the bulk piece (the module's `ask_t` of the whole state, the share of a unit; and with the key bound), (iii) a whole `make` of the keeper: hand rule asking the bridge, hand rule asking the description (bulk), support rule asking the description.
 //!   `other` (A3): the count of C (`facts_moved`) for each of the six other games on seeded walks (CS_FACTS_N games of at most CS_FACTS_MAX plies, seed SEED), one line a game.
+//! PLAN 79.58 PART B (THE ALLOWED MOVES AS FACTS WITH SUPPORTS, THE LAG OF TWO; SYSTEM_SPEC 11 last blocks; ledger rows 58, 57, 44). WRITTEN BEFORE THE BODY. The fourth relation of layer 2 (`relations::ALLOWED`, slot 4 of layer 1's door), kept by `keeper::AllowedKeeper` (see its header), asked of the description through `Described` (`Allowing`: the module's `placed_allowed` with its reads).
+//!   GATES (`allowed_gate`, every game, seeded walks of GAMES games of at most PLIES plies, make then undo): at every state and after every undo (1) the rows the keeper holds (the lag of two) equal the rows of a fresh question of every unit of the side to act, (2) those equal the ends of the moves the outside library gives (the kernel's `move_ends`, the unit that stands there),
+//!      (3) the graph kept (the hand-asked rows of bear and may_move, with the allowed rows written through the door) equals the graph made afresh; and a PLANTED FAULT (one read struck out of every allowed support after every tempo) is caught by (1).
+//!   B4 `allowed` (ignored; scripts/facts_moved_print.py `allowed`): over the games of a file and the seeded walks of the other games, the allowed rows a state, the units and rows asked again and kept a tempo with the lag of two, the share predicted to stand (kept) and the share that stands in fact (rows also held two tempi before), split by whether the goal unit of the side to act (the unit of the kind named `king` in this file) is borne on by the other side.
+//!   B5 `states` (ignored): twenty such states printed in full: the position text, the bearing on the goal unit and the places it rested on, the units asked again, the allowed rows; and `facts` prints the allowed rows and, for each reach row that is not allowed, the reads of its refusal (`placed_allowed` with all five places bound).
 //! RETURNS OBS lines; the gates fail on a difference. This file names the games on purpose (a test file may); the layer crates do not.
 mod described;
 mod translated_common;
 mod variants_common;
 use cs_game::graph::Static;
 use cs_game::graph_facts::FactReader;
-use cs_game::keeper::{GraphKeeper, Support, Supported};
+use cs_game::keeper::{AllowedKeeper, Allowing, GraphKeeper, Support, Supported};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::Placed;
 use cs_game::relations::UnitRelations;
@@ -432,6 +437,313 @@ fn digest() {
     }
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------ PLAN 79.58 PART B
+
+type UKey = (usize, u8, u16);
+type AllowedRows = std::collections::BTreeMap<UKey, Vec<u16>>;
+
+/// The allowed ends of every unit of the side to act, each unit asked afresh.
+fn allowed_fresh<T: Tr>(d: &Described<T>, s: &<KernelGame as Game>::State) -> AllowedRows {
+    let m = d.mover(s).expect("a side to act");
+    d.cells(s).into_iter().filter(|c| c.0 == m).map(|(o, k, p)| ((o, k, p), d.allowed_with_support(s, o, k, p).0)).collect()
+}
+
+/// Whether every read of an allowed row's question has the same facts in the two states: the cell fluent by the units it matches, the fluent of whose turn it is fixed, every other fluent by its stamp (None: a read that cannot be compared).
+fn reads_same_allowed<T: Tr>(d: &Described<T>, reads: &[(String, Vec<u32>)], before: &<KernelGame as Game>::State, after: &<KernelGame as Game>::State) -> Option<bool> {
+    let mut same = true;
+    for (name, pat) in reads {
+        if name == "control" { continue; }
+        if name == "cell" {
+            let p = d.cell_pattern(pat)?;
+            if d.matching(before, &p) != d.matching(after, &p) { same = false; }
+        } else if d.whole_stamp_of(before, 0, name) != d.whole_stamp_of(after, 0, name) { same = false; }
+    }
+    Some(same)
+}
+
+/// The same from the outside library's moves: the ends of each allowed move, put on the unit that stands at its start.
+fn allowed_by_moves<T: Tr>(d: &Described<T>, s: &<KernelGame as Game>::State) -> AllowedRows {
+    let m = d.mover(s).expect("a side to act");
+    let mut out: AllowedRows = d.cells(s).into_iter().filter(|c| c.0 == m).map(|c| (c, vec![])).collect();
+    for mv in d.moves(s) {
+        let (from, to) = d.kernel.move_ends(s, &mv);
+        let k = d.kernel.kind_at(s, from).expect("a unit stands at the start of a move");
+        out.get_mut(&(m, k, from)).expect("the unit of a move is of the side to act").push(to);
+    }
+    for v in out.values_mut() { v.sort_unstable(); v.dedup(); }
+    out
+}
+
+/// Whether the goal unit of the side to act (the unit of the kind named `king`) is borne on by the other side, at the state as it stands (the bulk rows of the description).
+fn goal_borne_on<T: Tr>(d: &Described<T>, s: &<KernelGame as Game>::State) -> Option<(UKey, Vec<UKey>)> {
+    let m = d.mover(s)?;
+    let goal = d.kernel.kind_names().iter().position(|k| k == "king")? as u8;
+    let rows = d.rows(s);
+    let g = rows.cells.iter().find(|c| c.0 == m && c.1 == goal)?;
+    let by: Vec<UKey> = rows.bears.iter().filter(|(k, v)| k.0 != m && v.contains(&g.2)).map(|(k, _)| *k).collect();
+    if by.is_empty() { None } else { Some((*g, by)) }
+}
+
+#[derive(Default, Clone, Debug)]
+struct Split { tempi: usize, rows_on_graph: usize, units: usize, units_asked: usize, units_asked_places: usize, rows_all: usize, rows_asked: usize, compared: usize, stood: usize, row_asks: usize, row_saved: usize, row_wrong: usize, row_opaque: usize, row_stood: usize }
+
+#[derive(Default, Clone, Debug)]
+struct AllowedTally {
+    states: usize, undone: usize, diff_kept_fresh: usize, diff_fresh_moves: usize, diff_graph: usize,
+    first: Vec<String>,
+    /// [0] the goal unit of the side to act is not borne on, [1] it is; the first two states of a game (no record of the side) are in `starts`
+    split: [Split; 2],
+    starts: Split,
+    /// what the questions read: the fluents named by the allowed answers (name -> reads)
+    support_all: usize, supports: usize, support_places: usize, wholes: usize,
+}
+
+impl AllowedTally {
+    fn add(&mut self, o: &AllowedTally) {
+        self.states += o.states; self.undone += o.undone; self.diff_kept_fresh += o.diff_kept_fresh; self.diff_fresh_moves += o.diff_fresh_moves; self.diff_graph += o.diff_graph;
+        for x in &o.first { if self.first.len() < 4 { self.first.push(x.clone()); } }
+        for (a, b) in self.split.iter_mut().zip(o.split.iter()).chain(std::iter::once((&mut self.starts, &o.starts))) { a.tempi += b.tempi; a.rows_on_graph += b.rows_on_graph; a.units += b.units; a.units_asked += b.units_asked; a.units_asked_places += b.units_asked_places; a.rows_all += b.rows_all; a.rows_asked += b.rows_asked; a.compared += b.compared; a.stood += b.stood; a.row_asks += b.row_asks; a.row_saved += b.row_saved; a.row_wrong += b.row_wrong; a.row_opaque += b.row_opaque; a.row_stood += b.row_stood; }
+        self.support_all += o.support_all; self.supports += o.supports; self.support_places += o.support_places; self.wholes += o.wholes;
+    }
+}
+
+/// THE GATES AND THE MEASURE of the allowed rows along the given games (the states of each, one after the other). `strike`: one read struck out of every allowed support after every tempo (the planted fault).
+fn allowed_run<T: Tr + 'static>(game: &str, games: &[Vec<<KernelGame as Game>::State>], strike: bool) -> (AllowedTally, std::collections::BTreeMap<String, usize>) {
+    let st = static_of(game);
+    let dk = Described::new(kernel(game), T::make());       // the keeper's questions (by unit, with reads)
+    let df = Described::new(kernel(game), T::make());       // the fresh questions
+    let dg = Described::new(kernel(game), T::make());       // the graph's relations (bulk, as the description gives them)
+    let dr = Described::new(kernel(game), T::make());       // the questions of one row (the measure of a support by row)
+    let row_every = env_usize("CS_ALLOWED_ROW_EVERY", 8);     // the support by row is measured at every n-th ply (a question of one row is dear)
+    let mut t = AllowedTally::default();
+    let strike_all = |k: &mut AllowedKeeper| { if let Some(m) = k.supports_mut() { for v in m.values_mut() { if !v.all && !v.reads.is_empty() { let i = v.reads.len() / 2; v.reads.remove(i); } } } };
+    for (gi, states) in games.iter().enumerate() {
+        let s0 = &states[0];
+        let mut ak = AllowedKeeper::new(&dk, s0);
+        let mut gk = GraphKeeper::new(&st, &dg, s0);
+        if strike { strike_all(&mut ak); }
+        let part_of = |gk: &GraphKeeper, ak: &AllowedKeeper| { let mut p = gk.part(&st); ak.write(&st, &mut p); p.definitions(st.board()) };
+        let fresh_part = |s: &<KernelGame as Game>::State| { let mut p = st.position(&dg, s); AllowedKeeper::new(&df, s).write(&st, &mut p); p.definitions(st.board()) };
+        let mut history: Vec<AllowedRows> = vec![ak.rows()];
+        let mut rows_stack: Vec<AllowedRows> = vec![ak.rows()];
+        let mut defs_stack = vec![part_of(&gk, &ak)];
+        let check = |t: &mut AllowedTally, ak: &AllowedKeeper, s: &<KernelGame as Game>::State, what: String| {
+            let kept = ak.rows();
+            let fresh = allowed_fresh(&df, s);
+            if kept != fresh { t.diff_kept_fresh += 1; if t.first.len() < 4 { t.first.push(format!("{game} game {gi} {what}: the rows kept under the lag of two differ from the fresh rows")); } }
+            if fresh != allowed_by_moves(&df, s) { t.diff_fresh_moves += 1; if t.first.len() < 4 { t.first.push(format!("{game} game {gi} {what}: the fresh rows differ from the ends of the outside library's moves")); } }
+        };
+        check(&mut t, &ak, s0, "ply 0".into());
+        for (ply, s) in states.iter().enumerate().skip(1) {
+            gk.make(&st, &dg, s);
+            ak.make(&dk, s);
+            if strike { strike_all(&mut ak); }
+            t.states += 1;
+            if df.mover(s).is_some() {
+                check(&mut t, &ak, s, format!("ply {ply}"));
+                let kept_part = part_of(&gk, &ak);
+                if kept_part != fresh_part(s) { t.diff_graph += 1; if t.first.len() < 4 { t.first.push(format!("{game} game {gi} ply {ply}: the graph with the allowed rows written differs from the fresh graph")); } }
+                defs_stack.push(kept_part);
+                // the measure
+                let rows_now = ak.rows();
+                let (a, n) = ak.asked();
+                let (ra, rall) = ak.rows_again();
+                let sp = if ply < 2 { &mut t.starts } else if goal_borne_on(&df, s).is_some() { &mut t.split[1] } else { &mut t.split[0] };
+                sp.tempi += 1; sp.rows_on_graph += rall; sp.units += n; sp.units_asked += a; sp.units_asked_places += ak.asked_by_places(); sp.rows_all += rall; sp.rows_asked += ra;
+                if ply >= 2 {
+                    let before = &history[ply - 2];
+                    for (k, v) in &rows_now { sp.compared += v.len(); if let Some(o) = before.get(k) { sp.stood += v.iter().filter(|p| o.contains(p)).count(); } }
+                    // what a support BY ROW of the answer would keep: each row that stood, asked with all five places bound at the state two tempi before, its reads compared by content with this state
+                    let old_state = &states[ply - 2];
+                    let sampled = ply % row_every == 0;
+                    for (k, o) in before.iter().filter(|_| sampled) {
+                        let now = rows_now.get(k);
+                        for &to in o {
+                            let stands = now.map_or(false, |v| v.contains(&to));
+                            sp.row_asks += 1;
+                            if stands { sp.row_stood += 1; }
+                            let verdict = dr.reads_raw(old_state, "placed_allowed", &dr.key5(k.0, k.2, to), None).and_then(|(_, reads)| reads_same_allowed(&dr, &reads, old_state, s));
+                            if verdict.is_none() { sp.row_opaque += 1; }
+                            let same = verdict == Some(true);
+                            if same && stands { sp.row_saved += 1; }
+                            if same && !stands { sp.row_wrong += 1; }
+                        }
+                    }
+                }
+                for k in rows_now.keys() { if let Some(x) = ak.support_of(k) { t.supports += 1; if x.all { t.support_all += 1; } t.support_places += x.places.len(); t.wholes += x.wholes.len(); } }
+                history.push(rows_now.clone());
+                rows_stack.push(rows_now);
+            } else { history.push(AllowedRows::new()); rows_stack.push(AllowedRows::new()); defs_stack.push(part_of(&gk, &ak)); }
+        }
+        while rows_stack.len() > 1 {
+            rows_stack.pop(); defs_stack.pop();
+            assert!(ak.undo() && gk.undo());
+            t.undone += 1;
+            if &ak.rows() != rows_stack.last().unwrap() { t.diff_kept_fresh += 1; if t.first.len() < 4 { t.first.push(format!("{game} game {gi}: after an undo at depth {} the rows differ from those held then", rows_stack.len() - 1)); } }
+            if &part_of(&gk, &ak) != defs_stack.last().unwrap() { t.diff_graph += 1; if t.first.len() < 4 { t.first.push(format!("{game} game {gi}: after an undo at depth {} the graph differs from the one held then", rows_stack.len() - 1)); } }
+        }
+    }
+    let seen = dk.fluents_read.borrow().clone();
+    (t, seen)
+}
+
+fn allowed_gate<T: Tr + 'static>(game: &str) {
+    let k = kernel(game);
+    let games = seeded_states(&k, GAMES, PLIES);
+    let (t, seen) = allowed_run::<T>(game, &games, false);
+    let (f, _) = allowed_run::<T>(game, &games, true);
+    println!("OBS 79.58 B {game}: {GAMES} games of at most {PLIES} plies (seed {SEED}), {} states, {} undone depths; the rows kept under the lag of two differ from the fresh rows {} times, the fresh rows from the outside library's moves {} times, the graph with the allowed rows written through the door from the fresh graph {} times; supports: {} kept, {} with no bound (all), {:.1} places and {:.2} fluents read as a whole on average; fluents read: {:?}",
+        t.states, t.undone, t.diff_kept_fresh, t.diff_fresh_moves, t.diff_graph, t.supports, t.support_all, t.support_places as f64 / t.supports.max(1) as f64, t.wholes as f64 / t.supports.max(1) as f64, seen);
+    println!("OBS 79.58 B {game} planted fault (one read struck out of every allowed support after every tempo): the rows kept differ from the fresh rows at {} of {} checks, the graph at {}", f.diff_kept_fresh, f.states + f.undone, f.diff_graph);
+    for x in &t.first { println!("FINDING 79.58 B {x}"); }
+    assert!(t.states > 0);
+    assert_eq!((t.diff_kept_fresh, t.diff_fresh_moves, t.diff_graph), (0, 0, 0), "{:?}", t.first);
+    assert!(f.diff_kept_fresh + f.diff_graph > 0, "{game}: a support with a place struck out by hand was not caught");
+}
+
+/// The states of seeded walks of a game (the walk of `games_of`).
+fn seeded_states(k: &KernelGame, n: usize, plies: usize) -> Vec<Vec<<KernelGame as Game>::State>> {
+    let mut rng = Rng::new(SEED);
+    let mut out = vec![];
+    for _ in 0..n {
+        let mut s = k.initial();
+        let mut states = vec![s.clone()];
+        for _ in 0..plies {
+            let mv = k.moves(&s);
+            if mv.is_empty() || k.outcome(&s).is_some() { break; }
+            let mut sorted: Vec<(String, usize)> = mv.iter().enumerate().map(|(i, m)| (k.move_name(&s, m), i)).collect();
+            sorted.sort();
+            let (_, i) = sorted[rng.below(sorted.len())].clone();
+            s = k.apply(&s, &mv[i]);
+            states.push(s.clone());
+        }
+        out.push(states);
+    }
+    out
+}
+
+#[test] fn chess_the_allowed_rows_kept_under_the_lag_of_two_are_the_fresh_rows() { allowed_gate::<placed_chess_reads::Game>("chess"); }
+#[test] fn atomic_the_allowed_rows_kept_under_the_lag_of_two_are_the_fresh_rows() { allowed_gate::<placed_atomic_reads::Game>("atomic"); }
+#[test] fn threecheck_the_allowed_rows_kept_under_the_lag_of_two_are_the_fresh_rows() { allowed_gate::<placed_threecheck_reads::Game>("3check"); }
+#[test] fn kingofthehill_the_allowed_rows_kept_under_the_lag_of_two_are_the_fresh_rows() { allowed_gate::<placed_kingofthehill_reads::Game>("kingofthehill"); }
+#[test] fn antichess_the_allowed_rows_kept_under_the_lag_of_two_are_the_fresh_rows() { allowed_gate::<placed_antichess_reads::Game>("antichess"); }
+#[test] fn chess960_the_allowed_rows_kept_under_the_lag_of_two_are_the_fresh_rows() { allowed_gate::<placed_chess960_reads::Game>("chess960"); }
+#[test] fn horde_the_allowed_rows_kept_under_the_lag_of_two_are_the_fresh_rows() { allowed_gate::<placed_horde_reads::Game>("horde"); }
+
+fn split_lines(label: &str, t: &AllowedTally, secs: f64) {
+    let names = ["goal unit not borne on", "goal unit borne on"];
+    for (i, sp) in t.split.iter().enumerate() {
+        let n = sp.tempi.max(1) as f64;
+        println!("OBS 79.58 B4 {label}, {} ({} tempi{}): allowed rows a state {:.1}; units of the side {:.1}, asked again {:.2} (the place rule alone would ask {:.2}); rows asked again {:.1}, kept {:.1}; share of rows predicted to stand (kept) {:.3}; share that stands in fact (rows also held two tempi before) {:.3}",
+            names[i], sp.tempi, if i == 0 { format!(", {:.1} s", secs) } else { String::new() }, sp.rows_on_graph as f64 / n, sp.units as f64 / n, sp.units_asked as f64 / n, sp.units_asked_places as f64 / n, sp.rows_asked as f64 / n, (sp.rows_all - sp.rows_asked) as f64 / n,
+            1.0 - sp.rows_asked as f64 / sp.rows_all.max(1) as f64, sp.stood as f64 / sp.compared.max(1) as f64);
+    }
+    for (i, sp) in t.split.iter().enumerate() {
+        println!("OBS 79.58 B4 {label}, {}: a support BY ROW of the answer (the reads of one row, all five places bound, at the state two tempi before, measured at every CS_ALLOWED_ROW_EVERY-th ply) would keep {} of the {} rows of the old answer asked about; of the rows of those that stood in fact ({}) {:.3}; rows that went although their own reads were untouched {} (the lemma says 0); rows whose reads could not be compared {}; it cannot spare the question of a unit about a new row", names[i], sp.row_saved, sp.row_asks, sp.row_stood, sp.row_saved as f64 / sp.row_stood.max(1) as f64, sp.row_wrong, sp.row_opaque);
+    }
+    let s = &t.starts;
+    println!("OBS 79.58 B4 {label}, the first two tempi of each game (no record of the side yet, every unit asked): {} tempi, units asked {} of {}", s.tempi, s.units_asked, s.units);
+}
+
+fn allowed_threads<T: Tr + 'static>(game: &str, games: &[Vec<<KernelGame as Game>::State>], jobs: usize) -> AllowedTally {
+    let chunk = ((games.len() + jobs - 1) / jobs).max(1);
+    std::thread::scope(|sc| {
+        let hs: Vec<_> = games.chunks(chunk).map(|g| sc.spawn(move || allowed_run::<T>(game, g, false).0)).collect();
+        let mut t = AllowedTally::default();
+        for h in hs { t.add(&h.join().unwrap()); }
+        t
+    })
+}
+
+#[test]
+#[ignore = "a measure, by hand (plan 79.58 part B4): CS_FACTS_GAMES names the games file; the six other games on seeded walks"]
+fn allowed() {
+    let path = std::env::var("CS_FACTS_GAMES").expect("CS_FACTS_GAMES names the file of games");
+    let (n, max) = (env_usize("CS_FACTS_N", 300), env_usize("CS_FACTS_MAX", 40));
+    let jobs = env_usize("CS_FACTS_JOBS", std::thread::available_parallelism().map(|x| x.get()).unwrap_or(4));
+    let games = states_of_lines("chess", &lines_of(&path, n), max);
+    let t0 = std::time::Instant::now();
+    let t = allowed_threads::<placed_chess_reads::Game>("chess", &games, jobs);
+    println!("OBS 79.58 B4 chess, {} games of the file of at most {max} plies, {} states, {} threads: differences kept against fresh {}, fresh against the library's moves {}, graph {}", games.len(), t.states, jobs, t.diff_kept_fresh, t.diff_fresh_moves, t.diff_graph);
+    split_lines("chess (human games)", &t, t0.elapsed().as_secs_f64());
+    assert_eq!((t.diff_kept_fresh, t.diff_fresh_moves, t.diff_graph), (0, 0, 0), "{:?}", t.first);
+    assert_eq!(t.split[0].row_wrong + t.split[1].row_wrong, 0, "a row that went had untouched reads: the lemma fails");
+    let (ns, plies) = (env_usize("CS_ALLOWED_SEEDED_N", 30), max);
+    macro_rules! other { ($m:ident, $name:expr) => {{ let t0 = std::time::Instant::now(); let k = kernel($name); let g = seeded_states(&k, ns, plies); let t = allowed_threads::<$m::Game>($name, &g, jobs); split_lines(&format!("{} (seeded walks, seed {SEED}, {ns} games of at most {plies} plies)", $name), &t, t0.elapsed().as_secs_f64()); assert_eq!((t.diff_kept_fresh, t.diff_fresh_moves, t.diff_graph), (0, 0, 0), "{:?}", t.first); }} }
+    other!(placed_atomic_reads, "atomic");
+    other!(placed_antichess_reads, "antichess");
+    other!(placed_horde_reads, "horde");
+    other!(placed_chess960_reads, "chess960");
+    other!(placed_threecheck_reads, "3check");
+    other!(placed_kingofthehill_reads, "kingofthehill");
+}
+
+/// A place by its name, a unit by its kind and place.
+fn pname<T: Tr>(d: &Described<T>, p: u16) -> String { d.kernel.place_names()[p as usize].clone() }
+fn uname<T: Tr>(d: &Described<T>, k: &UKey) -> String { format!("{} {} on {}", d.kernel.roles()[k.0], d.kernel.kind_names()[k.1 as usize], pname(d, k.2)) }
+
+/// B5: twenty states of the human games in which the goal unit of the side to act is borne on, printed in full.
+#[test]
+#[ignore = "a command, by hand (plan 79.58 part B5): CS_FACTS_GAMES names the games file"]
+fn states() {
+    let path = std::env::var("CS_FACTS_GAMES").expect("CS_FACTS_GAMES names the file of games");
+    let (n, max, want) = (env_usize("CS_FACTS_N", 300), env_usize("CS_FACTS_MAX", 40), env_usize("CS_FACTS_STATES", 20));
+    let games = states_of_lines("chess", &lines_of(&path, n), max);
+    let st = static_of("chess");
+    let dk = Described::new(kernel("chess"), <placed_chess_reads::Game as Tr>::make());
+    let dg = Described::new(kernel("chess"), <placed_chess_reads::Game as Tr>::make());
+    let (mut shown, mut touch_rows, mut survivors, mut refused, mut asked_meet, mut asked_all, mut kept_meet, mut kept_all) = (0, 0, 0, 0, 0, 0, 0, 0);
+    for (gi, g) in games.iter().enumerate() {
+        let mut ak = AllowedKeeper::new(&dk, &g[0]);
+        let mut gk = GraphKeeper::new_supported(&st, &dg, &g[0]);
+        let mut done_in_game = false;
+        for (ply, s) in g.iter().enumerate().skip(1) {
+            let before = ak.rows();
+            let prev_support: std::collections::BTreeMap<UKey, cs_game::keeper::AllowedSupport> = before.keys().filter_map(|k| ak.support_of(k).map(|x| (*k, x.clone()))).collect();
+            let _ = prev_support;
+            ak.make(&dk, s);
+            gk.make_supported(&st, &dg, s);
+            if ply < 2 || dg.mover(s).is_none() { continue; }
+            let Some((goal, by)) = goal_borne_on(&dg, s) else { continue };
+            // the places the bearing on the goal unit rested on: the support of each bearing unit's question
+            let mut bsup: Vec<u16> = vec![];
+            let mut bearing_lines = vec![];
+            for b in &by {
+                let (_, sp) = dg.bearing_with_support(s, b.0, b.1, b.2);
+                bsup.extend(sp.places.iter().copied());
+                bearing_lines.push(format!("{} bears on {} resting on [{}]", uname(&dg, b), pname(&dg, goal.2), sp.places.iter().map(|p| pname(&dg, *p)).collect::<Vec<_>>().join(" ")));
+            }
+            bsup.sort_unstable(); bsup.dedup();
+            let rows = ak.rows();
+            let (asked_n, units_n) = ak.asked();
+            // a unit asked again: the lag of two asks it when a place of its support changed between the state two tempi before and this one; the keeper does not name them, so they are those whose rows were asked: recompute from the supports
+            let again: Vec<UKey> = ak.asked_units();
+            let _ = asked_n;
+            let touches = |k: &UKey, ends: &Vec<u16>| *k == goal || ends.iter().any(|p| bsup.contains(p)) || bsup.contains(&k.2);
+            for (k, ends) in &rows {
+                if ends.is_empty() { refused += 1; continue; }
+                survivors += 1;
+                if touches(k, ends) { touch_rows += 1; }
+            }
+            for k in rows.keys() {
+                let meets = ak.support_of(k).map_or(true, |x| x.all || bsup.iter().any(|p| x.places.binary_search(p).is_ok()));
+                if again.contains(k) { asked_all += 1; if meets { asked_meet += 1; } } else { kept_all += 1; if meets { kept_meet += 1; } }
+            }
+            if shown < want && !done_in_game {
+                done_in_game = true;
+                shown += 1;
+                println!("STATE {} of game {gi} after {ply} plies; {} to act; {} of {} units asked again", dg.kernel.fen(s), dg.kernel.roles()[dg.mover(s).unwrap()], asked_n, units_n);
+                println!("  goal unit: {}", uname(&dg, &goal));
+                for l in &bearing_lines { println!("  {l}"); }
+                println!("  support of the bearing (all places its questions read): [{}]", bsup.iter().map(|p| pname(&dg, *p)).collect::<Vec<_>>().join(" "));
+                println!("  units asked again of the side to act: [{}]", again.iter().map(|k| uname(&dg, k)).collect::<Vec<_>>().join("; "));
+                for (k, ends) in &rows { println!("  allowed {}: [{}]{}", uname(&dg, k), ends.iter().map(|p| pname(&dg, *p)).collect::<Vec<_>>().join(" "), if ends.is_empty() { "" } else if touches(k, ends) { " (touches the bearing)" } else { " (does not touch the bearing)" }); }
+            }
+        }
+    }
+    println!("OBS 79.58 B5 over {} games: in the states where the goal unit of the side to act is borne on, units with an allowed row {survivors}, of which touch the bearing (the goal unit itself, a unit standing on a place the bearing rested on, or a unit with an end on such a place) {touch_rows}; units with no allowed row {refused}; units asked again {asked_all}, of which the allowed support meets the bearing's {asked_meet}; units kept {kept_all}, of which the allowed support meets the bearing's {kept_meet}; states printed {shown}", games.len());
+}
+
 fn load_line() -> String { std::process::Command::new("uptime").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default() }
 
 /// A2: the clock. Three walks of the same games (a fresh adapter for each walk); the time of each call by `Instant`, summed.
@@ -564,5 +876,35 @@ fn facts() {
     if std::env::var("CS_FACTS_DUMP").is_ok() { println!("{}", keeper.part(&st).dump(st.board())); }
     let sup = |u: &cs_game::Fact| -> String { let k = d.kernel.kind_names().iter().position(|x| x == &u.args[1]).unwrap() as u8; let o = d.kernel.roles().iter().position(|x| x == &u.args[0]).unwrap(); let p = d.kernel.place_names().iter().position(|x| x == &u.args[2]).unwrap() as u16; match keeper.support_of(&(o, k, p)) { Some(Support { all: true, .. }) => "all".to_string(), Some(v) => format!("{} places", v.places.len()), None => "none".to_string() } };
     if let Some(u) = units.first() { println!("support of the first unit: {}", sup(u)); }
-    let _: Option<Role> = None;
+    // PLAN 79.58 B4: the allowed rows of the side to act, and for each reach row that is not allowed the places its refusal rested on
+    if let Some(m) = d.mover(&s) {
+        let ak = AllowedKeeper::new(&d, &s);
+        let allowed = ak.rows();
+        println!("allowed moves of {} ({} rows):", d.kernel.roles()[m], allowed.values().map(|v| v.len()).sum::<usize>());
+        for (k, ends) in &allowed { println!("allowed {}: [{}]", uname(&d, k), ends.iter().map(|p| pname(&d, *p)).collect::<Vec<_>>().join(" ")); }
+        for u in keeper.live().units().iter().filter(|u| u.owner == m) {
+            let ends = allowed.get(&u.key()).cloned().unwrap_or_default();
+            for &to in u.reach().iter().filter(|p| !ends.contains(p)) {
+                let why = d.reads_raw(&s, "placed_allowed", &d.key5(m, u.at, to), None).map(|(_, reads)| describe_reads(&d, &reads)).unwrap_or_else(|| "no reads".to_string());
+                println!("refused {} to {}: rested on {}", uname(&d, &u.key()), pname(&d, to), why);
+            }
+        }
+    }
+}
+
+/// The reads of a question as words: a place read by its name, a read that leaves the place free by the side and kind it asks for, any other fluent by its name.
+fn describe_reads<T: Tr>(d: &Described<T>, reads: &[(String, Vec<u32>)]) -> String {
+    let mut out: Vec<String> = vec![];
+    for (name, pat) in reads {
+        if name == "control" { continue; }
+        let w = if name == "cell" {
+            match d.cell_pattern(pat) {
+                Some([Some(f), Some(r), c, k]) => format!("{}{}", pname(d, f * 8 + r), c.map_or(String::new(), |c| format!(" ({} units only)", d.kernel.roles()[c as usize])) + &k.map_or(String::new(), |k| format!(" ({} only)", d.kernel.kind_names()[k as usize]))),
+                Some([_, _, c, k]) => format!("wherever {} {} stands", c.map_or("any".to_string(), |c| d.kernel.roles()[c as usize].clone()), k.map_or("unit".to_string(), |k| d.kernel.kind_names()[k as usize].clone())),
+                None => "an unknown cell".to_string(),
+            }
+        } else { format!("the fluent {name} as a whole") };
+        if !out.contains(&w) { out.push(w); }
+    }
+    format!("[{}]", out.join("; "))
 }

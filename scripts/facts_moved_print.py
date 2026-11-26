@@ -6,6 +6,8 @@ PLAN 79.58 (LAYER 2, piece: rules; ledger rows 58, 57, 44):
   python scripts/facts_moved_print.py classes [<games> [<plies>]]   A1: the rows the support rule derives again after a move, split by class (the unit that moved; support touched and the answer changed; support touched and the answer the same) with what a finer support would have saved (default 300 games, 40 plies).
   python scripts/facts_moved_print.py clock [<games> [<plies>]]     A2: the clock (ns of a unit's question with its reads, the same from the bulk piece, a whole make under the three ways), three walks, the load said. Run it on a quiet machine.
   python scripts/facts_moved_print.py other [<games> [<plies>]]     A3: the count of `measure` for the six other games on seeded walks (default 30 games, 40 plies).
+  python scripts/facts_moved_print.py allowed [<games> [<plies>]]   B4: the allowed rows a state, the rows kept and asked again a tempo under the lag of two, the share predicted to stand and the share that stands, split by whether the goal unit of the side to act is borne on (default 300 games, 40 plies; seeded walks of the six other games).
+  python scripts/facts_moved_print.py states [<games> [<plies>]]    B5: twenty states of the games file in which the goal unit of the side to act is borne on, printed in full (the bearing and its support, the units asked again, the allowed rows).
 Needs the records under LCP_DATA (the folder of the repository's data). The cargo side is the test file named above; this script only calls it and prints."""
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ def games_file(n: int) -> Path:
 def run(test: str, env: dict) -> int:
     r = subprocess.run(CARGO + [test], env={**os.environ, **env}, capture_output=True, text=True)
     for ln in r.stdout.splitlines():
-        if ln.startswith(("OBS 79.57", "OBS 79.58", "STATE", "FACTS", "tempo", "support of")) or " bears on [" in ln or "bear and may_move rows" in ln:
+        if ln.startswith(("  ", "OBS 79.57", "OBS 79.58", "STATE", "FACTS", "tempo", "support of", "allowed", "refused")) or " bears on [" in ln or "bear and may_move rows" in ln:
             print(ln)
     if r.returncode:
         print(r.stdout[-3000:], r.stderr[-3000:])
@@ -46,8 +48,8 @@ def main(argv) -> int:
     if argv[0] == "facts":
         f = games_file(1)
         return run("facts", {"CS_FACTS_GAMES": str(f), "CS_FACTS_PLY": argv[1] if len(argv) > 1 else "12"})
-    if argv[0] in ("classes", "clock", "other"):
-        n = int(argv[1]) if len(argv) > 1 else (300 if argv[0] == "classes" else 30)
+    if argv[0] in ("classes", "clock", "other", "allowed", "states"):
+        n = int(argv[1]) if len(argv) > 1 else (30 if argv[0] in ("clock", "other") else 300)
         f = games_file(n)
         return run(argv[0], {"CS_FACTS_GAMES": str(f), "CS_FACTS_N": str(n), "CS_FACTS_MAX": argv[2] if len(argv) > 2 else "40"})
     print(__doc__)

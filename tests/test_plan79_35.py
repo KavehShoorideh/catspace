@@ -56,9 +56,11 @@ def test_the_four_fixtures_exist_say_how_their_game_differs_and_the_tests_read_t
 def test_layer_1_is_unchanged_no_file_under_rep_src_differs_from_the_commit_before_this_plan():
     if not have_before():
         pytest.skip(f"the commit {BEFORE} is not in this clone")
-    d = git("diff", "--stat", BEFORE, "--", "rust/engine/rep/src")
+    # 2026-11-25 (plan 79.58 B3): the count of slots of layer 1's door rose from four to five (a number in graph.rs and the line of lib.rs that states it); tests/test_plan79_58.py holds that diff to exactly those lines
+    ex = (":(exclude)rust/engine/rep/src/graph.rs", ":(exclude)rust/engine/rep/src/lib.rs")
+    d = git("diff", "--stat", BEFORE, "--", "rust/engine/rep/src", *ex)
     assert d.returncode == 0 and d.stdout.strip() == "", d.stdout
-    assert git("diff", "--quiet", BEFORE, "--", "rust/engine/rep/src", "rust/engine/rep/Cargo.toml").returncode == 0
+    assert git("diff", "--quiet", BEFORE, "--", "rust/engine/rep/src", "rust/engine/rep/Cargo.toml", *ex).returncode == 0
     seen = (ENGINE / "rep" / "tests" / "seen_variants.rs").read_text()
     assert "OBS 79.35 F" in seen and "differs" in seen, "the new layer 1 test holds a state of each game, found by what the file says"
     print("OBS 79.35 scan: rust/engine/rep/src and its Cargo.toml are the files of the commit before; the new layer 1 test holds a state of each of the four games")

@@ -107,8 +107,8 @@ def make(out: Path, variants: dict, lemma_variants: dict | None = None, games: t
 
 
 # plan 79.57: the placed questions asked for one unit (kind, side, place = the first four places), with the reads of the answer (this script may name the relations; the translator does not).
-# plan 79.58 part A: the same two asked for one ROW (all six places bound: the reads of one row of the answer, for the measure of a support by row); part B: the allowed moves of one unit (placed_allowed: side and place = the first three places; made by `allowed_unfolded` below).
-READS_KEYED = (("placed_bears", 4), ("placed_reaches", 4), ("placed_bears", 6), ("placed_reaches", 6), ("placed_allowed", 3))
+# plan 79.58 part A: the same two asked for one ROW (all six places bound: the reads of one row of the answer, for the measure of a support by row); part B: the allowed moves of one unit (placed_allowed: side and place = the first three places; made by `allowed_unfolded` below); and one allowed ROW (all five places bound: the reads of a refusal or of one row, for `facts`).
+READS_KEYED = (("placed_bears", 4), ("placed_reaches", 4), ("placed_bears", 6), ("placed_reaches", 6), ("placed_allowed", 3), ("placed_allowed", 5))
 
 
 def allowed_unfolded(text: str) -> list:

@@ -14,7 +14,7 @@
 //!   WHO CALLS IT: tests/translated_graph.rs (the gate of part A and of part B's rule), tests/translated_reads.rs, scripts' measure tests.
 #![allow(dead_code)]
 use crate::translated_common::Tr;
-use cs_game::keeper::{Support, Supported};
+use cs_game::keeper::{AllowedSupport, Allowing, ReadPat, Support, Supported};
 use cs_game::kernel::KernelGame;
 use cs_game::placed::{NoStep, Placed};
 use cs_game::{Fact, Game, Role};
@@ -155,6 +155,7 @@ impl<T: Tr> Described<T> {
         Some((rows, reads.into_iter().map(|(f, pat)| (names[f as usize].to_string(), pat)).collect()))
     }
     pub fn key4(&self, owner: Role, kind: Kind, at: Place) -> [u32; 4] { [self.dec.kind_t[kind as usize], self.dec.side_t[owner], self.dec.file_t[(at / 8) as usize], self.dec.rank_t[(at % 8) as usize]] }
+    pub fn key5(&self, owner: Role, at: Place, to: Place) -> [u32; 5] { [self.dec.side_t[owner], self.dec.file_t[(at / 8) as usize], self.dec.rank_t[(at % 8) as usize], self.dec.file_t[(to / 8) as usize], self.dec.rank_t[(to % 8) as usize]] }
     pub fn key6(&self, owner: Role, kind: Kind, at: Place, to: Place) -> [u32; 6] { let k = self.key4(owner, kind, at); [k[0], k[1], k[2], k[3], self.dec.file_t[(to / 8) as usize], self.dec.rank_t[(to % 8) as usize]] }
     /// A read of the cell fluent as places: (file, rank, side, kind), each None where the read left it free; None when a bound term is not a member the adapter knows (the read is then not comparable).
     pub fn cell_pattern(&self, pat: &[u32]) -> Option<[Option<u16>; 4]> {
@@ -164,6 +165,61 @@ impl<T: Tr> Described<T> {
     /// The cells of a state (the adapter's own list, made once a state) that a read pattern matches.
     pub fn matching(&self, s: &<KernelGame as Game>::State, pat: &[Option<u16>; 4]) -> Vec<(Role, Kind, Place)> {
         self.rows(s).cells.iter().filter(|(o, k, p)| pat[0].map_or(true, |f| p / 8 == f) && pat[1].map_or(true, |r| p % 8 == r) && pat[2].map_or(true, |c| *o == c as usize) && pat[3].map_or(true, |x| *k == x as u8)).copied().collect()
+    }
+
+    // ---- PLAN 79.58 PART B: the allowed moves of a unit of the side to act, with what the answer read. The module's question is `placed_allowed` (made by the make script from the description's own clauses of `legal`, see scripts/gdl_to_rust_make.py `allowed_unfolded`), the state is the state as it stands.
+    // A read of the cell fluent is the places it binds; a read of the fluent that says whose turn it is is no dependence (the unit is of the side to act, and the keeper compares states at which the same side acts); a read of any other fluent is the fluent as a whole, kept with a stamp of its facts.
+    fn allowed_support(&self, s: &<KernelGame as Game>::State, owner: Role, kind: Kind, at: Place) -> Option<(Vec<Place>, AllowedSupport)> {
+        assert_eq!(self.kernel.mover(s), Some(owner), "the allowed moves are asked of a unit of the side to act");
+        let ms = self.mstates(s);
+        let key = [self.dec.side_t[owner], self.dec.file_t[(at / 8) as usize], self.dec.rank_t[(at % 8) as usize]];
+        let (rows, reads, names) = {
+            let mut t = self.t.borrow_mut();
+            let t0 = std::time::Instant::now();
+            let got = t.reads_t(&ms.0, "placed_allowed", &key);
+            let n = self.ns.get(); self.ns.set((n.0, n.1, n.2 + t0.elapsed().as_nanos()));
+            let (rows, reads) = got?;
+            (rows, reads, t.reads_fluents_t())
+        };
+        let (mut places, mut wholes, mut pats, mut all): (Vec<u16>, Vec<(u16, u64)>, Vec<ReadPat>, bool) = (vec![], vec![], vec![], false);
+        let mut done: std::collections::HashSet<Vec<u32>> = Default::default();
+        let mut seen = self.fluents_read.borrow_mut();
+        for (f, pat) in &reads {
+            let name = names[*f as usize];
+            *seen.entry(format!("{} (allowed)", name)).or_insert(0) += 1;
+            if name == "cell" {
+                let files: Vec<u16> = if pat[0] == FREE { (0..8).collect() } else { self.dec.file_of(pat[0]).into_iter().collect() };
+                let ranks: Vec<u16> = if pat[1] == FREE { (0..8).collect() } else { self.dec.rank_of(pat[1]).into_iter().collect() };
+                for f in &files { for r in &ranks { places.push(f * 8 + r); } }
+                if done.insert(pat.clone()) {
+                    let owner = if pat[2] == FREE { Some(None) } else { self.dec.side(pat[2]).map(|x| Some(x as usize)) };
+                    let kind = if pat[3] == FREE { Some(None) } else { self.dec.kind(pat[3]).map(|x| Some(x as u8)) };
+                    match (owner, kind) {
+                        (Some(owner), Some(kind)) => { let mut pl: Vec<u16> = files.iter().flat_map(|f| ranks.iter().map(move |r| f * 8 + r)).collect(); pl.sort_unstable(); pats.push(ReadPat { places: pl, owner, kind }); }
+                        _ => all = true,
+                    }
+                }
+            } else if name == "control" {
+                // the side to act: fixed
+            } else if !wholes.iter().any(|&(g, _)| g == *f) {
+                wholes.push((*f, self.whole_stamp_of(s, *f, name)));
+            }
+        }
+        let mut out: Vec<Place> = rows.iter().filter_map(|x| self.dec.place(x[3], x[4])).collect();
+        out.sort_unstable();
+        out.dedup();
+        places.sort_unstable();
+        places.dedup();
+        Some((out, AllowedSupport { places, reads: pats, wholes, all }))
+    }
+
+    pub fn whole_stamp_of(&self, s: &<KernelGame as Game>::State, f: u16, name: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut facts: Vec<(String, Vec<String>)> = pairs_of(&self.kernel.state_facts(s)).into_iter().filter(|(r, _)| r == name).collect();
+        facts.sort();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (f, facts).hash(&mut h);
+        h.finish()
     }
 
     /// The module's rows of one state (made once per state key).
@@ -252,4 +308,14 @@ impl<T: Tr> Placed for Described<T> {
     fn strikes_place(&self, s: &Self::State, owner: Role, at: Place) -> bool { self.kernel.strikes_place(s, owner, at) }
     fn without(&self, s: &Self::State, at: Place) -> Option<Self::State> { self.kernel.without(s, at) }
     fn relocate(&self, s: &Self::State, from: Place, to: Place) -> Option<Self::State> { self.kernel.relocate(s, from, to) }
+}
+
+impl<T: Tr> Allowing for Described<T> {
+    fn allowed_with_support(&self, s: &Self::State, owner: Role, kind: Kind, at: Place) -> (Vec<Place>, AllowedSupport) {
+        self.allowed_support(s, owner, kind, at).unwrap_or_else(|| panic!("the module has no placed_allowed question with reads"))
+    }
+    fn whole_stamp(&self, s: &Self::State, fluent: u16) -> u64 {
+        let name = self.t.borrow().reads_fluents_t()[fluent as usize];
+        self.whole_stamp_of(s, fluent, name)
+    }
 }

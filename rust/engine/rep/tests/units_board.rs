@@ -71,7 +71,7 @@ fn the_fifteen_kinds_of_link_have_fifteen_different_words_in_the_order_of_the_li
 fn a_relation_as_a_value_keeps_its_slot_and_its_word_and_a_layer_may_write_four_kinds() {
     let r = Rel::new(3, "far");
     assert_eq!((r.slot, r.word), (3, "far"));
-    assert_eq!(REL_SLOTS, 4);
+    assert_eq!(REL_SLOTS, 5);      // 2026-11-25 (plan 79.58 B3): the count of slots rose from four to five (a number only); the test's name still says four
     assert_ne!(Rel::new(0, "a"), Rel::new(1, "a"));
 }
 
@@ -348,7 +348,7 @@ fn the_four_slots_of_the_door_each_hold_their_own_relations_and_a_unit_kept_has_
     let b = board();
     let mut p = Board::position_from_units(&b, Some(0), vec![(0, 0, 0)]);
     for slot in 0..REL_SLOTS as u8 { Board::write(&b, &mut p, Rel::new(slot, "s"), 0, 1); }
-    assert_eq!(PositionPart::relation_count(&p), 4);
+    assert_eq!(PositionPart::relation_count(&p), REL_SLOTS);      // 2026-11-25 (plan 79.58 B3): one row in each of the slots, five since the count rose from four
     for slot in 0..REL_SLOTS as u8 { assert_eq!(PositionPart::written(&p, Rel::new(slot, "s")).len(), 1, "slot {slot}"); }
     assert_eq!(LIVE_SLOTS, 3, "a unit as the graph keeps it has three slots, one fewer than the graph has");
 }
